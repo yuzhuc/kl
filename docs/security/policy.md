@@ -88,8 +88,8 @@ Each record contains:
 
 ## Secrets
 
-- Config stores only the name of the environment variable holding a key
-  (`api_key_env`), never the key value.
-- `config.get` returns a redacted view.
-- Audit records store hashes, not raw tool arguments/output.
+- Provider keys live in `~/.kl/credentials/<id>.key`. Provider TOML may set
+  `api_key_env` as an override; new write commands never place a key in
+  provider TOML. `config.get` returns a redacted view and never emits the key
+  value; audit records store hashes rather than raw tool arguments/output.
 - Plugin environment variables are allowlisted in the manifest.

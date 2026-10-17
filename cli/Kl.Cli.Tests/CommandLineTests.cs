@@ -39,6 +39,33 @@ public sealed class CommandLineTests
     }
 
     [Fact]
+    public void ParsesProviderAdd()
+    {
+        var options = CommandLine.Parse(["provider", "add"]);
+        Assert.Equal("provider", options.Command);
+        Assert.Equal(["add"], options.Positionals);
+    }
+
+    [Fact]
+    public void ParsesAuthSet()
+    {
+        var options = CommandLine.Parse(["auth", "set", "opencode"]);
+        Assert.Equal("auth", options.Command);
+        Assert.Equal(["set", "opencode"], options.Positionals);
+    }
+
+    [Fact]
+    public void ParsesModelSelect()
+    {
+        var options = CommandLine.Parse([
+            "model", "select", "--provider", "opencode", "--model", "gpt-5-responses"
+        ]);
+        Assert.Equal("model", options.Command);
+        Assert.Equal(["select"], options.Positionals);
+        Assert.Equal("opencode", options.Provider);
+        Assert.Equal("gpt-5-responses", options.Model);
+    }
+    [Fact]
     public void RejectsUnknownOption()
     {
         Assert.Throws<ArgumentException>(() => CommandLine.Parse(["doctor", "--bogus"]));

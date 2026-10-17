@@ -34,6 +34,7 @@ public sealed class JsonRpcConnection : IAsyncDisposable
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Task _readerTask;
     private readonly Task _stderrTask;
+    private readonly ConcurrentQueue<string> _stderrLines = new();
     private long _nextId;
 
     public JsonRpcConnection(Process process)
@@ -70,6 +71,13 @@ public sealed class JsonRpcConnection : IAsyncDisposable
         {
             await _writer.WriteAsync(line.AsMemory(), cancellationToken).ConfigureAwait(false);
             await _writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception error)
+            when (error is IOException or InvalidOperationException or ObjectDisposedException)
+        {
+            _pending.TryRemove(id, out _);
+            await WaitForStderrAsync().ConfigureAwait(false);
+            throw new IOException(ConnectionClosedMessage(), error);
         }
         finally
         {
@@ -116,7 +124,8 @@ public sealed class JsonRpcConnection : IAsyncDisposable
         }
         finally
         {
-            FailPending(new IOException("kl-core connection closed"));
+            await WaitForStderrAsync().ConfigureAwait(false);
+            FailPending(new IOException(ConnectionClosedMessage()));
         }
     }
 
@@ -174,6 +183,11 @@ public sealed class JsonRpcConnection : IAsyncDisposable
         {
             while (await _process.StandardError.ReadLineAsync().ConfigureAwait(false) is { } line)
             {
+                _stderrLines.Enqueue(line);
+                while (_stderrLines.Count > 20)
+                {
+                    _stderrLines.TryDequeue(out _);
+                }
                 Diagnostic?.Invoke(line);
             }
         }
@@ -181,6 +195,34 @@ public sealed class JsonRpcConnection : IAsyncDisposable
         {
             Diagnostic?.Invoke($"core stderr closed: {error.Message}");
         }
+    }
+
+    private async Task WaitForStderrAsync()
+    {
+        try
+        {
+            await _stderrTask.WaitAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is TimeoutException or IOException or ObjectDisposedException)
+        {
+            // Diagnostics are best-effort during shutdown.
+        }
+    }
+
+    private string ConnectionClosedMessage()
+    {
+        var detail = string.Join(" | ", _stderrLines);
+        if (detail.Length == 0)
+        {
+            return "kl-core connection closed";
+        }
+
+        const int limit = 2000;
+        if (detail.Length > limit)
+        {
+            detail = detail[^limit..];
+        }
+        return $"kl-core connection closed: {detail}";
     }
 
     private void FailPending(Exception error)

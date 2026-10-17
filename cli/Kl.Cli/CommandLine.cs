@@ -23,7 +23,7 @@ public static class CommandLine
 {
     private static readonly HashSet<string> Commands =
     [
-        "chat", "run", "resume", "doctor", "ping", "provider", "plugin", "audit", "config", "version", "help"
+        "chat", "run", "resume", "doctor", "ping", "provider", "auth", "model", "plugin", "audit", "config", "version", "help"
     ];
 
     public static CliOptions Parse(string[] args)

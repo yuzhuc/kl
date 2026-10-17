@@ -7,30 +7,31 @@ namespace Kl.Cli;
 public sealed record TurnOutcome(string Status, string Text);
 
 /// <summary>
-/// Owns one core session and serializes turn events. Events are consumed from
-/// a channel so approval prompts can await a JSON-RPC response without
-/// blocking the connection's stdout reader.
+/// Owns one core session and serializes turn events. Events are delivered to a
+/// presenter so the terminal UI never has to parse JSON-RPC notifications.
 /// </summary>
 public sealed class KlSessionClient : IAsyncDisposable
 {
     private readonly KlCoreClient _client;
     private readonly CliOptions _options;
-    private readonly ConsoleUi _ui;
+    private readonly ISessionPresenter _presenter;
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Task _eventLoop;
+    private readonly object _turnCancellationLock = new();
     private TaskCompletionSource<TurnOutcome>? _turnCompletion;
+    private CancellationTokenSource? _turnCancellation;
     private string? _currentTurnId;
     private bool _cancelRequested;
 
     private KlSessionClient(
         KlCoreClient client,
         CliOptions options,
-        ConsoleUi ui,
+        ISessionPresenter presenter,
         JsonElement session)
     {
         _client = client;
         _options = options;
-        _ui = ui;
+        _presenter = presenter;
         SessionId = session.GetProperty("session_id").GetString() ?? string.Empty;
         Workspace = session.GetProperty("workspace").GetString() ?? string.Empty;
         Provider = session.GetProperty("provider").GetString() ?? string.Empty;
@@ -49,7 +50,7 @@ public sealed class KlSessionClient : IAsyncDisposable
 
     public static async Task<KlSessionClient> StartAsync(
         CliOptions options,
-        ConsoleUi ui,
+        ISessionPresenter presenter,
         CancellationToken cancellationToken = default)
     {
         var client = KlCoreClient.Start(options);
@@ -73,7 +74,7 @@ public sealed class KlSessionClient : IAsyncDisposable
                     cancellationToken).ConfigureAwait(false);
             }
 
-            return new KlSessionClient(client, options, ui, session);
+            return new KlSessionClient(client, options, presenter, session);
         }
         catch
         {
@@ -82,12 +83,20 @@ public sealed class KlSessionClient : IAsyncDisposable
         }
     }
 
+    public Task<JsonElement> ListSessionsAsync(CancellationToken cancellationToken = default) =>
+        _client.ListSessionsAsync(cancellationToken);
+
     public async Task<TurnOutcome> RunTurnAsync(
         string prompt,
         CancellationToken cancellationToken = default)
     {
         var completion = new TaskCompletionSource<TurnOutcome>(
             TaskCreationOptions.RunContinuationsAsynchronously);
+        var turnCancellation = new CancellationTokenSource();
+        lock (_turnCancellationLock)
+        {
+            _turnCancellation = turnCancellation;
+        }
         _turnCompletion = completion;
         try
         {
@@ -107,6 +116,14 @@ public sealed class KlSessionClient : IAsyncDisposable
         }
         finally
         {
+            lock (_turnCancellationLock)
+            {
+                if (ReferenceEquals(_turnCancellation, turnCancellation))
+                {
+                    _turnCancellation = null;
+                }
+            }
+            turnCancellation.Dispose();
             _currentTurnId = null;
             _turnCompletion = null;
         }
@@ -114,6 +131,13 @@ public sealed class KlSessionClient : IAsyncDisposable
 
     public async Task CancelAsync(CancellationToken cancellationToken = default)
     {
+        CancellationTokenSource? turnCancellation;
+        lock (_turnCancellationLock)
+        {
+            turnCancellation = _turnCancellation;
+        }
+        turnCancellation?.Cancel();
+
         var turnId = _currentTurnId;
         if (turnId is null)
         {
@@ -128,7 +152,11 @@ public sealed class KlSessionClient : IAsyncDisposable
         }
         catch (JsonRpcException error)
         {
-            _ui.Error($"cancel failed: {error.Message}");
+            await _presenter.OnEventAsync(
+                new SessionEvent(
+                    SessionEventKind.Error,
+                    Text: $"cancel failed: {error.Message}"),
+                CancellationToken.None).ConfigureAwait(false);
         }
     }
 
@@ -142,9 +170,14 @@ public sealed class KlSessionClient : IAsyncDisposable
                 {
                     await HandleEventAsync(message, cancellationToken).ConfigureAwait(false);
                 }
-                catch (Exception error) when (error is JsonException or InvalidOperationException or KeyNotFoundException)
+                catch (Exception error)
+                    when (error is JsonException or InvalidOperationException or KeyNotFoundException)
                 {
-                    _ui.Error($"bad core event: {error.Message}");
+                    await _presenter.OnEventAsync(
+                        new SessionEvent(
+                            SessionEventKind.Error,
+                            Text: $"bad core event: {error.Message}"),
+                        cancellationToken).ConfigureAwait(false);
                 }
             }
         }
@@ -162,7 +195,9 @@ public sealed class KlSessionClient : IAsyncDisposable
         }
     }
 
-    private async Task HandleEventAsync(JsonElement message, CancellationToken cancellationToken)
+    private async Task HandleEventAsync(
+        JsonElement message,
+        CancellationToken cancellationToken)
     {
         if (!message.TryGetProperty("params", out var parameters)
             || !parameters.TryGetProperty("event", out var envelope)
@@ -175,90 +210,128 @@ public sealed class KlSessionClient : IAsyncDisposable
         switch (typeElement.GetString())
         {
             case "turn.started":
-                _ui.Line($"\n[turn] {GetString(data, "turn_id")}");
+                await _presenter.OnEventAsync(
+                    new SessionEvent(
+                        SessionEventKind.TurnStarted,
+                        TurnId: GetString(data, "turn_id")),
+                    cancellationToken).ConfigureAwait(false);
                 break;
             case "turn.delta":
-                _ui.Delta(Sanitize(GetString(data, "text")));
+                await _presenter.OnEventAsync(
+                    new SessionEvent(
+                        SessionEventKind.AssistantDelta,
+                        Text: Sanitize(GetString(data, "text"))),
+                    cancellationToken).ConfigureAwait(false);
                 break;
-            case "turn.reasoning" when _options.Verbose:
-                _ui.Line($"\n[reasoning] {Sanitize(GetString(data, "text"))}");
+            case "turn.reasoning":
+                await _presenter.OnEventAsync(
+                    new SessionEvent(
+                        SessionEventKind.ReasoningDelta,
+                        Text: Sanitize(GetString(data, "text"))),
+                    cancellationToken).ConfigureAwait(false);
                 break;
             case "tool.started":
-                _ui.Line(
-                    $"[tool] {GetString(data, "name")} {Truncate(GetRaw(data, "args"), 240)}");
+                await _presenter.OnEventAsync(
+                    new SessionEvent(
+                        SessionEventKind.ToolStarted,
+                        Name: GetString(data, "name"),
+                        Args: Sanitize(GetRaw(data, "args"))),
+                    cancellationToken).ConfigureAwait(false);
                 break;
             case "tool.output":
-                var chunk = Sanitize(GetString(data, "chunk"));
-                if (chunk.Length > 0)
-                {
-                    _ui.Delta(chunk.EndsWith('\n') ? chunk : chunk + "\n");
-                }
+                await _presenter.OnEventAsync(
+                    new SessionEvent(
+                        SessionEventKind.ToolOutput,
+                        Text: Sanitize(GetString(data, "chunk"))),
+                    cancellationToken).ConfigureAwait(false);
                 break;
             case "tool.approval.requested":
                 await HandleApprovalAsync(data, cancellationToken).ConfigureAwait(false);
                 break;
             case "tool.approval.resolved":
-                _ui.Line($"[approval] {GetString(data, "decision")}");
+                await _presenter.OnEventAsync(
+                    new SessionEvent(
+                        SessionEventKind.ApprovalResolved,
+                        Decision: GetString(data, "decision")),
+                    cancellationToken).ConfigureAwait(false);
                 break;
             case "tool.completed":
-                var ok = data.TryGetProperty("ok", out var okElement) && okElement.GetBoolean();
-                _ui.Line(
-                    $"[{(ok ? "ok" : "fail")}] {GetString(data, "name")}: {Sanitize(GetString(data, "summary"))}");
-                if (data.TryGetProperty("diff", out var diff)
-                    && diff.ValueKind == JsonValueKind.String)
-                {
-                    var text = Sanitize(diff.GetString() ?? string.Empty);
-                    if (!string.IsNullOrWhiteSpace(text))
-                    {
-                        _ui.Diff(text);
-                    }
-                }
+                await _presenter.OnEventAsync(
+                    new SessionEvent(
+                        SessionEventKind.ToolCompleted,
+                        Name: GetString(data, "name"),
+                        Summary: Sanitize(GetString(data, "summary")),
+                        Diff: data.TryGetProperty("diff", out var diff)
+                            && diff.ValueKind == JsonValueKind.String
+                            ? Sanitize(diff.GetString() ?? string.Empty)
+                            : null,
+                        Ok: !data.TryGetProperty("ok", out var okElement)
+                            || okElement.GetBoolean()),
+                    cancellationToken).ConfigureAwait(false);
                 break;
             case "audit.recorded" when _options.Verbose:
-                _ui.Line($"[audit] {GetString(data, "record_id")}");
+                await _presenter.OnEventAsync(
+                    new SessionEvent(
+                        SessionEventKind.AuditRecorded,
+                        Text: GetString(data, "record_id")),
+                    cancellationToken).ConfigureAwait(false);
                 break;
             case "turn.completed":
-                _ui.Line();
-                _turnCompletion?.TrySetResult(new TurnOutcome(
-                    GetString(data, "status"),
-                    GetString(data, "text")));
+                var status = GetString(data, "status");
+                var text = GetString(data, "text");
+                await _presenter.OnEventAsync(
+                    new SessionEvent(
+                        SessionEventKind.TurnCompleted,
+                        Text: text,
+                        Status: status),
+                    cancellationToken).ConfigureAwait(false);
+                _turnCompletion?.TrySetResult(new TurnOutcome(status, text));
                 break;
             case "turn.failed":
-                _ui.Line();
-                _turnCompletion?.TrySetResult(new TurnOutcome(
-                    "failed",
-                    GetString(data, "message")));
+                var failureText = GetString(data, "message");
+                await _presenter.OnEventAsync(
+                    new SessionEvent(
+                        SessionEventKind.TurnFailed,
+                        Text: failureText),
+                    cancellationToken).ConfigureAwait(false);
+                _turnCompletion?.TrySetResult(new TurnOutcome("failed", failureText));
                 break;
         }
     }
 
-    private async Task HandleApprovalAsync(JsonElement data, CancellationToken cancellationToken)
+    private async Task HandleApprovalAsync(
+        JsonElement data,
+        CancellationToken cancellationToken)
     {
         var approvalId = GetString(data, "approval_id");
-        var name = Sanitize(GetString(data, "name"));
-        var action = Sanitize(GetString(data, "action"));
-        var resource = Sanitize(GetString(data, "resource"));
-        var reason = Sanitize(GetString(data, "reason"));
-        var args = Truncate(Sanitize(GetRaw(data, "args")), 800);
+        var request = new ApprovalRequestEvent(
+            approvalId,
+            Sanitize(GetString(data, "name")),
+            Sanitize(GetString(data, "action")),
+            Sanitize(GetString(data, "resource")),
+            Sanitize(GetString(data, "reason")),
+            Sanitize(GetRaw(data, "args")));
 
-        _ui.Line();
-        _ui.Line($"[approval] {name} ({action}) {resource}");
-        _ui.Line($"  reason: {reason}");
-        _ui.Line($"  args: {args}");
-
-        var allow = _options.AutoApprove;
-        if (!allow)
+        CancellationToken approvalCancellation;
+        lock (_turnCancellationLock)
         {
-            if (Console.IsInputRedirected)
-            {
-                _ui.Error("stdin is not interactive; denying approval (use --yes to allow)");
-            }
-            else
-            {
-                _ui.Line("Approve? [y/N] ");
-                var answer = Console.ReadLine()?.Trim().ToLowerInvariant();
-                allow = answer is "y" or "yes";
-            }
+            approvalCancellation = _turnCancellation?.Token ?? CancellationToken.None;
+        }
+
+        bool allow;
+        try
+        {
+            allow = await _presenter.RequestApprovalAsync(request, approvalCancellation)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (approvalCancellation.IsCancellationRequested)
+        {
+            return;
         }
 
         try
@@ -271,7 +344,11 @@ public sealed class KlSessionClient : IAsyncDisposable
         }
         catch (JsonRpcException error)
         {
-            _ui.Error($"approval response failed: {error.Message}");
+            await _presenter.OnEventAsync(
+                new SessionEvent(
+                    SessionEventKind.Error,
+                    Text: $"approval response failed: {error.Message}"),
+                cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -282,9 +359,6 @@ public sealed class KlSessionClient : IAsyncDisposable
 
     private static string GetRaw(JsonElement element, string name) =>
         element.TryGetProperty(name, out var value) ? value.GetRawText() : "{}";
-
-    private static string Truncate(string text, int limit) =>
-        text.Length <= limit ? text : text[..limit] + "...";
 
     private static string Sanitize(string text)
     {
@@ -307,6 +381,10 @@ public sealed class KlSessionClient : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        lock (_turnCancellationLock)
+        {
+            _turnCancellation?.Cancel();
+        }
         _shutdown.Cancel();
         try
         {

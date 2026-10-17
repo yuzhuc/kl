@@ -19,6 +19,14 @@ pub struct SessionMeta {
     pub updated_at: String,
     #[serde(default)]
     pub message_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_message: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -69,6 +77,10 @@ impl SessionStore {
                 created_at: now.clone(),
                 updated_at: now,
                 message_count: 0,
+                status: Some("ready".to_owned()),
+                task: None,
+                prompt: None,
+                last_message: None,
             },
             messages: Vec::new(),
         };
@@ -126,6 +138,10 @@ impl SessionStore {
         let mut meta = data.meta.clone();
         meta.message_count = data.messages.len();
         meta.updated_at = now();
+        let (task, prompt, last_message) = summarize_messages(&data.messages);
+        meta.task = task;
+        meta.prompt = prompt;
+        meta.last_message = last_message;
         write_atomic(
             &directory.join("session.json"),
             &serde_json::to_vec_pretty(&meta)?,
@@ -194,6 +210,54 @@ fn now() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
 }
 
+fn summarize_messages(messages: &[Value]) -> (Option<String>, Option<String>, Option<String>) {
+    let mut task = None;
+    let mut prompt = None;
+    let mut last_message = None;
+    for message in messages {
+        let text = message_text(message);
+        if text.trim().is_empty() {
+            continue;
+        }
+        match message.get("role").and_then(Value::as_str) {
+            Some("user") => {
+                if task.is_none() {
+                    task = Some(summarize(&text));
+                }
+                prompt = Some(summarize(&text));
+            }
+            Some("assistant") => last_message = Some(summarize(&text)),
+            _ => {}
+        }
+    }
+    (task, prompt, last_message)
+}
+
+fn message_text(value: &Value) -> String {
+    if let Some(text) = value.get("content").and_then(Value::as_str) {
+        return text.to_owned();
+    }
+    value
+        .get("content")
+        .and_then(Value::as_array)
+        .map(|parts| {
+            parts
+                .iter()
+                .filter_map(|part| part.get("data").and_then(Value::as_str))
+                .collect::<Vec<_>>()
+                .join("")
+        })
+        .unwrap_or_default()
+}
+
+fn summarize(text: &str) -> String {
+    let mut summary = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if summary.chars().count() > 160 {
+        summary = summary.chars().take(157).collect::<String>() + "...";
+    }
+    summary
+}
+
 fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let temporary = path.with_extension("tmp");
     fs::write(&temporary, bytes)?;
@@ -212,13 +276,25 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let store = SessionStore::new(temp.path()).unwrap();
         let mut data = store.create("D:\\work", "openai", "gpt-test").unwrap();
-        data.messages
-            .push(serde_json::json!({"role": "user", "content": "hi"}));
+        assert_eq!(data.meta.status.as_deref(), Some("ready"));
+        data.messages.push(serde_json::json!({
+            "role": "user",
+            "content": [{"type": "text", "data": "fix it"}]
+        }));
+        data.messages.push(serde_json::json!({
+            "role": "assistant",
+            "content": [{"type": "text", "data": "done"}]
+        }));
+        data.meta.status = Some("completed".to_owned());
         store.save(&data).unwrap();
 
         let loaded = store.load(&data.meta.id).unwrap();
-        assert_eq!(loaded.messages.len(), 1);
+        assert_eq!(loaded.messages.len(), 2);
         assert_eq!(loaded.meta.workspace, "D:\\work");
+        assert_eq!(loaded.meta.status.as_deref(), Some("completed"));
+        assert_eq!(loaded.meta.task.as_deref(), Some("fix it"));
+        assert_eq!(loaded.meta.prompt.as_deref(), Some("fix it"));
+        assert_eq!(loaded.meta.last_message.as_deref(), Some("done"));
         assert_eq!(store.list().unwrap().len(), 1);
     }
 

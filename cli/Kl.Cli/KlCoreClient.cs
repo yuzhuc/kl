@@ -193,6 +193,38 @@ public sealed class KlCoreClient : IAsyncDisposable
     public Task<JsonElement> ListProvidersAsync(CancellationToken cancellationToken = default) =>
         RequestAsync(Protocol.ProviderList, null, cancellationToken);
 
+    public Task<JsonElement> UpsertProviderAsync(
+        object parameters,
+        CancellationToken cancellationToken = default) =>
+        RequestAsync(Protocol.ProviderUpsert, parameters, cancellationToken);
+
+    public Task<JsonElement> SetProviderApiKeyAsync(
+        string id,
+        string key,
+        CancellationToken cancellationToken = default) =>
+        RequestAsync(
+            Protocol.ProviderSetApiKey,
+            new Dictionary<string, object?> { ["id"] = id, ["key"] = key },
+            cancellationToken);
+
+    public Task<JsonElement> SetProviderEnabledAsync(
+        string id,
+        bool enabled,
+        CancellationToken cancellationToken = default) =>
+        RequestAsync(
+            Protocol.ProviderSetEnabled,
+            new Dictionary<string, object?> { ["id"] = id, ["enabled"] = enabled },
+            cancellationToken);
+
+    public Task<JsonElement> SetDefaultModelAsync(
+        string provider,
+        string model,
+        CancellationToken cancellationToken = default) =>
+        RequestAsync(
+            Protocol.ConfigSetDefaultModel,
+            new Dictionary<string, object?> { ["provider"] = provider, ["model"] = model },
+            cancellationToken);
+
     public Task<JsonElement> AuditTailAsync(
         int limit,
         CancellationToken cancellationToken = default) =>

@@ -65,6 +65,25 @@ public sealed class ProtocolContractTests
     }
 
     [Fact]
+    public void ProviderListResultMatchesSharedContract()
+    {
+        using var document = Read("provider_list_result.json");
+        var result = document.RootElement.GetProperty("result");
+        Assert.Equal("opencode", result.GetProperty("active_provider").GetString());
+        Assert.Equal("gpt-5-responses", result.GetProperty("active_model").GetString());
+        var models = result.GetProperty("models");
+        Assert.Equal(3, models.GetArrayLength());
+        Assert.Equal("openai-chat", models[0].GetProperty("protocol").GetString());
+        Assert.True(models[0].GetProperty("enabled").GetBoolean());
+        Assert.True(models[0].GetProperty("key_configured").GetBoolean());
+        Assert.Equal("anthropic", models[1].GetProperty("protocol").GetString());
+        Assert.Equal("openai-responses", models[2].GetProperty("protocol").GetString());
+        Assert.Equal(
+            "https://gateway.example/custom/responses",
+            models[2].GetProperty("url").GetString());
+    }
+
+    [Fact]
     public void VersionMismatchUsesStableErrorCode()
     {
         using var document = Read("error_version_mismatch.json");

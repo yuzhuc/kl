@@ -95,6 +95,20 @@ enum ProviderMessage {
     Done(Result<ChatOutcome, ProviderError>),
 }
 
+/// Explicit agent-loop states. Terminal transitions (completion, cancellation,
+/// failure and max iterations) return from the loop directly.
+#[derive(Debug)]
+enum TurnState {
+    Model {
+        iteration: usize,
+    },
+    Tools {
+        iteration: usize,
+        calls: Vec<ToolCall>,
+        index: usize,
+    },
+}
+
 pub struct Agent {
     provider: Arc<dyn Provider>,
     metadata: ModelMetadata,
@@ -150,78 +164,118 @@ impl Agent {
             turn_id: turn_id.to_owned(),
         })?;
 
-        for _ in 0..self.config.max_iterations {
+        let mut state = TurnState::Model { iteration: 0 };
+        loop {
             if cancel.load(Ordering::Relaxed) {
                 return self.finish_cancelled(turn_id, history, sink);
             }
 
-            let mut request = ChatRequest::new(self.metadata.model.clone(), history.clone());
-            request.max_tokens = self.metadata.max_output_tokens;
-            request.system = self.system_prompt.clone();
-            request.tools = self.tools.definitions();
+            state = match state {
+                TurnState::Model { iteration } => {
+                    if iteration >= self.config.max_iterations {
+                        let message = format!(
+                            "agent stopped after {} iterations without a final answer",
+                            self.config.max_iterations
+                        );
+                        sink.emit(CoreEvent::TurnFailed {
+                            turn_id: turn_id.to_owned(),
+                            message: message.clone(),
+                        })?;
+                        return Err(AgentError::MaxIterations);
+                    }
 
-            let outcome = match self.stream_provider(request, cancel.clone(), sink, turn_id) {
-                Ok(outcome) => outcome,
-                Err(AgentError::Provider(error)) if error.kind == ProviderErrorKind::Cancelled => {
-                    return self.finish_cancelled(turn_id, history, sink);
+                    let mut request =
+                        ChatRequest::new(self.metadata.model.clone(), history.clone());
+                    request.max_tokens = self.metadata.max_output_tokens;
+                    request.system = self.system_prompt.clone();
+                    request.tools = self.tools.definitions();
+
+                    let outcome = match self.stream_provider(request, cancel.clone(), sink, turn_id)
+                    {
+                        Ok(outcome) => outcome,
+                        Err(AgentError::Provider(error))
+                            if error.kind == ProviderErrorKind::Cancelled =>
+                        {
+                            return self.finish_cancelled(turn_id, history, sink);
+                        }
+                        Err(error) => {
+                            let _ = sink.emit(CoreEvent::TurnFailed {
+                                turn_id: turn_id.to_owned(),
+                                message: error.to_string(),
+                            });
+                            return Err(error);
+                        }
+                    };
+
+                    if cancel.load(Ordering::Relaxed) {
+                        return self.finish_cancelled(turn_id, history, sink);
+                    }
+
+                    if outcome.tool_calls.is_empty() {
+                        history.push(ChatMessage::assistant_with_text(
+                            outcome.text.clone(),
+                            Vec::new(),
+                        ));
+                        sink.emit(CoreEvent::TurnCompleted {
+                            turn_id: turn_id.to_owned(),
+                            status: TurnStatus::Completed.as_str().to_owned(),
+                            text: outcome.text.clone(),
+                        })?;
+                        return Ok(TurnResult {
+                            status: TurnStatus::Completed,
+                            text: outcome.text,
+                        });
+                    }
+
+                    if outcome.tool_calls.len() > self.config.max_tool_calls_per_turn {
+                        let message = format!(
+                            "tool call limit exceeded: {} > {}",
+                            outcome.tool_calls.len(),
+                            self.config.max_tool_calls_per_turn
+                        );
+                        sink.emit(CoreEvent::TurnFailed {
+                            turn_id: turn_id.to_owned(),
+                            message: message.clone(),
+                        })?;
+                        return Err(AgentError::Tool(message));
+                    }
+                    let calls = outcome.tool_calls.clone();
+                    history.push(ChatMessage::assistant_with_text(
+                        outcome.text,
+                        outcome.tool_calls,
+                    ));
+                    TurnState::Tools {
+                        iteration,
+                        calls,
+                        index: 0,
+                    }
                 }
-                Err(error) => {
-                    let _ = sink.emit(CoreEvent::TurnFailed {
-                        turn_id: turn_id.to_owned(),
-                        message: error.to_string(),
-                    });
-                    return Err(error);
+                TurnState::Tools {
+                    iteration,
+                    calls,
+                    index,
+                } => {
+                    if index >= calls.len() {
+                        TurnState::Model {
+                            iteration: iteration + 1,
+                        }
+                    } else {
+                        let call = &calls[index];
+                        let result = self
+                            .execute_tool_call(session_id, turn_id, call, &cancel, sink, approvals);
+                        history.push(ChatMessage::tool(&call.id, result));
+                        if cancel.load(Ordering::Relaxed) {
+                            return self.finish_cancelled(turn_id, history, sink);
+                        }
+                        TurnState::Tools {
+                            iteration,
+                            calls,
+                            index: index + 1,
+                        }
+                    }
                 }
             };
-
-            if cancel.load(Ordering::Relaxed) {
-                return self.finish_cancelled(turn_id, history, sink);
-            }
-
-            if outcome.tool_calls.is_empty() {
-                history.push(ChatMessage::assistant_with_text(
-                    outcome.text.clone(),
-                    Vec::new(),
-                ));
-                sink.emit(CoreEvent::TurnCompleted {
-                    turn_id: turn_id.to_owned(),
-                    status: TurnStatus::Completed.as_str().to_owned(),
-                    text: outcome.text.clone(),
-                })?;
-                return Ok(TurnResult {
-                    status: TurnStatus::Completed,
-                    text: outcome.text,
-                });
-            }
-
-            history.push(ChatMessage::assistant_with_text(
-                outcome.text.clone(),
-                outcome.tool_calls.clone(),
-            ));
-
-            for call in outcome
-                .tool_calls
-                .iter()
-                .take(self.config.max_tool_calls_per_turn)
-            {
-                let result =
-                    self.execute_tool_call(session_id, turn_id, call, &cancel, sink, approvals);
-                history.push(ChatMessage::tool(&call.id, result));
-                if cancel.load(Ordering::Relaxed) {
-                    return self.finish_cancelled(turn_id, history, sink);
-                }
-            }
         }
-
-        let message = format!(
-            "agent stopped after {} iterations without a final answer",
-            self.config.max_iterations
-        );
-        sink.emit(CoreEvent::TurnFailed {
-            turn_id: turn_id.to_owned(),
-            message: message.clone(),
-        })?;
-        Err(AgentError::MaxIterations)
     }
 
     fn stream_provider(
@@ -385,6 +439,7 @@ impl Agent {
             let message = format!("policy denied: {}", evaluation.reason);
             audit.ok = false;
             audit.error = Some(message.clone());
+            audit.with_output("");
             if let Err(error) = self.emit_audit(&audit, turn_id, sink) {
                 return error_payload(&error.to_string());
             }
@@ -430,6 +485,7 @@ impl Agent {
                 audit.approved = Some(false);
                 audit.ok = false;
                 audit.error = Some(message.clone());
+                audit.with_output("");
                 if let Err(error) = self.emit_audit(&audit, turn_id, sink) {
                     return error_payload(&error.to_string());
                 }
@@ -450,6 +506,7 @@ impl Agent {
         if cancel.load(Ordering::Relaxed) {
             audit.ok = false;
             audit.error = Some("cancelled".to_owned());
+            audit.with_output("");
             let _ = self.emit_audit(&audit, turn_id, sink);
             return error_payload("cancelled");
         }
@@ -503,6 +560,7 @@ impl Agent {
                 let message = error.to_string();
                 audit.ok = false;
                 audit.error = Some(message.clone());
+                audit.with_output("");
                 if let Err(audit_error) = self.emit_audit(&audit, turn_id, sink) {
                     return error_payload(&audit_error.to_string());
                 }
@@ -545,6 +603,7 @@ impl Agent {
         audit.with_args(args);
         audit.ok = false;
         audit.error = Some(message.to_owned());
+        audit.with_output("");
         self.emit_audit(&audit, turn_id, sink)
             .map_err(|error| error.to_string())?;
         let _ = sink.emit(CoreEvent::ToolCompleted {
@@ -718,6 +777,33 @@ mod tests {
         }
     }
 
+    struct FailingProvider;
+
+    impl Provider for FailingProvider {
+        fn id(&self) -> &str {
+            "failing"
+        }
+
+        fn kind(&self) -> &str {
+            "openai-chat"
+        }
+
+        fn models(&self) -> Vec<ModelInfo> {
+            vec![ModelInfo::new("failing")]
+        }
+
+        fn stream_chat(
+            &self,
+            _request: &ChatRequest,
+            _cancel: &AtomicBool,
+            _on_event: &mut dyn FnMut(ChatEvent),
+        ) -> Result<ChatOutcome, ProviderError> {
+            Err(ProviderError::new(
+                ProviderErrorKind::Server,
+                "provider boom",
+            ))
+        }
+    }
     struct MetadataProvider;
 
     impl Provider for MetadataProvider {
@@ -898,6 +984,228 @@ mod tests {
         );
     }
 
+    #[test]
+    fn stops_at_max_iterations_with_explicit_failure() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("a.txt"), "contents\n").unwrap();
+        let provider = Arc::new(
+            ScriptedProvider::from_json(
+                "scripted",
+                r#"[
+                    {"tool_calls":[{"name":"read_file","arguments":{"path":"a.txt"}}]},
+                    {"tool_calls":[{"name":"read_file","arguments":{"path":"a.txt"}}]}
+                ]"#,
+            )
+            .unwrap(),
+        );
+        let policy = Arc::new(PolicyEngine::new(temp.path(), PolicyConfig::default()).unwrap());
+        let audit = Arc::new(MemoryAudit::default());
+        let agent = Agent::new(
+            provider,
+            metadata(),
+            Arc::new(ToolRegistry::builtin()),
+            policy,
+            Arc::new(SandboxManager::policy_only()),
+            audit.clone(),
+            AgentConfig {
+                max_iterations: 2,
+                ..AgentConfig::default()
+            },
+        );
+        let sink = RecordingSink::default();
+        let mut history = Vec::new();
+        let error = agent
+            .run_turn(
+                "session",
+                "turn",
+                "keep looping",
+                &mut history,
+                Arc::new(AtomicBool::new(false)),
+                &sink,
+                &Gate(ApprovalDecision::Allow),
+            )
+            .unwrap_err();
+
+        assert!(matches!(error, AgentError::MaxIterations));
+        assert_eq!(audit.records().len(), 2);
+        let events = sink.events.lock().unwrap();
+        assert!(events.iter().any(|event| {
+            matches!(event, CoreEvent::TurnFailed { message, .. }
+                if message.contains("maximum") || message.contains("iterations"))
+        }));
+    }
+    #[test]
+    fn every_tool_call_has_exactly_one_audit_record() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("a.txt"), "contents\n").unwrap();
+        let provider = Arc::new(
+            ScriptedProvider::from_json(
+                "scripted",
+                r#"[
+                    {"tool_calls":[
+                        {"id":"call-read","name":"read_file","arguments":{"path":"a.txt"}},
+                        {"id":"call-deny","name":"shell","arguments":{"command":"rm -rf /"}},
+                        {"id":"call-missing","name":"read_file","arguments":{"path":"missing.txt"}},
+                        {"id":"call-unknown","name":"unknown_tool","arguments":{}}
+                    ]},
+                    {"text":"done"}
+                ]"#,
+            )
+            .unwrap(),
+        );
+        let policy = Arc::new(PolicyEngine::new(temp.path(), PolicyConfig::default()).unwrap());
+        let audit = Arc::new(MemoryAudit::default());
+        let agent = Agent::new(
+            provider,
+            metadata(),
+            Arc::new(ToolRegistry::builtin()),
+            policy,
+            Arc::new(SandboxManager::policy_only()),
+            audit.clone(),
+            AgentConfig::default(),
+        );
+        let sink = RecordingSink::default();
+        let mut history = Vec::new();
+        let result = agent
+            .run_turn(
+                "session",
+                "turn",
+                "exercise audits",
+                &mut history,
+                Arc::new(AtomicBool::new(false)),
+                &sink,
+                &Gate(ApprovalDecision::Allow),
+            )
+            .unwrap();
+
+        assert_eq!(result.text, "done");
+        let records = audit.records();
+        assert_eq!(records.len(), 4, "{records:#?}");
+        assert_eq!(
+            records
+                .iter()
+                .map(|record| record.call_id.as_str())
+                .collect::<std::collections::HashSet<_>>()
+                .len(),
+            4
+        );
+        assert_eq!(
+            records
+                .iter()
+                .find(|record| record.call_id == "call-read")
+                .unwrap()
+                .decision,
+            "allow"
+        );
+        assert_eq!(
+            records
+                .iter()
+                .find(|record| record.call_id == "call-deny")
+                .unwrap()
+                .decision,
+            "deny"
+        );
+        assert!(records.iter().all(|record| !record.args_hash.is_empty()));
+        assert!(records.iter().all(|record| !record.output_hash.is_empty()));
+        assert!(
+            records
+                .iter()
+                .find(|record| record.call_id == "call-read")
+                .unwrap()
+                .ok
+        );
+        assert!(
+            records
+                .iter()
+                .filter(|record| record.call_id != "call-read")
+                .all(|record| !record.ok)
+        );
+    }
+    #[test]
+    fn provider_failure_emits_turn_failed() {
+        let temp = tempfile::tempdir().unwrap();
+        let policy = Arc::new(PolicyEngine::new(temp.path(), PolicyConfig::default()).unwrap());
+        let agent = Agent::new(
+            Arc::new(FailingProvider),
+            metadata(),
+            Arc::new(ToolRegistry::builtin()),
+            policy,
+            Arc::new(SandboxManager::policy_only()),
+            Arc::new(MemoryAudit::default()),
+            AgentConfig::default(),
+        );
+        let sink = RecordingSink::default();
+        let mut history = Vec::new();
+        let error = agent
+            .run_turn(
+                "session",
+                "turn",
+                "hello",
+                &mut history,
+                Arc::new(AtomicBool::new(false)),
+                &sink,
+                &Gate(ApprovalDecision::Allow),
+            )
+            .unwrap_err();
+
+        assert!(matches!(error, AgentError::Provider(_)));
+        let events = sink.events.lock().unwrap();
+        assert!(events.iter().any(|event| {
+            matches!(event, CoreEvent::TurnFailed { message, .. }
+                if message.contains("provider boom"))
+        }));
+    }
+    #[test]
+    fn oversized_tool_batch_fails_before_execution() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("a.txt"), "contents\n").unwrap();
+        let provider = Arc::new(
+            ScriptedProvider::from_json(
+                "scripted",
+                r#"[{"tool_calls":[
+                    {"name":"read_file","arguments":{"path":"a.txt"}},
+                    {"name":"read_file","arguments":{"path":"a.txt"}},
+                    {"name":"read_file","arguments":{"path":"a.txt"}}
+                ]}]"#,
+            )
+            .unwrap(),
+        );
+        let policy = Arc::new(PolicyEngine::new(temp.path(), PolicyConfig::default()).unwrap());
+        let audit = Arc::new(MemoryAudit::default());
+        let agent = Agent::new(
+            provider,
+            metadata(),
+            Arc::new(ToolRegistry::builtin()),
+            policy,
+            Arc::new(SandboxManager::policy_only()),
+            audit.clone(),
+            AgentConfig {
+                max_tool_calls_per_turn: 2,
+                ..AgentConfig::default()
+            },
+        );
+        let sink = RecordingSink::default();
+        let mut history = Vec::new();
+        let error = agent
+            .run_turn(
+                "session",
+                "turn",
+                "too many tools",
+                &mut history,
+                Arc::new(AtomicBool::new(false)),
+                &sink,
+                &Gate(ApprovalDecision::Allow),
+            )
+            .unwrap_err();
+
+        assert!(matches!(error, AgentError::Tool(_)));
+        assert!(audit.records().is_empty());
+        let events = sink.events.lock().unwrap();
+        assert!(events.iter().any(|event| {
+            matches!(event, CoreEvent::TurnFailed { message, .. }
+                if message.contains("tool call limit exceeded"))
+        }));
+    }
     #[test]
     fn denied_edit_is_not_applied() {
         let temp = tempfile::tempdir().unwrap();

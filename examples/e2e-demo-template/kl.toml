@@ -1,14 +1,9 @@
 [agent]
 provider = "scripted"
 model = "scripted"
+scripted_path = "script.json"
 max_iterations = 8
 
 [policy]
 auto_approve_edits = false
 auto_approve_shell = false
-
-[[providers]]
-id = "scripted"
-kind = "scripted"
-models = ["scripted"]
-script_path = "script.json"

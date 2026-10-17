@@ -23,12 +23,7 @@ $config = @'
 [agent]
 provider = "scripted"
 model = "scripted"
-
-[[providers]]
-id = "scripted"
-kind = "scripted"
-models = ["scripted"]
-script_path = "script.json"
+scripted_path = "script.json"
 '@
 [IO.File]::WriteAllText((Join-Path $base "kl.toml"), $config, (New-Object System.Text.UTF8Encoding $false))
 

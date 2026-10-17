@@ -32,6 +32,10 @@ pub mod methods {
     pub const TURN_CANCEL: &str = "turn.cancel";
     pub const APPROVAL_RESPOND: &str = "tool.approval.respond";
     pub const PROVIDER_LIST: &str = "provider.list";
+    pub const PROVIDER_UPSERT: &str = "provider.upsert";
+    pub const PROVIDER_SET_API_KEY: &str = "provider.set_api_key";
+    pub const PROVIDER_SET_ENABLED: &str = "provider.set_enabled";
+    pub const CONFIG_SET_DEFAULT_MODEL: &str = "config.set_default_model";
     pub const AUDIT_TAIL: &str = "audit.tail";
     pub const CONFIG_GET: &str = "config.get";
     pub const PLUGIN_LIST: &str = "plugin.list";
@@ -250,6 +254,8 @@ pub struct ProviderModelSummary {
     pub context_window: u32,
     pub compact_threshold: f32,
     pub max_output_tokens: u32,
+    pub enabled: bool,
+    pub key_configured: bool,
     pub available: bool,
     pub detail: String,
 }
@@ -259,6 +265,91 @@ pub struct ProviderListResult {
     pub active_provider: String,
     pub active_model: String,
     pub models: Vec<ProviderModelSummary>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct ProviderProtocolUrls {
+    #[serde(
+        rename = "openai-chat",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub openai_chat: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anthropic: Option<String>,
+    #[serde(
+        rename = "openai-responses",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub openai_responses: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProviderModelInput {
+    pub id: String,
+    pub protocol: String,
+    pub context_window: u32,
+    pub compact_threshold: f32,
+    pub max_output_tokens: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProviderUpsertParams {
+    pub id: String,
+    #[serde(default)]
+    pub protocols: ProviderProtocolUrls,
+    pub models: Vec<ProviderModelInput>,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_key_env: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProviderUpsertResult {
+    pub provider: String,
+    pub path: String,
+    pub models: usize,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProviderSetApiKeyParams {
+    pub id: String,
+    pub key: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProviderKeyResult {
+    pub provider: String,
+    pub key_configured: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProviderSetEnabledParams {
+    pub id: String,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProviderEnabledResult {
+    pub provider: String,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SetDefaultModelParams {
+    pub provider: String,
+    pub model: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DefaultModelResult {
+    pub provider: String,
+    pub model: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -279,6 +370,14 @@ pub struct SessionInfo {
     pub created_at: String,
     pub updated_at: String,
     pub message_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_message: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

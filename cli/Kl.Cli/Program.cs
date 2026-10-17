@@ -73,7 +73,11 @@ internal static class Program
             case "resume":
                 return await ResumeAsync(options, ui).ConfigureAwait(false);
             case "provider":
-                return await ProviderAsync(options, ui).ConfigureAwait(false);
+                return await ProviderCli.ProviderAsync(options, ui).ConfigureAwait(false);
+            case "auth":
+                return await ProviderCli.AuthAsync(options, ui).ConfigureAwait(false);
+            case "model":
+                return await ProviderCli.ModelAsync(options, ui).ConfigureAwait(false);
             case "plugin":
                 return await PluginAsync(options, ui).ConfigureAwait(false);
             case "audit":
@@ -143,7 +147,9 @@ internal static class Program
             return 64;
         }
 
-        await using var session = await KlSessionClient.StartAsync(options, ui)
+        await using var session = await KlSessionClient.StartAsync(
+                options,
+                new PlainTextSessionPresenter(options, ui))
             .ConfigureAwait(false);
         ui.Line($"session {session.SessionId} | {session.Provider}/{session.Model}");
         var outcome = await session.RunTurnAsync(options.TaskText).ConfigureAwait(false);
@@ -158,7 +164,18 @@ internal static class Program
 
     private static async Task<int> ChatAsync(CliOptions options, ConsoleUi ui)
     {
-        await using var session = await KlSessionClient.StartAsync(options, ui)
+        if (ChatTuiRunner.CanUseTui)
+        {
+            return await ChatTuiRunner.RunAsync(options).ConfigureAwait(false);
+        }
+        return await PlainChatAsync(options, ui).ConfigureAwait(false);
+    }
+
+    private static async Task<int> PlainChatAsync(CliOptions options, ConsoleUi ui)
+    {
+        await using var session = await KlSessionClient.StartAsync(
+                options,
+                new PlainTextSessionPresenter(options, ui))
             .ConfigureAwait(false);
         ui.Header($"KL session {session.SessionId}");
         ui.Line($"workspace: {session.Workspace}");
@@ -232,43 +249,6 @@ internal static class Program
                 $"{session.GetProperty("workspace").GetString()}");
         }
         ui.Line("\nuse: kl resume <session-id>");
-        return 0;
-    }
-
-    private static async Task<int> ProviderAsync(CliOptions options, ConsoleUi ui)
-    {
-        var subcommand = options.Positionals.FirstOrDefault() ?? "list";
-        if (!subcommand.Equals("list", StringComparison.OrdinalIgnoreCase))
-        {
-            ui.Error($"unknown provider command: {subcommand} (only `list` is supported)");
-            return 64;
-        }
-
-        await using var client = KlCoreClient.Start(options);
-        AttachDiagnostics(client, options, ui);
-        await client.HandshakeAsync().ConfigureAwait(false);
-        var result = await client.ListProvidersAsync().ConfigureAwait(false);
-        var activeProvider = result.GetProperty("active_provider").GetString();
-        var activeModel = result.GetProperty("active_model").GetString();
-        ui.Header("Providers");
-        foreach (var model in result.GetProperty("models").EnumerateArray())
-        {
-            var provider = model.GetProperty("provider").GetString();
-            var modelId = model.GetProperty("model").GetString();
-            var protocol = model.GetProperty("protocol").GetString();
-            var url = model.GetProperty("url").GetString();
-            var available = model.GetProperty("available").GetBoolean();
-            var active = provider == activeProvider && modelId == activeModel;
-            ui.Line(
-                $"{(active ? "*" : " ")} {provider}/{modelId} [{protocol}] " +
-                $"{(available ? "available" : "unavailable")}");
-            ui.Line($"    url: {url}");
-            ui.Line(
-                $"    context_window: {model.GetProperty("context_window").GetInt32()}  " +
-                $"compact_threshold: {model.GetProperty("compact_threshold").GetDouble()}  " +
-                $"max_output_tokens: {model.GetProperty("max_output_tokens").GetInt32()}");
-            ui.Line($"    {model.GetProperty("detail").GetString()}");
-        }
         return 0;
     }
 
@@ -407,6 +387,12 @@ internal static class Program
               kl doctor                  check the core and environment
               kl ping                    verify the core handshake
               kl provider list           list configured providers
+              kl provider add            add a provider interactively
+              kl provider enable <id>    enable a provider
+              kl provider disable <id>   disable a provider
+              kl auth set <provider>     save a masked API key
+              kl model list              list configured models
+              kl model select            choose the default provider/model
               kl plugin list             list installed sidecar plugins
               kl plugin install <path>   install a local plugin directory
               kl plugin reload <id>      reload a plugin without restarting core

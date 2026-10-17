@@ -8,7 +8,8 @@ C# terminal client (kl)
         v
 Rust trusted core (kl-core)
   Emitter + JSON-RPC loop
-  ProviderRouter (OpenAI-compatible Chat, Anthropic, scripted, sidecar plugins)
+  ProviderRouter (per-model: OpenAI Chat, Anthropic, OpenAI Responses;
+                   scripted and sidecar plugins for offline/plugin routes)
   Agent loop (provider-neutral)
   ToolRegistry (built-ins + sidecar tools)
   PolicyEngine (path/command/git/network/env/plugin/approval)
@@ -50,9 +51,16 @@ turn.started
   -> turn.completed / turn.failed / cancelled
 ```
 
-The provider adapter is the only place that knows OpenAI or Anthropic wire
-formats. The agent only sees `ChatRequest`, `ChatEvent` and `ChatMessage`.
-Sidecar providers implement the same neutral trait.
+Each configured model is bound to one protocol adapter. The adapter is the
+only place that knows its native wire format: OpenAI Chat Completions,
+Anthropic Messages or OpenAI Responses. The configured URL is used exactly as
+provided; KL never detects or converts between protocols and never appends a
+fixed path prefix. The agent only sees `ChatRequest`, `ChatEvent` and
+`ChatMessage`. Sidecar providers implement the same neutral trait.
+
+The agent loop is an explicit `TurnState::{Model, Tools}` state machine.
+Completion, cancellation, provider/tool failure and the maximum-iteration limit
+are terminal transitions; no provider name is inspected by the loop.
 
 ## Plugin lifecycle
 
@@ -75,6 +83,9 @@ permission-checked by the host before the sidecar is invoked.
 `~/.kl/` by default, overridable with `KL_HOME` or `--home`:
 
 ```text
+config.toml                          global provider switches/defaults
+providers/<id>.toml                 protocol URLs and model catalog
+credentials/<id>.key                 API key material
 sessions/<session-id>/session.json   metadata
 sessions/<session-id>/state.json     message projection
 sessions/<session-id>/events.jsonl   append-only event log

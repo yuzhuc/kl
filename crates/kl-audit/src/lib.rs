@@ -25,7 +25,7 @@ pub struct AuditRecord {
     pub action: String,
     pub resource: String,
     pub decision: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub approved: Option<bool>,
     pub ok: bool,
     pub duration_ms: u64,
@@ -460,6 +460,7 @@ mod tests {
         let tail = audit.tail(1).unwrap();
         assert_eq!(tail.len(), 1);
         assert_eq!(tail[0]["call_id"], "c2");
+        assert!(tail[0].get("approved").is_some());
     }
 
     #[test]
@@ -492,6 +493,7 @@ mod tests {
         let tail = index.tail(1).unwrap();
         assert_eq!(tail.len(), 1);
         assert_eq!(tail[0]["call_id"], "c2");
+        assert!(tail[0].get("approved").is_some());
     }
 
     #[test]

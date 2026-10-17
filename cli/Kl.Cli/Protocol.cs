@@ -19,6 +19,10 @@ public static class Protocol
     public const string TurnCancel = "turn.cancel";
     public const string ApprovalRespond = "tool.approval.respond";
     public const string ProviderList = "provider.list";
+    public const string ProviderUpsert = "provider.upsert";
+    public const string ProviderSetApiKey = "provider.set_api_key";
+    public const string ProviderSetEnabled = "provider.set_enabled";
+    public const string ConfigSetDefaultModel = "config.set_default_model";
     public const string AuditTail = "audit.tail";
     public const string ConfigGet = "config.get";
     public const string PluginList = "plugin.list";

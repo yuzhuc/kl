@@ -412,6 +412,8 @@ pub struct ProviderModelInfo {
     pub context_window: u32,
     pub compact_threshold: f32,
     pub max_output_tokens: u32,
+    pub enabled: bool,
+    pub key_configured: bool,
     pub available: bool,
     pub detail: String,
 }
@@ -581,6 +583,8 @@ impl ProviderRouter {
                     context_window: route.metadata.context_window,
                     compact_threshold: route.metadata.compact_threshold,
                     max_output_tokens: route.metadata.max_output_tokens,
+                    enabled: true,
+                    key_configured: available,
                     available,
                     detail,
                 }
@@ -701,6 +705,34 @@ mod tests {
     use super::*;
     use std::io::Cursor;
 
+    struct TestAdapter(Protocol);
+
+    impl ProtocolAdapter for TestAdapter {
+        fn protocol(&self) -> Protocol {
+            self.0
+        }
+
+        fn stream_chat(
+            &self,
+            _request: &ChatRequest,
+            _cancel: &AtomicBool,
+            _on_event: &mut dyn FnMut(ChatEvent),
+        ) -> Result<ChatOutcome, ProviderError> {
+            Err(ProviderError::invalid("test adapter is not called"))
+        }
+    }
+
+    fn route(
+        provider: &str,
+        model: &str,
+        protocol: Protocol,
+        url: &str,
+    ) -> (ModelMetadata, Arc<dyn Provider>) {
+        let metadata = ModelMetadata::new(provider, model, protocol, url, 1000, 0.5, 100);
+        let bound = BoundProvider::new(metadata.clone(), Arc::new(TestAdapter(protocol)));
+        (metadata, Arc::new(bound) as Arc<dyn Provider>)
+    }
+
     #[test]
     fn sse_joins_multiline_data() {
         let stream = "event: message\n: comment\ndata: {\"a\":\ndata: 1}\n\n";
@@ -727,6 +759,65 @@ mod tests {
     fn chat_message_text_concatenates_parts() {
         let message = ChatMessage::assistant_with_text("hello", Vec::new());
         assert_eq!(message.text(), "hello");
+    }
+
+    #[test]
+    fn routes_by_provider_and_model_to_bound_protocol() {
+        let router = ProviderRouter::new(
+            vec![
+                route(
+                    "opencode",
+                    "gpt-5-chat",
+                    Protocol::OpenAiChat,
+                    "https://gateway.example/v1/chat/completions",
+                ),
+                route(
+                    "opencode",
+                    "claude-native",
+                    Protocol::Anthropic,
+                    "https://gateway.example/v1/messages",
+                ),
+                route(
+                    "opencode",
+                    "gpt-5-responses",
+                    Protocol::OpenAiResponses,
+                    "https://gateway.example/custom/responses",
+                ),
+            ],
+            "opencode",
+            "gpt-5-responses",
+        );
+
+        let (provider, metadata) = router
+            .get(Some("opencode"), Some("gpt-5-responses"))
+            .unwrap();
+        assert_eq!(provider.kind(), "openai-responses");
+        assert_eq!(metadata.protocol, Protocol::OpenAiResponses);
+        assert_eq!(metadata.url, "https://gateway.example/custom/responses");
+        assert_eq!(router.list().len(), 3);
+    }
+
+    #[test]
+    fn disabled_provider_has_no_routes_and_reports_a_config_error() {
+        let router = ProviderRouter::new(
+            vec![route(
+                "opencode",
+                "gpt-5-chat",
+                Protocol::OpenAiChat,
+                "https://gateway.example/v1/chat/completions",
+            )],
+            "opencode",
+            "gpt-5-chat",
+        );
+        router.disable_provider("opencode");
+
+        assert!(router.list().is_empty());
+        let error = match router.get(Some("opencode"), Some("gpt-5-chat")) {
+            Ok(_) => panic!("disabled provider route unexpectedly resolved"),
+            Err(error) => error,
+        };
+        assert_eq!(error.kind, ProviderErrorKind::Config);
+        assert!(error.message.contains("disabled"));
     }
 
     #[test]

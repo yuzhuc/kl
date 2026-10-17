@@ -35,6 +35,10 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/demo-e2e.ps1
+      - name: Windows policy demo
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/demo-policy.ps1
       - name: Windows plugin hot-upgrade demo
         if: runner.os == 'Windows'
         shell: pwsh

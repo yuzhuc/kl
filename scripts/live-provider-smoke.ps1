@@ -25,7 +25,8 @@ function Invoke-LiveProvider {
 
     Write-Host "== live smoke: $Name =="
     $output = & cargo run -q -p kl-provider --example live_smoke -- `
-        --provider $Name `
+        --protocol $Name `
+        --key-env $KeyVariable `
         --out $OutputFile 2>&1
     $exitCode = $LASTEXITCODE
     $output | ForEach-Object { Write-Host $_ }
@@ -44,24 +45,25 @@ function Invoke-LiveProvider {
     }
 }
 
-$openai = Invoke-LiveProvider -Name "openai" -KeyVariable "OPENAI_API_KEY" -OutputFile (Join-Path $fixtureDir "openai-live.json")
-$anthropic = Invoke-LiveProvider -Name "anthropic" -KeyVariable "ANTHROPIC_API_KEY" -OutputFile (Join-Path $fixtureDir "anthropic-live.json")
+$results = [ordered]@{
+    "openai-chat" = Invoke-LiveProvider -Name "openai-chat" -KeyVariable "OPENAI_API_KEY" -OutputFile (Join-Path $fixtureDir "openai-chat-live.json")
+    "anthropic" = Invoke-LiveProvider -Name "anthropic" -KeyVariable "ANTHROPIC_API_KEY" -OutputFile (Join-Path $fixtureDir "anthropic-live.json")
+    "openai-responses" = Invoke-LiveProvider -Name "openai-responses" -KeyVariable "OPENAI_API_KEY" -OutputFile (Join-Path $fixtureDir "openai-responses-live.json")
+}
 
 $status = [ordered]@{
     generated_at = (Get-Date).ToUniversalTime().ToString("o")
     note = "Live fixtures are written only when the real provider call succeeds. Skips are recorded as pending, never fabricated."
-    providers = [ordered]@{
-        openai = $openai
-        anthropic = $anthropic
-    }
+    providers = $results
 }
 [IO.File]::WriteAllText($statusPath, ($status | ConvertTo-Json -Depth 6), (New-Object System.Text.UTF8Encoding $false))
 Write-Host "status: $statusPath"
 
-if ($openai.status -eq "pending" -and $anthropic.status -eq "pending") {
-    Write-Host "Live provider smoke is pending: set OPENAI_API_KEY and/or ANTHROPIC_API_KEY, then rerun this script."
-    exit 0
-}
-if ($openai.status -eq "failed" -or $anthropic.status -eq "failed") {
+$failed = @($results.Values | Where-Object { $_.status -eq "failed" })
+if ($failed.Count -gt 0) {
     exit 1
+}
+$pending = @($results.Values | Where-Object { $_.status -eq "pending" })
+if ($pending.Count -eq $results.Count) {
+    Write-Host "Live provider smoke is pending: set OPENAI_API_KEY and/or ANTHROPIC_API_KEY, then rerun this script."
 }

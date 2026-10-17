@@ -3,7 +3,7 @@
 
 use kl_protocol::{
     CoreEvent, EventNotification, HandshakeParams, HandshakeResult, IncomingMessage, PingParams,
-    PingResult, RequestId, error_codes, methods,
+    PingResult, ProviderListResult, RequestId, error_codes, methods,
 };
 use serde_json::Value;
 use std::path::PathBuf;
@@ -76,6 +76,24 @@ fn event_notification_matches_shared_contract() {
         }
     );
     assert_eq!(serde_json::to_value(notification).unwrap(), value);
+}
+
+#[test]
+fn provider_list_result_matches_shared_contract() {
+    let value = read("provider_list_result.json");
+    let result: ProviderListResult = serde_json::from_value(value["result"].clone()).unwrap();
+    assert_eq!(result.active_provider, "opencode");
+    assert_eq!(result.active_model, "gpt-5-responses");
+    assert_eq!(result.models.len(), 3);
+    assert_eq!(result.models[0].protocol, "openai-chat");
+    assert!(result.models[0].enabled);
+    assert!(result.models[0].key_configured);
+    assert_eq!(result.models[1].protocol, "anthropic");
+    assert_eq!(result.models[2].protocol, "openai-responses");
+    assert_eq!(
+        result.models[2].url,
+        "https://gateway.example/custom/responses"
+    );
 }
 
 #[test]

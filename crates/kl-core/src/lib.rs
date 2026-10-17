@@ -6,7 +6,10 @@
 
 mod config;
 
-pub use config::{Config, ConfigError, ProviderCatalog};
+pub use config::{
+    Config, ConfigError, ProviderCatalog, config_set_default_model, provider_set_api_key,
+    provider_set_enabled, provider_upsert,
+};
 
 use kl_agent::{Agent, AgentConfig, AgentError, ApprovalGate, ApprovalRequest, EventSink};
 use kl_audit::AuditLog;
@@ -16,11 +19,13 @@ use kl_plugin_host::{
 use kl_policy::{PolicyEngine, PolicyError};
 use kl_protocol::{
     ApprovalDecision, ApprovalRespondParams, AuditTailParams, CORE_NAME, CORE_VERSION, CoreEvent,
-    DoctorCheck, DoctorResult, EventNotification, HandshakeParams, HandshakeResult,
-    IncomingMessage, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION, PingParams, PingResult,
-    PluginIdParams, PluginInstallParams, PluginListResult, ProviderListResult,
-    ProviderModelSummary, RequestId, RpcError, SessionCreateParams, SessionInfo, SessionListResult,
-    SessionResumeParams, TurnCancelParams, TurnCancelResult, TurnStartParams, TurnStartResult,
+    DefaultModelResult, DoctorCheck, DoctorResult, EventNotification, HandshakeParams,
+    HandshakeResult, IncomingMessage, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION, PingParams,
+    PingResult, PluginIdParams, PluginInstallParams, PluginListResult, ProviderEnabledResult,
+    ProviderKeyResult, ProviderListResult, ProviderModelSummary, ProviderSetApiKeyParams,
+    ProviderSetEnabledParams, ProviderUpsertParams, ProviderUpsertResult, RequestId, RpcError,
+    SessionCreateParams, SessionInfo, SessionListResult, SessionResumeParams,
+    SetDefaultModelParams, TurnCancelParams, TurnCancelResult, TurnStartParams, TurnStartResult,
     error_codes, failure, failure_with_data, methods, negotiate, success, validate_envelope,
 };
 use kl_provider::{
@@ -50,6 +55,8 @@ pub const FEATURES: &[&str] = &[
     "providers",
     "plugins",
 ];
+
+type ProviderRoutes = Vec<(ModelMetadata, Arc<dyn Provider>)>;
 
 /// Thread-safe newline-delimited JSON writer shared with turn threads.
 #[derive(Clone)]
@@ -333,7 +340,7 @@ impl Core {
         let sandbox = Arc::new(SandboxManager::probe(&config.sandbox));
         let plugin_host = Arc::new(PluginHost::new(context.home.join("plugins"))?);
         let config_dir = Config::config_dir(&context.config_path);
-        let catalog = ProviderCatalog::load(&config, &config_dir)?;
+        let catalog = ProviderCatalog::load(&config, &config_dir, &context.home)?;
         let routes = build_routes(&catalog, &config, &config_dir)?;
         let router = ProviderRouter::new(
             routes,
@@ -445,6 +452,10 @@ impl Core {
             methods::TURN_CANCEL => self.turn_cancel(params),
             methods::APPROVAL_RESPOND => self.approval_respond(params),
             methods::PROVIDER_LIST => self.provider_list(),
+            methods::PROVIDER_UPSERT => self.provider_upsert(params),
+            methods::PROVIDER_SET_API_KEY => self.provider_set_api_key(params),
+            methods::PROVIDER_SET_ENABLED => self.provider_set_enabled(params),
+            methods::CONFIG_SET_DEFAULT_MODEL => self.config_set_default_model(params),
             methods::AUDIT_TAIL => self.audit_tail(params),
             methods::CONFIG_GET => self.config_get(),
             methods::PLUGIN_LIST => self.plugin_list(),
@@ -746,7 +757,7 @@ impl Core {
 
         self.threads.retain(|handle| !handle.is_finished());
 
-        let (provider_id, metadata, workspace, history, provider) = {
+        let (metadata, workspace, history, provider) = {
             let mut sessions = self
                 .sessions
                 .lock()
@@ -780,13 +791,7 @@ impl Core {
             state.active_turn = Some(turn_id.clone());
             state.meta.provider = metadata.provider.clone();
             state.meta.model = metadata.model.clone();
-            (
-                provider_id,
-                metadata,
-                workspace,
-                state.messages.clone(),
-                provider,
-            )
+            (metadata, workspace, state.messages.clone(), provider)
         };
 
         let policy = Arc::new(
@@ -818,7 +823,6 @@ impl Core {
 
         let thread_session = session_id.clone();
         let thread_turn = turn_id.clone();
-        let thread_provider_id = provider_id.clone();
         let thread_metadata = metadata.clone();
         let thread_cancel = cancel.clone();
         let handle = thread::spawn(move || {
@@ -867,8 +871,12 @@ impl Core {
                 if let Some(state) = sessions.get_mut(&thread_session) {
                     state.messages = history;
                     state.active_turn = None;
-                    state.meta.provider = thread_provider_id;
+                    state.meta.provider = thread_metadata.provider.clone();
                     state.meta.model = thread_metadata.model.clone();
+                    state.meta.status = Some(match &result {
+                        Ok(turn) => turn.status.as_str().to_owned(),
+                        Err(_) => "failed".to_owned(),
+                    });
                     let data = SessionData {
                         meta: state.meta.clone(),
                         messages: state
@@ -938,6 +946,8 @@ impl Core {
                 context_window: model.context_window,
                 compact_threshold: model.compact_threshold,
                 max_output_tokens: model.max_output_tokens,
+                enabled: model.enabled,
+                key_configured: model.key_configured,
                 available: model.available,
                 detail: model.detail,
             })
@@ -947,6 +957,37 @@ impl Core {
             active_model: self.config.agent.model.clone(),
             models,
         })
+    }
+
+    fn provider_upsert(&self, params: Value) -> Result<Value, RpcError> {
+        let params: ProviderUpsertParams = parse_params(params, methods::PROVIDER_UPSERT)?;
+        let result: ProviderUpsertResult =
+            provider_upsert(&self.context.config_path, &params).map_err(config_write_error)?;
+        to_value(result)
+    }
+
+    fn provider_set_api_key(&self, params: Value) -> Result<Value, RpcError> {
+        let params: ProviderSetApiKeyParams = parse_params(params, methods::PROVIDER_SET_API_KEY)?;
+        let result: ProviderKeyResult =
+            provider_set_api_key(&self.context.config_path, &self.context.home, &params)
+                .map_err(config_write_error)?;
+        to_value(result)
+    }
+
+    fn provider_set_enabled(&self, params: Value) -> Result<Value, RpcError> {
+        let params: ProviderSetEnabledParams = parse_params(params, methods::PROVIDER_SET_ENABLED)?;
+        let result: ProviderEnabledResult =
+            provider_set_enabled(&self.context.config_path, &params).map_err(config_write_error)?;
+        to_value(result)
+    }
+
+    fn config_set_default_model(&self, params: Value) -> Result<Value, RpcError> {
+        let params: SetDefaultModelParams =
+            parse_params(params, methods::CONFIG_SET_DEFAULT_MODEL)?;
+        let result: DefaultModelResult =
+            config_set_default_model(&self.context.config_path, &self.context.home, &params)
+                .map_err(config_write_error)?;
+        to_value(result)
     }
 
     fn audit_tail(&self, params: Value) -> Result<Value, RpcError> {
@@ -1105,7 +1146,7 @@ fn build_routes(
     catalog: &ProviderCatalog,
     config: &Config,
     config_dir: &Path,
-) -> Result<Vec<(ModelMetadata, Arc<dyn Provider>)>, CoreError> {
+) -> Result<ProviderRoutes, CoreError> {
     let mut routes = Vec::new();
     for provider in &catalog.providers {
         for metadata in &provider.models {
@@ -1178,6 +1219,10 @@ fn session_info(meta: &SessionMeta, message_count: usize) -> SessionInfo {
         created_at: meta.created_at.clone(),
         updated_at: meta.updated_at.clone(),
         message_count,
+        status: meta.status.clone(),
+        task: meta.task.clone(),
+        prompt: meta.prompt.clone(),
+        last_message: meta.last_message.clone(),
     }
 }
 
@@ -1210,6 +1255,10 @@ fn plugin_error(error: PluginError) -> RpcError {
         _ => error_codes::PLUGIN_ERROR,
     };
     rpc_error(code, error.to_string())
+}
+
+fn config_write_error(error: ConfigError) -> RpcError {
+    rpc_error(error_codes::INVALID_PARAMS, error.to_string())
 }
 
 fn provider_error(error: kl_provider::ProviderError) -> RpcError {
@@ -1404,6 +1453,179 @@ mod tests {
         assert_eq!(output[0]["error"]["code"], error_codes::NOT_INITIALIZED);
     }
 
+    #[test]
+    fn routes_three_native_protocols_and_redacts_keys() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(temp.path().join("providers")).unwrap();
+        std::fs::write(
+            temp.path().join("providers/opencode.toml"),
+            r#"
+api_key = "super-secret-key"
+[protocols]
+openai-chat = "https://gateway.example/v1/chat/completions"
+anthropic = "https://gateway.example/v1/messages"
+openai-responses = "https://gateway.example/v1/responses"
+[[models]]
+id = "gpt-5-chat"
+protocol = "openai-chat"
+context_window = 128000
+compact_threshold = 0.8
+max_output_tokens = 4096
+[[models]]
+id = "claude-native"
+protocol = "anthropic"
+context_window = 200000
+compact_threshold = 0.75
+max_output_tokens = 8192
+[[models]]
+id = "gpt-5-responses"
+protocol = "openai-responses"
+context_window = 256000
+compact_threshold = 0.9
+max_output_tokens = 16384
+url = "https://gateway.example/custom/responses"
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            temp.path().join("kl.toml"),
+            r#"
+[agent]
+provider = "opencode"
+model = "gpt-5-responses"
+[providers.opencode]
+enabled = true
+path = "providers/opencode.toml"
+"#,
+        )
+        .unwrap();
+        let workspace = temp.path().to_string_lossy().replace('\\', "\\\\");
+        let input = format!(
+            "{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"kl.handshake\",\"params\":{{\"client_name\":\"test\",\"client_version\":\"0.1.0\",\"protocol_versions\":[1]}}}}\n\
+             {{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"provider.list\",\"params\":{{}}}}\n\
+             {{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session.create\",\"params\":{{\"workspace\":\"{workspace}\",\"provider\":\"opencode\",\"model\":\"gpt-5-responses\"}}}}\n\
+             {{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"config.get\",\"params\":{{}}}}\n"
+        );
+        let output = serve(
+            &input,
+            Some(temp.path().join("kl.toml")),
+            temp.path().join(".kl"),
+        );
+        let providers = &output.iter().find(|value| value["id"] == 2).unwrap()["result"];
+        let models = providers["models"].as_array().unwrap();
+        assert_eq!(models.len(), 3);
+        assert_eq!(providers["active_provider"], "opencode");
+        assert_eq!(providers["active_model"], "gpt-5-responses");
+        let model = |id: &str| models.iter().find(|model| model["model"] == id).unwrap();
+        assert_eq!(model("gpt-5-chat")["protocol"], "openai-chat");
+        assert_eq!(model("claude-native")["protocol"], "anthropic");
+        assert_eq!(model("gpt-5-responses")["protocol"], "openai-responses");
+        assert_eq!(model("gpt-5-responses")["context_window"], 256000);
+        let threshold = model("gpt-5-responses")["compact_threshold"]
+            .as_f64()
+            .unwrap();
+        assert!((threshold - 0.9).abs() < 1e-6);
+        assert_eq!(model("gpt-5-responses")["max_output_tokens"], 16384);
+        assert_eq!(
+            model("gpt-5-responses")["url"],
+            "https://gateway.example/custom/responses"
+        );
+
+        let create = output.iter().find(|value| value["id"] == 3).unwrap();
+        assert_eq!(create["result"]["provider"], "opencode");
+        assert_eq!(create["result"]["model"], "gpt-5-responses");
+
+        let config = output.iter().find(|value| value["id"] == 4).unwrap();
+        assert!(!config.to_string().contains("super-secret-key"));
+        assert!(config.to_string().contains("configured"));
+    }
+
+    #[test]
+    fn disabled_provider_has_no_models_and_selection_fails() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            temp.path().join("kl.toml"),
+            r#"
+[agent]
+provider = "opencode"
+model = "gpt-5-chat"
+[providers.opencode]
+enabled = false
+path = "providers/missing.toml"
+"#,
+        )
+        .unwrap();
+        let workspace = temp.path().to_string_lossy().replace('\\', "\\\\");
+        let input = format!(
+            "{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"kl.handshake\",\"params\":{{\"client_name\":\"test\",\"client_version\":\"0.1.0\",\"protocol_versions\":[1]}}}}\n\
+             {{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"provider.list\",\"params\":{{}}}}\n\
+             {{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session.create\",\"params\":{{\"workspace\":\"{workspace}\",\"provider\":\"opencode\"}}}}\n"
+        );
+        let output = serve(
+            &input,
+            Some(temp.path().join("kl.toml")),
+            temp.path().join(".kl"),
+        );
+        let providers = output.iter().find(|value| value["id"] == 2).unwrap();
+        assert_eq!(providers["result"]["models"].as_array().unwrap().len(), 0);
+        let create = output.iter().find(|value| value["id"] == 3).unwrap();
+        assert_eq!(create["error"]["code"], error_codes::PROVIDER_UNAVAILABLE);
+        assert!(
+            create["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("disabled")
+        );
+    }
+
+    #[test]
+    fn provider_upsert_and_key_survive_core_restart() {
+        let temp = tempfile::tempdir().unwrap();
+        let config_path = temp.path().join("kl.toml");
+        let home_path = temp.path().join("home");
+        let input = r#"{"jsonrpc":"2.0","id":1,"method":"kl.handshake","params":{"client_name":"test","client_version":"0.1.0","protocol_versions":[1]}}
+{"jsonrpc":"2.0","id":2,"method":"provider.upsert","params":{"id":"local","protocols":{"openai-responses":"https://gateway.example/custom/responses?tenant=kl"},"models":[{"id":"gpt-5-responses","protocol":"openai-responses","context_window":1000,"compact_threshold":0.8,"max_output_tokens":100}],"enabled":true}}
+{"jsonrpc":"2.0","id":3,"method":"provider.set_api_key","params":{"id":"local","key":"super-secret"}}
+{"jsonrpc":"2.0","id":4,"method":"config.set_default_model","params":{"provider":"local","model":"gpt-5-responses"}}
+"#;
+        let first = serve(input, Some(config_path.clone()), home_path.clone());
+        assert!(
+            first.iter().all(|value| value.get("error").is_none()),
+            "{first:?}"
+        );
+
+        let second = serve(
+            r#"{"jsonrpc":"2.0","id":1,"method":"kl.handshake","params":{"client_name":"test","client_version":"0.1.0","protocol_versions":[1]}}
+{"jsonrpc":"2.0","id":2,"method":"provider.list","params":{}}
+{"jsonrpc":"2.0","id":3,"method":"config.get","params":{}}
+"#,
+            Some(config_path),
+            home_path.clone(),
+        );
+        let providers = second.iter().find(|value| value["id"] == 2).unwrap();
+        let models = providers["result"]["models"].as_array().unwrap();
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0]["provider"], "local");
+        assert_eq!(models[0]["model"], "gpt-5-responses");
+        assert_eq!(models[0]["protocol"], "openai-responses");
+        assert_eq!(models[0]["enabled"], true);
+        assert_eq!(models[0]["key_configured"], true);
+        assert_eq!(
+            models[0]["url"],
+            "https://gateway.example/custom/responses?tenant=kl"
+        );
+        let config = second.iter().find(|value| value["id"] == 3).unwrap();
+        assert!(!config.to_string().contains("super-secret"));
+        assert_eq!(
+            std::fs::read_to_string(home_path.join("credentials/local.key")).unwrap(),
+            "super-secret"
+        );
+        assert!(
+            !std::fs::read_to_string(temp.path().join("providers/local.toml"))
+                .unwrap()
+                .contains("super-secret")
+        );
+    }
     #[test]
     fn creates_scripted_session_and_lists_it() {
         let temp = tempfile::tempdir().unwrap();

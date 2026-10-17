@@ -68,6 +68,175 @@
       },
       "additionalProperties": false
     },
+    "providerModelSummary": {
+      "type": "object",
+      "required": [
+        "provider",
+        "model",
+        "protocol",
+        "url",
+        "context_window",
+        "compact_threshold",
+        "max_output_tokens",
+        "enabled",
+        "key_configured",
+        "available",
+        "detail"
+      ],
+      "properties": {
+        "provider": { "type": "string" },
+        "model": { "type": "string" },
+        "protocol": {
+          "enum": [
+            "openai-chat",
+            "anthropic",
+            "openai-responses",
+            "scripted",
+            "plugin"
+          ]
+        },
+        "url": { "type": "string", "format": "uri" },
+        "context_window": { "type": "integer", "minimum": 1 },
+        "compact_threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "max_output_tokens": { "type": "integer", "minimum": 1 },
+        "enabled": { "type": "boolean" },
+        "key_configured": { "type": "boolean" },
+        "available": { "type": "boolean" },
+        "detail": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "providerListResult": {
+      "type": "object",
+      "required": ["active_provider", "active_model", "models"],
+      "properties": {
+        "active_provider": { "type": "string" },
+        "active_model": { "type": "string" },
+        "models": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/providerModelSummary" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "providerProtocolUrls": {
+      "type": "object",
+      "properties": {
+        "openai-chat": { "type": "string" },
+        "anthropic": { "type": "string" },
+        "openai-responses": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "providerModelInput": {
+      "type": "object",
+      "required": [
+        "id",
+        "protocol",
+        "context_window",
+        "compact_threshold",
+        "max_output_tokens"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "protocol": {
+          "enum": ["openai-chat", "anthropic", "openai-responses"]
+        },
+        "context_window": { "type": "integer", "minimum": 1 },
+        "compact_threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "max_output_tokens": { "type": "integer", "minimum": 1 },
+        "url": { "type": "string", "format": "uri" }
+      },
+      "additionalProperties": false
+    },
+    "providerUpsertParams": {
+      "type": "object",
+      "required": ["id", "protocols", "models", "enabled"],
+      "properties": {
+        "id": { "type": "string" },
+        "protocols": { "$ref": "#/$defs/providerProtocolUrls" },
+        "models": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/providerModelInput" }
+        },
+        "enabled": { "type": "boolean" },
+        "api_key_env": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "providerUpsertResult": {
+      "type": "object",
+      "required": ["provider", "path", "models", "enabled"],
+      "properties": {
+        "provider": { "type": "string" },
+        "path": { "type": "string" },
+        "models": { "type": "integer", "minimum": 1 },
+        "enabled": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "providerSetApiKeyParams": {
+      "type": "object",
+      "required": ["id", "key"],
+      "properties": {
+        "id": { "type": "string" },
+        "key": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "providerKeyResult": {
+      "type": "object",
+      "required": ["provider", "key_configured"],
+      "properties": {
+        "provider": { "type": "string" },
+        "key_configured": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "providerSetEnabledParams": {
+      "type": "object",
+      "required": ["id", "enabled"],
+      "properties": {
+        "id": { "type": "string" },
+        "enabled": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "providerEnabledResult": {
+      "type": "object",
+      "required": ["provider", "enabled"],
+      "properties": {
+        "provider": { "type": "string" },
+        "enabled": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "setDefaultModelParams": {
+      "type": "object",
+      "required": ["provider", "model"],
+      "properties": {
+        "provider": { "type": "string" },
+        "model": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "defaultModelResult": {
+      "type": "object",
+      "required": ["provider", "model"],
+      "properties": {
+        "provider": { "type": "string" },
+        "model": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
     "sessionCreateParams": {
       "type": "object",
       "required": ["workspace"],
@@ -96,7 +265,11 @@
         "model": { "type": "string" },
         "created_at": { "type": "string" },
         "updated_at": { "type": "string" },
-        "message_count": { "type": "integer", "minimum": 0 }
+        "message_count": { "type": "integer", "minimum": 0 },
+        "status": { "type": "string" },
+        "task": { "type": "string" },
+        "prompt": { "type": "string" },
+        "last_message": { "type": "string" }
       },
       "additionalProperties": false
     },
