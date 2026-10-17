@@ -45,13 +45,16 @@ impl Tool for ShellTool {
         if evaluation.effect == Effect::Deny {
             return Err(ToolError::Policy(evaluation.reason));
         }
+        context
+            .sandbox
+            .ensure_process_execution()
+            .map_err(|error| ToolError::Policy(error.to_string()))?;
         let cwd = resolve_cwd(context, optional_string(args, "cwd").unwrap_or("."))?;
         let timeout = optional_usize(args, "timeout_ms")
             .map(|millis| Duration::from_millis(millis as u64))
             .unwrap_or(context.timeout)
             .min(context.timeout)
             .max(Duration::from_millis(100));
-
         let mut spec = if cfg!(windows) {
             CommandSpec::new("cmd", vec!["/C".to_owned(), command.to_owned()], cwd)
         } else {
@@ -59,6 +62,7 @@ impl Tool for ShellTool {
         };
         spec.timeout = timeout;
         spec.max_output_bytes = context.max_output_bytes;
+        apply_env_policy(context.policy, &mut spec);
         let output = kl_exec::run(&spec, context.cancel)
             .map_err(|error| ToolError::Execution(error.to_string()))?;
         Ok(describe_output(output, context.max_output_bytes))
@@ -117,10 +121,15 @@ impl Tool for GitTool {
         if evaluation.effect == Effect::Deny {
             return Err(ToolError::Policy(evaluation.reason));
         }
+        context
+            .sandbox
+            .ensure_process_execution()
+            .map_err(|error| ToolError::Policy(error.to_string()))?;
         let cwd = resolve_cwd(context, optional_string(args, "cwd").unwrap_or("."))?;
         let mut spec = CommandSpec::new("git", git_args, cwd);
         spec.timeout = context.timeout;
         spec.max_output_bytes = context.max_output_bytes;
+        apply_env_policy(context.policy, &mut spec);
         let output = kl_exec::run(&spec, context.cancel)
             .map_err(|error| ToolError::Execution(error.to_string()))?;
         Ok(describe_output(output, context.max_output_bytes))
@@ -160,6 +169,42 @@ fn git_args(args: &Value) -> Result<Vec<String>, ToolError> {
         Err(ToolError::InvalidArgs(
             "`args` must be an array of strings".to_owned(),
         ))
+    }
+}
+
+fn apply_env_policy(policy: &kl_policy::PolicyEngine, spec: &mut CommandSpec) {
+    let allowed = &policy.config().env_allowlist;
+    if allowed.is_empty() {
+        return;
+    }
+    spec.clear_env = true;
+    let mut names: Vec<String> = if cfg!(windows) {
+        [
+            "PATH",
+            "PATHEXT",
+            "SystemRoot",
+            "WINDIR",
+            "ComSpec",
+            "TEMP",
+            "TMP",
+            "USERPROFILE",
+        ]
+        .into_iter()
+        .map(str::to_owned)
+        .collect()
+    } else {
+        ["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect()
+    };
+    names.extend(allowed.iter().cloned());
+    names.sort();
+    names.dedup();
+    for name in names {
+        if let Ok(value) = std::env::var(&name) {
+            spec.env.push((name, value));
+        }
     }
 }
 

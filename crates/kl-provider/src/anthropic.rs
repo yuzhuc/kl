@@ -1,44 +1,30 @@
 use crate::{
-    ChatEvent, ChatOutcome, ChatRequest, ContentPart, FinishReason, ModelInfo, Provider,
+    ChatEvent, ChatOutcome, ChatRequest, ContentPart, FinishReason, Protocol, ProtocolAdapter,
     ProviderError, ProviderErrorKind, Role, ToolCall, Usage, http_post_stream, read_sse,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader};
+use std::sync::atomic::AtomicBool;
 
-pub struct AnthropicProvider {
-    id: String,
-    base_url: String,
+pub struct AnthropicAdapter {
+    endpoint: String,
     api_key: Option<String>,
-    models: Vec<ModelInfo>,
 }
 
-impl AnthropicProvider {
-    pub fn new(
-        id: impl Into<String>,
-        base_url: impl Into<String>,
-        api_key: Option<String>,
-        models: Vec<String>,
-    ) -> Self {
+impl AnthropicAdapter {
+    /// `endpoint` is the complete native Messages request URL.
+    pub fn new(endpoint: impl Into<String>, api_key: Option<String>) -> Self {
         Self {
-            id: id.into(),
-            base_url: base_url.into().trim_end_matches('/').to_owned(),
+            endpoint: endpoint.into(),
             api_key,
-            models: models.into_iter().map(ModelInfo::new).collect(),
-        }
-    }
-
-    fn messages_url(&self) -> String {
-        if self.base_url.ends_with("/v1") {
-            format!("{}/messages", self.base_url)
-        } else {
-            format!("{}/v1/messages", self.base_url)
         }
     }
 
     pub fn parse_stream<R: BufRead>(
         &self,
         reader: R,
+        cancel: &AtomicBool,
         on_event: &mut dyn FnMut(ChatEvent),
     ) -> Result<ChatOutcome, ProviderError> {
         let mut text = String::new();
@@ -46,7 +32,7 @@ impl AnthropicProvider {
         let mut stop_reason: Option<String> = None;
         let mut tool_calls: BTreeMap<usize, PartialToolCall> = BTreeMap::new();
 
-        read_sse(reader, &mut |data| {
+        read_sse(reader, cancel, &mut |data| {
             let value: Value = serde_json::from_str(data).map_err(|error| {
                 ProviderError::invalid(format!("bad Anthropic SSE JSON: {error}"))
             })?;
@@ -208,17 +194,9 @@ impl AnthropicProvider {
     }
 }
 
-impl Provider for AnthropicProvider {
-    fn id(&self) -> &str {
-        &self.id
-    }
-
-    fn kind(&self) -> &str {
-        "anthropic"
-    }
-
-    fn models(&self) -> Vec<ModelInfo> {
-        self.models.clone()
+impl ProtocolAdapter for AnthropicAdapter {
+    fn protocol(&self) -> Protocol {
+        Protocol::Anthropic
     }
 
     fn available(&self) -> (bool, String) {
@@ -231,6 +209,7 @@ impl Provider for AnthropicProvider {
     fn stream_chat(
         &self,
         request: &ChatRequest,
+        cancel: &AtomicBool,
         on_event: &mut dyn FnMut(ChatEvent),
     ) -> Result<ChatOutcome, ProviderError> {
         let Some(api_key) = &self.api_key else {
@@ -241,8 +220,8 @@ impl Provider for AnthropicProvider {
             ("x-api-key", api_key.clone()),
             ("anthropic-version", "2023-06-01".to_owned()),
         ];
-        let reader = http_post_stream(&self.messages_url(), &headers, &body)?;
-        self.parse_stream(BufReader::new(reader), on_event)
+        let reader = http_post_stream(&self.endpoint, &headers, &body)?;
+        self.parse_stream(BufReader::new(reader), cancel, on_event)
     }
 }
 
@@ -344,8 +323,8 @@ mod tests {
     use super::*;
     use std::io::Cursor;
 
-    fn provider() -> AnthropicProvider {
-        AnthropicProvider::new("anthropic", "https://example.invalid", None, vec![])
+    fn adapter() -> AnthropicAdapter {
+        AnthropicAdapter::new("https://example.invalid/custom/messages", None)
     }
 
     #[test]
@@ -358,8 +337,8 @@ mod tests {
             "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
         );
         let mut text = String::new();
-        let outcome = provider()
-            .parse_stream(Cursor::new(stream), &mut |event| {
+        let outcome = adapter()
+            .parse_stream(Cursor::new(stream), &AtomicBool::new(false), &mut |event| {
                 if let ChatEvent::TextDelta(chunk) = event {
                     text.push_str(&chunk);
                 }
@@ -378,8 +357,8 @@ mod tests {
             "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"path\\\":\\\"a.txt\\\"}\"}}\n\n",
             "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":9}}\n\n",
         );
-        let outcome = provider()
-            .parse_stream(Cursor::new(stream), &mut |_| {})
+        let outcome = adapter()
+            .parse_stream(Cursor::new(stream), &AtomicBool::new(false), &mut |_| {})
             .unwrap();
         assert_eq!(outcome.finish_reason, FinishReason::ToolCalls);
         assert_eq!(outcome.tool_calls.len(), 1);

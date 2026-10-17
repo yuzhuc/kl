@@ -6,6 +6,8 @@ members = [
     "crates/kl-audit",
     "crates/kl-store",
     "crates/kl-exec",
+    "crates/kl-sandbox",
+    "crates/kl-plugin-host",
     "crates/kl-provider",
     "crates/kl-tools",
     "crates/kl-agent",

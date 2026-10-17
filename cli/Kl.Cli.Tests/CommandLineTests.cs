@@ -31,6 +31,14 @@ public sealed class CommandLineTests
     }
 
     [Fact]
+    public void ParsesPluginSubcommand()
+    {
+        var options = CommandLine.Parse(["plugin", "install", "plugins/examples/fake-tool"]);
+        Assert.Equal("plugin", options.Command);
+        Assert.Equal(["install", "plugins/examples/fake-tool"], options.Positionals);
+    }
+
+    [Fact]
     public void RejectsUnknownOption()
     {
         Assert.Throws<ArgumentException>(() => CommandLine.Parse(["doctor", "--bogus"]));

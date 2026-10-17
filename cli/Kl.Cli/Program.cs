@@ -74,6 +74,8 @@ internal static class Program
                 return await ResumeAsync(options, ui).ConfigureAwait(false);
             case "provider":
                 return await ProviderAsync(options, ui).ConfigureAwait(false);
+            case "plugin":
+                return await PluginAsync(options, ui).ConfigureAwait(false);
             case "audit":
                 return await AuditAsync(options, ui).ConfigureAwait(false);
             case "config":
@@ -246,17 +248,98 @@ internal static class Program
         AttachDiagnostics(client, options, ui);
         await client.HandshakeAsync().ConfigureAwait(false);
         var result = await client.ListProvidersAsync().ConfigureAwait(false);
+        var activeProvider = result.GetProperty("active_provider").GetString();
+        var activeModel = result.GetProperty("active_model").GetString();
         ui.Header("Providers");
-        foreach (var provider in result.GetProperty("providers").EnumerateArray())
+        foreach (var model in result.GetProperty("models").EnumerateArray())
         {
-            var active = provider.GetProperty("active").GetBoolean();
-            var available = provider.GetProperty("available").GetBoolean();
+            var provider = model.GetProperty("provider").GetString();
+            var modelId = model.GetProperty("model").GetString();
+            var protocol = model.GetProperty("protocol").GetString();
+            var url = model.GetProperty("url").GetString();
+            var available = model.GetProperty("available").GetBoolean();
+            var active = provider == activeProvider && modelId == activeModel;
             ui.Line(
-                $"{(active ? "*" : " ")} {provider.GetProperty("id").GetString(),-12} " +
-                $"{provider.GetProperty("kind").GetString(),-14} " +
-                $"{(available ? "available" : "unavailable"),-11} " +
-                $"{provider.GetProperty("detail").GetString()}");
+                $"{(active ? "*" : " ")} {provider}/{modelId} [{protocol}] " +
+                $"{(available ? "available" : "unavailable")}");
+            ui.Line($"    url: {url}");
+            ui.Line(
+                $"    context_window: {model.GetProperty("context_window").GetInt32()}  " +
+                $"compact_threshold: {model.GetProperty("compact_threshold").GetDouble()}  " +
+                $"max_output_tokens: {model.GetProperty("max_output_tokens").GetInt32()}");
+            ui.Line($"    {model.GetProperty("detail").GetString()}");
         }
+        return 0;
+    }
+
+    private static async Task<int> PluginAsync(CliOptions options, ConsoleUi ui)
+    {
+        var subcommand = (options.Positionals.FirstOrDefault() ?? "list").ToLowerInvariant();
+        await using var client = KlCoreClient.Start(options);
+        AttachDiagnostics(client, options, ui);
+        await client.HandshakeAsync().ConfigureAwait(false);
+
+        if (subcommand == "list")
+        {
+            var result = await client.PluginListAsync().ConfigureAwait(false);
+            var plugins = result.GetProperty("plugins");
+            ui.Header("Plugins");
+            if (plugins.GetArrayLength() == 0)
+            {
+                ui.Line("no plugins installed");
+                return 0;
+            }
+            foreach (var plugin in plugins.EnumerateArray())
+            {
+                ui.Line(
+                    $"{plugin.GetProperty("id").GetString()}  " +
+                    $"v{plugin.GetProperty("version").GetString()}  " +
+                    $"{plugin.GetProperty("kind").GetString()}  " +
+                    $"{(plugin.GetProperty("enabled").GetBoolean() ? "enabled" : "disabled")}  " +
+                    $"{(plugin.GetProperty("healthy").GetBoolean() ? "healthy" : "unhealthy")}  " +
+                    $"{plugin.GetProperty("detail").GetString()}");
+            }
+            return 0;
+        }
+
+        JsonElement response;
+        switch (subcommand)
+        {
+            case "install":
+                if (options.Positionals.Count < 2)
+                {
+                    ui.Error("plugin install requires a path");
+                    return 64;
+                }
+                response = await client.PluginInstallAsync(options.Positionals[1])
+                    .ConfigureAwait(false);
+                break;
+            case "reload":
+            case "enable":
+            case "disable":
+                if (options.Positionals.Count < 2)
+                {
+                    ui.Error($"plugin {subcommand} requires a plugin id");
+                    return 64;
+                }
+                response = subcommand switch
+                {
+                    "reload" => await client.PluginReloadAsync(options.Positionals[1])
+                        .ConfigureAwait(false),
+                    "enable" => await client.PluginEnableAsync(options.Positionals[1])
+                        .ConfigureAwait(false),
+                    _ => await client.PluginDisableAsync(options.Positionals[1])
+                        .ConfigureAwait(false)
+                };
+                break;
+            default:
+                ui.Error($"unknown plugin command: {subcommand}");
+                return 64;
+        }
+
+        ui.Line(JsonSerializer.Serialize(
+            response,
+            new JsonSerializerOptions { WriteIndented = true }));
         return 0;
     }
 
@@ -324,6 +407,11 @@ internal static class Program
               kl doctor                  check the core and environment
               kl ping                    verify the core handshake
               kl provider list           list configured providers
+              kl plugin list             list installed sidecar plugins
+              kl plugin install <path>   install a local plugin directory
+              kl plugin reload <id>      reload a plugin without restarting core
+              kl plugin enable <id>      enable a plugin
+              kl plugin disable <id>     drain and disable a plugin
               kl audit [limit]           show recent audit records
               kl config                  show the redacted configuration
               kl version                 print versions

@@ -204,5 +204,40 @@ public sealed class KlCoreClient : IAsyncDisposable
     public Task<JsonElement> GetConfigAsync(CancellationToken cancellationToken = default) =>
         RequestAsync(Protocol.ConfigGet, null, cancellationToken);
 
+    public Task<JsonElement> PluginListAsync(CancellationToken cancellationToken = default) =>
+        RequestAsync(Protocol.PluginList, null, cancellationToken);
+
+    public Task<JsonElement> PluginInstallAsync(
+        string path,
+        CancellationToken cancellationToken = default) =>
+        RequestAsync(
+            Protocol.PluginInstall,
+            new Dictionary<string, object?> { ["path"] = path },
+            cancellationToken);
+
+    public Task<JsonElement> PluginReloadAsync(
+        string id,
+        CancellationToken cancellationToken = default) =>
+        RequestAsync(
+            Protocol.PluginReload,
+            new Dictionary<string, object?> { ["id"] = id },
+            cancellationToken);
+
+    public Task<JsonElement> PluginEnableAsync(
+        string id,
+        CancellationToken cancellationToken = default) =>
+        RequestAsync(
+            Protocol.PluginEnable,
+            new Dictionary<string, object?> { ["id"] = id },
+            cancellationToken);
+
+    public Task<JsonElement> PluginDisableAsync(
+        string id,
+        CancellationToken cancellationToken = default) =>
+        RequestAsync(
+            Protocol.PluginDisable,
+            new Dictionary<string, object?> { ["id"] = id },
+            cancellationToken);
+
     public async ValueTask DisposeAsync() => await _rpc.DisposeAsync().ConfigureAwait(false);
 }

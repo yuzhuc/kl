@@ -111,6 +111,41 @@
       },
       "additionalProperties": false
     },
+    "pluginInstallParams": {
+      "type": "object",
+      "required": ["path"],
+      "properties": { "path": { "type": "string" } },
+      "additionalProperties": false
+    },
+    "pluginIdParams": {
+      "type": "object",
+      "required": ["id"],
+      "properties": { "id": { "type": "string" } },
+      "additionalProperties": false
+    },
+    "pluginInfo": {
+      "type": "object",
+      "required": ["id", "version", "kind", "enabled", "healthy"],
+      "properties": {
+        "id": { "type": "string" },
+        "version": { "type": "string" },
+        "kind": { "enum": ["provider", "tool"] },
+        "enabled": { "type": "boolean" },
+        "healthy": { "type": "boolean" },
+        "tool_name": { "type": "string" },
+        "models": { "type": "array", "items": { "type": "string" } },
+        "detail": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "pluginListResult": {
+      "type": "object",
+      "required": ["plugins"],
+      "properties": {
+        "plugins": { "type": "array", "items": { "$ref": "#/$defs/pluginInfo" } }
+      },
+      "additionalProperties": false
+    },
     "eventNotification": {
       "type": "object",
       "required": ["jsonrpc", "kl_protocol", "method", "params"],

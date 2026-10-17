@@ -1,37 +1,31 @@
 use crate::{
-    ChatEvent, ChatMessage, ChatOutcome, ChatRequest, FinishReason, ModelInfo, Provider,
+    ChatEvent, ChatMessage, ChatOutcome, ChatRequest, FinishReason, Protocol, ProtocolAdapter,
     ProviderError, ProviderErrorKind, Role, ToolCall, ToolDefinition, Usage, http_post_stream,
     read_sse,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader};
+use std::sync::atomic::AtomicBool;
 
-pub struct OpenAiChatProvider {
-    id: String,
-    base_url: String,
+pub struct OpenAiChatAdapter {
+    endpoint: String,
     api_key: Option<String>,
-    models: Vec<ModelInfo>,
 }
 
-impl OpenAiChatProvider {
-    pub fn new(
-        id: impl Into<String>,
-        base_url: impl Into<String>,
-        api_key: Option<String>,
-        models: Vec<String>,
-    ) -> Self {
+impl OpenAiChatAdapter {
+    /// `endpoint` is the complete native Chat Completions request URL.
+    pub fn new(endpoint: impl Into<String>, api_key: Option<String>) -> Self {
         Self {
-            id: id.into(),
-            base_url: base_url.into().trim_end_matches('/').to_owned(),
+            endpoint: endpoint.into(),
             api_key,
-            models: models.into_iter().map(ModelInfo::new).collect(),
         }
     }
 
     pub fn parse_stream<R: BufRead>(
         &self,
         reader: R,
+        cancel: &AtomicBool,
         on_event: &mut dyn FnMut(ChatEvent),
     ) -> Result<ChatOutcome, ProviderError> {
         let mut text = String::new();
@@ -39,7 +33,7 @@ impl OpenAiChatProvider {
         let mut finish: Option<String> = None;
         let mut tool_calls: BTreeMap<usize, PartialToolCall> = BTreeMap::new();
 
-        read_sse(reader, &mut |data| {
+        read_sse(reader, cancel, &mut |data| {
             if data.trim() == "[DONE]" {
                 return Ok(());
             }
@@ -161,17 +155,9 @@ impl OpenAiChatProvider {
     }
 }
 
-impl Provider for OpenAiChatProvider {
-    fn id(&self) -> &str {
-        &self.id
-    }
-
-    fn kind(&self) -> &str {
-        "openai-chat"
-    }
-
-    fn models(&self) -> Vec<ModelInfo> {
-        self.models.clone()
+impl ProtocolAdapter for OpenAiChatAdapter {
+    fn protocol(&self) -> Protocol {
+        Protocol::OpenAiChat
     }
 
     fn available(&self) -> (bool, String) {
@@ -184,17 +170,18 @@ impl Provider for OpenAiChatProvider {
     fn stream_chat(
         &self,
         request: &ChatRequest,
+        cancel: &AtomicBool,
         on_event: &mut dyn FnMut(ChatEvent),
     ) -> Result<ChatOutcome, ProviderError> {
         let Some(api_key) = &self.api_key else {
-            return Err(ProviderError::config("OpenAI API key is not configured"));
+            return Err(ProviderError::config(
+                "OpenAI Chat API key is not configured",
+            ));
         };
-
         let body = openai_body(request);
-        let url = format!("{}/chat/completions", self.base_url);
         let headers = [("authorization", format!("Bearer {api_key}"))];
-        let reader = http_post_stream(&url, &headers, &body)?;
-        self.parse_stream(BufReader::new(reader), on_event)
+        let reader = http_post_stream(&self.endpoint, &headers, &body)?;
+        self.parse_stream(BufReader::new(reader), cancel, on_event)
     }
 }
 
@@ -291,8 +278,8 @@ mod tests {
     use super::*;
     use std::io::Cursor;
 
-    fn provider() -> OpenAiChatProvider {
-        OpenAiChatProvider::new("openai", "https://example.invalid", None, vec![])
+    fn adapter() -> OpenAiChatAdapter {
+        OpenAiChatAdapter::new("https://example.invalid/custom/chat", None)
     }
 
     #[test]
@@ -304,8 +291,8 @@ mod tests {
             "data: [DONE]\n\n",
         );
         let mut deltas = String::new();
-        let outcome = provider()
-            .parse_stream(Cursor::new(stream), &mut |event| {
+        let outcome = adapter()
+            .parse_stream(Cursor::new(stream), &AtomicBool::new(false), &mut |event| {
                 if let ChatEvent::TextDelta(text) = event {
                     deltas.push_str(&text);
                 }
@@ -327,8 +314,8 @@ mod tests {
             "\"function\":{\"arguments\":\"\\\"a.txt\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n",
             "data: [DONE]\n\n",
         );
-        let outcome = provider()
-            .parse_stream(Cursor::new(stream), &mut |_| {})
+        let outcome = adapter()
+            .parse_stream(Cursor::new(stream), &AtomicBool::new(false), &mut |_| {})
             .unwrap();
         assert_eq!(outcome.finish_reason, FinishReason::ToolCalls);
         assert_eq!(outcome.tool_calls.len(), 1);

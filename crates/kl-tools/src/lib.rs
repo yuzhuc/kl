@@ -12,15 +12,17 @@ pub use shell::{GitTool, ShellTool};
 
 use kl_policy::{Action, PolicyEngine};
 use kl_provider::ToolDefinition;
+use kl_sandbox::SandboxManager;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 pub struct ToolContext<'a> {
     pub policy: &'a PolicyEngine,
     pub cancel: &'a AtomicBool,
+    pub sandbox: Arc<SandboxManager>,
     pub timeout: Duration,
     pub max_output_bytes: usize,
 }
@@ -70,8 +72,8 @@ pub enum ToolError {
 }
 
 pub trait Tool: Send + Sync {
-    fn name(&self) -> &'static str;
-    fn description(&self) -> &'static str;
+    fn name(&self) -> &str;
+    fn description(&self) -> &str;
     fn parameters(&self) -> Value;
     fn policy_request(&self, args: &Value) -> Result<PolicyRequest, ToolError>;
     fn execute(&self, context: &ToolContext<'_>, args: &Value) -> Result<ToolOutcome, ToolError>;
@@ -86,7 +88,7 @@ pub trait Tool: Send + Sync {
 }
 
 pub struct ToolRegistry {
-    tools: HashMap<&'static str, Arc<dyn Tool>>,
+    tools: RwLock<HashMap<String, Arc<dyn Tool>>>,
 }
 
 impl ToolRegistry {
@@ -101,23 +103,49 @@ impl ToolRegistry {
             Arc::new(GitTool),
         ];
         Self {
-            tools: tools.into_iter().map(|tool| (tool.name(), tool)).collect(),
+            tools: RwLock::new(
+                tools
+                    .into_iter()
+                    .map(|tool| (tool.name().to_owned(), tool))
+                    .collect(),
+            ),
         }
     }
 
+    pub fn register(&self, tool: Arc<dyn Tool>) {
+        self.tools
+            .write()
+            .unwrap_or_else(|error| error.into_inner())
+            .insert(tool.name().to_owned(), tool);
+    }
+
+    pub fn remove(&self, name: &str) -> bool {
+        self.tools
+            .write()
+            .unwrap_or_else(|error| error.into_inner())
+            .remove(name)
+            .is_some()
+    }
+
     pub fn get(&self, name: &str) -> Option<Arc<dyn Tool>> {
-        self.tools.get(name).cloned()
+        self.tools
+            .read()
+            .unwrap_or_else(|error| error.into_inner())
+            .get(name)
+            .cloned()
     }
 
     pub fn definitions(&self) -> Vec<ToolDefinition> {
+        let tools = self.tools.read().unwrap_or_else(|error| error.into_inner());
         let mut definitions: Vec<ToolDefinition> =
-            self.tools.values().map(|tool| tool.definition()).collect();
+            tools.values().map(|tool| tool.definition()).collect();
         definitions.sort_by(|left, right| left.name.cmp(&right.name));
         definitions
     }
 
-    pub fn names(&self) -> Vec<&'static str> {
-        let mut names: Vec<&'static str> = self.tools.keys().copied().collect();
+    pub fn names(&self) -> Vec<String> {
+        let tools = self.tools.read().unwrap_or_else(|error| error.into_inner());
+        let mut names: Vec<String> = tools.keys().cloned().collect();
         names.sort_unstable();
         names
     }
@@ -165,6 +193,7 @@ mod tests {
         ToolContext {
             policy,
             cancel,
+            sandbox: Arc::new(SandboxManager::policy_only()),
             timeout: Duration::from_secs(20),
             max_output_bytes: 64 * 1024,
         }
@@ -255,6 +284,36 @@ mod tests {
             .execute(&context, &json!({"pattern": "*.rs"}))
             .unwrap();
         assert!(glob.output.contains("src/a.rs"));
+    }
+
+    #[test]
+    fn shell_env_allowlist_hides_unlisted_variables() {
+        unsafe {
+            std::env::set_var("KL_TOOL_TEST_ALLOWED", "visible-value");
+            std::env::set_var("KL_TOOL_TEST_DENIED", "hidden-value");
+        }
+        let temp = tempfile::tempdir().unwrap();
+        let policy = PolicyEngine::new(
+            temp.path(),
+            PolicyConfig {
+                auto_approve_shell: true,
+                env_allowlist: vec!["KL_TOOL_TEST_ALLOWED".to_owned()],
+                ..PolicyConfig::default()
+            },
+        )
+        .unwrap();
+        let cancel = AtomicBool::new(false);
+        let context = context(&policy, &cancel);
+        let command = if cfg!(windows) {
+            "echo [%KL_TOOL_TEST_ALLOWED%] [%KL_TOOL_TEST_DENIED%]"
+        } else {
+            "printf '[%s] [%s]' \"$KL_TOOL_TEST_ALLOWED\" \"$KL_TOOL_TEST_DENIED\""
+        };
+        let outcome = ShellTool
+            .execute(&context, &json!({"command": command}))
+            .unwrap();
+        assert!(outcome.output.contains("visible-value"));
+        assert!(!outcome.output.contains("hidden-value"));
     }
 
     #[test]

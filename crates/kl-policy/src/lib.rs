@@ -16,6 +16,7 @@ pub enum Action {
     Shell,
     GitRead,
     GitWrite,
+    Plugin,
 }
 
 impl Action {
@@ -26,6 +27,7 @@ impl Action {
             Self::Shell => "shell",
             Self::GitRead => "git_read",
             Self::GitWrite => "git_write",
+            Self::Plugin => "plugin",
         }
     }
 }
@@ -85,8 +87,13 @@ impl Evaluation {
 pub struct PolicyConfig {
     pub auto_approve_edits: bool,
     pub auto_approve_shell: bool,
+    pub auto_approve_plugins: bool,
     pub allow_outside_workspace: bool,
     pub allow_sensitive_reads: bool,
+    #[serde(default)]
+    pub network_allowlist: Vec<String>,
+    #[serde(default)]
+    pub env_allowlist: Vec<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -133,6 +140,7 @@ impl PolicyEngine {
             Action::Read | Action::Edit => self.evaluate_path(action, resource),
             Action::Shell => self.evaluate_shell(resource),
             Action::GitRead | Action::GitWrite => self.evaluate_git(resource),
+            Action::Plugin => self.evaluate_plugin(resource),
         }
     }
 
@@ -181,10 +189,25 @@ impl PolicyEngine {
         if let Some((needle, reason)) = dangerous_command(command) {
             return Evaluation::deny(format!("dangerous command denied ({reason}): {needle}"));
         }
+        if !self.config.network_allowlist.is_empty() {
+            for host in extract_hosts(command) {
+                if !host_allowed(&self.config.network_allowlist, &host) {
+                    return Evaluation::deny(format!("network host is not allowlisted: {host}"));
+                }
+            }
+        }
         if self.config.auto_approve_shell {
             Evaluation::allow("shell auto-approved by config", None)
         } else {
             Evaluation::ask("shell commands require approval", None)
+        }
+    }
+
+    pub fn evaluate_plugin(&self, resource: &str) -> Evaluation {
+        if self.config.auto_approve_plugins {
+            Evaluation::allow("plugin call auto-approved by config", None)
+        } else {
+            Evaluation::ask(format!("plugin tool requires approval: {resource}"), None)
         }
     }
 
@@ -364,6 +387,47 @@ pub fn is_read_only_git(args: &str) -> bool {
         .is_some_and(|subcommand| is_git_read_only(subcommand, &tokens[1..]))
 }
 
+fn extract_hosts(command: &str) -> Vec<String> {
+    let mut hosts = Vec::new();
+    for token in command.split_whitespace() {
+        let token = token.trim_matches(|character: char| {
+            matches!(character, '"' | '\'' | '(' | ')' | '[' | ']' | ',' | ';')
+        });
+        let host = if let Some(rest) = token
+            .strip_prefix("https://")
+            .or_else(|| token.strip_prefix("http://"))
+            .or_else(|| token.strip_prefix("ssh://"))
+        {
+            let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+            let authority = authority.rsplit('@').next().unwrap_or(authority);
+            authority.split(':').next().unwrap_or_default()
+        } else if let Some(rest) = token.strip_prefix("git@") {
+            rest.split(':').next().unwrap_or_default()
+        } else {
+            ""
+        };
+        if !host.is_empty() {
+            hosts.push(host.to_lowercase());
+        }
+    }
+    hosts.sort();
+    hosts.dedup();
+    hosts
+}
+
+fn host_allowed(allowed: &[String], host: &str) -> bool {
+    allowed.iter().any(|entry| {
+        let entry = entry.trim().to_lowercase();
+        if let Some(suffix) = entry.strip_prefix("*.") {
+            host == suffix || host.ends_with(&format!(".{suffix}"))
+        } else if let Some(suffix) = entry.strip_prefix('.') {
+            host == suffix || host.ends_with(&format!(".{suffix}"))
+        } else {
+            host == entry
+        }
+    })
+}
+
 fn is_git_read_only(subcommand: &str, args: &[&str]) -> bool {
     match subcommand {
         "status" | "diff" | "log" | "show" | "rev-parse" | "ls-files" | "blame" | "describe"
@@ -462,6 +526,42 @@ mod tests {
         );
         assert_eq!(
             policy.evaluate(Action::Shell, "cargo test").effect,
+            Effect::Ask
+        );
+    }
+
+    #[test]
+    fn network_allowlist_denies_unlisted_hosts() {
+        let temp = tempfile::tempdir().unwrap();
+        let policy = engine(
+            temp.path(),
+            PolicyConfig {
+                network_allowlist: vec!["example.com".to_owned()],
+                ..PolicyConfig::default()
+            },
+        );
+        assert_eq!(
+            policy
+                .evaluate(Action::Shell, "curl https://example.com/v1")
+                .effect,
+            Effect::Ask
+        );
+        assert_eq!(
+            policy
+                .evaluate(Action::Shell, "curl https://evil.example.net/v1")
+                .effect,
+            Effect::Deny
+        );
+    }
+
+    #[test]
+    fn empty_network_allowlist_preserves_shell_approval() {
+        let temp = tempfile::tempdir().unwrap();
+        let policy = engine(temp.path(), PolicyConfig::default());
+        assert_eq!(
+            policy
+                .evaluate(Action::Shell, "curl https://evil.example.net/v1")
+                .effect,
             Effect::Ask
         );
     }

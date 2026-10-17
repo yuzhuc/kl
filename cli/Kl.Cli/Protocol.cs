@@ -21,5 +21,10 @@ public static class Protocol
     public const string ProviderList = "provider.list";
     public const string AuditTail = "audit.tail";
     public const string ConfigGet = "config.get";
+    public const string PluginList = "plugin.list";
+    public const string PluginInstall = "plugin.install";
+    public const string PluginReload = "plugin.reload";
+    public const string PluginEnable = "plugin.enable";
+    public const string PluginDisable = "plugin.disable";
     public const string Event = "event";
 }

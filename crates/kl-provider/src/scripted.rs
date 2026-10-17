@@ -5,7 +5,7 @@ use crate::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::path::Path;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 /// Deterministic provider used for offline end-to-end tests and demos.
 /// It returns pre-recorded assistant turns in order, resetting for each turn.
@@ -92,8 +92,12 @@ impl Provider for ScriptedProvider {
     fn stream_chat(
         &self,
         _request: &ChatRequest,
+        cancel: &AtomicBool,
         on_event: &mut dyn FnMut(ChatEvent),
     ) -> Result<ChatOutcome, ProviderError> {
+        if cancel.load(Ordering::Relaxed) {
+            return Err(ProviderError::cancelled());
+        }
         let index = self.cursor.fetch_add(1, Ordering::SeqCst);
         let Some(turn) = self.turns.get(index) else {
             on_event(ChatEvent::TextDelta("Script exhausted.".to_owned()));
@@ -109,6 +113,9 @@ impl Provider for ScriptedProvider {
             on_event(ChatEvent::ReasoningDelta(turn.reasoning.clone()));
         }
         for chunk in chunk_text(&turn.text, 24) {
+            if cancel.load(Ordering::Relaxed) {
+                return Err(ProviderError::cancelled());
+            }
             on_event(ChatEvent::TextDelta(chunk));
         }
 
@@ -173,16 +180,22 @@ mod tests {
         )
         .unwrap();
         let request = ChatRequest::new("scripted", vec![]);
-        let first = provider.stream_chat(&request, &mut |_| {}).unwrap();
+        let first = provider
+            .stream_chat(&request, &AtomicBool::new(false), &mut |_| {})
+            .unwrap();
         assert_eq!(first.tool_calls.len(), 1);
         assert_eq!(first.tool_calls[0].name, "read_file");
 
-        let second = provider.stream_chat(&request, &mut |_| {}).unwrap();
+        let second = provider
+            .stream_chat(&request, &AtomicBool::new(false), &mut |_| {})
+            .unwrap();
         assert_eq!(second.text, "done");
         assert_eq!(second.finish_reason, FinishReason::Stop);
 
         provider.begin_turn();
-        let reset = provider.stream_chat(&request, &mut |_| {}).unwrap();
+        let reset = provider
+            .stream_chat(&request, &AtomicBool::new(false), &mut |_| {})
+            .unwrap();
         assert_eq!(reset.tool_calls.len(), 1);
     }
 }

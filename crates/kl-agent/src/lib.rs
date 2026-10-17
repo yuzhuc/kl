@@ -4,11 +4,16 @@
 use kl_audit::{AuditRecord, AuditSink};
 use kl_policy::{Effect, PolicyEngine};
 use kl_protocol::{ApprovalDecision, CoreEvent};
-use kl_provider::{ChatEvent, ChatMessage, ChatRequest, Provider, ProviderError, ToolCall};
+use kl_provider::{
+    ChatEvent, ChatMessage, ChatOutcome, ChatRequest, ModelMetadata, Provider, ProviderError,
+    ProviderErrorKind, ToolCall,
+};
+use kl_sandbox::SandboxManager;
 use kl_tools::{PolicyRequest, ToolContext, ToolRegistry};
 use serde_json::{Value, json};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone)]
@@ -85,11 +90,17 @@ pub enum AgentError {
     MaxIterations,
 }
 
+enum ProviderMessage {
+    Event(ChatEvent),
+    Done(Result<ChatOutcome, ProviderError>),
+}
+
 pub struct Agent {
     provider: Arc<dyn Provider>,
-    model: String,
+    metadata: ModelMetadata,
     tools: Arc<ToolRegistry>,
     policy: Arc<PolicyEngine>,
+    sandbox: Arc<SandboxManager>,
     audit: Arc<dyn AuditSink>,
     config: AgentConfig,
     system_prompt: String,
@@ -98,22 +109,28 @@ pub struct Agent {
 impl Agent {
     pub fn new(
         provider: Arc<dyn Provider>,
-        model: impl Into<String>,
+        metadata: ModelMetadata,
         tools: Arc<ToolRegistry>,
         policy: Arc<PolicyEngine>,
+        sandbox: Arc<SandboxManager>,
         audit: Arc<dyn AuditSink>,
         config: AgentConfig,
     ) -> Self {
         let system_prompt = system_prompt(policy.workspace());
         Self {
             provider,
-            model: model.into(),
+            metadata,
             tools,
             policy,
+            sandbox,
             audit,
             config,
             system_prompt,
         }
+    }
+
+    pub fn metadata(&self) -> &ModelMetadata {
+        &self.metadata
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -123,7 +140,7 @@ impl Agent {
         turn_id: &str,
         prompt: &str,
         history: &mut Vec<ChatMessage>,
-        cancel: &AtomicBool,
+        cancel: Arc<AtomicBool>,
         sink: &dyn EventSink,
         approvals: &dyn ApprovalGate,
     ) -> Result<TurnResult, AgentError> {
@@ -138,39 +155,22 @@ impl Agent {
                 return self.finish_cancelled(turn_id, history, sink);
             }
 
-            let mut request = ChatRequest::new(self.model.clone(), history.clone());
+            let mut request = ChatRequest::new(self.metadata.model.clone(), history.clone());
+            request.max_tokens = self.metadata.max_output_tokens;
             request.system = self.system_prompt.clone();
             request.tools = self.tools.definitions();
 
-            let mut event_error: Option<AgentError> = None;
-            let outcome = self.provider.stream_chat(&request, &mut |event| {
-                let mapped = match event {
-                    ChatEvent::TextDelta(text) => CoreEvent::TurnDelta {
-                        turn_id: turn_id.to_owned(),
-                        text,
-                    },
-                    ChatEvent::ReasoningDelta(text) => CoreEvent::TurnReasoning {
-                        turn_id: turn_id.to_owned(),
-                        text,
-                    },
-                    ChatEvent::ToolCallDelta { .. } | ChatEvent::Usage(_) => return,
-                };
-                if let Err(error) = sink.emit(mapped) {
-                    event_error = Some(error);
-                }
-            });
-
-            if let Some(error) = event_error {
-                return Err(error);
-            }
-            let outcome = match outcome {
+            let outcome = match self.stream_provider(request, cancel.clone(), sink, turn_id) {
                 Ok(outcome) => outcome,
+                Err(AgentError::Provider(error)) if error.kind == ProviderErrorKind::Cancelled => {
+                    return self.finish_cancelled(turn_id, history, sink);
+                }
                 Err(error) => {
                     let _ = sink.emit(CoreEvent::TurnFailed {
                         turn_id: turn_id.to_owned(),
                         message: error.to_string(),
                     });
-                    return Err(error.into());
+                    return Err(error);
                 }
             };
 
@@ -205,7 +205,7 @@ impl Agent {
                 .take(self.config.max_tool_calls_per_turn)
             {
                 let result =
-                    self.execute_tool_call(session_id, turn_id, call, cancel, sink, approvals);
+                    self.execute_tool_call(session_id, turn_id, call, &cancel, sink, approvals);
                 history.push(ChatMessage::tool(&call.id, result));
                 if cancel.load(Ordering::Relaxed) {
                     return self.finish_cancelled(turn_id, history, sink);
@@ -222,6 +222,62 @@ impl Agent {
             message: message.clone(),
         })?;
         Err(AgentError::MaxIterations)
+    }
+
+    fn stream_provider(
+        &self,
+        request: ChatRequest,
+        cancel: Arc<AtomicBool>,
+        sink: &dyn EventSink,
+        turn_id: &str,
+    ) -> Result<ChatOutcome, AgentError> {
+        let (sender, receiver) = mpsc::channel();
+        let provider = self.provider.clone();
+        let provider_cancel = cancel.clone();
+        std::thread::spawn(move || {
+            let result = provider.stream_chat(&request, &provider_cancel, &mut |event| {
+                let _ = sender.send(ProviderMessage::Event(event));
+            });
+            let _ = sender.send(ProviderMessage::Done(result));
+        });
+
+        loop {
+            if cancel.load(Ordering::Relaxed) {
+                return Err(AgentError::Provider(ProviderError::cancelled()));
+            }
+            match receiver.recv_timeout(Duration::from_millis(100)) {
+                Ok(ProviderMessage::Event(event)) => {
+                    let mapped = match event {
+                        ChatEvent::TextDelta(text) => Some(CoreEvent::TurnDelta {
+                            turn_id: turn_id.to_owned(),
+                            text,
+                        }),
+                        ChatEvent::ReasoningDelta(text) => Some(CoreEvent::TurnReasoning {
+                            turn_id: turn_id.to_owned(),
+                            text,
+                        }),
+                        ChatEvent::ToolCallDelta { .. } | ChatEvent::Usage(_) => None,
+                    };
+                    if let Some(mapped) = mapped {
+                        sink.emit(mapped)?;
+                    }
+                }
+                Ok(ProviderMessage::Done(Ok(outcome))) => return Ok(outcome),
+                Ok(ProviderMessage::Done(Err(error))) => {
+                    if cancel.load(Ordering::Relaxed) {
+                        return Err(AgentError::Provider(ProviderError::cancelled()));
+                    }
+                    return Err(error.into());
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    return Err(AgentError::Provider(ProviderError::new(
+                        ProviderErrorKind::Transport,
+                        "provider stream disconnected",
+                    )));
+                }
+            }
+        }
     }
 
     fn finish_cancelled(
@@ -409,6 +465,7 @@ impl Agent {
         let context = ToolContext {
             policy: &self.policy,
             cancel,
+            sandbox: self.sandbox.clone(),
             timeout: self.config.command_timeout,
             max_output_bytes: self.config.max_tool_output_bytes,
         };
@@ -588,8 +645,9 @@ mod tests {
     use super::*;
     use kl_audit::MemoryAudit;
     use kl_policy::PolicyConfig;
-    use kl_provider::ScriptedProvider;
+    use kl_provider::{FinishReason, ModelInfo, Protocol, ScriptedProvider, Usage};
     use std::sync::Mutex;
+    use std::time::Instant;
 
     #[derive(Default)]
     struct RecordingSink {
@@ -603,12 +661,167 @@ mod tests {
         }
     }
 
+    struct SlowProvider;
+
+    impl Provider for SlowProvider {
+        fn id(&self) -> &str {
+            "slow"
+        }
+
+        fn kind(&self) -> &str {
+            "slow"
+        }
+
+        fn models(&self) -> Vec<ModelInfo> {
+            vec![ModelInfo::new("slow")]
+        }
+
+        fn stream_chat(
+            &self,
+            _request: &ChatRequest,
+            cancel: &AtomicBool,
+            on_event: &mut dyn FnMut(ChatEvent),
+        ) -> Result<ChatOutcome, ProviderError> {
+            for index in 0..100 {
+                if cancel.load(Ordering::Relaxed) {
+                    return Err(ProviderError::cancelled());
+                }
+                on_event(ChatEvent::TextDelta(format!("chunk-{index}")));
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            Ok(ChatOutcome {
+                text: "done".to_owned(),
+                tool_calls: Vec::new(),
+                finish_reason: FinishReason::Stop,
+                usage: Usage::default(),
+            })
+        }
+    }
+
+    fn metadata() -> ModelMetadata {
+        ModelMetadata::new(
+            "test",
+            "test-model",
+            Protocol::Scripted,
+            "offline://test",
+            32_000,
+            0.75,
+            1234,
+        )
+    }
+
     struct Gate(ApprovalDecision);
 
     impl ApprovalGate for Gate {
         fn request(&self, _request: ApprovalRequest) -> ApprovalDecision {
             self.0
         }
+    }
+
+    struct MetadataProvider;
+
+    impl Provider for MetadataProvider {
+        fn id(&self) -> &str {
+            "metadata"
+        }
+
+        fn kind(&self) -> &str {
+            "test"
+        }
+
+        fn models(&self) -> Vec<ModelInfo> {
+            Vec::new()
+        }
+
+        fn stream_chat(
+            &self,
+            request: &ChatRequest,
+            _cancel: &AtomicBool,
+            on_event: &mut dyn FnMut(ChatEvent),
+        ) -> Result<ChatOutcome, ProviderError> {
+            assert_eq!(request.model, "test-model");
+            assert_eq!(request.max_tokens, 1234);
+            on_event(ChatEvent::TextDelta("ok".to_owned()));
+            Ok(ChatOutcome {
+                text: "ok".to_owned(),
+                tool_calls: Vec::new(),
+                finish_reason: FinishReason::Stop,
+                usage: Usage::default(),
+            })
+        }
+    }
+
+    #[test]
+    fn exposes_model_metadata_and_uses_max_output_tokens() {
+        let temp = tempfile::tempdir().unwrap();
+        let policy = Arc::new(PolicyEngine::new(temp.path(), PolicyConfig::default()).unwrap());
+        let agent = Agent::new(
+            Arc::new(MetadataProvider),
+            metadata(),
+            Arc::new(ToolRegistry::builtin()),
+            policy,
+            Arc::new(SandboxManager::policy_only()),
+            Arc::new(MemoryAudit::default()),
+            AgentConfig::default(),
+        );
+        assert_eq!(agent.metadata().context_window, 32_000);
+        assert_eq!(agent.metadata().compact_threshold, 0.75);
+        assert_eq!(agent.metadata().max_output_tokens, 1234);
+        let sink = RecordingSink::default();
+        let mut history = Vec::new();
+        let result = agent
+            .run_turn(
+                "session",
+                "turn",
+                "go",
+                &mut history,
+                Arc::new(AtomicBool::new(false)),
+                &sink,
+                &Gate(ApprovalDecision::Allow),
+            )
+            .unwrap();
+        assert_eq!(result.status, TurnStatus::Completed);
+    }
+
+    #[test]
+    fn cancel_interrupts_slow_provider_promptly() {
+        let temp = tempfile::tempdir().unwrap();
+        let policy = Arc::new(PolicyEngine::new(temp.path(), PolicyConfig::default()).unwrap());
+        let agent = Agent::new(
+            Arc::new(SlowProvider),
+            metadata(),
+            Arc::new(ToolRegistry::builtin()),
+            policy,
+            Arc::new(SandboxManager::policy_only()),
+            Arc::new(MemoryAudit::default()),
+            AgentConfig::default(),
+        );
+        let sink = RecordingSink::default();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let cancel_for_thread = cancel.clone();
+        let handle = std::thread::spawn(move || {
+            let mut history = Vec::new();
+            agent.run_turn(
+                "session",
+                "turn",
+                "go",
+                &mut history,
+                cancel_for_thread,
+                &sink,
+                &Gate(ApprovalDecision::Allow),
+            )
+        });
+
+        std::thread::sleep(Duration::from_millis(200));
+        let started = Instant::now();
+        cancel.store(true, Ordering::Relaxed);
+        let result = handle.join().unwrap().unwrap();
+        assert_eq!(result.status, TurnStatus::Cancelled);
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "cancellation took {:?}",
+            started.elapsed()
+        );
     }
 
     #[test]
@@ -639,9 +852,10 @@ mod tests {
         let audit = Arc::new(MemoryAudit::default());
         let agent = Agent::new(
             provider,
-            "scripted",
+            metadata(),
             Arc::new(ToolRegistry::builtin()),
             policy,
+            Arc::new(SandboxManager::policy_only()),
             audit.clone(),
             AgentConfig::default(),
         );
@@ -653,7 +867,7 @@ mod tests {
                 "turn",
                 "fix it",
                 &mut history,
-                &AtomicBool::new(false),
+                Arc::new(AtomicBool::new(false)),
                 &sink,
                 &Gate(ApprovalDecision::Allow),
             )
@@ -699,9 +913,10 @@ mod tests {
         let audit = Arc::new(MemoryAudit::default());
         let agent = Agent::new(
             provider,
-            "scripted",
+            metadata(),
             Arc::new(ToolRegistry::builtin()),
             policy,
+            Arc::new(SandboxManager::policy_only()),
             audit.clone(),
             AgentConfig::default(),
         );
@@ -713,7 +928,7 @@ mod tests {
                 "turn",
                 "fix it",
                 &mut history,
-                &AtomicBool::new(false),
+                Arc::new(AtomicBool::new(false)),
                 &sink,
                 &Gate(ApprovalDecision::Deny),
             )

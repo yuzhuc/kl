@@ -1,0 +1,22 @@
+[package]
+name = "kl-plugin-host"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "KL sidecar plugin manifest, supervisor and adapters"
+
+[dependencies]
+kl-policy = { path = "../kl-policy" }
+kl-provider = { path = "../kl-provider" }
+kl-tools = { path = "../kl-tools" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+toml = "0.8"
+uuid = { version = "1", features = ["v4"] }
+walkdir = "2"
+dunce = "1"
+
+[dev-dependencies]
+tempfile = "3"

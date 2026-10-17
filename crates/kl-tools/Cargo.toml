@@ -10,6 +10,7 @@ description = "KL built-in tools: files, search, shell and git"
 kl-policy = { path = "../kl-policy" }
 kl-exec = { path = "../kl-exec" }
 kl-provider = { path = "../kl-provider" }
+kl-sandbox = { path = "../kl-sandbox" }
 serde_json.workspace = true
 thiserror.workspace = true
 regex = "1"

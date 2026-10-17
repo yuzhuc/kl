@@ -15,6 +15,7 @@ pub struct CommandSpec {
     pub timeout: Duration,
     pub max_output_bytes: usize,
     pub env: Vec<(String, String)>,
+    pub clear_env: bool,
 }
 
 impl CommandSpec {
@@ -26,6 +27,7 @@ impl CommandSpec {
             timeout: Duration::from_secs(120),
             max_output_bytes: 256 * 1024,
             env: Vec::new(),
+            clear_env: false,
         }
     }
 }
@@ -81,6 +83,9 @@ pub fn run(spec: &CommandSpec, cancel: &AtomicBool) -> Result<CommandOutput, Exe
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    if spec.clear_env {
+        command.env_clear();
+    }
     for (key, value) in &spec.env {
         command.env(key, value);
     }

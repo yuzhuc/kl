@@ -22,6 +22,8 @@ kl-policy = { path = "../kl-policy" }
 kl-provider = { path = "../kl-provider" }
 kl-store = { path = "../kl-store" }
 kl-tools = { path = "../kl-tools" }
+kl-sandbox = { path = "../kl-sandbox" }
+kl-plugin-host = { path = "../kl-plugin-host" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

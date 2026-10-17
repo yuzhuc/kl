@@ -1,0 +1,24 @@
+{
+  "id": "fake-tool",
+  "version": "1.0.0",
+  "api": 1,
+  "kind": "tool",
+  "entrypoint": "../../../target/debug/fake_plugin.exe",
+  "runtime": "sidecar",
+  "capabilities": ["tool"],
+  "permissions": {
+    "network": ["example.com"],
+    "env": ["EXAMPLE_PLUGIN_TOKEN"],
+    "fs_read": ["workspace"],
+    "fs_write": []
+  },
+  "tool_name": "fake_tool",
+  "tool_parameters": {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+  },
+  "config_path": "config.json",
+  "health_timeout_ms": 3000,
+  "drain_timeout_ms": 2000
+}

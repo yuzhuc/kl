@@ -1,4 +1,4 @@
-# KL architecture (MVP)
+# KL architecture
 
 ```text
 C# terminal client (kl)
@@ -8,11 +8,13 @@ C# terminal client (kl)
         v
 Rust trusted core (kl-core)
   Emitter + JSON-RPC loop
-  ProviderRouter (OpenAI-compatible Chat, Anthropic, scripted)
+  ProviderRouter (OpenAI-compatible Chat, Anthropic, scripted, sidecar plugins)
   Agent loop (provider-neutral)
-  ToolRegistry (read/write/edit/grep/glob/shell/git)
-  PolicyEngine (path/command/git/approval)
-  JsonlAudit
+  ToolRegistry (built-ins + sidecar tools)
+  PolicyEngine (path/command/git/network/env/plugin/approval)
+  SandboxManager (policy/strict probing, MXC Z: isolation)
+  PluginHost (manifest v1, sidecar supervisor, health, drain, hot swap)
+  AuditLog (rotated JSONL + SQLite index)
   SessionStore (session.json, state.json, events.jsonl)
 ```
 
@@ -27,22 +29,22 @@ Rust trusted core (kl-core)
 4. `turn.start` returns a `turn_id` immediately and runs the agent on a worker
    thread so the request loop can still accept `turn.cancel` and
    `tool.approval.respond`.
-5. Every agent event is appended to `events.jsonl` and sent as an `event`
+5. Provider streaming runs on a detached worker; the agent polls it every
+   100 ms. `turn.cancel` returns the turn promptly, and the provider sees the
+   cancellation flag at its next stream event/read.
+6. Every agent event is appended to `events.jsonl` and sent as an `event`
    notification with an increasing per-session `seq`.
-6. Tool calls require an `allow`, `ask` or `deny` policy decision. `ask` blocks
+7. Tool calls require an `allow`, `ask` or `deny` policy decision. `ask` blocks
    the worker until the client responds or the approval timeout expires.
-7. One audit record is written for every tool call, including denied and
-   invalid calls. The record includes argument/output hashes, the decision,
-   approval result, duration and error.
-8. At the end of a turn the projected message list is written to `state.json`.
+8. One audit record is written for every tool call, including denied and
+   invalid calls. AuditLog appends raw JSONL and inserts a SQLite index row.
+9. At the end of a turn the projected message list is written to `state.json`.
 
 ## Agent loop
 
-The loop is explicit and observable:
-
 ```text
 turn.started
-  -> model call (streamed text/reasoning)
+  -> model call (streamed text/reasoning, cancellation-aware)
   -> tool call(s) (policy -> approval -> execute -> audit)
   -> model call again with tool results
   -> turn.completed / turn.failed / cancelled
@@ -50,6 +52,23 @@ turn.started
 
 The provider adapter is the only place that knows OpenAI or Anthropic wire
 formats. The agent only sees `ChatRequest`, `ChatEvent` and `ChatMessage`.
+Sidecar providers implement the same neutral trait.
+
+## Plugin lifecycle
+
+```text
+install/reload
+  -> validate manifest v1
+  -> spawn new sidecar with clean env + capability token
+  -> handshake (token + API version)
+  -> health check
+  -> switch active pointer (adapters resolve by plugin id)
+  -> drain old in-flight requests
+  -> stop old process
+```
+
+A failed handshake/health keeps the old active process. Plugin tool calls are
+permission-checked by the host before the sidecar is invoked.
 
 ## Storage
 
@@ -59,21 +78,24 @@ formats. The agent only sees `ChatRequest`, `ChatEvent` and `ChatMessage`.
 sessions/<session-id>/session.json   metadata
 sessions/<session-id>/state.json     message projection
 sessions/<session-id>/events.jsonl   append-only event log
-audit/events.jsonl                   append-only tool audit
+audit/events.jsonl                   active raw audit log
+audit/events-*.jsonl                 rotated raw audit archives
+audit/audit.sqlite                   audit query index
+plugins/installed/<id>/...           sidecar versions and current pointer
 ```
-
-SQLite indexing is planned for a later stage; the MVP uses JSONL and a small
-JSON projection so it has no native database build dependency.
 
 ## Protocol
 
-See `schemas/protocol/v1/` and `tests/fixtures/protocol/`. The same fixtures
-are parsed by Rust (`crates/kl-protocol/tests/contract.rs`) and .NET
+See `schemas/protocol/v1/`, `schemas/plugin/manifest-v1.schema.json` and
+`tests/fixtures/protocol/`. The same fixtures are parsed by Rust
+(`crates/kl-protocol/tests/contract.rs`) and .NET
 (`cli/Kl.Cli.Tests/ProtocolContractTests.cs`).
 
-## Deliberate MVP gaps
+## Deliberate gaps
 
-- No OS-level sandbox (path, command, network and approval policy only).
-- No plugin host, sidecar supervisor or WASM runtime yet.
-- No multi-agent quality modes, repository symbol index or SQLite audit index.
+- OS-level file/network sandbox enforcement is still policy/protocol based;
+  strict mode fails closed when a backend is unavailable.
+- WASM plugin runtime is not implemented; sidecar is the current runtime.
+- No multi-agent quality modes or repository symbol index.
 - No UDS/Named Pipe transport; the transport boundary is ready for one.
+- Live Provider smoke remains pending until API keys are supplied.

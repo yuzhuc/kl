@@ -1,4 +1,4 @@
-# Policy and audit
+# Policy, sandbox and audit
 
 ## Decision model
 
@@ -11,6 +11,7 @@ Every tool request is evaluated as `action + resource -> effect`:
 | shell | command text | ask |
 | git_read | git arguments | allow for read-only subcommands |
 | git_write | git arguments | ask |
+| plugin | plugin id | ask (configurable auto-approve) |
 | deny | dangerous command/path | always deny |
 
 `ask` is resolved by the client. `deny` cannot be overridden with `--yes`.
@@ -25,21 +26,59 @@ Every tool request is evaluated as `action + resource -> effect`:
 - Sensitive names such as `.env*`, `.ssh`, `.aws`, `.gnupg`, `.git`, `id_rsa`
   and credential files require approval (or `allow_sensitive_reads` for reads).
 
-## Command safety
+## Command, network and environment policy
 
 The policy denies clear destructive patterns before asking for approval,
 including recursive deletion of filesystem roots/homes, formatting, disk
 partitioning, shutdown/reboot, force push, hard reset, encoded PowerShell
 execution and download-pipe-to-shell patterns.
 
-Shell command text is not a complete OS sandbox. A command that does not match
-the deny list is still shown to the user for approval, but the MVP does not
-parse every argument for out-of-workspace paths. OS sandboxing is a later
-stage.
+`policy.network_allowlist` checks URLs and SSH/Git hosts found in shell command
+text. A host outside the list is denied before execution. An empty list keeps
+the previous behavior: the shell still requires approval, but URLs are not
+checked.
+
+`policy.env_allowlist` switches shell/git to a clean child environment. Safe
+platform variables such as `PATH`, `SystemRoot`, `ComSpec`, `TEMP`, `HOME` and
+the listed variables are passed; all others are removed. An empty list inherits
+the parent environment.
+
+Shell command text is still not a complete OS sandbox; complex scripts can
+obscure paths or network access. This is enforced at the policy/protocol layer
+until stronger platform sandboxes are added.
+
+## Sandbox backend status
+
+`sandbox.mode = "policy"` is the default. `strict` requires a real backend and
+fails closed if the selected backend is unavailable.
+
+The MXC probe detects the external `MXC launcher: enumerate MXC volume Z:`
+failure. In non-strict mode KL isolates it by continuing with policy-only
+execution; in strict mode shell and plugin process execution are denied.
+`kl doctor` exposes `sandbox_backend`, `sandbox_strict` and
+`sandbox_z_isolation`.
+
+## Plugin permissions
+
+Sidecar manifests declare:
+
+- `network`: allowed hosts for plugin tool URL arguments;
+- `env`: variables copied into the plugin process;
+- `fs_read` / `fs_write`: `workspace` or workspace-relative path prefixes.
+
+The host rejects unauthorized network/path requests before invoking the
+plugin. Plugin processes get a clean environment plus safe variables and the
+granted variables. The per-instance capability token is checked at handshake
+and on every request.
 
 ## Audit
 
-`~/.kl/audit/events.jsonl` is append-only. Each record contains:
+`~/.kl/audit/events.jsonl` is the raw append-only JSONL log. It rotates at
+`audit.rotate_bytes` and keeps `audit.keep_files` archives. SQLite
+`~/.kl/audit/audit.sqlite` is the query index used by `kl audit`; the raw
+rotated JSONL files remain the source of truth.
+
+Each record contains:
 
 - session, turn and call ids;
 - tool, action, resource and policy decision;
@@ -47,12 +86,10 @@ stage.
 - ok/failure, duration and error;
 - SHA-256 hashes of arguments and output.
 
-The CLI reads the tail with `kl audit [limit]`. Tests use the same
-`AuditSink` trait with an in-memory sink.
-
 ## Secrets
 
 - Config stores only the name of the environment variable holding a key
   (`api_key_env`), never the key value.
 - `config.get` returns a redacted view.
 - Audit records store hashes, not raw tool arguments/output.
+- Plugin environment variables are allowlisted in the manifest.

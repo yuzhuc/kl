@@ -34,6 +34,11 @@ pub mod methods {
     pub const PROVIDER_LIST: &str = "provider.list";
     pub const AUDIT_TAIL: &str = "audit.tail";
     pub const CONFIG_GET: &str = "config.get";
+    pub const PLUGIN_LIST: &str = "plugin.list";
+    pub const PLUGIN_INSTALL: &str = "plugin.install";
+    pub const PLUGIN_RELOAD: &str = "plugin.reload";
+    pub const PLUGIN_ENABLE: &str = "plugin.enable";
+    pub const PLUGIN_DISABLE: &str = "plugin.disable";
     pub const EVENT: &str = "event";
 }
 
@@ -51,6 +56,9 @@ pub mod error_codes {
     pub const PROVIDER_UNAVAILABLE: i64 = -32005;
     pub const APPROVAL_NOT_FOUND: i64 = -32006;
     pub const POLICY_DENIED: i64 = -32007;
+    pub const PLUGIN_ERROR: i64 = -32010;
+    pub const PLUGIN_NOT_FOUND: i64 = -32011;
+    pub const PLUGIN_PERMISSION: i64 = -32012;
 }
 
 /// JSON-RPC request identifier. Both integer and string ids are legal.
@@ -234,19 +242,23 @@ pub struct DoctorResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ProviderSummary {
-    pub id: String,
-    pub kind: String,
-    pub models: Vec<String>,
+pub struct ProviderModelSummary {
+    pub provider: String,
+    pub model: String,
+    pub protocol: String,
+    pub url: String,
+    pub context_window: u32,
+    pub compact_threshold: f32,
+    pub max_output_tokens: u32,
     pub available: bool,
     pub detail: String,
-    pub active: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ProviderListResult {
     pub active_provider: String,
-    pub providers: Vec<ProviderSummary>,
+    pub active_model: String,
+    pub models: Vec<ProviderModelSummary>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -324,6 +336,21 @@ pub enum ApprovalDecision {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ApprovalRespondResult {
     pub accepted: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PluginInstallParams {
+    pub path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PluginIdParams {
+    pub id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PluginListResult {
+    pub plugins: Vec<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -39,5 +39,5 @@ process and then stop it.
 - A plugin crash cannot take down the core process.
 - Built-in providers and tools follow the same interfaces as future external
   plugins, so behavior can be tested uniformly.
-- Stage 2 must add manifest verification, capability tokens and a sidecar
-  supervisor; the MVP intentionally does not ship those.
+- Stage 2 now ships a sidecar supervisor with manifest v1, capability tokens,
+  health checks, drain and hot swap. WASM remains a future runtime.

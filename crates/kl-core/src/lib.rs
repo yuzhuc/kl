@@ -6,23 +6,28 @@
 
 mod config;
 
-pub use config::{Config, ConfigError};
+pub use config::{Config, ConfigError, ProviderCatalog};
 
 use kl_agent::{Agent, AgentConfig, AgentError, ApprovalGate, ApprovalRequest, EventSink};
-use kl_audit::JsonlAudit;
+use kl_audit::AuditLog;
+use kl_plugin_host::{
+    PluginError, PluginHost, PluginInfo, PluginKind, SidecarProvider, SidecarTool,
+};
 use kl_policy::{PolicyEngine, PolicyError};
 use kl_protocol::{
     ApprovalDecision, ApprovalRespondParams, AuditTailParams, CORE_NAME, CORE_VERSION, CoreEvent,
     DoctorCheck, DoctorResult, EventNotification, HandshakeParams, HandshakeResult,
     IncomingMessage, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION, PingParams, PingResult,
-    ProviderListResult, ProviderSummary, RequestId, RpcError, SessionCreateParams, SessionInfo,
-    SessionListResult, SessionResumeParams, TurnCancelParams, TurnCancelResult, TurnStartParams,
-    TurnStartResult, error_codes, failure, failure_with_data, methods, negotiate, success,
-    validate_envelope,
+    PluginIdParams, PluginInstallParams, PluginListResult, ProviderListResult,
+    ProviderModelSummary, RequestId, RpcError, SessionCreateParams, SessionInfo, SessionListResult,
+    SessionResumeParams, TurnCancelParams, TurnCancelResult, TurnStartParams, TurnStartResult,
+    error_codes, failure, failure_with_data, methods, negotiate, success, validate_envelope,
 };
 use kl_provider::{
-    AnthropicProvider, ChatMessage, OpenAiChatProvider, Provider, ProviderRouter, ScriptedProvider,
+    AnthropicAdapter, BoundProvider, ChatMessage, ModelMetadata, OpenAiChatAdapter,
+    OpenAiResponsesAdapter, Protocol, ProtocolAdapter, Provider, ProviderRouter, ScriptedProvider,
 };
+use kl_sandbox::SandboxManager;
 use kl_store::{SessionData, SessionMeta, SessionStore, StoreError};
 use kl_tools::ToolRegistry;
 use serde::Serialize;
@@ -43,6 +48,7 @@ pub const FEATURES: &[&str] = &[
     "audit",
     "approvals",
     "providers",
+    "plugins",
 ];
 
 /// Thread-safe newline-delimited JSON writer shared with turn threads.
@@ -137,6 +143,8 @@ pub enum CoreError {
     Audit(#[from] kl_audit::AuditError),
     #[error("policy error: {0}")]
     Policy(#[from] PolicyError),
+    #[error("plugin error: {0}")]
+    Plugin(#[from] PluginError),
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 }
@@ -303,10 +311,13 @@ struct SessionState {
 struct Core {
     context: ServerContext,
     config: Config,
+    catalog: ProviderCatalog,
     router: ProviderRouter,
     tools: Arc<ToolRegistry>,
     store: Arc<SessionStore>,
-    audit: Arc<JsonlAudit>,
+    audit: Arc<AuditLog>,
+    sandbox: Arc<SandboxManager>,
+    plugin_host: Arc<PluginHost>,
     hub: EventHub,
     sessions: Arc<Mutex<HashMap<String, SessionState>>>,
     approvals: Arc<ApprovalBroker>,
@@ -319,26 +330,39 @@ impl Core {
     fn new(context: ServerContext, emitter: Emitter) -> Result<Self, CoreError> {
         std::fs::create_dir_all(&context.home)?;
         let config = Config::load(&context.config_path)?;
+        let sandbox = Arc::new(SandboxManager::probe(&config.sandbox));
+        let plugin_host = Arc::new(PluginHost::new(context.home.join("plugins"))?);
         let config_dir = Config::config_dir(&context.config_path);
-        let providers = build_providers(&config, &config_dir);
+        let catalog = ProviderCatalog::load(&config, &config_dir)?;
+        let routes = build_routes(&catalog, &config, &config_dir)?;
         let router = ProviderRouter::new(
-            providers,
+            routes,
             config.agent.provider.clone(),
             config.agent.model.clone(),
         );
+        for disabled in &catalog.disabled {
+            router.mark_disabled(disabled);
+        }
+        let tools = Arc::new(ToolRegistry::builtin());
+        register_plugin_adapters(&plugin_host, &router, &tools);
         let store = Arc::new(SessionStore::new(context.home.join("sessions"))?);
-        let audit = Arc::new(JsonlAudit::open(
-            context.home.join("audit").join("events.jsonl"),
+        let audit = Arc::new(AuditLog::open(
+            context.home.join("audit"),
+            config.audit.rotate_bytes,
+            config.audit.keep_files,
         )?);
         let hub = EventHub::new(emitter, store.clone());
         let approval_timeout = Duration::from_secs(config.agent.approval_timeout_secs.max(1));
         Ok(Self {
             context,
             config,
+            catalog,
             router,
-            tools: Arc::new(ToolRegistry::builtin()),
+            tools,
             store,
             audit,
+            sandbox,
+            plugin_host,
             hub,
             sessions: Arc::new(Mutex::new(HashMap::new())),
             approvals: Arc::new(ApprovalBroker::new(approval_timeout)),
@@ -423,6 +447,11 @@ impl Core {
             methods::PROVIDER_LIST => self.provider_list(),
             methods::AUDIT_TAIL => self.audit_tail(params),
             methods::CONFIG_GET => self.config_get(),
+            methods::PLUGIN_LIST => self.plugin_list(),
+            methods::PLUGIN_INSTALL => self.plugin_install(params),
+            methods::PLUGIN_RELOAD => self.plugin_reload(params),
+            methods::PLUGIN_ENABLE => self.plugin_enable(params),
+            methods::PLUGIN_DISABLE => self.plugin_disable(params),
             other => Err(rpc_error(
                 error_codes::METHOD_NOT_FOUND,
                 format!("unknown method: {other}"),
@@ -495,6 +524,19 @@ impl Core {
             &self.context.home.join("audit"),
             "audit_writable",
         ));
+        let audit_count = self.audit.count();
+        checks.push(DoctorCheck {
+            name: "audit_index".to_owned(),
+            ok: audit_count.is_ok(),
+            detail: match audit_count {
+                Ok(count) => format!(
+                    "{} records indexed in {}",
+                    count,
+                    self.audit.sqlite_path().display()
+                ),
+                Err(error) => error.to_string(),
+            },
+        });
         checks.push(DoctorCheck {
             name: "config".to_owned(),
             ok: true,
@@ -508,13 +550,16 @@ impl Core {
                 format!("{} (defaults in use)", self.context.config_path.display())
             },
         });
-        let provider_check = match self.router.get(Some(&self.config.agent.provider)) {
-            Ok(provider) => {
+        let provider_check = match self.router.get(
+            Some(&self.config.agent.provider),
+            Some(&self.config.agent.model),
+        ) {
+            Ok((provider, metadata)) => {
                 let (available, detail) = provider.available();
                 DoctorCheck {
                     name: "provider_active".to_owned(),
                     ok: available,
-                    detail: format!("{} ({detail})", provider.id()),
+                    detail: format!("{}/{} ({detail})", metadata.provider, metadata.model),
                 }
             }
             Err(error) => DoctorCheck {
@@ -524,10 +569,51 @@ impl Core {
             },
         };
         checks.push(provider_check);
+        let sandbox = self.sandbox.status();
+        checks.push(DoctorCheck {
+            name: "sandbox_backend".to_owned(),
+            ok: sandbox.available,
+            detail: format!("{}: {}", sandbox.backend, sandbox.detail),
+        });
+        checks.push(DoctorCheck {
+            name: "sandbox_strict".to_owned(),
+            ok: !sandbox.strict || sandbox.available,
+            detail: if sandbox.strict {
+                "strict mode requested; unavailable backends fail closed".to_owned()
+            } else {
+                "non-strict; policy-only fallback is allowed".to_owned()
+            },
+        });
+        checks.push(DoctorCheck {
+            name: "sandbox_z_isolation".to_owned(),
+            ok: !sandbox.isolated_z_failure,
+            detail: if sandbox.isolated_z_failure {
+                "MXC Z: enumeration failure isolated; strict mode would fail closed".to_owned()
+            } else {
+                "no MXC Z: enumeration failure detected".to_owned()
+            },
+        });
         checks.push(DoctorCheck {
             name: "tools".to_owned(),
             ok: true,
             detail: self.tools.names().join(", "),
+        });
+        let plugins = self.plugin_host.list();
+        let enabled_plugins: Vec<&PluginInfo> =
+            plugins.iter().filter(|plugin| plugin.enabled).collect();
+        let unhealthy_plugins = enabled_plugins
+            .iter()
+            .filter(|plugin| !plugin.healthy)
+            .count();
+        checks.push(DoctorCheck {
+            name: "plugins".to_owned(),
+            ok: unhealthy_plugins == 0,
+            detail: format!(
+                "{} installed, {} enabled, {} unhealthy",
+                plugins.len(),
+                enabled_plugins.len(),
+                unhealthy_plugins
+            ),
         });
         checks.push(check_shell());
         checks.push(check_git());
@@ -562,16 +648,19 @@ impl Core {
         let provider_id = params
             .provider
             .unwrap_or_else(|| self.config.agent.provider.clone());
-        let provider = self
+        let (provider, metadata) = self
             .router
-            .get(Some(&provider_id))
+            .get(Some(&provider_id), params.model.as_deref())
             .map_err(provider_error)?;
         check_provider_available(provider.as_ref())?;
-        let model = self.select_model(provider.as_ref(), &provider_id, params.model.as_deref());
 
         let data = self
             .store
-            .create(&workspace.to_string_lossy(), &provider_id, &model)
+            .create(
+                &workspace.to_string_lossy(),
+                &metadata.provider,
+                &metadata.model,
+            )
             .map_err(store_error)?;
         let session_id = data.meta.id.clone();
         self.hub.register(&session_id, 0);
@@ -657,7 +746,7 @@ impl Core {
 
         self.threads.retain(|handle| !handle.is_finished());
 
-        let (provider_id, model, workspace, history, provider) = {
+        let (provider_id, metadata, workspace, history, provider) = {
             let mut sessions = self
                 .sessions
                 .lock()
@@ -678,23 +767,22 @@ impl Core {
                 .provider
                 .clone()
                 .unwrap_or_else(|| state.meta.provider.clone());
-            let provider = self
+            let requested_model = params
+                .model
+                .clone()
+                .or_else(|| (provider_id == state.meta.provider).then(|| state.meta.model.clone()));
+            let (provider, metadata) = self
                 .router
-                .get(Some(&provider_id))
+                .get(Some(&provider_id), requested_model.as_deref())
                 .map_err(provider_error)?;
             check_provider_available(provider.as_ref())?;
-            let model = match params.model.clone() {
-                Some(model) => model,
-                None if provider_id == state.meta.provider => state.meta.model.clone(),
-                None => self.select_model(provider.as_ref(), &provider_id, None),
-            };
             let workspace = state.meta.workspace.clone();
             state.active_turn = Some(turn_id.clone());
-            state.meta.provider = provider_id.clone();
-            state.meta.model = model.clone();
+            state.meta.provider = metadata.provider.clone();
+            state.meta.model = metadata.model.clone();
             (
                 provider_id,
-                model,
+                metadata,
                 workspace,
                 state.messages.clone(),
                 provider,
@@ -717,6 +805,7 @@ impl Core {
         let store = self.store.clone();
         let hub = self.hub.clone();
         let audit = self.audit.clone();
+        let sandbox = self.sandbox.clone();
         let tools = self.tools.clone();
         let approvals = self.approvals.clone();
         let cancels = self.cancels.clone();
@@ -730,14 +819,15 @@ impl Core {
         let thread_session = session_id.clone();
         let thread_turn = turn_id.clone();
         let thread_provider_id = provider_id.clone();
-        let thread_model = model.clone();
+        let thread_metadata = metadata.clone();
         let thread_cancel = cancel.clone();
         let handle = thread::spawn(move || {
             let agent = Agent::new(
                 provider,
-                thread_model.clone(),
+                thread_metadata.clone(),
                 tools,
                 policy,
+                sandbox,
                 audit,
                 agent_config,
             );
@@ -757,7 +847,7 @@ impl Core {
                 &thread_turn,
                 &prompt,
                 &mut history,
-                &thread_cancel,
+                thread_cancel.clone(),
                 &sink,
                 &gate,
             );
@@ -778,7 +868,7 @@ impl Core {
                     state.messages = history;
                     state.active_turn = None;
                     state.meta.provider = thread_provider_id;
-                    state.meta.model = thread_model;
+                    state.meta.model = thread_metadata.model.clone();
                     let data = SessionData {
                         meta: state.meta.clone(),
                         messages: state
@@ -799,8 +889,8 @@ impl Core {
 
         to_value(TurnStartResult {
             turn_id,
-            provider: provider_id,
-            model,
+            provider: metadata.provider.clone(),
+            model: metadata.model.clone(),
         })
     }
 
@@ -836,22 +926,26 @@ impl Core {
     }
 
     fn provider_list(&self) -> Result<Value, RpcError> {
-        let providers = self
+        let models = self
             .router
             .list()
             .into_iter()
-            .map(|provider| ProviderSummary {
-                active: provider.id == self.config.agent.provider,
-                id: provider.id,
-                kind: provider.kind,
-                models: provider.models,
-                available: provider.available,
-                detail: provider.detail,
+            .map(|model| ProviderModelSummary {
+                provider: model.provider,
+                model: model.model,
+                protocol: model.protocol.as_str().to_owned(),
+                url: model.url,
+                context_window: model.context_window,
+                compact_threshold: model.compact_threshold,
+                max_output_tokens: model.max_output_tokens,
+                available: model.available,
+                detail: model.detail,
             })
             .collect();
         to_value(ProviderListResult {
             active_provider: self.config.agent.provider.clone(),
-            providers,
+            active_model: self.config.agent.model.clone(),
+            models,
         })
     }
 
@@ -865,30 +959,94 @@ impl Core {
         to_value(kl_protocol::AuditTailResult { records })
     }
 
+    fn plugin_list(&self) -> Result<Value, RpcError> {
+        let plugins = self
+            .plugin_host
+            .list()
+            .into_iter()
+            .map(to_value)
+            .collect::<Result<Vec<_>, _>>()?;
+        to_value(PluginListResult { plugins })
+    }
+
+    fn plugin_install(&self, params: Value) -> Result<Value, RpcError> {
+        let params: PluginInstallParams = parse_params(params, "plugin.install")?;
+        let info = self
+            .plugin_host
+            .install_from_dir(Path::new(&params.path))
+            .map_err(plugin_error)?;
+        self.sync_plugins();
+        to_value(info)
+    }
+
+    fn plugin_reload(&self, params: Value) -> Result<Value, RpcError> {
+        let params: PluginIdParams = parse_params(params, "plugin.reload")?;
+        let info = self.plugin_host.reload(&params.id).map_err(plugin_error)?;
+        self.sync_plugins();
+        to_value(info)
+    }
+
+    fn plugin_enable(&self, params: Value) -> Result<Value, RpcError> {
+        let params: PluginIdParams = parse_params(params, "plugin.enable")?;
+        let info = self.plugin_host.enable(&params.id).map_err(plugin_error)?;
+        self.sync_plugins();
+        to_value(info)
+    }
+
+    fn plugin_disable(&self, params: Value) -> Result<Value, RpcError> {
+        let params: PluginIdParams = parse_params(params, "plugin.disable")?;
+        let info = self.plugin_host.disable(&params.id).map_err(plugin_error)?;
+        self.sync_plugins();
+        to_value(info)
+    }
+
+    fn sync_plugins(&self) {
+        for info in self.plugin_host.list() {
+            match info.kind {
+                PluginKind::Provider => {
+                    if info.enabled {
+                        self.router.enable_provider(&info.id);
+                        let provider = Arc::new(SidecarProvider::new(
+                            self.plugin_host.clone(),
+                            info.id.clone(),
+                        ));
+                        for model in &info.models {
+                            let metadata = ModelMetadata::new(
+                                info.id.clone(),
+                                model.clone(),
+                                Protocol::Plugin,
+                                format!("plugin://{}/{model}", info.id),
+                                8192,
+                                0.8,
+                                4096,
+                            );
+                            self.router.register(metadata, provider.clone());
+                        }
+                    } else {
+                        self.router.disable_provider(&info.id);
+                    }
+                }
+                PluginKind::Tool => {
+                    if info.enabled {
+                        if let Some(tool) =
+                            SidecarTool::new(self.plugin_host.clone(), info.id.clone())
+                        {
+                            self.tools.register(Arc::new(tool));
+                        }
+                    } else if let Some(name) = info.tool_name {
+                        self.tools.remove(&name);
+                    }
+                }
+            }
+        }
+    }
+
     fn config_get(&self) -> Result<Value, RpcError> {
         to_value(json!({
             "path": self.context.config_path,
             "config": self.config.redacted(),
+            "providers": self.catalog.redacted(),
         }))
-    }
-
-    fn select_model(
-        &self,
-        provider: &dyn Provider,
-        provider_id: &str,
-        requested: Option<&str>,
-    ) -> String {
-        if let Some(model) = requested.filter(|model| !model.is_empty()) {
-            return model.to_owned();
-        }
-        if provider_id == self.config.agent.provider && !self.config.agent.model.is_empty() {
-            return self.config.agent.model.clone();
-        }
-        provider
-            .models()
-            .first()
-            .map(|model| model.id.clone())
-            .unwrap_or_else(|| self.config.agent.model.clone())
     }
 
     fn shutdown(&mut self) {
@@ -907,79 +1065,108 @@ impl Core {
     }
 }
 
-fn build_providers(config: &Config, config_dir: &Path) -> Vec<Arc<dyn Provider>> {
-    config
-        .providers
-        .iter()
-        .map(|provider| {
-            let models = if provider.models.is_empty() {
-                default_models(&provider.kind)
-            } else {
-                provider.models.clone()
-            };
-            let key = if provider.api_key_env.is_empty() {
-                None
-            } else {
-                std::env::var(&provider.api_key_env)
-                    .ok()
-                    .filter(|value| !value.trim().is_empty())
-            };
-            let base_url = if provider.base_url.is_empty() {
-                default_base_url(&provider.kind)
-            } else {
-                provider.base_url.clone()
-            };
-            let instance: Arc<dyn Provider> = match provider.kind.as_str() {
-                "openai-chat" => Arc::new(OpenAiChatProvider::new(
-                    provider.id.clone(),
-                    base_url,
-                    key,
-                    models,
-                )),
-                "anthropic" => Arc::new(AnthropicProvider::new(
-                    provider.id.clone(),
-                    base_url,
-                    key,
-                    models,
-                )),
-                "scripted" => {
-                    let script = provider.script_path.as_deref().map(|raw| {
-                        let path = Path::new(raw);
-                        if path.is_absolute() {
-                            path.to_path_buf()
-                        } else {
-                            config_dir.join(path)
-                        }
-                    });
-                    match script {
-                        Some(path) => Arc::new(
-                            ScriptedProvider::from_file(provider.id.clone(), path)
-                                .unwrap_or_else(|_| ScriptedProvider::empty(provider.id.clone())),
-                        ),
-                        None => Arc::new(ScriptedProvider::empty(provider.id.clone())),
-                    }
+fn register_plugin_adapters(
+    host: &Arc<PluginHost>,
+    router: &ProviderRouter,
+    tools: &Arc<ToolRegistry>,
+) {
+    for info in host.list() {
+        if !info.enabled {
+            continue;
+        }
+        match info.kind {
+            PluginKind::Provider => {
+                for model in &info.models {
+                    let metadata = ModelMetadata::new(
+                        info.id.clone(),
+                        model.clone(),
+                        Protocol::Plugin,
+                        format!("plugin://{}/{model}", info.id),
+                        8192,
+                        0.8,
+                        4096,
+                    );
+                    router.register(
+                        metadata,
+                        Arc::new(SidecarProvider::new(host.clone(), info.id.clone())),
+                    );
                 }
-                _ => unreachable!("provider kind validated by Config::validate"),
+            }
+            PluginKind::Tool => {
+                if let Some(tool) = SidecarTool::new(host.clone(), info.id.clone()) {
+                    tools.register(Arc::new(tool));
+                }
+            }
+        }
+    }
+}
+
+fn build_routes(
+    catalog: &ProviderCatalog,
+    config: &Config,
+    config_dir: &Path,
+) -> Result<Vec<(ModelMetadata, Arc<dyn Provider>)>, CoreError> {
+    let mut routes = Vec::new();
+    for provider in &catalog.providers {
+        for metadata in &provider.models {
+            let adapter: Arc<dyn ProtocolAdapter> = match metadata.protocol {
+                Protocol::OpenAiChat => Arc::new(OpenAiChatAdapter::new(
+                    metadata.url.clone(),
+                    provider.api_key.clone(),
+                )),
+                Protocol::Anthropic => Arc::new(AnthropicAdapter::new(
+                    metadata.url.clone(),
+                    provider.api_key.clone(),
+                )),
+                Protocol::OpenAiResponses => Arc::new(OpenAiResponsesAdapter::new(
+                    metadata.url.clone(),
+                    provider.api_key.clone(),
+                )),
+                protocol => {
+                    return Err(CoreError::Config(ConfigError::UnsupportedProtocol {
+                        provider: metadata.provider.clone(),
+                        model: metadata.model.clone(),
+                        protocol: protocol.as_str().to_owned(),
+                    }));
+                }
             };
-            instance
-        })
-        .collect()
-}
-
-fn default_models(kind: &str) -> Vec<String> {
-    match kind {
-        "openai-chat" => vec!["gpt-4o-mini".to_owned()],
-        "anthropic" => vec!["claude-sonnet-4-5".to_owned()],
-        _ => vec!["scripted".to_owned()],
+            let bound = Arc::new(BoundProvider::new(metadata.clone(), adapter));
+            routes.push((metadata.clone(), bound as Arc<dyn Provider>));
+        }
     }
-}
 
-fn default_base_url(kind: &str) -> String {
-    match kind {
-        "openai-chat" => "https://api.openai.com/v1".to_owned(),
-        "anthropic" => "https://api.anthropic.com".to_owned(),
-        _ => String::new(),
+    if let Some(script_path) = &config.agent.scripted_path {
+        let path = Path::new(script_path);
+        let path = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            config_dir.join(path)
+        };
+        if !path.exists() {
+            return Err(CoreError::Config(ConfigError::ScriptedFileMissing(
+                path.display().to_string(),
+            )));
+        }
+        let scripted = ScriptedProvider::from_file("scripted", &path)
+            .map_err(|error| CoreError::Config(ConfigError::Scripted(error.to_string())))?;
+        let model = if config.agent.provider == "scripted" && !config.agent.model.is_empty() {
+            config.agent.model.clone()
+        } else {
+            "scripted".to_owned()
+        };
+        let metadata = ModelMetadata::new(
+            "scripted",
+            model,
+            Protocol::Scripted,
+            "offline://scripted",
+            8192,
+            0.8,
+            4096,
+        );
+        routes.push((metadata, Arc::new(scripted) as Arc<dyn Provider>));
     }
+
+    Ok(routes)
 }
 
 fn session_info(meta: &SessionMeta, message_count: usize) -> SessionInfo {
@@ -1014,6 +1201,15 @@ fn rpc_error(code: i64, message: impl Into<String>) -> RpcError {
         message: message.into(),
         data: None,
     }
+}
+
+fn plugin_error(error: PluginError) -> RpcError {
+    let code = match error {
+        PluginError::NotFound(_) => error_codes::PLUGIN_NOT_FOUND,
+        PluginError::PermissionDenied(_) => error_codes::PLUGIN_PERMISSION,
+        _ => error_codes::PLUGIN_ERROR,
+    };
+    rpc_error(code, error.to_string())
 }
 
 fn provider_error(error: kl_provider::ProviderError) -> RpcError {
@@ -1218,12 +1414,7 @@ mod tests {
 [agent]
 provider = "scripted"
 model = "scripted"
-
-[[providers]]
-id = "scripted"
-kind = "scripted"
-models = ["scripted"]
-script_path = "script.json"
+scripted_path = "script.json"
 "#,
         )
         .unwrap();

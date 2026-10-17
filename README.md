@@ -3,7 +3,9 @@
 KL is a provider-neutral coding agent with a Rust trusted core and a C#/.NET
 terminal client. It does not use a Python runtime or Python build scripts.
 
-Status: **stage 0 complete, stage 1 MVP complete** for the scope below.
+Status: **stage 0, stage 1 MVP, stage 1.5 hardening and stage 2 sidecar
+plugin-host MVP complete**. Live external Provider smoke is pending until API
+keys are supplied; see `tests/fixtures/providers/live-smoke.status.json`.
 
 ## Architecture
 
@@ -26,8 +28,12 @@ kl (C#/.NET)  -- JSON-RPC 2.0 over stdio -->  kl-core (Rust)
   `shell`, `git`.
 - `crates/kl-policy` — workspace containment, sensitive paths, dangerous
   command denial, approval effects.
-- `crates/kl-audit` — append-only JSONL audit with argument/output hashes.
+- `crates/kl-audit` — rotated append-only JSONL audit plus SQLite query index.
 - `crates/kl-store` — session metadata, message projection and event log.
+- `crates/kl-sandbox` — sandbox backend probing, strict-mode fail-closed and
+  MXC Z: failure isolation.
+- `crates/kl-plugin-host` — manifest v1, sidecar JSON-RPC supervisor, health
+  checks, drain, hot swap and capability checks.
 - `crates/kl-exec` — process execution with timeout, cancellation and bounded
   output.
 - `cli/Kl.Cli` — command parsing, process lifecycle, streaming UI, diff and
@@ -106,8 +112,20 @@ max_output_tokens = 4096
 [policy]
 auto_approve_edits = false
 auto_approve_shell = false
+auto_approve_plugins = false
 allow_outside_workspace = false
 allow_sensitive_reads = false
+network_allowlist = []       # empty = no shell URL restriction
+env_allowlist = []           # empty = inherit shell environment
+
+[sandbox]
+mode = "policy"              # policy | strict | off
+backend = "auto"             # auto | mxc | policy | off
+probe_timeout_ms = 1500
+
+[audit]
+rotate_bytes = 10485760
+keep_files = 5
 
 [[providers]]
 id = "openai"
@@ -137,6 +155,20 @@ config, logs, audit records or `config.get`.
 DeepSeek, vLLM, LM Studio, a company gateway). `anthropic` implements the
 Messages streaming API.
 
+`policy.env_allowlist` switches shell/git execution to a clean environment plus
+only the listed variables. `policy.network_allowlist` validates URLs found in
+shell commands and denies hosts outside the list. Empty lists preserve the
+previous inherit/no-URL-check behavior.
+
+`[sandbox]` controls backend probing. `strict` fails closed if no real OS
+sandbox is available. A detected MXC `Z:` enumeration failure is isolated: in
+non-strict mode KL falls back to policy-only; in strict mode shell/plugin
+process execution is denied. `kl doctor` shows `sandbox_backend`,
+`sandbox_strict` and `sandbox_z_isolation`.
+
+`[audit]` controls raw JSONL rotation. `kl audit` queries the SQLite index while
+the rotated `events*.jsonl` files remain the source of truth.
+
 ## Offline end-to-end demo
 
 This proves a real read → edit → test loop without network or API keys:
@@ -158,6 +190,22 @@ pwsh scripts/demo-policy.ps1
 It asks for `rm -rf /` and a path outside the workspace; both are denied even
 with `--yes`, and both produce audit records with `decision: "deny"`.
 
+The sidecar plugin demo installs v1, executes it, hot-upgrades to v2, executes
+again, lists plugins and prints the audit tail:
+
+```powershell
+pwsh scripts/demo-plugin.ps1
+```
+
+Live Provider smoke (requires real keys):
+
+```powershell
+pwsh scripts/live-provider-smoke.ps1
+```
+
+Without keys it writes `tests/fixtures/providers/live-smoke.status.json` as
+`pending`; it never fabricates a live success fixture.
+
 ## Packaging
 
 ```powershell
@@ -167,6 +215,26 @@ pwsh scripts/package.ps1 -Runtime win-x64
 This publishes the CLI framework-dependently and copies the release `kl-core`
 and schemas next to it into `dist/<rid>/`. See `docs/adr/0004-packaging.md`.
 
+## Sidecar plugins
+
+Build the fake sidecar and install an example:
+
+```powershell
+cargo build -p kl-plugin-host
+kl plugin install plugins/examples/fake-tool --home D:\kl-home
+kl plugin list --home D:\kl-home
+```
+
+Plugin manifests are v1 sidecar manifests. The host verifies the capability
+token, health-checks a new process before traffic switching, drains in-flight
+requests, and keeps the old version on health/startup failure. The new process
+is isolated from the core process and only inherits explicitly granted
+environment variables. See `docs/plugin-api/README.md` and
+`schemas/plugin/manifest-v1.schema.json`.
+
+Protocol methods: `plugin.list`, `plugin.install`, `plugin.reload`,
+`plugin.enable`, `plugin.disable`.
+
 ## Security model
 
 - All file and command access goes through `kl-core`.
@@ -174,9 +242,12 @@ and schemas next to it into `dist/<rid>/`. See `docs/adr/0004-packaging.md`.
   sensitive paths ask; dangerous commands and out-of-workspace paths are
   denied.
 - `--yes` only auto-approves `ask` decisions; it cannot override `deny`.
-- Every tool call writes exactly one JSONL audit record, including denied and
-  invalid calls.
-- See `docs/security/policy.md` for path resolution rules and residual risks.
+- Shell/git can be confined to an environment allowlist; shell URLs are checked
+  against a network allowlist when one is configured.
+- Every tool call writes one raw JSONL audit record and one SQLite index row.
+- Plugin permissions are checked before tool execution; plugin processes get a
+  clean environment plus only granted variables. See
+  `docs/security/policy.md` for protocol-level and OS-level limitations.
 
 ## Protocol
 
@@ -187,7 +258,8 @@ handshake negotiates the supported version range.
 
 Core methods: `kl.handshake`, `kl.ping`, `kl.doctor`, `session.create`,
 `session.resume`, `session.list`, `turn.start`, `turn.cancel`,
-`tool.approval.respond`, `provider.list`, `audit.tail`, `config.get`.
+`tool.approval.respond`, `provider.list`, `plugin.list`, `plugin.install`,
+`plugin.reload`, `plugin.enable`, `plugin.disable`, `audit.tail`, `config.get`.
 
 Events: `session.created`, `turn.started`, `turn.delta`, `turn.reasoning`,
 `tool.started`, `tool.output`, `tool.approval.requested`,
@@ -196,14 +268,14 @@ Events: `session.created`, `turn.started`, `turn.delta`, `turn.reasoning`,
 
 ## Limitations / next stage
 
-- No OS-level sandbox yet; policy is path/command/approval based.
-- No sidecar/WASM plugin host yet. The interfaces and ADR are in place.
-- No multi-agent quality modes, symbol index or SQLite audit index.
-- Cancellation is checked between model calls and kills running shell tools;
-  an in-flight HTTP stream completes or times out before the turn stops.
-- Provider conformance uses recorded/unit fixtures; live provider calls need
-  the corresponding API key and network access.
+- No OS-level file/network sandbox yet; sandbox probing and strict fail-closed
+  behavior are implemented, but enforcement remains policy/protocol based.
+- WASM plugin hosting is not implemented; sidecar is the current plugin runtime.
+- No multi-agent quality modes or repository symbol index.
+- Cancellation returns the turn promptly and detaches the provider stream; a
+  stalled network read may remain in its worker until the provider timeout.
+- Live OpenAI/Anthropic smoke is pending because no API keys were available in
+  the implementation environment. The offline mock SSE conformance tests pass.
 
-Next stage entry point: implement the sidecar plugin host, manifest
-verification, health checks, traffic switching and the external provider/tool
-examples described in `docs/plugin-api/README.md`.
+Next stage entry point: add WASM plugin runtime, stronger OS sandbox backends,
+and live provider conformance/replay fixtures.

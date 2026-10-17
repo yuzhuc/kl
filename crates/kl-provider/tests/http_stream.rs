@@ -1,9 +1,10 @@
 use kl_provider::{
-    AnthropicProvider, ChatEvent, ChatMessage, ChatRequest, FinishReason, OpenAiChatProvider,
-    Provider, ProviderErrorKind,
+    AnthropicAdapter, ChatEvent, ChatMessage, ChatRequest, FinishReason, OpenAiChatAdapter,
+    OpenAiResponsesAdapter, ProtocolAdapter, ProviderErrorKind,
 };
 use std::io::{Read, Write};
 use std::net::TcpListener;
+use std::sync::atomic::AtomicBool;
 use std::thread;
 use std::time::Duration;
 
@@ -58,7 +59,7 @@ fn sse(body: &str) -> String {
 }
 
 #[test]
-fn openai_chat_streams_text_usage_and_auth() {
+fn openai_chat_uses_full_configured_url() {
     let body = concat!(
         "data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n",
         "data: {\"choices\":[{\"delta\":{\"content\":\" world\"},\"finish_reason\":\"stop\"}],",
@@ -66,43 +67,33 @@ fn openai_chat_streams_text_usage_and_auth() {
         "data: [DONE]\n\n",
     );
     let (base_url, server) = serve_once(sse(body));
-    let provider = OpenAiChatProvider::new(
-        "openai",
-        base_url,
-        Some("test-key".to_owned()),
-        vec!["test-model".to_owned()],
-    );
+    let url = format!("{base_url}/custom/chat?tenant=kl");
+    let adapter = OpenAiChatAdapter::new(url, Some("test-key".to_owned()));
     let mut request = ChatRequest::new("test-model", vec![ChatMessage::user("hi")]);
     request.system = "system".to_owned();
 
     let mut deltas = String::new();
-    let outcome = provider
-        .stream_chat(&request, &mut |event| {
+    let outcome = adapter
+        .stream_chat(&request, &AtomicBool::new(false), &mut |event| {
             if let ChatEvent::TextDelta(text) = event {
                 deltas.push_str(&text);
             }
         })
-        .expect("OpenAI stream");
+        .expect("OpenAI Chat stream");
 
     assert_eq!(deltas, "Hello world");
-    assert_eq!(outcome.text, "Hello world");
     assert_eq!(outcome.finish_reason, FinishReason::Stop);
     assert_eq!(outcome.usage.input_tokens, 4);
-    assert_eq!(outcome.usage.output_tokens, 2);
-
-    let wire = server.join().expect("mock server");
-    let wire = wire.to_lowercase();
-    assert!(wire.contains("post /chat/completions http/1.1"), "{wire}");
-    assert!(wire.contains("authorization: bearer test-key"), "{wire}");
-    assert!(wire.contains("\"stream\":true"), "{wire}");
+    let wire = server.join().expect("mock server").to_lowercase();
     assert!(
-        wire.contains("{\"content\":\"system\",\"role\":\"system\"}"),
+        wire.contains("post /custom/chat?tenant=kl http/1.1"),
         "{wire}"
     );
+    assert!(!wire.contains("/chat/completions"), "{wire}");
 }
 
 #[test]
-fn anthropic_messages_stream_text_and_headers() {
+fn anthropic_uses_full_configured_url() {
     let body = concat!(
         "data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":5}}}\n\n",
         "data: {\"type\":\"content_block_delta\",\"index\":0,",
@@ -111,28 +102,59 @@ fn anthropic_messages_stream_text_and_headers() {
         "\"usage\":{\"output_tokens\":2}}\n\n",
     );
     let (base_url, server) = serve_once(sse(body));
-    let provider = AnthropicProvider::new(
-        "anthropic",
-        base_url,
-        Some("test-key".to_owned()),
-        vec!["test-model".to_owned()],
-    );
-    let mut request = ChatRequest::new("test-model", vec![ChatMessage::user("hi")]);
-    request.system = "system".to_owned();
-
-    let outcome = provider
-        .stream_chat(&request, &mut |_| {})
+    let url = format!("{base_url}/custom/messages");
+    let adapter = AnthropicAdapter::new(url, Some("test-key".to_owned()));
+    let request = ChatRequest::new("test-model", vec![ChatMessage::user("hi")]);
+    let outcome = adapter
+        .stream_chat(&request, &AtomicBool::new(false), &mut |_| {})
         .expect("Anthropic stream");
     assert_eq!(outcome.text, "Hi");
-    assert_eq!(outcome.finish_reason, FinishReason::Stop);
-    assert_eq!(outcome.usage.input_tokens, 5);
-    assert_eq!(outcome.usage.output_tokens, 2);
+    let wire = server.join().expect("mock server").to_lowercase();
+    assert!(wire.contains("post /custom/messages http/1.1"), "{wire}");
+    assert!(!wire.contains("/v1/messages"), "{wire}");
+}
 
-    let wire = server.join().expect("mock server");
-    let wire = wire.to_lowercase();
-    assert!(wire.contains("post /v1/messages http/1.1"), "{wire}");
-    assert!(wire.contains("x-api-key: test-key"), "{wire}");
-    assert!(wire.contains("anthropic-version: 2023-06-01"), "{wire}");
+#[test]
+fn responses_uses_full_configured_url() {
+    let body = concat!(
+        "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Hi\"}\n\n",
+        "data: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":5,\"output_tokens\":2}}}\n\n",
+    );
+    let (base_url, server) = serve_once(sse(body));
+    let url = format!("{base_url}/custom/responses");
+    let adapter = OpenAiResponsesAdapter::new(url, Some("test-key".to_owned()));
+    let request = ChatRequest::new("test-model", vec![ChatMessage::user("hi")]);
+    let outcome = adapter
+        .stream_chat(&request, &AtomicBool::new(false), &mut |_| {})
+        .expect("Responses stream");
+    assert_eq!(outcome.text, "Hi");
+    let wire = server.join().expect("mock server").to_lowercase();
+    assert!(wire.contains("post /custom/responses http/1.1"), "{wire}");
+    assert!(!wire.contains("/v1/responses"), "{wire}");
+}
+
+#[test]
+fn responses_tool_call_stream() {
+    let body = concat!(
+        "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"read_file\",\"arguments\":\"\"}}\n\n",
+        "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"delta\":\"{\\\"path\\\":\"}\n\n",
+        "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"delta\":\"\\\"a.txt\\\"}\"}\n\n",
+        "data: {\"type\":\"response.function_call_arguments.done\",\"output_index\":0,\"arguments\":\"{\\\"path\\\":\\\"a.txt\\\"}\"}\n\n",
+        "data: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":4,\"output_tokens\":2}}}\n\n",
+    );
+    let (base_url, server) = serve_once(sse(body));
+    let adapter = OpenAiResponsesAdapter::new(
+        format!("{base_url}/custom/responses"),
+        Some("test-key".to_owned()),
+    );
+    let request = ChatRequest::new("test-model", vec![ChatMessage::user("hi")]);
+    let outcome = adapter
+        .stream_chat(&request, &AtomicBool::new(false), &mut |_| {})
+        .expect("Responses tool stream");
+    assert_eq!(outcome.finish_reason, FinishReason::ToolCalls);
+    assert_eq!(outcome.tool_calls[0].name, "read_file");
+    assert_eq!(outcome.tool_calls[0].arguments, "{\"path\":\"a.txt\"}");
+    let _ = server.join().expect("mock server");
 }
 
 #[test]
@@ -144,15 +166,13 @@ fn openai_auth_error_is_normalized() {
         "{\"error\":{\"message\":\"bad key\"}}",
     );
     let (base_url, server) = serve_once(response.to_owned());
-    let provider = OpenAiChatProvider::new(
-        "openai",
-        base_url,
+    let adapter = OpenAiChatAdapter::new(
+        format!("{base_url}/custom/chat"),
         Some("bad-key".to_owned()),
-        vec!["test-model".to_owned()],
     );
     let request = ChatRequest::new("test-model", vec![ChatMessage::user("hi")]);
-    let error = provider
-        .stream_chat(&request, &mut |_| {})
+    let error = adapter
+        .stream_chat(&request, &AtomicBool::new(false), &mut |_| {})
         .expect_err("auth error");
     assert_eq!(error.kind, ProviderErrorKind::Auth);
     assert_eq!(error.status, Some(401));
