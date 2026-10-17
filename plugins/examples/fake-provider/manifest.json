@@ -1,0 +1,19 @@
+{
+  "id": "fake-provider",
+  "version": "1.0.0",
+  "api": 1,
+  "kind": "provider",
+  "entrypoint": "../../../target/debug/fake_plugin.exe",
+  "runtime": "sidecar",
+  "capabilities": ["chat", "streaming"],
+  "permissions": {
+    "network": [],
+    "env": [],
+    "fs_read": [],
+    "fs_write": []
+  },
+  "models": ["fake-model"],
+  "config_path": "config.json",
+  "health_timeout_ms": 3000,
+  "drain_timeout_ms": 2000
+}

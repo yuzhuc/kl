@@ -1,0 +1,18 @@
+[package]
+name = "kl-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "KL session event log and message projection"
+
+[dependencies]
+kl-protocol = { path = "../kl-protocol" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "kl_protocol": 1,
+  "id": 1,
+  "method": "kl.handshake",
+  "params": {
+    "client_name": "kl-cli",
+    "client_version": "0.1.0",
+    "protocol_versions": [1],
+    "features": ["events"]
+  }
+}

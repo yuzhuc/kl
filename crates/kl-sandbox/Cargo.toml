@@ -1,0 +1,15 @@
+[package]
+name = "kl-sandbox"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "KL sandbox backend probing and strict-mode policy"
+
+[dependencies]
+kl-exec = { path = "../kl-exec" }
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

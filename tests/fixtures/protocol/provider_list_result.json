@@ -1,0 +1,50 @@
+{
+  "jsonrpc": "2.0",
+  "kl_protocol": 1,
+  "id": 3,
+  "result": {
+    "active_provider": "opencode",
+    "active_model": "gpt-5-responses",
+    "models": [
+      {
+        "provider": "opencode",
+        "model": "gpt-5-chat",
+        "protocol": "openai-chat",
+        "url": "https://gateway.example/v1/chat/completions",
+        "context_window": 128000,
+        "compact_threshold": 0.8,
+        "max_output_tokens": 4096,
+        "enabled": true,
+        "key_configured": true,
+        "available": true,
+        "detail": "API key present"
+      },
+      {
+        "provider": "opencode",
+        "model": "claude-native",
+        "protocol": "anthropic",
+        "url": "https://gateway.example/v1/messages",
+        "context_window": 200000,
+        "compact_threshold": 0.75,
+        "max_output_tokens": 8192,
+        "enabled": true,
+        "key_configured": true,
+        "available": true,
+        "detail": "API key present"
+      },
+      {
+        "provider": "opencode",
+        "model": "gpt-5-responses",
+        "protocol": "openai-responses",
+        "url": "https://gateway.example/custom/responses",
+        "context_window": 256000,
+        "compact_threshold": 0.9,
+        "max_output_tokens": 16384,
+        "enabled": true,
+        "key_configured": true,
+        "available": true,
+        "detail": "API key present"
+      }
+    ]
+  }
+}

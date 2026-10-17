@@ -1,0 +1,10 @@
+{
+  "jsonrpc": "2.0",
+  "kl_protocol": 1,
+  "id": 1,
+  "error": {
+    "code": -32001,
+    "message": "no compatible protocol version",
+    "data": { "server_min": 1, "server_max": 1, "client": [9] }
+  }
+}

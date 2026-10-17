@@ -1,0 +1,16 @@
+[package]
+name = "kl-policy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "KL path, command and approval policy"
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+dunce = "1"
+regex = "1"
+
+[dev-dependencies]
+tempfile = "3"
