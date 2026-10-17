@@ -1,0 +1,22 @@
+[package]
+name = "kl-tools"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "KL built-in tools: files, search, shell and git"
+
+[dependencies]
+kl-policy = { path = "../kl-policy" }
+kl-exec = { path = "../kl-exec" }
+kl-provider = { path = "../kl-provider" }
+serde_json.workspace = true
+thiserror.workspace = true
+regex = "1"
+walkdir = "2"
+globset = "0.4"
+similar = "2"
+
+[dev-dependencies]
+tempfile = "3"
+serde.workspace = true

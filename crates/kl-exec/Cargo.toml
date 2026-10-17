@@ -1,0 +1,13 @@
+[package]
+name = "kl-exec"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "KL process execution with timeout, cancellation and output limits"
+
+[dependencies]
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

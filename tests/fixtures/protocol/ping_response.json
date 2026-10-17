@@ -1,0 +1,10 @@
+{
+  "jsonrpc": "2.0",
+  "kl_protocol": 1,
+  "id": 2,
+  "result": {
+    "pong": true,
+    "nonce": "contract-test",
+    "server_time_unix_ms": 1760000000000
+  }
+}

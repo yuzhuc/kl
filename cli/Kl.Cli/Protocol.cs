@@ -1,0 +1,25 @@
+namespace Kl.Cli;
+
+/// <summary>Wire constants shared with the Rust core and the JSON fixtures.</summary>
+public static class Protocol
+{
+    public const int Version = 1;
+    public const int MinVersion = 1;
+    public const string CoreName = "kl-core";
+    public const string ClientName = "kl-cli";
+    public const string ClientVersion = "0.1.0";
+
+    public const string Handshake = "kl.handshake";
+    public const string Ping = "kl.ping";
+    public const string Doctor = "kl.doctor";
+    public const string SessionCreate = "session.create";
+    public const string SessionResume = "session.resume";
+    public const string SessionList = "session.list";
+    public const string TurnStart = "turn.start";
+    public const string TurnCancel = "turn.cancel";
+    public const string ApprovalRespond = "tool.approval.respond";
+    public const string ProviderList = "provider.list";
+    public const string AuditTail = "audit.tail";
+    public const string ConfigGet = "config.get";
+    public const string Event = "event";
+}

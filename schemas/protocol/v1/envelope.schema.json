@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kl.dev/schemas/protocol/v1/envelope.schema.json",
+  "title": "KL JSON-RPC 2.0 envelope (protocol v1)",
+  "oneOf": [
+    { "$ref": "#/$defs/request" },
+    { "$ref": "#/$defs/response" },
+    { "$ref": "#/$defs/errorResponse" },
+    { "$ref": "#/$defs/notification" }
+  ],
+  "$defs": {
+    "requestId": {
+      "oneOf": [{ "type": "integer" }, { "type": "string" }]
+    },
+    "request": {
+      "type": "object",
+      "required": ["jsonrpc", "kl_protocol", "id", "method"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "kl_protocol": { "const": 1 },
+        "id": { "$ref": "#/$defs/requestId" },
+        "method": { "type": "string", "minLength": 1 },
+        "params": {}
+      },
+      "additionalProperties": false
+    },
+    "response": {
+      "type": "object",
+      "required": ["jsonrpc", "kl_protocol", "id", "result"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "kl_protocol": { "const": 1 },
+        "id": { "$ref": "#/$defs/requestId" },
+        "result": {}
+      },
+      "additionalProperties": false
+    },
+    "errorResponse": {
+      "type": "object",
+      "required": ["jsonrpc", "kl_protocol", "id", "error"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "kl_protocol": { "const": 1 },
+        "id": {
+          "oneOf": [
+            { "$ref": "#/$defs/requestId" },
+            { "type": "null" }
+          ]
+        },
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "type": "integer" },
+            "message": { "type": "string" },
+            "data": {}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "notification": {
+      "type": "object",
+      "required": ["jsonrpc", "kl_protocol", "method"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "kl_protocol": { "const": 1 },
+        "method": { "type": "string", "minLength": 1 },
+        "params": {}
+      },
+      "additionalProperties": false
+    }
+  }
+}

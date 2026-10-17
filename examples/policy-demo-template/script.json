@@ -1,0 +1,23 @@
+[
+  {
+    "tool_calls": [
+      {
+        "id": "call-danger",
+        "name": "shell",
+        "arguments": { "command": "rm -rf /" }
+      }
+    ]
+  },
+  {
+    "tool_calls": [
+      {
+        "id": "call-escape",
+        "name": "read_file",
+        "arguments": { "path": "../outside-secret.txt" }
+      }
+    ]
+  },
+  {
+    "text": "Both policy checks were denied."
+  }
+]

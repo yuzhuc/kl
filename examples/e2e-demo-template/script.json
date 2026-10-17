@@ -1,0 +1,36 @@
+[
+  {
+    "tool_calls": [
+      {
+        "id": "call-read",
+        "name": "read_file",
+        "arguments": { "path": "src/lib.rs" }
+      }
+    ]
+  },
+  {
+    "tool_calls": [
+      {
+        "id": "call-edit",
+        "name": "edit_file",
+        "arguments": {
+          "path": "src/lib.rs",
+          "old_string": "a + 2",
+          "new_string": "a + b"
+        }
+      }
+    ]
+  },
+  {
+    "tool_calls": [
+      {
+        "id": "call-test",
+        "name": "shell",
+        "arguments": { "command": "cargo test", "cwd": "." }
+      }
+    ]
+  },
+  {
+    "text": "Fixed the failing test and verified it with cargo test."
+  }
+]

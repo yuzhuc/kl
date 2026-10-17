@@ -1,0 +1,20 @@
+[package]
+name = "kl-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "KL provider-neutral agent loop"
+
+[dependencies]
+kl-protocol = { path = "../kl-protocol" }
+kl-provider = { path = "../kl-provider" }
+kl-policy = { path = "../kl-policy" }
+kl-audit = { path = "../kl-audit" }
+kl-tools = { path = "../kl-tools" }
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+serde.workspace = true

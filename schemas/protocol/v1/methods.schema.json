@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kl.dev/schemas/protocol/v1/methods.schema.json",
+  "title": "KL protocol v1 method payloads",
+  "$defs": {
+    "handshakeParams": {
+      "type": "object",
+      "required": ["client_name", "client_version", "protocol_versions"],
+      "properties": {
+        "client_name": { "type": "string" },
+        "client_version": { "type": "string" },
+        "protocol_versions": { "type": "array", "items": { "type": "integer" } },
+        "features": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "handshakeResult": {
+      "type": "object",
+      "required": [
+        "server_name",
+        "server_version",
+        "protocol_version",
+        "min_protocol_version",
+        "features"
+      ],
+      "properties": {
+        "server_name": { "const": "kl-core" },
+        "server_version": { "type": "string" },
+        "protocol_version": { "const": 1 },
+        "min_protocol_version": { "type": "integer" },
+        "features": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "pingParams": {
+      "type": "object",
+      "properties": { "nonce": { "type": "string" } },
+      "additionalProperties": false
+    },
+    "pingResult": {
+      "type": "object",
+      "required": ["pong", "server_time_unix_ms"],
+      "properties": {
+        "pong": { "const": true },
+        "nonce": { "type": "string" },
+        "server_time_unix_ms": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "doctorCheck": {
+      "type": "object",
+      "required": ["name", "ok", "detail"],
+      "properties": {
+        "name": { "type": "string" },
+        "ok": { "type": "boolean" },
+        "detail": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "doctorResult": {
+      "type": "object",
+      "required": ["ok", "core_version", "protocol_version", "checks"],
+      "properties": {
+        "ok": { "type": "boolean" },
+        "core_version": { "type": "string" },
+        "protocol_version": { "const": 1 },
+        "checks": { "type": "array", "items": { "$ref": "#/$defs/doctorCheck" } }
+      },
+      "additionalProperties": false
+    },
+    "sessionCreateParams": {
+      "type": "object",
+      "required": ["workspace"],
+      "properties": {
+        "workspace": { "type": "string" },
+        "provider": { "type": "string" },
+        "model": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "sessionInfo": {
+      "type": "object",
+      "required": [
+        "session_id",
+        "workspace",
+        "provider",
+        "model",
+        "created_at",
+        "updated_at",
+        "message_count"
+      ],
+      "properties": {
+        "session_id": { "type": "string" },
+        "workspace": { "type": "string" },
+        "provider": { "type": "string" },
+        "model": { "type": "string" },
+        "created_at": { "type": "string" },
+        "updated_at": { "type": "string" },
+        "message_count": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "turnStartParams": {
+      "type": "object",
+      "required": ["session_id", "prompt"],
+      "properties": {
+        "session_id": { "type": "string" },
+        "prompt": { "type": "string" },
+        "provider": { "type": "string" },
+        "model": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "eventNotification": {
+      "type": "object",
+      "required": ["jsonrpc", "kl_protocol", "method", "params"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "kl_protocol": { "const": 1 },
+        "method": { "const": "event" },
+        "params": {
+          "type": "object",
+          "required": ["session_id", "seq", "event"],
+          "properties": {
+            "session_id": { "type": "string" },
+            "seq": { "type": "integer", "minimum": 1 },
+            "event": {
+              "type": "object",
+              "required": ["type"],
+              "properties": {
+                "type": {
+                  "enum": [
+                    "session.created",
+                    "turn.started",
+                    "turn.delta",
+                    "turn.reasoning",
+                    "tool.started",
+                    "tool.output",
+                    "tool.approval.requested",
+                    "tool.approval.resolved",
+                    "tool.completed",
+                    "audit.recorded",
+                    "turn.completed",
+                    "turn.failed"
+                  ]
+                },
+                "data": { "type": "object" }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,15 @@
+[agent]
+provider = "scripted"
+model = "scripted"
+max_iterations = 6
+
+[policy]
+auto_approve_edits = false
+auto_approve_shell = false
+allow_outside_workspace = false
+
+[[providers]]
+id = "scripted"
+kind = "scripted"
+models = ["scripted"]
+script_path = "script.json"
