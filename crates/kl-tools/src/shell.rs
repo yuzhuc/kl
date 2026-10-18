@@ -4,6 +4,7 @@ use crate::{
 };
 use kl_exec::{CommandOutput, CommandSpec};
 use kl_policy::{Action, Effect, is_read_only_git};
+use kl_sandbox::SandboxPolicy;
 use serde_json::{Value, json};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -45,10 +46,6 @@ impl Tool for ShellTool {
         if evaluation.effect == Effect::Deny {
             return Err(ToolError::Policy(evaluation.reason));
         }
-        context
-            .sandbox
-            .ensure_process_execution()
-            .map_err(|error| ToolError::Policy(error.to_string()))?;
         let cwd = resolve_cwd(context, optional_string(args, "cwd").unwrap_or("."))?;
         let timeout = optional_usize(args, "timeout_ms")
             .map(|millis| Duration::from_millis(millis as u64))
@@ -63,8 +60,14 @@ impl Tool for ShellTool {
         spec.timeout = timeout;
         spec.max_output_bytes = context.max_output_bytes;
         apply_env_policy(context.policy, &mut spec);
-        let output = kl_exec::run(&spec, context.cancel)
-            .map_err(|error| ToolError::Execution(error.to_string()))?;
+        let policy = SandboxPolicy::workspace(context.policy.workspace());
+        let output = context
+            .sandbox
+            .run(&spec, context.cancel, &policy)
+            .map_err(|error| match error {
+                kl_sandbox::SandboxError::Violation(violation) => ToolError::Sandbox(violation),
+                other => ToolError::Policy(other.to_string()),
+            })?;
         Ok(describe_output(output, context.max_output_bytes))
     }
 }
@@ -121,17 +124,19 @@ impl Tool for GitTool {
         if evaluation.effect == Effect::Deny {
             return Err(ToolError::Policy(evaluation.reason));
         }
-        context
-            .sandbox
-            .ensure_process_execution()
-            .map_err(|error| ToolError::Policy(error.to_string()))?;
         let cwd = resolve_cwd(context, optional_string(args, "cwd").unwrap_or("."))?;
         let mut spec = CommandSpec::new("git", git_args, cwd);
         spec.timeout = context.timeout;
         spec.max_output_bytes = context.max_output_bytes;
         apply_env_policy(context.policy, &mut spec);
-        let output = kl_exec::run(&spec, context.cancel)
-            .map_err(|error| ToolError::Execution(error.to_string()))?;
+        let policy = SandboxPolicy::workspace(context.policy.workspace());
+        let output = context
+            .sandbox
+            .run(&spec, context.cancel, &policy)
+            .map_err(|error| match error {
+                kl_sandbox::SandboxError::Violation(violation) => ToolError::Sandbox(violation),
+                other => ToolError::Policy(other.to_string()),
+            })?;
         Ok(describe_output(output, context.max_output_bytes))
     }
 }
@@ -245,5 +250,47 @@ fn describe_output(output: CommandOutput, limit: usize) -> ToolOutcome {
         summary,
         output: truncate_text(&text, limit),
         diff: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kl_policy::{PolicyConfig, PolicyEngine};
+    use kl_sandbox::{SandboxBackendKind, SandboxConfig, SandboxManager, SandboxMode};
+    use std::sync::Arc;
+
+    #[cfg(windows)]
+    #[test]
+    fn shell_runs_through_appcontainer_sandbox() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = temp.path();
+        let manager = SandboxManager::probe(&SandboxConfig {
+            mode: SandboxMode::Strict,
+            backend: SandboxBackendKind::AppContainer,
+            ..SandboxConfig::default()
+        });
+        if !manager.status().available {
+            return;
+        }
+        let policy = PolicyEngine::new(workspace, PolicyConfig::default()).unwrap();
+        let cancel = std::sync::atomic::AtomicBool::new(false);
+        let context = ToolContext {
+            policy: &policy,
+            cancel: &cancel,
+            sandbox: Arc::new(manager),
+            timeout: Duration::from_secs(20),
+            max_output_bytes: 64 * 1024,
+        };
+        let outcome = ShellTool
+            .execute(&context, &json!({"command": "echo hello>a.txt"}))
+            .unwrap();
+        assert!(outcome.success, "{}", outcome.output);
+        assert_eq!(
+            std::fs::read_to_string(workspace.join("a.txt"))
+                .unwrap()
+                .trim(),
+            "hello"
+        );
     }
 }

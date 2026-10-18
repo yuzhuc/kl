@@ -11,6 +11,10 @@ public sealed class CliOptions
     public string? Provider { get; set; }
     public string? Model { get; set; }
     public string? Session { get; set; }
+    public string? BaseRef { get; set; }
+    public bool Strict { get; set; }
+    public string? ReviewMode { get; set; }
+    public string? Quality { get; set; }
     public bool AutoApprove { get; set; }
     public bool Verbose { get; set; }
     public bool Help { get; set; }
@@ -23,7 +27,7 @@ public static class CommandLine
 {
     private static readonly HashSet<string> Commands =
     [
-        "chat", "run", "resume", "doctor", "ping", "provider", "auth", "model", "plugin", "audit", "config", "version", "help"
+        "chat", "run", "resume", "doctor", "ping", "provider", "auth", "model", "plugin", "review", "audit", "config", "version", "help"
     ];
 
     public static CliOptions Parse(string[] args)
@@ -61,6 +65,26 @@ public static class CommandLine
                     break;
                 case "--session":
                     options.Session = Next(args, ref i, arg);
+                    break;
+                case "--base":
+                    options.BaseRef = Next(args, ref i, arg);
+                    break;
+                case "--strict":
+                    options.Strict = true;
+                    break;
+                case "--mode":
+                    options.ReviewMode = Next(args, ref i, arg);
+                    if (options.ReviewMode is not ("quick" or "standard" or "strict"))
+                    {
+                        throw new ArgumentException($"unknown review mode: {options.ReviewMode}");
+                    }
+                    break;
+                case "--quality":
+                    options.Quality = Next(args, ref i, arg);
+                    if (options.Quality is not ("fast" or "balanced" or "deep"))
+                    {
+                        throw new ArgumentException($"unknown quality mode: {options.Quality}");
+                    }
                     break;
                 case "--yes":
                 case "-y":

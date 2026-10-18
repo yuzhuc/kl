@@ -13,10 +13,13 @@ Rust trusted core (kl-core)
   Agent loop (provider-neutral)
   ToolRegistry (built-ins + sidecar tools)
   PolicyEngine (path/command/git/network/env/plugin/approval)
-  SandboxManager (policy/strict probing, MXC Z: isolation)
+  SandboxManager (policy/AppContainer backends, strict probing, MXC status)
   PluginHost (manifest v1, sidecar supervisor, health, drain, hot swap)
   AuditLog (rotated JSONL + SQLite index)
   SessionStore (session.json, state.json, events.jsonl)
+  ReviewPipeline (git diff, local/security rules, optional LLM review)
+  QualityModes (fast/balanced; deep: explorer -> planner -> implementer ->
+                reviewer -> verifier)
 ```
 
 ## Request lifecycle
@@ -40,6 +43,37 @@ Rust trusted core (kl-core)
 8. One audit record is written for every tool call, including denied and
    invalid calls. AuditLog appends raw JSONL and inserts a SQLite index row.
 9. At the end of a turn the projected message list is written to `state.json`.
+10. `review.run` is a separate synchronous method: it collects the diff,
+    runs deterministic rules and optional model review, converts runtime audit
+    denies/sandbox violations into findings, then applies the selected
+    confidence threshold.
+
+## Quality modes
+
+`turn.start` accepts an optional `quality` value. `fast` and `balanced` are one
+ordinary agent turn; `deep` runs five ordinary turns in order: explorer,
+planner, implementer, reviewer, verifier. Each stage uses the existing
+`ProviderRouter` and shared session history. Deep mode stops on cancellation,
+stage/tool/token/time limits, and keeps stage outputs as evidence in the final
+turn text. Reviewer and verifier prompts require file:line evidence; the verifier is
+instructed not to modify or expand the change. Reviewer stages use
+`ToolAccess::ReadOnly` and verifier stages use `ToolAccess::VerifyOnly`. The
+existing `PolicyEngine` denies edits, writes, shell writes, git writes and
+plugins before tool execution; verifier shell is restricted to a test/build/
+lint and read-only git allowlist. A workspace fingerprint taken before review
+is retained as a second defense against out-of-band changes.
+
+## Automated review
+
+`kl review` is intentionally separate from `kl audit`. The review pipeline
+collects `git diff` plus untracked files, scans changed lines and full files,
+and merges deterministic findings with runtime audit denies/sandbox violations
+and optional structured LLM findings. `quick`, `standard` and `strict` control
+the confidence threshold; strict includes low-confidence findings and marks
+them. The optional review-model call is bounded by `review_timeout_secs` and a
+cancellation token; timeout or cancellation returns an
+`llm-review-unavailable` finding instead of blocking the request. The same
+pipeline is exercised by deterministic fixture repositories.
 
 ## Agent loop
 
@@ -104,9 +138,16 @@ See `schemas/protocol/v1/`, `schemas/plugin/manifest-v1.schema.json` and
 
 ## Deliberate gaps
 
-- OS-level file/network sandbox enforcement is still policy/protocol based;
-  strict mode fails closed when a backend is unavailable.
+- Windows has AppContainer filesystem and child-process isolation. Network
+  isolation is not verified; the policy allowlist remains active. Linux and
+  macOS report an unimplemented OS backend and strict mode fails closed.
 - WASM plugin runtime is not implemented; sidecar is the current runtime.
-- No multi-agent quality modes or repository symbol index.
+- Deep mode is five ordinary agent turns, not a separate agent runtime.
+  Repository symbol indexing is not implemented.
+- Reviewer/verifier edits are denied at the tool-policy boundary; a workspace
+  fingerprint remains as a second defense. Policy approvals remain the hard
+  boundary for `Full` stages.
 - No UDS/Named Pipe transport; the transport boundary is ready for one.
 - Live Provider smoke remains pending until API keys are supplied.
+- `kl review` can run without a provider; in that case local findings remain
+  and a `llm-review-unavailable` low-confidence finding is emitted.

@@ -3,7 +3,7 @@
 
 use kl_protocol::{
     CoreEvent, EventNotification, HandshakeParams, HandshakeResult, IncomingMessage, PingParams,
-    PingResult, ProviderListResult, RequestId, error_codes, methods,
+    PingResult, ProviderListResult, RequestId, ReviewResult, error_codes, methods,
 };
 use serde_json::Value;
 use std::path::PathBuf;
@@ -94,6 +94,20 @@ fn provider_list_result_matches_shared_contract() {
         result.models[2].url,
         "https://gateway.example/custom/responses"
     );
+}
+
+#[test]
+fn review_result_matches_shared_contract() {
+    let value = read("review_result.json");
+    let result: ReviewResult = serde_json::from_value(value["result"].clone()).unwrap();
+    assert_eq!(result.mode, "strict");
+    assert_eq!(result.changed_files, 1);
+    assert_eq!(result.findings.len(), 2);
+    assert_eq!(result.findings[0].rule, "secret-openai");
+    assert_eq!(result.findings[0].file, "src/a.rs");
+    assert_eq!(result.findings[0].line, 3);
+    assert!(result.findings[1].low_confidence);
+    assert!((result.findings[0].confidence - 0.99).abs() < 0.001);
 }
 
 #[test]

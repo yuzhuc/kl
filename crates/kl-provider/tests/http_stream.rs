@@ -1,12 +1,11 @@
 use kl_provider::{
-    AnthropicAdapter, ChatEvent, ChatMessage, ChatRequest, FinishReason, OpenAiChatAdapter,
-    OpenAiResponsesAdapter, ProtocolAdapter, ProviderErrorKind,
+    AnthropicAdapter, CancellationToken, ChatEvent, ChatMessage, ChatRequest, FinishReason,
+    OpenAiChatAdapter, OpenAiResponsesAdapter, ProtocolAdapter, ProviderErrorKind,
 };
 use std::io::{Read, Write};
 use std::net::TcpListener;
-use std::sync::atomic::AtomicBool;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 fn serve_once(response: String) -> (String, thread::JoinHandle<String>) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock server");
@@ -74,7 +73,7 @@ fn openai_chat_uses_full_configured_url() {
 
     let mut deltas = String::new();
     let outcome = adapter
-        .stream_chat(&request, &AtomicBool::new(false), &mut |event| {
+        .stream_chat(&request, &CancellationToken::new(), &mut |event| {
             if let ChatEvent::TextDelta(text) = event {
                 deltas.push_str(&text);
             }
@@ -106,7 +105,7 @@ fn anthropic_uses_full_configured_url() {
     let adapter = AnthropicAdapter::new(url, Some("test-key".to_owned()));
     let request = ChatRequest::new("test-model", vec![ChatMessage::user("hi")]);
     let outcome = adapter
-        .stream_chat(&request, &AtomicBool::new(false), &mut |_| {})
+        .stream_chat(&request, &CancellationToken::new(), &mut |_| {})
         .expect("Anthropic stream");
     assert_eq!(outcome.text, "Hi");
     let wire = server.join().expect("mock server").to_lowercase();
@@ -125,7 +124,7 @@ fn responses_uses_full_configured_url() {
     let adapter = OpenAiResponsesAdapter::new(url, Some("test-key".to_owned()));
     let request = ChatRequest::new("test-model", vec![ChatMessage::user("hi")]);
     let outcome = adapter
-        .stream_chat(&request, &AtomicBool::new(false), &mut |_| {})
+        .stream_chat(&request, &CancellationToken::new(), &mut |_| {})
         .expect("Responses stream");
     assert_eq!(outcome.text, "Hi");
     let wire = server.join().expect("mock server").to_lowercase();
@@ -149,7 +148,7 @@ fn responses_tool_call_stream() {
     );
     let request = ChatRequest::new("test-model", vec![ChatMessage::user("hi")]);
     let outcome = adapter
-        .stream_chat(&request, &AtomicBool::new(false), &mut |_| {})
+        .stream_chat(&request, &CancellationToken::new(), &mut |_| {})
         .expect("Responses tool stream");
     assert_eq!(outcome.finish_reason, FinishReason::ToolCalls);
     assert_eq!(outcome.tool_calls[0].name, "read_file");
@@ -172,10 +171,82 @@ fn openai_auth_error_is_normalized() {
     );
     let request = ChatRequest::new("test-model", vec![ChatMessage::user("hi")]);
     let error = adapter
-        .stream_chat(&request, &AtomicBool::new(false), &mut |_| {})
+        .stream_chat(&request, &CancellationToken::new(), &mut |_| {})
         .expect_err("auth error");
     assert_eq!(error.kind, ProviderErrorKind::Auth);
     assert_eq!(error.status, Some(401));
     assert!(error.message.contains("bad key"));
     let _ = server.join().expect("mock server");
+}
+
+fn serve_hold() -> (String, thread::JoinHandle<bool>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock server");
+    let address = listener.local_addr().expect("mock address");
+    let handle = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept request");
+        stream
+            .set_read_timeout(Some(Duration::from_millis(100)))
+            .expect("read timeout");
+        let mut buffer = Vec::new();
+        let mut chunk = [0u8; 4096];
+        loop {
+            let count = stream.read(&mut chunk).expect("read request");
+            if count == 0 {
+                return false;
+            }
+            buffer.extend_from_slice(&chunk[..count]);
+            if buffer.windows(4).any(|window| window == b"\r\n\r\n") {
+                break;
+            }
+        }
+        stream
+            .write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n",
+            )
+            .expect("write headers");
+        stream.flush().expect("flush headers");
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let mut byte = [0u8; 1];
+        loop {
+            match stream.read(&mut byte) {
+                Ok(0) => return true,
+                Ok(_) => {}
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                    ) =>
+                {
+                    if Instant::now() >= deadline {
+                        return false;
+                    }
+                }
+                Err(_) => return false,
+            }
+        }
+    });
+    (format!("http://{address}"), handle)
+}
+#[test]
+fn cancellation_interrupts_slow_http_stream() {
+    let (base_url, server) = serve_hold();
+    let adapter = OpenAiChatAdapter::new(
+        format!("{base_url}/custom/chat"),
+        Some("test-key".to_owned()),
+    );
+    let request = ChatRequest::new("test-model", vec![ChatMessage::user("hi")]);
+    let token = CancellationToken::new();
+    let cancel = token.clone();
+    thread::spawn(move || {
+        thread::sleep(Duration::from_millis(200));
+        cancel.cancel();
+    });
+
+    let started = Instant::now();
+    let error = adapter
+        .stream_chat(&request, &token, &mut |_| {})
+        .expect_err("slow stream should be cancelled");
+    assert_eq!(error.kind, ProviderErrorKind::Cancelled);
+    assert!(started.elapsed() < Duration::from_secs(2));
+    assert!(server.join().expect("mock server"));
 }

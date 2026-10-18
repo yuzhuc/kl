@@ -1,11 +1,10 @@
 use kl_provider::{
-    AnthropicAdapter, ChatEvent, ChatMessage, ChatRequest, OpenAiChatAdapter,
+    AnthropicAdapter, CancellationToken, ChatEvent, ChatMessage, ChatRequest, OpenAiChatAdapter,
     OpenAiResponsesAdapter, ProtocolAdapter,
 };
 use serde_json::json;
 use std::io::{Error, ErrorKind};
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -106,16 +105,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let outcome = match protocol.as_str() {
         "openai-chat" => OpenAiChatAdapter::new(endpoint.clone(), Some(api_key)).stream_chat(
             &request,
-            &AtomicBool::new(false),
+            &CancellationToken::new(),
             &mut record_event,
         )?,
         "anthropic" => AnthropicAdapter::new(endpoint.clone(), Some(api_key)).stream_chat(
             &request,
-            &AtomicBool::new(false),
+            &CancellationToken::new(),
             &mut record_event,
         )?,
         "openai-responses" => OpenAiResponsesAdapter::new(endpoint.clone(), Some(api_key))
-            .stream_chat(&request, &AtomicBool::new(false), &mut record_event)?,
+            .stream_chat(&request, &CancellationToken::new(), &mut record_event)?,
         _ => unreachable!(),
     };
 

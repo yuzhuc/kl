@@ -16,6 +16,25 @@ Every tool request is evaluated as `action + resource -> effect`:
 
 `ask` is resolved by the client. `deny` cannot be overridden with `--yes`.
 
+## Stage-scoped tool access
+
+Deep review stages do not rely on prompts for isolation:
+
+| Stage | Access | Allowed tools/actions |
+|---|---|---|
+| explorer, planner, implementer | `Full` | normal policy and approvals |
+| reviewer | `ReadOnly` | read/grep/glob, read-only git |
+| verifier | `VerifyOnly` | read/grep/glob, read-only git, bounded verification shell |
+
+`ReadOnly` denies edit/write/patch, all shell, git writes and plugin calls
+before the tool executes. `VerifyOnly` additionally allows only recognized
+verification commands such as `cargo test`, `cargo check`, `cargo clippy`,
+`cargo build`, `dotnet test`, `dotnet build`, `cargo fmt --all -- --check`, and
+read-only git inspection. Shell metacharacters and git output/ext-diff options
+are denied. The verifier cannot use git commit/push/reset or arbitrary shell
+redirection. A workspace fingerprint is still checked after review as a second
+defense against provider or future-tool bypasses.
+
 ## Path safety
 
 - Paths are joined to the canonical workspace; the nearest existing ancestor
@@ -43,20 +62,32 @@ platform variables such as `PATH`, `SystemRoot`, `ComSpec`, `TEMP`, `HOME` and
 the listed variables are passed; all others are removed. An empty list inherits
 the parent environment.
 
-Shell command text is still not a complete OS sandbox; complex scripts can
-obscure paths or network access. This is enforced at the policy/protocol layer
-until stronger platform sandboxes are added.
+Policy checks are a trust boundary, not a substitute for OS isolation.
 
 ## Sandbox backend status
 
-`sandbox.mode = "policy"` is the default. `strict` requires a real backend and
-fails closed if the selected backend is unavailable.
+`sandbox.mode = "policy"` is the default and uses the policy backend. `strict`
+requires a real OS backend and fails closed if the selected backend is
+unavailable.
+
+On Windows, the `appcontainer` backend launches shell, git and sidecar
+processes with an AppContainer token and a kill-on-close Job Object. A
+`kl-sandbox-runner` helper clears the inherited environment before launching
+the target. Workspace roots are granted explicitly; sensitive paths are
+protected by removing the AppContainer ACE and setting a protected DACL.
+Network isolation is not claimed as verified, and the policy network allowlist
+remains active. The runner binary must be shipped next to `kl-core`.
 
 The MXC probe detects the external `MXC launcher: enumerate MXC volume Z:`
-failure. In non-strict mode KL isolates it by continuing with policy-only
-execution; in strict mode shell and plugin process execution are denied.
-`kl doctor` exposes `sandbox_backend`, `sandbox_strict` and
-`sandbox_z_isolation`.
+failure. In non-strict mode KL reports an explicit policy-only fallback; in
+strict mode a selected MXC backend fails closed. `kl doctor` exposes
+`sandbox_backend`, `sandbox_strict`, `sandbox_probe`, `sandbox_capabilities`,
+`sandbox_mxc` and `sandbox_z_isolation`.
+
+Every policy or OS sandbox denial emits a persisted `sandbox.violation` event
+and a normal failing audit record. Sensitive-path ACL hardening changes the
+DACL of the affected path. If the git installation root cannot be granted to
+the AppContainer SID, git fails closed with an explicit sandbox error.
 
 ## Plugin permissions
 
@@ -76,7 +107,11 @@ and on every request.
 `~/.kl/audit/events.jsonl` is the raw append-only JSONL log. It rotates at
 `audit.rotate_bytes` and keeps `audit.keep_files` archives. SQLite
 `~/.kl/audit/audit.sqlite` is the query index used by `kl audit`; the raw
-rotated JSONL files remain the source of truth.
+rotated JSONL files remain the source of truth. `kl review` reads the audit tail
+separately and surfaces denied tool calls and sandbox violations as review
+findings; it does not replace or rewrite runtime audit records. The optional
+review-model call is bounded by `review_timeout_secs`; cancellation and timeout
+produce an `llm-review-unavailable` finding and never block indefinitely.
 
 Each record contains:
 

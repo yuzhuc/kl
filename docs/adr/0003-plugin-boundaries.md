@@ -39,5 +39,6 @@ process and then stop it.
 - A plugin crash cannot take down the core process.
 - Built-in providers and tools follow the same interfaces as future external
   plugins, so behavior can be tested uniformly.
-- Stage 2 now ships a sidecar supervisor with manifest v1, capability tokens,
-  health checks, drain and hot swap. WASM remains a future runtime.
+- Stage 2 ships a sidecar supervisor with manifest v1, capability tokens,
+  health checks, drain and hot swap. ADR 0008 adds the initial WASM tool
+  runtime; WASM providers remain out of scope.

@@ -46,6 +46,10 @@ pub struct PluginManifest {
     pub health_timeout_ms: u64,
     #[serde(default = "default_drain_timeout")]
     pub drain_timeout_ms: u64,
+    #[serde(default = "default_call_timeout")]
+    pub call_timeout_ms: u64,
+    #[serde(default = "default_memory_limit")]
+    pub memory_limit_mb: u64,
 }
 
 fn default_runtime() -> String {
@@ -60,6 +64,14 @@ fn default_drain_timeout() -> u64 {
     5000
 }
 
+fn default_call_timeout() -> u64 {
+    30000
+}
+
+fn default_memory_limit() -> u64 {
+    64
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ManifestError {
     #[error("manifest io: {0}")]
@@ -70,8 +82,10 @@ pub enum ManifestError {
     Toml(#[from] toml::de::Error),
     #[error("unsupported plugin API {0}; expected {PLUGIN_API_VERSION}")]
     Api(u32),
-    #[error("unsupported plugin runtime `{0}`; sidecar is required")]
+    #[error("unsupported plugin runtime `{0}`; expected `sidecar` or `wasm`")]
     Runtime(String),
+    #[error("the wasm runtime only supports tool plugins")]
+    WasmProvider,
     #[error("plugin id must contain only letters, digits, '-' or '_'")]
     InvalidId,
     #[error("plugin `{0}` is missing a tool name")]
@@ -97,8 +111,11 @@ impl PluginManifest {
         if self.api != PLUGIN_API_VERSION {
             return Err(ManifestError::Api(self.api));
         }
-        if self.runtime != "sidecar" {
-            return Err(ManifestError::Runtime(self.runtime.clone()));
+        match self.runtime.as_str() {
+            "sidecar" => {}
+            "wasm" if self.kind == PluginKind::Tool => {}
+            "wasm" => return Err(ManifestError::WasmProvider),
+            _ => return Err(ManifestError::Runtime(self.runtime.clone())),
         }
         if self.id.is_empty()
             || !self.id.chars().all(|character| {
@@ -148,6 +165,10 @@ impl PluginManifest {
 
     pub fn tool_name(&self) -> String {
         self.tool_name.clone().unwrap_or_else(|| self.id.clone())
+    }
+
+    pub fn is_wasm(&self) -> bool {
+        self.runtime == "wasm"
     }
 
     pub fn models(&self) -> Vec<String> {

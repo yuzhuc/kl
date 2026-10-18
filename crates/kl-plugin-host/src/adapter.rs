@@ -1,12 +1,12 @@
 use crate::{PluginError, PluginHost};
 use kl_policy::Action;
 use kl_provider::{
-    ChatEvent, ChatOutcome, ChatRequest, ModelInfo, Provider, ProviderError, ProviderErrorKind,
+    CancellationToken, ChatEvent, ChatOutcome, ChatRequest, ModelInfo, Provider, ProviderError,
+    ProviderErrorKind,
 };
 use kl_tools::{PolicyRequest, Tool, ToolContext, ToolError, ToolOutcome};
 use serde_json::Value;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 pub struct SidecarProvider {
     host: Arc<PluginHost>,
@@ -46,10 +46,10 @@ impl Provider for SidecarProvider {
     fn stream_chat(
         &self,
         request: &ChatRequest,
-        cancel: &AtomicBool,
+        cancel: &CancellationToken,
         on_event: &mut dyn FnMut(ChatEvent),
     ) -> Result<ChatOutcome, ProviderError> {
-        if cancel.load(Ordering::Relaxed) {
+        if cancel.is_cancelled() {
             return Err(ProviderError::cancelled());
         }
         let outcome = self
@@ -57,7 +57,7 @@ impl Provider for SidecarProvider {
             .provider_chat(&self.id, request)
             .map_err(provider_error)?;
         for chunk in chunk_text(&outcome.text, 64) {
-            if cancel.load(Ordering::Relaxed) {
+            if cancel.is_cancelled() {
                 return Err(ProviderError::cancelled());
             }
             on_event(ChatEvent::TextDelta(chunk));
@@ -72,18 +72,20 @@ pub struct SidecarTool {
     name: String,
     description: String,
     parameters: Value,
+    requires_process: bool,
 }
 
 impl SidecarTool {
     pub fn new(host: Arc<PluginHost>, plugin_id: impl Into<String>) -> Option<Self> {
         let plugin_id = plugin_id.into();
         let manifest = host.manifest(&plugin_id)?;
+        let requires_process = !manifest.is_wasm();
         Some(Self {
             host,
             plugin_id,
             name: manifest.tool_name(),
             description: format!(
-                "Sidecar plugin tool `{}` from plugin `{}` v{}",
+                "Plugin tool `{}` from plugin `{}` v{}",
                 manifest.tool_name(),
                 manifest.id,
                 manifest.version
@@ -91,6 +93,7 @@ impl SidecarTool {
             parameters: manifest
                 .tool_parameters
                 .unwrap_or_else(|| serde_json::json!({"type": "object"})),
+            requires_process,
         })
     }
 }
@@ -116,10 +119,12 @@ impl Tool for SidecarTool {
     }
 
     fn execute(&self, context: &ToolContext<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
-        context
-            .sandbox
-            .ensure_process_execution()
-            .map_err(|error| ToolError::Policy(error.to_string()))?;
+        if self.requires_process {
+            context
+                .sandbox
+                .ensure_process_execution()
+                .map_err(|error| ToolError::Policy(error.to_string()))?;
+        }
         self.host
             .tool_execute(
                 &self.plugin_id,
@@ -151,6 +156,7 @@ fn provider_error(error: PluginError) -> ProviderError {
 fn tool_error(error: PluginError) -> ToolError {
     match error {
         PluginError::PermissionDenied(message) => ToolError::Policy(message),
+        PluginError::Sandbox(violation) => ToolError::Sandbox(violation),
         other => ToolError::Execution(other.to_string()),
     }
 }

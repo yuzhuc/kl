@@ -4,9 +4,11 @@ KL is a provider-neutral coding agent with a Rust trusted core and a C#/.NET
 terminal client. It does not use a Python runtime or Python build scripts.
 
 Status: **stage 0, stage 1 MVP, stage 1.5 hardening, stage 2 sidecar
-plugin-host MVP, provider routing, terminal chat page, and provider
-configuration commands complete**. Live external Provider smoke is pending
-until API keys are supplied; see `tests/fixtures/providers/live-smoke.status.json`.
+plugin-host MVP, provider routing, terminal chat page, provider configuration
+commands, stage 2.5 Windows AppContainer sandbox + provider cancellation
+cleanup, and stage 3 automated review + quality modes complete**. Live
+external Provider smoke is pending until API keys are supplied; see
+`tests/fixtures/providers/live-smoke.status.json`.
 
 ## Architecture
 
@@ -16,6 +18,8 @@ kl (C#/.NET)  -- JSON-RPC 2.0 over stdio -->  kl-core (Rust)
                                               provider router
                                               tools + policy + approvals
                                               sessions + audit
+                                              review pipeline
+                                              quality-mode stages
 ```
 
 - `crates/kl-protocol` — wire envelopes, version negotiation, events, stable
@@ -27,12 +31,16 @@ kl (C#/.NET)  -- JSON-RPC 2.0 over stdio -->  kl-core (Rust)
   Responses and a deterministic scripted provider for offline tests/demos.
 - `crates/kl-tools` — `read_file`, `write_file`, `edit_file`, `grep`, `glob`,
   `shell`, `git`.
+- `crates/kl-review` — deterministic diff context, local/security rules,
+  secret and dependency scans, runtime-audit findings, optional LLM review,
+  deduplication and confidence thresholds.
 - `crates/kl-policy` — workspace containment, sensitive paths, dangerous
   command denial, approval effects.
 - `crates/kl-audit` — rotated append-only JSONL audit plus SQLite query index.
 - `crates/kl-store` — session metadata, message projection and event log.
-- `crates/kl-sandbox` — sandbox backend probing, strict-mode fail-closed and
-  MXC Z: failure isolation.
+- `crates/kl-sandbox` — unified sandbox boundary with Windows AppContainer +
+  kill-on-close Job Object, strict-mode fail-closed, MXC probing and the
+  `kl-sandbox-runner` clean-environment launcher.
 - `crates/kl-plugin-host` — manifest v1, sidecar JSON-RPC supervisor, health
   checks, drain, hot swap and capability checks.
 - `crates/kl-exec` — process execution with timeout, cancellation and bounded
@@ -86,6 +94,12 @@ build the Rust core first.
 .\cli\Kl.Cli\bin\Debug\net10.0\kl.exe resume
 .\cli\Kl.Cli\bin\Debug\net10.0\kl.exe resume <session-id> --yes
 
+# review the current diff; strict shows low-confidence findings
+.\cli\Kl.Cli\bin\Debug\net10.0\kl.exe review --workspace . --strict
+
+# deep quality mode
+.\cli\Kl.Cli\bin\Debug\net10.0\kl.exe run "fix the failing test" --quality deep --workspace . --yes
+
 # providers, audit, redacted config
 .\cli\Kl.Cli\bin\Debug\net10.0\kl.exe provider list
 .\cli\Kl.Cli\bin\Debug\net10.0\kl.exe audit 20
@@ -104,8 +118,26 @@ current turn (or exits when idle), Left on an empty input opens history, Up/Down
 scrolls, and `?` shows shortcuts. The history page groups sessions by workspace
 and supports Up/Down, Enter to resume, `n` for a new session and Esc to return.
 
+From the chat input, enter `/settings` or `/设置` to open the settings page.
+The page uses a two-column layout: Model, Agent, Plugins and Skills on the
+left, and the selected group on the right. Model is implemented; the other
+three are placeholders. Use Up/Down to move, Tab/Shift+Tab to switch columns,
+Enter to edit or confirm, Esc to return, and Ctrl+S to save.
+
+The Model group lists providers with enabled, key, model-count and protocol
+status, plus model metadata. It can add or edit providers, toggle a provider
+with Space, add or edit models, and set the default provider/model with Enter
+on a model row. Base address mode expands the default
+`https://opencode.ai/zen/go/v1` (or the entered base) into
+`/chat/completions`, `/messages` and `/responses` before writing the provider
+TOML. Full mode writes the three complete URLs exactly as entered. API keys use
+masked input and `provider.set_api_key` to write
+`credentials/<id>.key`; they are never written to provider TOML or echoed.
+Disabled providers hide their models until they are enabled again.
+
 Redirected or non-interactive runs automatically fall back to the plain-text
-prompt. `kl run` always uses the existing non-interactive output.
+prompt. `/settings` in that mode prints a hint instead of being sent to the
+model. `kl run` always uses the existing non-interactive output.
 
 ## Configuration
 
@@ -122,10 +154,25 @@ provider file is never read.
 [agent]
 provider = "opencode"
 model = "gpt-5-responses"
+quality = "balanced"          # fast | balanced | deep
 max_iterations = 12
 max_tool_output_bytes = 32768
 command_timeout_secs = 120
 approval_timeout_secs = 180
+deep_max_stages = 5
+deep_max_tool_calls = 48
+deep_token_budget = 120000
+deep_timeout_secs = 900
+
+# Optional role-specific overrides for deep mode. Unset values inherit the
+# default provider/model; a failed override falls back to the default route.
+[agent.roles.explorer]
+provider = "opencode"
+model = "gpt-5-responses"
+
+[agent.roles.reviewer]
+provider = "opencode"
+model = "gpt-5-responses"
 
 [policy]
 auto_approve_edits = false
@@ -138,7 +185,7 @@ env_allowlist = []           # empty = inherit shell environment
 
 [sandbox]
 mode = "policy"              # policy | strict | off
-backend = "auto"             # auto | mxc | policy | off
+backend = "auto"             # auto | appcontainer | mxc | policy | off
 probe_timeout_ms = 1500
 
 [audit]
@@ -230,6 +277,7 @@ only through the agent settings:
 provider = "scripted"
 model = "scripted"
 scripted_path = "script.json"
+scripted_sequential = true      # keep the script cursor across deep stages
 ```
 
 `policy.env_allowlist` switches shell/git execution to a clean environment plus
@@ -237,14 +285,65 @@ only the listed variables. `policy.network_allowlist` validates URLs found in
 shell commands and denies hosts outside the list. Empty lists preserve the
 previous inherit/no-URL-check behavior.
 
-`[sandbox]` controls backend probing. `strict` fails closed if no real OS
-sandbox is available. A detected MXC `Z:` enumeration failure is isolated: in
-non-strict mode KL falls back to policy-only; in strict mode shell/plugin
-process execution is denied. `kl doctor` shows `sandbox_backend`,
-`sandbox_strict` and `sandbox_z_isolation`.
+`[sandbox]` controls process isolation. `policy` uses the policy engine only.
+`strict` requires a real OS backend and fails closed if it is unavailable. On
+Windows, `backend = "appcontainer"` (or `auto` in strict mode) runs shell, git
+and sidecar processes through an AppContainer token and a kill-on-close Job
+Object. A `kl-sandbox-runner` helper clears the inherited environment before
+starting the target process, so plugin environment allowlists remain effective.
+MXC is probed explicitly; an unavailable launcher is reported and never
+silently treated as an OS sandbox. `kl doctor` shows the backend, strict mode,
+probe result, capability matrix and MXC status.
 
 `[audit]` controls raw JSONL rotation. `kl audit` queries the SQLite index while
 the rotated `events*.jsonl` files remain the source of truth.
+
+## Automated review
+
+`kl review` is separate from `kl audit`. `kl audit` remains the runtime tool
+audit log. `kl review` inspects code changes and supports:
+
+```powershell
+kl review                         # standard review of the working-tree diff
+kl review --base origin/main     # review changes since a git ref
+kl review --strict               # keep low-confidence findings
+kl review --mode quick           # quick | standard | strict
+```
+
+The pipeline collects `git diff`, scans dangerous patterns, secrets, wildcard
+dependencies and missing tests, performs cross-file risk checks, proposes
+Rust/.NET verification commands, converts runtime audit denies and sandbox
+violations into findings, and optionally calls the configured provider for a
+structured diff review. Findings are deduplicated and sorted by severity.
+`--strict` never silently hides low-confidence items; they are marked
+`LOW-CONFIDENCE`. The deterministic fixture
+`tests/fixtures/review-repo` is used by Rust tests and the CLI demo:
+
+```powershell
+pwsh scripts/demo-review.ps1
+```
+
+## Quality modes
+
+`fast`, `balanced` and `deep` are selected with `--quality` or
+`[agent].quality`. The default is `balanced`, which preserves the existing
+single-turn behavior. `deep` runs explicit ordinary agent turns:
+
+```
+explorer -> planner -> implementer -> reviewer -> verifier
+```
+
+All stages share session history and use the existing `ProviderRouter`; there
+is no new provider protocol or cross-protocol conversion. Each stage inherits
+the default provider/model, with optional `[agent.roles.<stage>]` overrides.
+Deep mode is bounded by stage count, total tool calls, token usage reported by
+the provider, and a wall-clock watchdog. Cancellation is honored between and
+during stages. Explorer/planner/reviewer/verifier failures are recorded and do
+not discard a successful implementation; implementer failure stops the turn.
+Reviewer and verifier prompts require file:line evidence, and the verifier is
+instructed to verify only and not expand the change. The deep turn also
+fingerprints the workspace before review and fails if reviewer/verifier changes
+it.
 
 ## Offline end-to-end demo
 
@@ -337,25 +436,41 @@ handshake negotiates the supported version range.
 
 Core methods: `kl.handshake`, `kl.ping`, `kl.doctor`, `session.create`,
 `session.resume`, `session.list`, `turn.start`, `turn.cancel`,
-`tool.approval.respond`, `provider.list`, `provider.upsert`,\n`provider.set_api_key`, `provider.set_enabled`, `config.set_default_model`,\n`plugin.list`, `plugin.install`,
-`plugin.reload`, `plugin.enable`, `plugin.disable`, `audit.tail`, `config.get`.
+`tool.approval.respond`, `provider.list`, `provider.upsert`,
+`provider.set_api_key`, `provider.set_enabled`, `config.set_default_model`,
+`plugin.list`, `plugin.install`, `plugin.reload`, `plugin.enable`,
+`plugin.disable`, `audit.tail`, `review.run`, `config.get`. `turn.start`
+accepts an optional `quality` value (`fast`, `balanced`, `deep`).
 
 Events: `session.created`, `turn.started`, `turn.delta`, `turn.reasoning`,
 `tool.started`, `tool.output`, `tool.approval.requested`,
-`tool.approval.resolved`, `tool.completed`, `audit.recorded`,
+`tool.approval.resolved`, `tool.completed`, `sandbox.violation`, `audit.recorded`,
 `turn.completed`, `turn.failed`.
 
 ## Limitations / next stage
 
-- No OS-level file/network sandbox yet; sandbox probing and strict fail-closed
-  behavior are implemented, but enforcement remains policy/protocol based.
+- Windows AppContainer enforces workspace filesystem isolation and child-process
+  containment. Network isolation is not claimed as verified; the policy
+  allowlist remains active. Linux and macOS expose an explicit unimplemented
+  backend rather than pretending policy checks are OS isolation.
+- Protecting sensitive paths on Windows removes the AppContainer ACE and makes
+  that DACL protected. This is persistent ACL hardening of those paths.
+- Strict git execution requires the git installation root to be ACL-grantable.
+  If it is on a volume whose root cannot be granted, the git tool fails closed
+  with an explicit sandbox error.
 - WASM plugin hosting is not implemented; sidecar is the current plugin runtime.
-- No multi-agent quality modes or repository symbol index.
-- Cancellation returns the turn promptly and detaches the provider stream; a
-  stalled network read may remain in its worker until the provider timeout.
+- Deep quality mode is explicit orchestration of five ordinary agent turns, not
+  a separate multi-agent runtime. Repository symbol indexing is not implemented.
+- Reviewer/verifier workspace edits are detected by a fingerprint guard and fail
+  the deep turn; prompts also prohibit edits. Shell/edit approvals remain the
+  hard policy boundary.
+- Provider cancellation uses a `CancellationToken` that interrupts the streaming
+  read loop; the worker is joined within two seconds and the connection is
+  dropped.
 - Live OpenAI Chat, Anthropic and OpenAI Responses smoke is pending because no
   API keys were available in the implementation environment. The offline mock
   SSE conformance tests pass for all three protocols.
 
-Next stage entry point: add WASM plugin runtime, stronger OS sandbox backends,
-and live provider conformance/replay fixtures.
+Next stage entry point: add Linux/macOS OS backends, WASM plugin runtime,
+verified network isolation, repository symbol indexing, and live provider
+conformance/replay fixtures.

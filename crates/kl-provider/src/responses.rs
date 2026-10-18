@@ -1,11 +1,11 @@
 use crate::{
-    ChatEvent, ChatOutcome, ChatRequest, FinishReason, Protocol, ProtocolAdapter, ProviderError,
-    ProviderErrorKind, Role, ToolCall, Usage, http_post_stream, read_sse,
+    CancellationToken, ChatEvent, ChatOutcome, ChatRequest, FinishReason, Protocol,
+    ProtocolAdapter, ProviderError, ProviderErrorKind, Role, ToolCall, Usage, http_post_stream,
+    read_sse,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader};
-use std::sync::atomic::AtomicBool;
 
 /// Native OpenAI Responses API adapter. The configured endpoint is used
 /// exactly as the complete request URL.
@@ -25,7 +25,7 @@ impl OpenAiResponsesAdapter {
     pub fn parse_stream<R: BufRead>(
         &self,
         reader: R,
-        cancel: &AtomicBool,
+        cancel: &CancellationToken,
         on_event: &mut dyn FnMut(ChatEvent),
     ) -> Result<ChatOutcome, ProviderError> {
         let mut text = String::new();
@@ -212,7 +212,7 @@ impl ProtocolAdapter for OpenAiResponsesAdapter {
     fn stream_chat(
         &self,
         request: &ChatRequest,
-        cancel: &AtomicBool,
+        cancel: &CancellationToken,
         on_event: &mut dyn FnMut(ChatEvent),
     ) -> Result<ChatOutcome, ProviderError> {
         let Some(api_key) = &self.api_key else {
@@ -359,11 +359,15 @@ mod tests {
         );
         let mut text = String::new();
         let outcome = adapter()
-            .parse_stream(Cursor::new(stream), &AtomicBool::new(false), &mut |event| {
-                if let ChatEvent::TextDelta(chunk) = event {
-                    text.push_str(&chunk);
-                }
-            })
+            .parse_stream(
+                Cursor::new(stream),
+                &CancellationToken::new(),
+                &mut |event| {
+                    if let ChatEvent::TextDelta(chunk) = event {
+                        text.push_str(&chunk);
+                    }
+                },
+            )
             .unwrap();
         assert_eq!(text, "Hello");
         assert_eq!(outcome.text, "Hello");
@@ -382,7 +386,7 @@ mod tests {
             "data: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":4,\"output_tokens\":2}}}\n\n",
         );
         let outcome = adapter()
-            .parse_stream(Cursor::new(stream), &AtomicBool::new(false), &mut |_| {})
+            .parse_stream(Cursor::new(stream), &CancellationToken::new(), &mut |_| {})
             .unwrap();
         assert_eq!(outcome.finish_reason, FinishReason::ToolCalls);
         assert_eq!(outcome.tool_calls.len(), 1);

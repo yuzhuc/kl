@@ -29,4 +29,5 @@ introducing Rust's unstable dynamic ABI.
 - Protocol-level permissions are not a complete OS sandbox; a malicious
   sidecar can still attempt direct I/O. Strict sandbox backends are the next
   hardening step.
-- WASM remains a future runtime; no `dlopen`/`cdylib` plugin loading is used.
+- WASM tools are added separately by ADR 0008; no `dlopen`/`cdylib` plugin
+  loading is used.

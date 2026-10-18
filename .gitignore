@@ -10,3 +10,5 @@
 .env
 .env.*
 .DS_Store
+!crates/kl-sandbox/src/bin/
+!crates/kl-sandbox/src/bin/kl-sandbox-runner.rs

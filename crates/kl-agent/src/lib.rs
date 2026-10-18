@@ -2,14 +2,14 @@
 //! one neutral chat request/stream and one neutral tool call type.
 
 use kl_audit::{AuditRecord, AuditSink};
-use kl_policy::{Effect, PolicyEngine};
+use kl_policy::{Effect, PolicyEngine, ToolAccess};
 use kl_protocol::{ApprovalDecision, CoreEvent};
 use kl_provider::{
-    ChatEvent, ChatMessage, ChatOutcome, ChatRequest, ModelMetadata, Provider, ProviderError,
-    ProviderErrorKind, ToolCall,
+    CancellationToken, ChatEvent, ChatMessage, ChatOutcome, ChatRequest, ModelMetadata, Provider,
+    ProviderError, ProviderErrorKind, ToolCall, Usage,
 };
 use kl_sandbox::SandboxManager;
-use kl_tools::{PolicyRequest, ToolContext, ToolRegistry};
+use kl_tools::{PolicyRequest, ToolContext, ToolError, ToolRegistry};
 use serde_json::{Value, json};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -22,6 +22,9 @@ pub struct AgentConfig {
     pub max_tool_calls_per_turn: usize,
     pub max_tool_output_bytes: usize,
     pub command_timeout: Duration,
+    /// Zero means unlimited. Providers that omit usage are estimated conservatively.
+    pub max_total_tokens: u64,
+    pub tool_access: ToolAccess,
 }
 
 impl Default for AgentConfig {
@@ -31,6 +34,8 @@ impl Default for AgentConfig {
             max_tool_calls_per_turn: 32,
             max_tool_output_bytes: 32 * 1024,
             command_timeout: Duration::from_secs(120),
+            max_total_tokens: 0,
+            tool_access: ToolAccess::Full,
         }
     }
 }
@@ -54,6 +59,7 @@ impl TurnStatus {
 pub struct TurnResult {
     pub status: TurnStatus,
     pub text: String,
+    pub usage: Usage,
 }
 
 #[derive(Debug, Clone)]
@@ -88,6 +94,8 @@ pub enum AgentError {
     Tool(String),
     #[error("maximum iterations reached")]
     MaxIterations,
+    #[error("token budget exceeded")]
+    TokenBudgetExceeded,
 }
 
 enum ProviderMessage {
@@ -159,6 +167,7 @@ impl Agent {
         approvals: &dyn ApprovalGate,
     ) -> Result<TurnResult, AgentError> {
         self.provider.begin_turn();
+        let mut usage = Usage::default();
         history.push(ChatMessage::user(prompt));
         sink.emit(CoreEvent::TurnStarted {
             turn_id: turn_id.to_owned(),
@@ -167,7 +176,7 @@ impl Agent {
         let mut state = TurnState::Model { iteration: 0 };
         loop {
             if cancel.load(Ordering::Relaxed) {
-                return self.finish_cancelled(turn_id, history, sink);
+                return self.finish_cancelled(turn_id, history, sink, usage);
             }
 
             state = match state {
@@ -190,13 +199,14 @@ impl Agent {
                     request.system = self.system_prompt.clone();
                     request.tools = self.tools.definitions();
 
+                    let estimated_input = estimate_request_tokens(&request);
                     let outcome = match self.stream_provider(request, cancel.clone(), sink, turn_id)
                     {
                         Ok(outcome) => outcome,
                         Err(AgentError::Provider(error))
                             if error.kind == ProviderErrorKind::Cancelled =>
                         {
-                            return self.finish_cancelled(turn_id, history, sink);
+                            return self.finish_cancelled(turn_id, history, sink, usage);
                         }
                         Err(error) => {
                             let _ = sink.emit(CoreEvent::TurnFailed {
@@ -207,8 +217,29 @@ impl Agent {
                         }
                     };
 
+                    if outcome.usage.input_tokens + outcome.usage.output_tokens == 0 {
+                        usage.input_tokens += estimated_input;
+                        usage.output_tokens += estimate_outcome_tokens(&outcome);
+                    } else {
+                        usage.input_tokens += outcome.usage.input_tokens;
+                        usage.output_tokens += outcome.usage.output_tokens;
+                    }
+                    if self.config.max_total_tokens > 0
+                        && usage.input_tokens + usage.output_tokens > self.config.max_total_tokens
+                    {
+                        let message = format!(
+                            "token budget exceeded: {} > {}",
+                            usage.input_tokens + usage.output_tokens,
+                            self.config.max_total_tokens
+                        );
+                        sink.emit(CoreEvent::TurnFailed {
+                            turn_id: turn_id.to_owned(),
+                            message: message.clone(),
+                        })?;
+                        return Err(AgentError::TokenBudgetExceeded);
+                    }
                     if cancel.load(Ordering::Relaxed) {
-                        return self.finish_cancelled(turn_id, history, sink);
+                        return self.finish_cancelled(turn_id, history, sink, usage);
                     }
 
                     if outcome.tool_calls.is_empty() {
@@ -224,6 +255,7 @@ impl Agent {
                         return Ok(TurnResult {
                             status: TurnStatus::Completed,
                             text: outcome.text,
+                            usage,
                         });
                     }
 
@@ -265,7 +297,7 @@ impl Agent {
                             .execute_tool_call(session_id, turn_id, call, &cancel, sink, approvals);
                         history.push(ChatMessage::tool(&call.id, result));
                         if cancel.load(Ordering::Relaxed) {
-                            return self.finish_cancelled(turn_id, history, sink);
+                            return self.finish_cancelled(turn_id, history, sink, usage);
                         }
                         TurnState::Tools {
                             iteration,
@@ -287,16 +319,24 @@ impl Agent {
     ) -> Result<ChatOutcome, AgentError> {
         let (sender, receiver) = mpsc::channel();
         let provider = self.provider.clone();
-        let provider_cancel = cancel.clone();
-        std::thread::spawn(move || {
-            let result = provider.stream_chat(&request, &provider_cancel, &mut |event| {
+        let token = CancellationToken::from_arc(cancel.clone());
+        let worker_token = token.clone();
+        let mut worker = Some(std::thread::spawn(move || {
+            let result = provider.stream_chat(&request, &worker_token, &mut |event| {
                 let _ = sender.send(ProviderMessage::Event(event));
             });
             let _ = sender.send(ProviderMessage::Done(result));
-        });
+        }));
 
         loop {
             if cancel.load(Ordering::Relaxed) {
+                token.cancel();
+                if !join_worker(&mut worker, Duration::from_secs(2)) {
+                    return Err(AgentError::Provider(ProviderError::new(
+                        ProviderErrorKind::Transport,
+                        "provider worker did not stop within 2 seconds",
+                    )));
+                }
                 return Err(AgentError::Provider(ProviderError::cancelled()));
             }
             match receiver.recv_timeout(Duration::from_millis(100)) {
@@ -316,8 +356,12 @@ impl Agent {
                         sink.emit(mapped)?;
                     }
                 }
-                Ok(ProviderMessage::Done(Ok(outcome))) => return Ok(outcome),
+                Ok(ProviderMessage::Done(Ok(outcome))) => {
+                    join_worker(&mut worker, Duration::from_secs(1));
+                    return Ok(outcome);
+                }
                 Ok(ProviderMessage::Done(Err(error))) => {
+                    join_worker(&mut worker, Duration::from_secs(1));
                     if cancel.load(Ordering::Relaxed) {
                         return Err(AgentError::Provider(ProviderError::cancelled()));
                     }
@@ -325,6 +369,8 @@ impl Agent {
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {}
                 Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    token.cancel();
+                    join_worker(&mut worker, Duration::from_secs(2));
                     return Err(AgentError::Provider(ProviderError::new(
                         ProviderErrorKind::Transport,
                         "provider stream disconnected",
@@ -333,12 +379,12 @@ impl Agent {
             }
         }
     }
-
     fn finish_cancelled(
         &self,
         turn_id: &str,
         history: &mut Vec<ChatMessage>,
         sink: &dyn EventSink,
+        usage: Usage,
     ) -> Result<TurnResult, AgentError> {
         history.push(ChatMessage::assistant_with_text(
             "Cancelled by user.",
@@ -352,6 +398,7 @@ impl Agent {
         Ok(TurnResult {
             status: TurnStatus::Cancelled,
             text: "Cancelled by user.".to_owned(),
+            usage,
         })
     }
 
@@ -417,7 +464,11 @@ impl Agent {
             }
         };
 
-        let evaluation = self.policy.evaluate(request.action, &request.resource);
+        let evaluation = self.policy.evaluate_with_access(
+            self.config.tool_access,
+            request.action,
+            &request.resource,
+        );
         let audit_resource = evaluation
             .resolved
             .as_ref()
@@ -437,6 +488,13 @@ impl Agent {
         let mut approved: Option<bool> = None;
         if evaluation.effect == Effect::Deny {
             let message = format!("policy denied: {}", evaluation.reason);
+            let _ = sink.emit(CoreEvent::SandboxViolation {
+                turn_id: turn_id.to_owned(),
+                call_id: call.id.clone(),
+                kind: "policy_denied".to_owned(),
+                resource: audit_resource.clone(),
+                message: message.clone(),
+            });
             audit.ok = false;
             audit.error = Some(message.clone());
             audit.with_output("");
@@ -558,6 +616,24 @@ impl Agent {
             }
             Err(error) => {
                 let message = error.to_string();
+                let kind = match &error {
+                    ToolError::Sandbox(violation) => Some(violation.kind.as_str().to_owned()),
+                    ToolError::Policy(_) => Some("policy_denied".to_owned()),
+                    _ => None,
+                };
+                if let Some(kind) = kind {
+                    let _ = sink.emit(CoreEvent::SandboxViolation {
+                        turn_id: turn_id.to_owned(),
+                        call_id: call.id.clone(),
+                        kind,
+                        resource: args
+                            .get("path")
+                            .and_then(Value::as_str)
+                            .unwrap_or(&call.name)
+                            .to_owned(),
+                        message: message.clone(),
+                    });
+                }
                 audit.ok = false;
                 audit.error = Some(message.clone());
                 audit.with_output("");
@@ -657,6 +733,23 @@ impl Agent {
     }
 }
 
+fn join_worker(worker: &mut Option<std::thread::JoinHandle<()>>, timeout: Duration) -> bool {
+    let started = Instant::now();
+    loop {
+        let Some(handle) = worker.as_ref() else {
+            return true;
+        };
+        if handle.is_finished() {
+            let handle = worker.take().expect("worker exists");
+            let _ = handle.join();
+            return true;
+        }
+        if started.elapsed() >= timeout {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
 fn system_prompt(workspace: &std::path::Path) -> String {
     format!(
         "You are KL, a terminal coding agent. Work only inside the workspace at {}.\n\
@@ -686,6 +779,29 @@ fn result_payload(ok: bool, summary: &str, output: &str, diff: Option<&str>) -> 
 fn error_payload(message: &str) -> String {
     serde_json::to_string(&json!({"ok": false, "error": message}))
         .unwrap_or_else(|_| "{\"ok\":false}".to_owned())
+}
+
+fn estimate_tokens(text: &str) -> u64 {
+    (text.chars().count() as u64).div_ceil(3)
+}
+
+fn estimate_request_tokens(request: &ChatRequest) -> u64 {
+    let mut total = estimate_tokens(&request.system);
+    for message in &request.messages {
+        total += estimate_tokens(&message.text()) + 4;
+    }
+    if let Ok(tools) = serde_json::to_string(&request.tools) {
+        total += estimate_tokens(&tools);
+    }
+    total
+}
+
+fn estimate_outcome_tokens(outcome: &ChatOutcome) -> u64 {
+    let mut total = estimate_tokens(&outcome.text) + 4;
+    for call in &outcome.tool_calls {
+        total += estimate_tokens(&call.name) + estimate_tokens(&call.arguments) + 4;
+    }
+    total
 }
 
 fn truncate(text: &str, limit: usize) -> String {
@@ -738,11 +854,11 @@ mod tests {
         fn stream_chat(
             &self,
             _request: &ChatRequest,
-            cancel: &AtomicBool,
+            cancel: &CancellationToken,
             on_event: &mut dyn FnMut(ChatEvent),
         ) -> Result<ChatOutcome, ProviderError> {
             for index in 0..100 {
-                if cancel.load(Ordering::Relaxed) {
+                if cancel.is_cancelled() {
                     return Err(ProviderError::cancelled());
                 }
                 on_event(ChatEvent::TextDelta(format!("chunk-{index}")));
@@ -795,7 +911,7 @@ mod tests {
         fn stream_chat(
             &self,
             _request: &ChatRequest,
-            _cancel: &AtomicBool,
+            _cancel: &CancellationToken,
             _on_event: &mut dyn FnMut(ChatEvent),
         ) -> Result<ChatOutcome, ProviderError> {
             Err(ProviderError::new(
@@ -822,7 +938,7 @@ mod tests {
         fn stream_chat(
             &self,
             request: &ChatRequest,
-            _cancel: &AtomicBool,
+            _cancel: &CancellationToken,
             on_event: &mut dyn FnMut(ChatEvent),
         ) -> Result<ChatOutcome, ProviderError> {
             assert_eq!(request.model, "test-model");
@@ -981,6 +1097,111 @@ mod tests {
             events
                 .iter()
                 .any(|event| matches!(event, CoreEvent::TurnCompleted { .. }))
+        );
+    }
+
+    #[test]
+    fn no_usage_provider_uses_conservative_token_budget() {
+        let temp = tempfile::tempdir().unwrap();
+        let provider = Arc::new(
+            ScriptedProvider::from_json(
+                "scripted",
+                r#"[{"text":"this response has no usage and must still be budgeted"}]"#,
+            )
+            .unwrap(),
+        );
+        let policy = Arc::new(PolicyEngine::new(temp.path(), PolicyConfig::default()).unwrap());
+        let agent = Agent::new(
+            provider,
+            metadata(),
+            Arc::new(ToolRegistry::builtin()),
+            policy,
+            Arc::new(SandboxManager::policy_only()),
+            Arc::new(MemoryAudit::default()),
+            AgentConfig {
+                max_total_tokens: 1,
+                ..AgentConfig::default()
+            },
+        );
+        let sink = RecordingSink::default();
+        let mut history = Vec::new();
+        let error = agent
+            .run_turn(
+                "session",
+                "turn",
+                "budget this turn",
+                &mut history,
+                Arc::new(AtomicBool::new(false)),
+                &sink,
+                &Gate(ApprovalDecision::Allow),
+            )
+            .unwrap_err();
+        assert!(matches!(error, AgentError::TokenBudgetExceeded));
+    }
+
+    #[test]
+    fn read_only_tool_access_denies_edit_before_execution() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("a.txt"), "old value\n").unwrap();
+        let provider = Arc::new(
+            ScriptedProvider::from_json(
+                "scripted",
+                r#"[
+                    {"tool_calls":[{"name":"edit_file","arguments":{"path":"a.txt","old_string":"old","new_string":"new"}}]},
+                    {"text":"done"}
+                ]"#,
+            )
+            .unwrap(),
+        );
+        let policy = Arc::new(
+            PolicyEngine::new(
+                temp.path(),
+                PolicyConfig {
+                    auto_approve_edits: true,
+                    ..PolicyConfig::default()
+                },
+            )
+            .unwrap(),
+        );
+        let audit = Arc::new(MemoryAudit::default());
+        let agent = Agent::new(
+            provider,
+            metadata(),
+            Arc::new(ToolRegistry::builtin()),
+            policy,
+            Arc::new(SandboxManager::policy_only()),
+            audit.clone(),
+            AgentConfig {
+                tool_access: ToolAccess::ReadOnly,
+                ..AgentConfig::default()
+            },
+        );
+        let sink = RecordingSink::default();
+        let mut history = Vec::new();
+        let result = agent
+            .run_turn(
+                "session",
+                "turn",
+                "do not edit",
+                &mut history,
+                Arc::new(AtomicBool::new(false)),
+                &sink,
+                &Gate(ApprovalDecision::Allow),
+            )
+            .unwrap();
+        assert_eq!(result.status, TurnStatus::Completed);
+        assert_eq!(
+            std::fs::read_to_string(temp.path().join("a.txt")).unwrap(),
+            "old value\n"
+        );
+        let records = audit.records();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].decision, "deny");
+        assert!(
+            records[0]
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains("review-only"))
         );
     }
 
@@ -1249,5 +1470,89 @@ mod tests {
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].approved, Some(false));
         assert!(!records[0].ok);
+    }
+}
+
+#[cfg(test)]
+mod violation_tests {
+    use super::*;
+    use kl_audit::MemoryAudit;
+    use kl_policy::PolicyConfig;
+    use kl_provider::{Protocol, ScriptedProvider};
+    use std::sync::atomic::AtomicBool;
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    struct Sink {
+        events: Mutex<Vec<CoreEvent>>,
+    }
+
+    impl EventSink for Sink {
+        fn emit(&self, event: CoreEvent) -> Result<(), AgentError> {
+            self.events.lock().unwrap().push(event);
+            Ok(())
+        }
+    }
+
+    struct Gate;
+
+    impl ApprovalGate for Gate {
+        fn request(&self, _request: ApprovalRequest) -> ApprovalDecision {
+            ApprovalDecision::Allow
+        }
+    }
+
+    #[test]
+    fn policy_denial_emits_sandbox_violation_and_one_audit_record() {
+        let temp = tempfile::tempdir().unwrap();
+        let provider = Arc::new(
+            ScriptedProvider::from_json(
+                "scripted",
+                r#"[{"tool_calls":[{"id":"call-1","name":"read_file","arguments":{"path":"../secret.txt"}}]},{"text":"done"}]"#,
+            )
+            .unwrap(),
+        );
+        let policy = Arc::new(PolicyEngine::new(temp.path(), PolicyConfig::default()).unwrap());
+        let audit = Arc::new(MemoryAudit::default());
+        let agent = Agent::new(
+            provider,
+            ModelMetadata::new(
+                "test",
+                "test-model",
+                Protocol::Scripted,
+                "offline://test",
+                32_000,
+                0.75,
+                1234,
+            ),
+            Arc::new(ToolRegistry::builtin()),
+            policy,
+            Arc::new(SandboxManager::policy_only()),
+            audit.clone(),
+            AgentConfig::default(),
+        );
+        let sink = Sink::default();
+        let mut history = Vec::new();
+        agent
+            .run_turn(
+                "session",
+                "turn",
+                "go",
+                &mut history,
+                Arc::new(AtomicBool::new(false)),
+                &sink,
+                &Gate,
+            )
+            .unwrap();
+
+        let records = audit.records();
+        assert_eq!(records.len(), 1);
+        assert!(!records[0].ok);
+        assert_eq!(records[0].decision, "deny");
+        let events = sink.events.lock().unwrap();
+        assert!(events.iter().any(|event| matches!(
+            event,
+            CoreEvent::SandboxViolation { kind, .. } if kind == "policy_denied"
+        )));
     }
 }

@@ -24,6 +24,7 @@ public static class Protocol
     public const string ProviderSetEnabled = "provider.set_enabled";
     public const string ConfigSetDefaultModel = "config.set_default_model";
     public const string AuditTail = "audit.tail";
+    public const string ReviewRun = "review.run";
     public const string ConfigGet = "config.get";
     public const string PluginList = "plugin.list";
     public const string PluginInstall = "plugin.install";

@@ -18,7 +18,30 @@ use std::collections::HashSet;
 use std::io::{BufRead, Read};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+#[derive(Clone, Debug, Default)]
+pub struct CancellationToken {
+    flag: Arc<AtomicBool>,
+}
+
+impl CancellationToken {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn from_arc(flag: Arc<AtomicBool>) -> Self {
+        Self { flag }
+    }
+
+    pub fn cancel(&self) {
+        self.flag.store(true, Ordering::Relaxed);
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.flag.load(Ordering::Relaxed)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Protocol {
@@ -335,7 +358,7 @@ pub trait ProtocolAdapter: Send + Sync {
     fn stream_chat(
         &self,
         request: &ChatRequest,
-        cancel: &AtomicBool,
+        cancel: &CancellationToken,
         on_event: &mut dyn FnMut(ChatEvent),
     ) -> Result<ChatOutcome, ProviderError>;
 }
@@ -380,7 +403,7 @@ impl Provider for BoundProvider {
     fn stream_chat(
         &self,
         request: &ChatRequest,
-        cancel: &AtomicBool,
+        cancel: &CancellationToken,
         on_event: &mut dyn FnMut(ChatEvent),
     ) -> Result<ChatOutcome, ProviderError> {
         self.adapter.stream_chat(request, cancel, on_event)
@@ -398,7 +421,7 @@ pub trait Provider: Send + Sync {
     fn stream_chat(
         &self,
         request: &ChatRequest,
-        cancel: &AtomicBool,
+        cancel: &CancellationToken,
         on_event: &mut dyn FnMut(ChatEvent),
     ) -> Result<ChatOutcome, ProviderError>;
 }
@@ -604,19 +627,38 @@ impl ProviderRouter {
 /// callback. Multi-line data fields are joined with `\n` per the SSE spec.
 pub fn read_sse<R: BufRead>(
     mut reader: R,
-    cancel: &AtomicBool,
+    cancel: &CancellationToken,
     on_data: &mut dyn FnMut(&str) -> Result<(), ProviderError>,
 ) -> Result<(), ProviderError> {
+    let started = Instant::now();
     let mut line = String::new();
     let mut data = String::new();
     loop {
-        if cancel.load(Ordering::Relaxed) {
+        if cancel.is_cancelled() {
             return Err(ProviderError::cancelled());
         }
+        if started.elapsed() > Duration::from_secs(300) {
+            return Err(ProviderError::new(
+                ProviderErrorKind::Timeout,
+                "provider stream idle timeout",
+            ));
+        }
         line.clear();
-        let read = reader
-            .read_line(&mut line)
-            .map_err(|error| ProviderError::new(ProviderErrorKind::Transport, error.to_string()))?;
+        let read = match reader.read_line(&mut line) {
+            Ok(read) => read,
+            Err(error) if is_timeout_error(&error) => {
+                if cancel.is_cancelled() {
+                    return Err(ProviderError::cancelled());
+                }
+                continue;
+            }
+            Err(error) => {
+                return Err(ProviderError::new(
+                    ProviderErrorKind::Transport,
+                    error.to_string(),
+                ));
+            }
+        };
         if read == 0 {
             break;
         }
@@ -639,7 +681,7 @@ pub fn read_sse<R: BufRead>(
             data.push_str(value);
         }
     }
-    if cancel.load(Ordering::Relaxed) {
+    if cancel.is_cancelled() {
         return Err(ProviderError::cancelled());
     }
     if !data.is_empty() {
@@ -655,7 +697,7 @@ pub(crate) fn http_post_stream(
 ) -> Result<Box<dyn Read + Send + Sync>, ProviderError> {
     let agent = ureq::AgentBuilder::new()
         .timeout_connect(Duration::from_secs(20))
-        .timeout_read(Duration::from_secs(300))
+        .timeout_read(Duration::from_millis(500))
         .timeout_write(Duration::from_secs(60))
         .build();
     let mut request = agent
@@ -688,6 +730,12 @@ pub(crate) fn http_post_stream(
     }
 }
 
+fn is_timeout_error(error: &std::io::Error) -> bool {
+    matches!(
+        error.kind(),
+        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+    ) || error.to_string().to_ascii_lowercase().contains("timed out")
+}
 fn normalize_http_error(status: u16, body: &str) -> ProviderError {
     let kind = match status {
         401 | 403 => ProviderErrorKind::Auth,
@@ -715,7 +763,7 @@ mod tests {
         fn stream_chat(
             &self,
             _request: &ChatRequest,
-            _cancel: &AtomicBool,
+            _cancel: &CancellationToken,
             _on_event: &mut dyn FnMut(ChatEvent),
         ) -> Result<ChatOutcome, ProviderError> {
             Err(ProviderError::invalid("test adapter is not called"))
@@ -737,21 +785,23 @@ mod tests {
     fn sse_joins_multiline_data() {
         let stream = "event: message\n: comment\ndata: {\"a\":\ndata: 1}\n\n";
         let mut payloads = Vec::new();
-        read_sse(Cursor::new(stream), &AtomicBool::new(false), &mut |data| {
-            payloads.push(data.to_owned());
-            Ok(())
-        })
+        read_sse(
+            Cursor::new(stream),
+            &CancellationToken::new(),
+            &mut |data| {
+                payloads.push(data.to_owned());
+                Ok(())
+            },
+        )
         .unwrap();
         assert_eq!(payloads, vec!["{\"a\":\n1}"]);
     }
 
     #[test]
     fn read_sse_checks_cancellation() {
-        let result = read_sse(
-            Cursor::new("data: {}\n\n"),
-            &AtomicBool::new(true),
-            &mut |_| Ok(()),
-        );
+        let token = CancellationToken::new();
+        token.cancel();
+        let result = read_sse(Cursor::new("data: {}\n\n"), &token, &mut |_| Ok(()));
         assert_eq!(result.unwrap_err().kind, ProviderErrorKind::Cancelled);
     }
 
