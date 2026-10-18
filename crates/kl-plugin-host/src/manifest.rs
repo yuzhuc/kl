@@ -22,6 +22,18 @@ pub struct PluginPermissions {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PluginIntegrity {
+    /// Lowercase or uppercase hex SHA-256 of the entrypoint file.
+    pub sha256: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PluginSignature {
+    pub algorithm: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PluginManifest {
     pub id: String,
     pub version: String,
@@ -50,6 +62,10 @@ pub struct PluginManifest {
     pub call_timeout_ms: u64,
     #[serde(default = "default_memory_limit")]
     pub memory_limit_mb: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub integrity: Option<PluginIntegrity>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature: Option<PluginSignature>,
 }
 
 fn default_runtime() -> String {
@@ -169,6 +185,14 @@ impl PluginManifest {
 
     pub fn is_wasm(&self) -> bool {
         self.runtime == "wasm"
+    }
+
+    /// Canonical bytes covered by an Ed25519 signature: compact JSON for this
+    /// manifest with the `signature` field removed.
+    pub fn signing_payload(&self) -> Vec<u8> {
+        let mut unsigned = self.clone();
+        unsigned.signature = None;
+        serde_json::to_vec(&unsigned).expect("plugin manifest is serializable")
     }
 
     pub fn models(&self) -> Vec<String> {

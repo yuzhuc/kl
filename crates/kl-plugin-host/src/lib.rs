@@ -1,11 +1,15 @@
 mod adapter;
+mod integrity;
 mod manifest;
 mod sidecar;
 mod wasm;
 
 pub use adapter::{SidecarProvider, SidecarTool};
+use integrity::PluginVerifier;
+pub use integrity::{IntegrityError, PUBLIC_KEY_ENV, PluginSecurityConfig, SECURITY_CONFIG_FILE};
 pub use manifest::{
-    ManifestError, PLUGIN_API_VERSION, PluginKind, PluginManifest, PluginPermissions,
+    ManifestError, PLUGIN_API_VERSION, PluginIntegrity, PluginKind, PluginManifest,
+    PluginPermissions, PluginSignature,
 };
 pub use sidecar::SidecarError;
 use sidecar::SidecarProcess;
@@ -53,6 +57,8 @@ pub enum PluginError {
     Protocol(String),
     #[error("sandbox violation: {0}")]
     Sandbox(#[from] SandboxViolation),
+    #[error("plugin integrity check failed: {0}")]
+    Integrity(#[from] IntegrityError),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -205,6 +211,7 @@ pub struct PluginHost {
     entries: Mutex<HashMap<String, PluginEntry>>,
     request_timeout: Duration,
     sandbox: Arc<SandboxManager>,
+    security: PluginVerifier,
 }
 
 impl PluginHost {
@@ -216,6 +223,23 @@ impl PluginHost {
         root: impl AsRef<Path>,
         sandbox: Arc<SandboxManager>,
     ) -> Result<Self, PluginError> {
+        let security = PluginSecurityConfig::load(root.as_ref())?;
+        Self::with_sandbox_and_security(root, sandbox, security)
+    }
+
+    pub fn with_security(
+        root: impl AsRef<Path>,
+        security: PluginSecurityConfig,
+    ) -> Result<Self, PluginError> {
+        Self::with_sandbox_and_security(root, Arc::new(SandboxManager::policy_only()), security)
+    }
+
+    pub fn with_sandbox_and_security(
+        root: impl AsRef<Path>,
+        sandbox: Arc<SandboxManager>,
+        security: PluginSecurityConfig,
+    ) -> Result<Self, PluginError> {
+        let security = PluginVerifier::new(&security)?;
         let root = root.as_ref().to_path_buf();
         fs::create_dir_all(root.join("installed"))?;
         let host = Self {
@@ -223,6 +247,7 @@ impl PluginHost {
             entries: Mutex::new(HashMap::new()),
             request_timeout: Duration::from_secs(30),
             sandbox,
+            security,
         };
         host.load_installed();
         Ok(host)
@@ -234,6 +259,7 @@ impl PluginHost {
         manifest_path: PathBuf,
         env_overrides: &[(String, String)],
     ) -> Result<ActiveInstance, PluginError> {
+        self.security.verify(&manifest, &manifest_path)?;
         if manifest.is_wasm() {
             return Ok(ActiveInstance::Wasm(Arc::new(WasmInstance::start(
                 manifest,
@@ -278,6 +304,7 @@ impl PluginHost {
             PluginError::NotFound(format!("no manifest found under {}", source.display()))
         })?;
         let manifest = PluginManifest::load(&source_manifest)?;
+        self.security.verify(&manifest, &source_manifest)?;
         let id = manifest.id.clone();
         let version_dir = self.version_dir(&id, &manifest.version);
         if version_dir.exists() {
@@ -326,7 +353,7 @@ impl PluginHost {
     }
 
     pub fn reload(&self, id: &str) -> Result<PluginInfo, PluginError> {
-        let (manifest, manifest_path, old_active) = {
+        let (manifest_path, old_active) = {
             let entries = self
                 .entries
                 .lock()
@@ -337,13 +364,10 @@ impl PluginHost {
             if !entry.enabled {
                 return Err(PluginError::Disabled(id.to_owned()));
             }
-            (
-                entry.manifest.clone(),
-                entry.manifest_path.clone(),
-                entry.active.clone(),
-            )
+            (entry.manifest_path.clone(), entry.active.clone())
         };
-        let new_instance = self.start_instance(manifest.clone(), manifest_path.clone(), &[])?;
+        let manifest = PluginManifest::load(&manifest_path)?;
+        let new_instance = self.start_instance(manifest.clone(), manifest_path, &[])?;
         {
             let mut entries = self
                 .entries
@@ -353,6 +377,7 @@ impl PluginHost {
                 .get_mut(id)
                 .ok_or_else(|| PluginError::NotFound(id.to_owned()))?;
             entry.active = Some(new_instance);
+            entry.manifest = manifest.clone();
             entry.detail = None;
         }
         if let Some(old) = old_active {

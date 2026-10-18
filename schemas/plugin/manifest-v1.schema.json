@@ -33,7 +33,27 @@
     "health_timeout_ms": { "type": "integer", "minimum": 100 },
     "drain_timeout_ms": { "type": "integer", "minimum": 100 },
     "call_timeout_ms": { "type": "integer", "minimum": 1 },
-    "memory_limit_mb": { "type": "integer", "minimum": 1 }
+    "memory_limit_mb": { "type": "integer", "minimum": 1 },
+    "integrity": {
+      "type": "object",
+      "properties": {
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{64}$"
+        }
+      },
+      "required": ["sha256"],
+      "additionalProperties": false
+    },
+    "signature": {
+      "type": "object",
+      "properties": {
+        "algorithm": { "const": "ed25519" },
+        "value": { "type": "string", "minLength": 1 }
+      },
+      "required": ["algorithm", "value"],
+      "additionalProperties": false
+    }
   },
   "allOf": [
     {
@@ -44,6 +64,10 @@
       "then": {
         "properties": { "kind": { "const": "tool" } }
       }
+    },
+    {
+      "if": { "required": ["signature"] },
+      "then": { "required": ["integrity"] }
     }
   ],
   "additionalProperties": false

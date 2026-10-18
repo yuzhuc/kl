@@ -12,8 +12,11 @@ kl-provider = { path = "../kl-provider" }
 kl-tools = { path = "../kl-tools" }
 kl-sandbox = { path = "../kl-sandbox" }
 kl-exec = { path = "../kl-exec" }
+base64 = "0.22"
+ring = "0.17"
 serde.workspace = true
 serde_json.workspace = true
+sha2 = "0.10"
 thiserror.workspace = true
 toml = "0.8"
 uuid = { version = "1", features = ["v4"] }
