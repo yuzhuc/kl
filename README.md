@@ -53,12 +53,19 @@ kl (C#/.NET)  -- JSON-RPC 2.0 over stdio -->  kl-core (Rust)
 
 - Rust 1.85+ (edition 2024; tested with 1.99)
 - .NET SDK 10
+- Node.js 22+ (for JS build scripts)
 - Git
 - No Python is required or used.
 
 ## Build and test
 
-PowerShell:
+Cross-platform JavaScript:
+
+```sh
+node scripts/build.mjs
+```
+
+PowerShell wrapper:
 
 ```powershell
 pwsh scripts/build.ps1
