@@ -1,6 +1,7 @@
 param(
     [string]$Configuration = "Release",
-    [string]$Runtime = "win-x64"
+    [string]$Runtime = "win-x64",
+    [string]$OutputDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -10,7 +11,12 @@ Set-Location $root
 cargo build --release -p kl-core
 if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
 
-$output = Join-Path $root "dist\$Runtime"
+$output = if ([string]::IsNullOrWhiteSpace($OutputDir)) {
+    Join-Path $root "dist\$Runtime"
+} else {
+    [System.IO.Path]::GetFullPath($OutputDir)
+}
+New-Item -ItemType Directory -Force -Path $output | Out-Null
 dotnet publish "cli\Kl.Cli\Kl.Cli.csproj" `
     -c $Configuration `
     -r $Runtime `

@@ -415,12 +415,24 @@ fabricates a live success fixture.
 
 ## Packaging
 
+Default repository-local output:
+
 ```powershell
 pwsh scripts/package.ps1 -Runtime win-x64
 ```
 
 This publishes the CLI framework-dependently and copies the release `kl-core`
 and schemas next to it into `dist/<rid>/`. See `docs/adr/0004-packaging.md`.
+
+Local machine output under `E:\kl`:
+
+```powershell
+pwsh scripts/build-local.ps1
+```
+
+`build-local.ps1` keeps the normal build scripts unchanged and calls
+`package.ps1 -OutputDir E:\kl`. Close running `kl` processes before repackaging
+so `E:\kl\kl.exe` and `E:\kl\kl.dll` are not locked.
 
 ## Sidecar plugins
 
