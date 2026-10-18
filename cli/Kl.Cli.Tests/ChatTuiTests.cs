@@ -245,6 +245,77 @@ public sealed class ChatTuiTests
         Assert.Null(session.LastMessage);
     }
 
+    [Fact]
+    public void ParsesHistoryAndReplaysVisibleTranscript()
+    {
+        using var document = JsonDocument.Parse(
+            """
+            {
+              "messages": [
+                {"role": "user", "text": "fix it", "timestamp": "2026-10-17T10:00:00Z", "seq": 2},
+                {
+                  "role": "tool",
+                  "text": "",
+                  "timestamp": "2026-10-17T10:00:01Z",
+                  "seq": 4,
+                  "tool": {"name": "shell", "ok": true, "summary": "exit 0 in 5 ms"}
+                },
+                {"role": "assistant", "text": "done", "timestamp": "2026-10-17T10:00:02Z", "seq": 5}
+              ]
+            }
+            """);
+
+        var messages = ChatTuiState.ParseHistory(document.RootElement);
+        var state = new ChatTuiState();
+        state.AddHistory(messages);
+
+        Assert.Equal(3, messages.Count);
+        Assert.Equal(2, messages[0].Seq);
+        Assert.Equal(
+            new[] { TranscriptKind.User, TranscriptKind.Tool, TranscriptKind.Assistant },
+            state.Transcript.Select(entry => entry.Kind));
+        Assert.Equal("fix it", state.Transcript[0].Text);
+        Assert.Equal("[ok] shell: exit 0 in 5 ms", state.Transcript[1].Text);
+        Assert.Equal("done", state.Transcript[2].Text);
+    }
+
+    [Fact]
+    public void MissingHistoryFieldsStayEmpty()
+    {
+        using var document = JsonDocument.Parse(
+            """
+            {
+              "messages": [
+                {"role": "assistant", "text": "hi"}
+              ]
+            }
+            """);
+
+        var message = Assert.Single(ChatTuiState.ParseHistory(document.RootElement));
+        Assert.Equal(string.Empty, message.Timestamp);
+        Assert.Null(message.Seq);
+        Assert.Null(message.ToolName);
+        Assert.Null(message.ToolOk);
+        Assert.Null(message.ToolSummary);
+    }
+
+    [Fact]
+    public void LiveAssistantDeltaDoesNotMergeIntoReplayedMessage()
+    {
+        var state = new ChatTuiState();
+        state.AddHistory(
+        [
+            new HistoryMessage("assistant", "old answer", string.Empty, 1, null, null, null)
+        ]);
+
+        state.Apply(new SessionEvent(SessionEventKind.TurnStarted));
+        state.Apply(new SessionEvent(SessionEventKind.AssistantDelta, Text: "new answer"));
+
+        Assert.Equal(2, state.Transcript.Count);
+        Assert.Equal("old answer", state.Transcript[0].Text);
+        Assert.Equal("new answer", state.Transcript[1].Text);
+    }
+
     private static ConsoleKeyInfo Key(
         ConsoleKey key,
         char character = '\0',

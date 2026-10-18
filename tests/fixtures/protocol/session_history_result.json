@@ -1,0 +1,33 @@
+{
+  "jsonrpc": "2.0",
+  "kl_protocol": 1,
+  "id": 5,
+  "result": {
+    "session_id": "session-1",
+    "messages": [
+      {
+        "role": "user",
+        "text": "fix it",
+        "timestamp": "2026-10-17T10:00:00.000Z",
+        "seq": 2
+      },
+      {
+        "role": "tool",
+        "text": "",
+        "timestamp": "2026-10-17T10:00:01.000Z",
+        "seq": 4,
+        "tool": {
+          "name": "shell",
+          "ok": true,
+          "summary": "exit 0 in 5 ms"
+        }
+      },
+      {
+        "role": "assistant",
+        "text": "done",
+        "timestamp": "2026-10-17T10:00:02.000Z",
+        "seq": 5
+      }
+    ]
+  }
+}

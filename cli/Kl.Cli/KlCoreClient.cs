@@ -136,6 +136,19 @@ public sealed class KlCoreClient : IAsyncDisposable
             new Dictionary<string, object?> { ["session_id"] = sessionId },
             cancellationToken);
 
+    public Task<JsonElement> SessionHistoryAsync(
+        string sessionId,
+        int limit,
+        CancellationToken cancellationToken = default) =>
+        RequestAsync(
+            Protocol.SessionHistory,
+            new Dictionary<string, object?>
+            {
+                ["session_id"] = sessionId,
+                ["limit"] = limit
+            },
+            cancellationToken);
+
     public Task<JsonElement> ListSessionsAsync(CancellationToken cancellationToken = default) =>
         RequestAsync(Protocol.SessionList, null, cancellationToken);
 

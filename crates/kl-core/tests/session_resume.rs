@@ -250,3 +250,196 @@ auto_approve_shell = true
         2
     );
 }
+
+#[test]
+fn history_replays_after_restart_and_omits_sensitive_fields() {
+    let temp = tempfile::tempdir().unwrap();
+    let workspace = temp.path().join("workspace");
+    std::fs::create_dir_all(&workspace).unwrap();
+    let script_path = temp.path().join("script.json");
+    std::fs::write(
+        &script_path,
+        r#"[
+            {"tool_calls":[{"id":"append-1","name":"shell","arguments":{"command":"echo history-secret-token >> history.txt"}}]},
+            {"text":"first answer"}
+        ]"#,
+    )
+    .unwrap();
+    let config_path = temp.path().join("kl.toml");
+    std::fs::write(
+        &config_path,
+        r#"
+[agent]
+provider = "scripted"
+model = "scripted"
+scripted_path = "script.json"
+max_iterations = 4
+
+[policy]
+auto_approve_shell = true
+"#,
+    )
+    .unwrap();
+    let home = temp.path().join("home");
+
+    let mut core = CoreProcess::start(&config_path, &home);
+    let handshake = core.request("kl.handshake", handshake_params());
+    assert!(handshake.get("error").is_none(), "{handshake}");
+    let created = core.request(
+        "session.create",
+        json!({ "workspace": workspace.to_string_lossy() }),
+    );
+    assert!(created.get("error").is_none(), "{created}");
+    let session_id = created["result"]["session_id"]
+        .as_str()
+        .expect("session id")
+        .to_owned();
+    let started = core.request(
+        "turn.start",
+        json!({ "session_id": session_id, "prompt": "first prompt" }),
+    );
+    assert!(started.get("error").is_none(), "{started}");
+    core.wait_for_turn();
+    core.shutdown();
+
+    std::fs::write(
+        &script_path,
+        r#"[
+            {"tool_calls":[{"id":"append-2","name":"shell","arguments":{"command":"echo history-secret-token >> history.txt"}}]},
+            {"text":"second answer"}
+        ]"#,
+    )
+    .unwrap();
+
+    let mut core = CoreProcess::start(&config_path, &home);
+    core.request("kl.handshake", handshake_params());
+    let resumed = core.request("session.resume", json!({ "session_id": session_id }));
+    assert!(resumed.get("error").is_none(), "{resumed}");
+    let started = core.request(
+        "turn.start",
+        json!({ "session_id": session_id, "prompt": "second prompt" }),
+    );
+    assert!(started.get("error").is_none(), "{started}");
+    core.wait_for_turn();
+    core.shutdown();
+
+    let mut core = CoreProcess::start(&config_path, &home);
+    core.request("kl.handshake", handshake_params());
+    let history = core.request(
+        "session.history",
+        json!({ "session_id": session_id, "limit": 20 }),
+    );
+    assert!(history.get("error").is_none(), "{history}");
+    let messages = history["result"]["messages"]
+        .as_array()
+        .expect("history messages");
+    let roles: Vec<&str> = messages
+        .iter()
+        .map(|entry| entry["role"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        roles,
+        vec!["user", "tool", "assistant", "user", "tool", "assistant"],
+        "{history}"
+    );
+    let texts: Vec<&str> = messages
+        .iter()
+        .map(|entry| entry["text"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        texts,
+        vec![
+            "first prompt",
+            "",
+            "first answer",
+            "second prompt",
+            "",
+            "second answer"
+        ],
+        "{history}"
+    );
+    assert_eq!(messages[1]["tool"]["name"], "shell");
+    assert_eq!(messages[1]["tool"]["ok"].as_bool(), Some(true));
+    assert!(
+        messages[1]["tool"]["summary"]
+            .as_str()
+            .unwrap()
+            .contains("exit 0")
+    );
+    assert_eq!(messages[4]["tool"]["name"], "shell");
+    assert!(messages[0]["timestamp"].is_string());
+    assert!(messages[0]["seq"].as_u64().is_some());
+    let seqs: Vec<u64> = messages
+        .iter()
+        .map(|entry| entry["seq"].as_u64().unwrap())
+        .collect();
+    assert!(
+        seqs.windows(2).all(|window| window[0] < window[1]),
+        "{seqs:?}"
+    );
+
+    let serialized = serde_json::to_string(&history["result"]).unwrap();
+    for forbidden in ["args", "output", "diff", "api_key", "history-secret-token"] {
+        assert!(
+            !serialized.contains(forbidden),
+            "history leaked {forbidden}: {serialized}"
+        );
+    }
+
+    let limited = core.request(
+        "session.history",
+        json!({ "session_id": session_id, "limit": 2 }),
+    );
+    let limited_messages = limited["result"]["messages"].as_array().unwrap();
+    assert_eq!(limited_messages.len(), 2, "{limited}");
+    assert_eq!(limited_messages[0]["role"], "tool");
+    assert_eq!(limited_messages[1]["role"], "assistant");
+    assert_eq!(limited_messages[1]["text"], "second answer");
+    core.shutdown();
+
+    assert_eq!(
+        std::fs::read_to_string(workspace.join("history.txt"))
+            .unwrap()
+            .lines()
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn empty_session_history_returns_empty_array() {
+    let temp = tempfile::tempdir().unwrap();
+    let workspace = temp.path().join("workspace");
+    std::fs::create_dir_all(&workspace).unwrap();
+    std::fs::write(temp.path().join("script.json"), r#"[{"text":"unused"}]"#).unwrap();
+    let config_path = temp.path().join("kl.toml");
+    std::fs::write(
+        &config_path,
+        r#"
+[agent]
+provider = "scripted"
+model = "scripted"
+scripted_path = "script.json"
+"#,
+    )
+    .unwrap();
+    let home = temp.path().join("home");
+
+    let mut core = CoreProcess::start(&config_path, &home);
+    core.request("kl.handshake", handshake_params());
+    let created = core.request(
+        "session.create",
+        json!({ "workspace": workspace.to_string_lossy() }),
+    );
+    assert!(created.get("error").is_none(), "{created}");
+    let session_id = created["result"]["session_id"]
+        .as_str()
+        .expect("session id")
+        .to_owned();
+    let history = core.request(
+        "session.history",
+        json!({ "session_id": session_id, "limit": 10 }),
+    );
+    assert_eq!(history["result"]["messages"], json!([]));
+    core.shutdown();
+}

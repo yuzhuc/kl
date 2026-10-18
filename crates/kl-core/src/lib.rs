@@ -28,10 +28,11 @@ use kl_protocol::{
     PingResult, PluginIdParams, PluginInstallParams, PluginListResult, ProviderEnabledResult,
     ProviderKeyResult, ProviderListResult, ProviderModelSummary, ProviderSetApiKeyParams,
     ProviderSetEnabledParams, ProviderUpsertParams, ProviderUpsertResult, RequestId, ReviewFinding,
-    ReviewResult, ReviewRunParams, RpcError, SessionCreateParams, SessionInfo, SessionListResult,
-    SessionResumeParams, SetDefaultModelParams, TurnCancelParams, TurnCancelResult,
-    TurnStartParams, TurnStartResult, error_codes, failure, failure_with_data, methods, negotiate,
-    success, validate_envelope,
+    ReviewResult, ReviewRunParams, RpcError, SessionCreateParams, SessionHistoryEntry,
+    SessionHistoryParams, SessionHistoryResult, SessionHistoryToolSummary, SessionInfo,
+    SessionListResult, SessionResumeParams, SetDefaultModelParams, TurnCancelParams,
+    TurnCancelResult, TurnStartParams, TurnStartResult, error_codes, failure, failure_with_data,
+    methods, negotiate, success, validate_envelope,
 };
 use kl_provider::{
     AnthropicAdapter, BoundProvider, CancellationToken, ChatEvent, ChatMessage, ChatOutcome,
@@ -61,6 +62,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 pub const FEATURES: &[&str] = &[
     "events",
     "sessions",
+    "history",
     "tools",
     "audit",
     "approvals",
@@ -915,6 +917,7 @@ impl Core {
             methods::DOCTOR => self.doctor(),
             methods::SESSION_CREATE => self.session_create(params),
             methods::SESSION_RESUME => self.session_resume(params),
+            methods::SESSION_HISTORY => self.session_history(params),
             methods::SESSION_LIST => self.session_list(),
             methods::TURN_START => self.turn_start(params),
             methods::TURN_CANCEL => self.turn_cancel(params),
@@ -1234,6 +1237,25 @@ impl Core {
             },
         );
         to_value(info)
+    }
+
+    fn session_history(&self, params: Value) -> Result<Value, RpcError> {
+        let params: SessionHistoryParams = parse_params(params, "session.history")?;
+        let data = self.store.load(&params.session_id).map_err(store_error)?;
+        let events = read_session_events(
+            &self
+                .store
+                .root()
+                .join(&params.session_id)
+                .join("events.jsonl"),
+        )
+        .map_err(store_error)?;
+        let history = build_session_history(&data.messages, &events);
+        let start = history.len().saturating_sub(params.limit);
+        to_value(SessionHistoryResult {
+            session_id: params.session_id,
+            messages: history[start..].to_vec(),
+        })
     }
 
     fn session_list(&self) -> Result<Value, RpcError> {
@@ -1834,6 +1856,165 @@ fn session_info(meta: &SessionMeta, message_count: usize) -> SessionInfo {
         prompt: meta.prompt.clone(),
         last_message: meta.last_message.clone(),
     }
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct StoredSessionEvent {
+    seq: u64,
+    at: String,
+    event: CoreEvent,
+}
+
+fn read_session_events(path: &Path) -> Result<Vec<StoredSessionEvent>, StoreError> {
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let text = std::fs::read_to_string(path)?;
+    // A crash can leave a partial final line; keep the earlier valid records.
+    Ok(text
+        .lines()
+        .filter_map(|line| serde_json::from_str::<StoredSessionEvent>(line).ok())
+        .collect())
+}
+
+fn build_session_history(
+    messages: &[Value],
+    events: &[StoredSessionEvent],
+) -> Vec<SessionHistoryEntry> {
+    let mut entries = Vec::new();
+    let mut cursor = 0;
+    for message in messages {
+        let role = message
+            .get("role")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        match role {
+            "user" => {
+                let text = history_message_text(message);
+                if text.trim().is_empty() {
+                    continue;
+                }
+                let event = next_history_event(events, &mut cursor, |event| {
+                    matches!(event, CoreEvent::TurnStarted { .. })
+                });
+                entries.push(history_entry("user", text, event, None));
+            }
+            "assistant" => {
+                let text = history_message_text(message);
+                if text.trim().is_empty() {
+                    continue;
+                }
+                let event = next_assistant_event(events, &mut cursor);
+                entries.push(history_entry("assistant", text, event, None));
+            }
+            "tool" => {
+                let event = next_history_event(events, &mut cursor, |event| {
+                    matches!(event, CoreEvent::ToolCompleted { .. })
+                });
+                if let Some(event) = event {
+                    if let CoreEvent::ToolCompleted {
+                        name, ok, summary, ..
+                    } = &event.event
+                    {
+                        entries.push(history_entry(
+                            "tool",
+                            String::new(),
+                            Some(event),
+                            Some(SessionHistoryToolSummary {
+                                name: name.clone(),
+                                ok: *ok,
+                                summary: summary.clone(),
+                            }),
+                        ));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    entries
+}
+
+fn next_assistant_event<'a>(
+    events: &'a [StoredSessionEvent],
+    cursor: &mut usize,
+) -> Option<&'a StoredSessionEvent> {
+    while *cursor < events.len() {
+        match &events[*cursor].event {
+            CoreEvent::TurnDelta { .. } => {
+                let mut anchor = &events[*cursor];
+                *cursor += 1;
+                while *cursor < events.len() {
+                    match &events[*cursor].event {
+                        CoreEvent::TurnDelta { .. } => {
+                            anchor = &events[*cursor];
+                            *cursor += 1;
+                        }
+                        CoreEvent::TurnReasoning { .. } => {
+                            *cursor += 1;
+                        }
+                        _ => break,
+                    }
+                }
+                return Some(anchor);
+            }
+            CoreEvent::TurnCompleted { .. } => {
+                let anchor = &events[*cursor];
+                *cursor += 1;
+                return Some(anchor);
+            }
+            _ => *cursor += 1,
+        }
+    }
+    None
+}
+
+fn next_history_event<'a>(
+    events: &'a [StoredSessionEvent],
+    cursor: &mut usize,
+    is_match: impl Fn(&CoreEvent) -> bool,
+) -> Option<&'a StoredSessionEvent> {
+    while *cursor < events.len() {
+        let index = *cursor;
+        *cursor += 1;
+        if is_match(&events[index].event) {
+            return Some(&events[index]);
+        }
+    }
+    None
+}
+
+fn history_entry(
+    role: &str,
+    text: String,
+    event: Option<&StoredSessionEvent>,
+    tool: Option<SessionHistoryToolSummary>,
+) -> SessionHistoryEntry {
+    SessionHistoryEntry {
+        role: role.to_owned(),
+        text,
+        timestamp: event.map(|event| event.at.clone()),
+        seq: event.map(|event| event.seq),
+        tool,
+    }
+}
+
+fn history_message_text(value: &Value) -> String {
+    if let Some(text) = value.get("content").and_then(Value::as_str) {
+        return text.to_owned();
+    }
+    value
+        .get("content")
+        .and_then(Value::as_array)
+        .map(|parts| {
+            parts
+                .iter()
+                .filter(|part| part.get("type").and_then(Value::as_str) == Some("text"))
+                .filter_map(|part| part.get("data").and_then(Value::as_str))
+                .collect::<Vec<_>>()
+                .join("")
+        })
+        .unwrap_or_default()
 }
 
 fn parse_params<T: DeserializeOwned>(params: Value, method: &str) -> Result<T, RpcError> {

@@ -27,6 +27,8 @@ public static class ChatTuiRunner
                 options.Session,
                 cancellationToken).ConfigureAwait(false);
             var state = NewState(connection.Session, options.Verbose);
+            await LoadTranscriptAsync(connection.Session, state, cancellationToken)
+                .ConfigureAwait(false);
             state.History = await LoadHistoryAsync(connection.Session, state)
                 .ConfigureAwait(false);
 
@@ -229,6 +231,10 @@ public static class ChatTuiRunner
                                     selected.SessionId,
                                     cancellationToken).ConfigureAwait(false);
                                 state = NewState(connection.Session, options.Verbose);
+                                await LoadTranscriptAsync(
+                                    connection.Session,
+                                    state,
+                                    cancellationToken).ConfigureAwait(false);
                                 state.History = await LoadHistoryAsync(
                                     connection.Session,
                                     state).ConfigureAwait(false);
@@ -249,6 +255,10 @@ public static class ChatTuiRunner
                                     null,
                                     cancellationToken).ConfigureAwait(false);
                                 state = NewState(connection.Session, options.Verbose);
+                                await LoadTranscriptAsync(
+                                    connection.Session,
+                                    state,
+                                    cancellationToken).ConfigureAwait(false);
                                 state.History = await LoadHistoryAsync(
                                     connection.Session,
                                     state).ConfigureAwait(false);
@@ -472,6 +482,24 @@ public static class ChatTuiRunner
         {
             state.AddError($"history unavailable: {error.Message}");
             return [];
+        }
+    }
+
+    private static async Task LoadTranscriptAsync(
+        KlSessionClient session,
+        ChatTuiState state,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await session.HistoryAsync(20, cancellationToken)
+                .ConfigureAwait(false);
+            state.AddHistory(ChatTuiState.ParseHistory(result));
+        }
+        catch (Exception error)
+            when (error is JsonRpcException or IOException or InvalidOperationException)
+        {
+            state.AddError($"history unavailable: {error.Message}");
         }
     }
 
