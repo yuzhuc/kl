@@ -8,6 +8,26 @@ use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+fn fake_plugin_binary() -> String {
+    option_env!("CARGO_BIN_EXE_fake_plugin")
+        .map(str::to_owned)
+        .unwrap_or_else(|| {
+            let exe = std::env::current_exe().expect("test executable path");
+            let debug = exe
+                .parent()
+                .and_then(Path::parent)
+                .expect("debug directory");
+            debug
+                .join(if cfg!(windows) {
+                    "fake_plugin.exe"
+                } else {
+                    "fake_plugin"
+                })
+                .to_string_lossy()
+                .into_owned()
+        })
+}
+
 fn make_source(
     root: &Path,
     id: &str,
@@ -24,7 +44,7 @@ fn make_source(
         "version": version,
         "api": 1,
         "kind": kind,
-        "entrypoint": env!("CARGO_BIN_EXE_fake_plugin"),
+        "entrypoint": fake_plugin_binary(),
         "runtime": "sidecar",
         "capabilities": if kind == "provider" { vec!["chat", "streaming"] } else { vec!["tool"] },
         "permissions": permissions,

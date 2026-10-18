@@ -16,6 +16,25 @@ Every tool request is evaluated as `action + resource -> effect`:
 
 `ask` is resolved by the client. `deny` cannot be overridden with `--yes`.
 
+## Stage-scoped tool access
+
+Deep review stages do not rely on prompts for isolation:
+
+| Stage | Access | Allowed tools/actions |
+|---|---|---|
+| explorer, planner, implementer | `Full` | normal policy and approvals |
+| reviewer | `ReadOnly` | read/grep/glob, read-only git |
+| verifier | `VerifyOnly` | read/grep/glob, read-only git, bounded verification shell |
+
+`ReadOnly` denies edit/write/patch, all shell, git writes and plugin calls
+before the tool executes. `VerifyOnly` additionally allows only recognized
+verification commands such as `cargo test`, `cargo check`, `cargo clippy`,
+`cargo build`, `dotnet test`, `dotnet build`, `cargo fmt --all -- --check`, and
+read-only git inspection. Shell metacharacters and git output/ext-diff options
+are denied. The verifier cannot use git commit/push/reset or arbitrary shell
+redirection. A workspace fingerprint is still checked after review as a second
+defense against provider or future-tool bypasses.
+
 ## Path safety
 
 - Paths are joined to the canonical workspace; the nearest existing ancestor
@@ -90,7 +109,9 @@ and on every request.
 `~/.kl/audit/audit.sqlite` is the query index used by `kl audit`; the raw
 rotated JSONL files remain the source of truth. `kl review` reads the audit tail
 separately and surfaces denied tool calls and sandbox violations as review
-findings; it does not replace or rewrite runtime audit records.
+findings; it does not replace or rewrite runtime audit records. The optional
+review-model call is bounded by `review_timeout_secs`; cancellation and timeout
+produce an `llm-review-unavailable` finding and never block indefinitely.
 
 Each record contains:
 

@@ -2,7 +2,7 @@
 //! one neutral chat request/stream and one neutral tool call type.
 
 use kl_audit::{AuditRecord, AuditSink};
-use kl_policy::{Effect, PolicyEngine};
+use kl_policy::{Effect, PolicyEngine, ToolAccess};
 use kl_protocol::{ApprovalDecision, CoreEvent};
 use kl_provider::{
     CancellationToken, ChatEvent, ChatMessage, ChatOutcome, ChatRequest, ModelMetadata, Provider,
@@ -22,8 +22,9 @@ pub struct AgentConfig {
     pub max_tool_calls_per_turn: usize,
     pub max_tool_output_bytes: usize,
     pub command_timeout: Duration,
-    /// Zero means unlimited. Providers that omit usage cannot be budgeted.
+    /// Zero means unlimited. Providers that omit usage are estimated conservatively.
     pub max_total_tokens: u64,
+    pub tool_access: ToolAccess,
 }
 
 impl Default for AgentConfig {
@@ -34,6 +35,7 @@ impl Default for AgentConfig {
             max_tool_output_bytes: 32 * 1024,
             command_timeout: Duration::from_secs(120),
             max_total_tokens: 0,
+            tool_access: ToolAccess::Full,
         }
     }
 }
@@ -197,6 +199,7 @@ impl Agent {
                     request.system = self.system_prompt.clone();
                     request.tools = self.tools.definitions();
 
+                    let estimated_input = estimate_request_tokens(&request);
                     let outcome = match self.stream_provider(request, cancel.clone(), sink, turn_id)
                     {
                         Ok(outcome) => outcome,
@@ -214,8 +217,13 @@ impl Agent {
                         }
                     };
 
-                    usage.input_tokens += outcome.usage.input_tokens;
-                    usage.output_tokens += outcome.usage.output_tokens;
+                    if outcome.usage.input_tokens + outcome.usage.output_tokens == 0 {
+                        usage.input_tokens += estimated_input;
+                        usage.output_tokens += estimate_outcome_tokens(&outcome);
+                    } else {
+                        usage.input_tokens += outcome.usage.input_tokens;
+                        usage.output_tokens += outcome.usage.output_tokens;
+                    }
                     if self.config.max_total_tokens > 0
                         && usage.input_tokens + usage.output_tokens > self.config.max_total_tokens
                     {
@@ -456,7 +464,11 @@ impl Agent {
             }
         };
 
-        let evaluation = self.policy.evaluate(request.action, &request.resource);
+        let evaluation = self.policy.evaluate_with_access(
+            self.config.tool_access,
+            request.action,
+            &request.resource,
+        );
         let audit_resource = evaluation
             .resolved
             .as_ref()
@@ -769,6 +781,29 @@ fn error_payload(message: &str) -> String {
         .unwrap_or_else(|_| "{\"ok\":false}".to_owned())
 }
 
+fn estimate_tokens(text: &str) -> u64 {
+    (text.chars().count() as u64).div_ceil(3)
+}
+
+fn estimate_request_tokens(request: &ChatRequest) -> u64 {
+    let mut total = estimate_tokens(&request.system);
+    for message in &request.messages {
+        total += estimate_tokens(&message.text()) + 4;
+    }
+    if let Ok(tools) = serde_json::to_string(&request.tools) {
+        total += estimate_tokens(&tools);
+    }
+    total
+}
+
+fn estimate_outcome_tokens(outcome: &ChatOutcome) -> u64 {
+    let mut total = estimate_tokens(&outcome.text) + 4;
+    for call in &outcome.tool_calls {
+        total += estimate_tokens(&call.name) + estimate_tokens(&call.arguments) + 4;
+    }
+    total
+}
+
 fn truncate(text: &str, limit: usize) -> String {
     if text.len() <= limit {
         return text.to_owned();
@@ -1062,6 +1097,111 @@ mod tests {
             events
                 .iter()
                 .any(|event| matches!(event, CoreEvent::TurnCompleted { .. }))
+        );
+    }
+
+    #[test]
+    fn no_usage_provider_uses_conservative_token_budget() {
+        let temp = tempfile::tempdir().unwrap();
+        let provider = Arc::new(
+            ScriptedProvider::from_json(
+                "scripted",
+                r#"[{"text":"this response has no usage and must still be budgeted"}]"#,
+            )
+            .unwrap(),
+        );
+        let policy = Arc::new(PolicyEngine::new(temp.path(), PolicyConfig::default()).unwrap());
+        let agent = Agent::new(
+            provider,
+            metadata(),
+            Arc::new(ToolRegistry::builtin()),
+            policy,
+            Arc::new(SandboxManager::policy_only()),
+            Arc::new(MemoryAudit::default()),
+            AgentConfig {
+                max_total_tokens: 1,
+                ..AgentConfig::default()
+            },
+        );
+        let sink = RecordingSink::default();
+        let mut history = Vec::new();
+        let error = agent
+            .run_turn(
+                "session",
+                "turn",
+                "budget this turn",
+                &mut history,
+                Arc::new(AtomicBool::new(false)),
+                &sink,
+                &Gate(ApprovalDecision::Allow),
+            )
+            .unwrap_err();
+        assert!(matches!(error, AgentError::TokenBudgetExceeded));
+    }
+
+    #[test]
+    fn read_only_tool_access_denies_edit_before_execution() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("a.txt"), "old value\n").unwrap();
+        let provider = Arc::new(
+            ScriptedProvider::from_json(
+                "scripted",
+                r#"[
+                    {"tool_calls":[{"name":"edit_file","arguments":{"path":"a.txt","old_string":"old","new_string":"new"}}]},
+                    {"text":"done"}
+                ]"#,
+            )
+            .unwrap(),
+        );
+        let policy = Arc::new(
+            PolicyEngine::new(
+                temp.path(),
+                PolicyConfig {
+                    auto_approve_edits: true,
+                    ..PolicyConfig::default()
+                },
+            )
+            .unwrap(),
+        );
+        let audit = Arc::new(MemoryAudit::default());
+        let agent = Agent::new(
+            provider,
+            metadata(),
+            Arc::new(ToolRegistry::builtin()),
+            policy,
+            Arc::new(SandboxManager::policy_only()),
+            audit.clone(),
+            AgentConfig {
+                tool_access: ToolAccess::ReadOnly,
+                ..AgentConfig::default()
+            },
+        );
+        let sink = RecordingSink::default();
+        let mut history = Vec::new();
+        let result = agent
+            .run_turn(
+                "session",
+                "turn",
+                "do not edit",
+                &mut history,
+                Arc::new(AtomicBool::new(false)),
+                &sink,
+                &Gate(ApprovalDecision::Allow),
+            )
+            .unwrap();
+        assert_eq!(result.status, TurnStatus::Completed);
+        assert_eq!(
+            std::fs::read_to_string(temp.path().join("a.txt")).unwrap(),
+            "old value\n"
+        );
+        let records = audit.records();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].decision, "deny");
+        assert!(
+            records[0]
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains("review-only"))
         );
     }
 

@@ -20,7 +20,7 @@ use kl_audit::AuditLog;
 use kl_plugin_host::{
     PluginError, PluginHost, PluginInfo, PluginKind, SidecarProvider, SidecarTool,
 };
-use kl_policy::{PolicyEngine, PolicyError};
+use kl_policy::{PolicyEngine, PolicyError, ToolAccess};
 use kl_protocol::{
     ApprovalDecision, ApprovalRespondParams, AuditTailParams, CORE_NAME, CORE_VERSION, CoreEvent,
     DefaultModelResult, DoctorCheck, DoctorResult, EventNotification, HandshakeParams,
@@ -34,9 +34,9 @@ use kl_protocol::{
     success, validate_envelope,
 };
 use kl_provider::{
-    AnthropicAdapter, BoundProvider, CancellationToken, ChatEvent, ChatMessage, ChatRequest,
-    ModelMetadata, OpenAiChatAdapter, OpenAiResponsesAdapter, Protocol, ProtocolAdapter, Provider,
-    ProviderError, ProviderRouter, ScriptedProvider, Usage,
+    AnthropicAdapter, BoundProvider, CancellationToken, ChatEvent, ChatMessage, ChatOutcome,
+    ChatRequest, ModelMetadata, OpenAiChatAdapter, OpenAiResponsesAdapter, Protocol,
+    ProtocolAdapter, Provider, ProviderError, ProviderRouter, ScriptedProvider, Usage,
 };
 use kl_review::{
     Finding, ReviewContext, ReviewError, ReviewMode, ReviewReport, collect_context, finalize,
@@ -541,6 +541,11 @@ impl DeepTurn {
                     0
                 } else {
                     token_budget.saturating_sub(used)
+                },
+                tool_access: match stage {
+                    DeepStage::Reviewer => ToolAccess::ReadOnly,
+                    DeepStage::Verifier => ToolAccess::VerifyOnly,
+                    _ => ToolAccess::Full,
                 },
             };
             let agent = Agent::new(
@@ -1321,6 +1326,7 @@ impl Core {
             max_tool_output_bytes: self.config.agent.max_tool_output_bytes,
             command_timeout: Duration::from_secs(self.config.agent.command_timeout_secs.max(1)),
             max_total_tokens: 0,
+            tool_access: ToolAccess::Full,
         };
         let is_deep = quality == QualityMode::Deep;
 
@@ -1578,14 +1584,13 @@ impl Core {
                     "You are a code review model. Return only the requested JSON array.".to_owned();
                 request.max_tokens = metadata.max_output_tokens;
                 provider.begin_turn();
-                provider
-                    .stream_chat(
-                        &request,
-                        &CancellationToken::new(),
-                        &mut |_event: ChatEvent| {},
-                    )
-                    .map(|outcome| outcome.text)
-                    .map_err(|error| error.to_string())
+                stream_review_chat(
+                    provider,
+                    request,
+                    CancellationToken::new(),
+                    Duration::from_secs(self.config.agent.review_timeout_secs.max(1)),
+                )
+                .map(|outcome| outcome.text)
             });
         match result {
             Ok(text) => parse_model_findings(&text).unwrap_or_else(|error| {
@@ -1888,6 +1893,63 @@ fn check_provider_available(provider: &dyn Provider) -> Result<(), RpcError> {
             data: Some(json!({"provider": provider.id()})),
         })
     }
+}
+
+fn stream_review_chat(
+    provider: Arc<dyn Provider>,
+    request: ChatRequest,
+    cancel: CancellationToken,
+    timeout: Duration,
+) -> Result<ChatOutcome, String> {
+    let (sender, receiver) = mpsc::channel();
+    let worker_token = cancel.clone();
+    let mut worker = Some(thread::spawn(move || {
+        let result = provider.stream_chat(&request, &worker_token, &mut |_event: ChatEvent| {});
+        let _ = sender.send(result);
+    }));
+    let deadline = Instant::now() + timeout;
+    loop {
+        if cancel.is_cancelled() {
+            cancel.cancel();
+            join_review_worker(&mut worker, Duration::from_secs(2));
+            return Err("review cancelled".to_owned());
+        }
+        if Instant::now() >= deadline {
+            cancel.cancel();
+            join_review_worker(&mut worker, Duration::from_secs(2));
+            return Err("review timed out".to_owned());
+        }
+        match receiver.recv_timeout(Duration::from_millis(50)) {
+            Ok(Ok(outcome)) => {
+                join_review_worker(&mut worker, Duration::from_secs(1));
+                return Ok(outcome);
+            }
+            Ok(Err(error)) => {
+                join_review_worker(&mut worker, Duration::from_secs(1));
+                return Err(error.to_string());
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                cancel.cancel();
+                join_review_worker(&mut worker, Duration::from_secs(2));
+                return Err("review worker disconnected".to_owned());
+            }
+        }
+    }
+}
+
+fn join_review_worker(worker: &mut Option<JoinHandle<()>>, timeout: Duration) -> bool {
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        if worker.as_ref().is_some_and(|handle| handle.is_finished()) {
+            if let Some(handle) = worker.take() {
+                let _ = handle.join();
+            }
+            return true;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    false
 }
 
 fn review_mode(params: &ReviewRunParams) -> Result<ReviewMode, RpcError> {
@@ -2671,8 +2733,67 @@ auto_approve_edits = true
             .unwrap();
         assert!(message.contains("boom"), "{message}");
     }
+    struct ReviewMutationProvider {
+        workspace: PathBuf,
+        calls: AtomicUsize,
+    }
+
+    impl Provider for ReviewMutationProvider {
+        fn id(&self) -> &str {
+            "mutating-review"
+        }
+
+        fn kind(&self) -> &str {
+            "test"
+        }
+
+        fn models(&self) -> Vec<ModelInfo> {
+            vec![ModelInfo::new("mutating-review")]
+        }
+
+        fn available(&self) -> (bool, String) {
+            (true, "writes during review".to_owned())
+        }
+
+        fn stream_chat(
+            &self,
+            _request: &ChatRequest,
+            _cancel: &CancellationToken,
+            _on_event: &mut dyn FnMut(ChatEvent),
+        ) -> Result<ChatOutcome, ProviderError> {
+            let call = self.calls.fetch_add(1, Ordering::Relaxed);
+            if call == 3 {
+                std::fs::write(self.workspace.join("sneaky.txt"), "extra").unwrap();
+            }
+            Ok(ChatOutcome {
+                text: format!("stage {call}"),
+                tool_calls: Vec::new(),
+                finish_reason: FinishReason::Stop,
+                usage: Usage::default(),
+            })
+        }
+    }
+
+    fn deep_turn_output(config: PathBuf, workspace: &Path) -> Vec<Value> {
+        let home = tempfile::tempdir().unwrap();
+        let (mut core, buffer) = new_test_core(config, home.path());
+        core.handshaken = true;
+        let created = core
+            .session_create(json!({"workspace": workspace.to_string_lossy()}))
+            .unwrap();
+        let session_id = created["session_id"].as_str().unwrap().to_owned();
+        core.turn_start(json!({
+            "session_id": session_id,
+            "prompt": "deep stage test",
+            "quality": "deep"
+        }))
+        .unwrap();
+        wait_for_threads(&mut core);
+        output_lines(&buffer)
+    }
+
     #[test]
-    fn deep_mode_rejects_reviewer_workspace_edits() {
+    fn deep_mode_reviewer_and_verifier_tools_are_hard_read_only() {
         let temp = tempfile::tempdir().unwrap();
         let config = deep_config(temp.path());
         std::fs::write(
@@ -2684,13 +2805,67 @@ auto_approve_edits = true
                 {"text":"implemented"},
                 {"tool_calls":[{"name":"write_file","arguments":{"path":"sneaky.txt","content":"extra"}}]},
                 {"text":"reviewed"},
+                {"tool_calls":[{"name":"shell","arguments":{"command":"echo hacked > sneaky.txt","cwd":"."}}]},
                 {"text":"verified"}
             ]"#,
         )
         .unwrap();
+        let output = deep_turn_output(config, temp.path());
+        let completed = output
+            .iter()
+            .find(|value| value["params"]["event"]["type"] == "turn.completed")
+            .expect("turn.completed event");
+        assert_eq!(completed["params"]["event"]["data"]["status"], "completed");
+        assert!(!temp.path().join("sneaky.txt").exists());
+        assert!(temp.path().join("out.txt").exists());
+        let tool_events: Vec<&Value> = output
+            .iter()
+            .filter(|value| value["params"]["event"]["type"] == "tool.completed")
+            .collect();
+        assert!(tool_events.iter().any(|value| {
+            value["params"]["event"]["data"]["name"] == "write_file"
+                && value["params"]["event"]["data"]["ok"] == false
+                && value["params"]["event"]["data"]["summary"]
+                    .as_str()
+                    .is_some_and(|text| text.contains("review-only"))
+        }));
+        assert!(tool_events.iter().any(|value| {
+            value["params"]["event"]["data"]["name"] == "shell"
+                && value["params"]["event"]["data"]["ok"] == false
+                && value["params"]["event"]["data"]["summary"]
+                    .as_str()
+                    .is_some_and(|text| text.contains("verification stage allows only"))
+        }));
+    }
+
+    #[test]
+    fn deep_mode_fingerprint_catches_out_of_band_reviewer_mutation() {
+        let temp = tempfile::tempdir().unwrap();
+        let config = deep_config(temp.path());
         let home = tempfile::tempdir().unwrap();
         let (mut core, buffer) = new_test_core(config, home.path());
         core.handshaken = true;
+        core.router = ProviderRouter::new(
+            vec![(
+                ModelMetadata::new(
+                    "mutating-review",
+                    "mutating-review",
+                    Protocol::Scripted,
+                    "test://mutating-review",
+                    8192,
+                    0.8,
+                    4096,
+                ),
+                Arc::new(ReviewMutationProvider {
+                    workspace: temp.path().to_path_buf(),
+                    calls: AtomicUsize::new(0),
+                }) as Arc<dyn Provider>,
+            )],
+            "mutating-review",
+            "mutating-review",
+        );
+        core.config.agent.provider = "mutating-review".to_owned();
+        core.config.agent.model = "mutating-review".to_owned();
         let workspace = temp.path().to_string_lossy().to_string();
         let created = core
             .session_create(json!({"workspace": workspace}))
@@ -2698,7 +2873,7 @@ auto_approve_edits = true
         let session_id = created["session_id"].as_str().unwrap().to_owned();
         core.turn_start(json!({
             "session_id": session_id,
-            "prompt": "review without editing",
+            "prompt": "detect mutation",
             "quality": "deep"
         }))
         .unwrap();
@@ -2713,5 +2888,159 @@ auto_approve_edits = true
             .unwrap();
         assert!(message.contains("modified the workspace"), "{message}");
         assert!(temp.path().join("sneaky.txt").exists());
+    }
+
+    #[test]
+    fn deep_mode_budgets_provider_without_usage() {
+        let temp = tempfile::tempdir().unwrap();
+        let config = deep_config(temp.path());
+        let text = std::fs::read_to_string(&config).unwrap();
+        std::fs::write(
+            &config,
+            text.replace(
+                "quality = \"deep\"",
+                "quality = \"deep\"\ndeep_token_budget = 1",
+            ),
+        )
+        .unwrap();
+        let output = deep_turn_output(config, temp.path());
+        let failed = output
+            .iter()
+            .find(|value| value["params"]["event"]["type"] == "turn.failed")
+            .expect("turn.failed event");
+        let message = failed["params"]["event"]["data"]["message"]
+            .as_str()
+            .unwrap();
+        assert!(message.contains("token budget"), "{message}");
+    }
+
+    struct BlockingReviewProvider {
+        started: Arc<AtomicBool>,
+    }
+
+    impl Provider for BlockingReviewProvider {
+        fn id(&self) -> &str {
+            "blocking-review"
+        }
+
+        fn kind(&self) -> &str {
+            "test"
+        }
+
+        fn models(&self) -> Vec<ModelInfo> {
+            vec![ModelInfo::new("blocking-review")]
+        }
+
+        fn available(&self) -> (bool, String) {
+            (true, "blocks until cancelled".to_owned())
+        }
+
+        fn stream_chat(
+            &self,
+            _request: &ChatRequest,
+            cancel: &CancellationToken,
+            _on_event: &mut dyn FnMut(ChatEvent),
+        ) -> Result<ChatOutcome, ProviderError> {
+            self.started.store(true, Ordering::Relaxed);
+            while !cancel.is_cancelled() {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Err(ProviderError::cancelled())
+        }
+    }
+
+    #[test]
+    fn review_chat_cancellation_exits_promptly() {
+        let started = Arc::new(AtomicBool::new(false));
+        let cancel = CancellationToken::new();
+        let request = ChatRequest::new("blocking-review", vec![ChatMessage::user("review")]);
+        let thread_cancel = cancel.clone();
+        let thread_started = started.clone();
+        let handle = std::thread::spawn(move || {
+            stream_review_chat(
+                Arc::new(BlockingReviewProvider {
+                    started: thread_started,
+                }),
+                request,
+                thread_cancel,
+                Duration::from_secs(5),
+            )
+        });
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !started.load(Ordering::Relaxed) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(started.load(Ordering::Relaxed));
+        let cancelled_at = Instant::now();
+        cancel.cancel();
+        let result = handle.join().unwrap();
+        assert!(result.unwrap_err().contains("cancelled"));
+        assert!(cancelled_at.elapsed() < Duration::from_secs(1));
+    }
+
+    #[test]
+    fn review_chat_timeout_exits_promptly() {
+        let started = Arc::new(AtomicBool::new(false));
+        let started_for_worker = started.clone();
+        let started_at = Instant::now();
+        let result = stream_review_chat(
+            Arc::new(BlockingReviewProvider {
+                started: started_for_worker,
+            }),
+            ChatRequest::new("blocking-review", vec![ChatMessage::user("review")]),
+            CancellationToken::new(),
+            Duration::from_millis(100),
+        );
+        assert!(result.unwrap_err().contains("timed out"));
+        assert!(started_at.elapsed() < Duration::from_secs(1));
+        assert!(started.load(Ordering::Relaxed));
+    }
+    #[test]
+    fn review_run_timeout_returns_warning_instead_of_blocking() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("a.txt"), "old\n").unwrap();
+        test_git(temp.path(), &["init"]);
+        test_git(temp.path(), &["add", "."]);
+        test_git(temp.path(), &["commit", "-m", "base"]);
+        std::fs::write(temp.path().join("a.txt"), "new\n").unwrap();
+        let config = temp.path().join("kl.toml");
+        std::fs::write(&config, "[agent]\nreview_timeout_secs = 1\n").unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let (mut core, _buffer) = new_test_core(config, home.path());
+        core.handshaken = true;
+        core.config.agent.review_timeout_secs = 1;
+        core.router = ProviderRouter::new(
+            vec![(
+                ModelMetadata::new(
+                    "blocking-review",
+                    "blocking-review",
+                    Protocol::Scripted,
+                    "test://blocking-review",
+                    8192,
+                    0.8,
+                    4096,
+                ),
+                Arc::new(BlockingReviewProvider {
+                    started: Arc::new(AtomicBool::new(false)),
+                }) as Arc<dyn Provider>,
+            )],
+            "blocking-review",
+            "blocking-review",
+        );
+        let started = Instant::now();
+        let result = core
+            .review_run(json!({
+                "workspace": temp.path().to_string_lossy(),
+                "mode": "strict"
+            }))
+            .unwrap();
+        assert!(started.elapsed() < Duration::from_secs(3));
+        let findings = result["findings"].as_array().unwrap();
+        assert!(findings.iter().any(|finding| {
+            finding["rule"] == "llm-review-unavailable"
+                && finding["evidence"]
+                    .as_str()
+                    .is_some_and(|text| text.contains("timed out"))
+        }));
     }
 }
