@@ -206,6 +206,13 @@ internal static class Program
                 {
                     continue;
                 }
+                if (ChatCommand.IsSettings(line))
+                {
+                    ui.Line(
+                        "settings require an interactive terminal; " +
+                        "run kl in a terminal and enter /settings");
+                    continue;
+                }
 
                 var outcome = await session.RunTurnAsync(line).ConfigureAwait(false);
                 if (outcome.Status == "failed")

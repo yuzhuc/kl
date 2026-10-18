@@ -118,8 +118,26 @@ current turn (or exits when idle), Left on an empty input opens history, Up/Down
 scrolls, and `?` shows shortcuts. The history page groups sessions by workspace
 and supports Up/Down, Enter to resume, `n` for a new session and Esc to return.
 
+From the chat input, enter `/settings` or `/设置` to open the settings page.
+The page uses a two-column layout: Model, Agent, Plugins and Skills on the
+left, and the selected group on the right. Model is implemented; the other
+three are placeholders. Use Up/Down to move, Tab/Shift+Tab to switch columns,
+Enter to edit or confirm, Esc to return, and Ctrl+S to save.
+
+The Model group lists providers with enabled, key, model-count and protocol
+status, plus model metadata. It can add or edit providers, toggle a provider
+with Space, add or edit models, and set the default provider/model with Enter
+on a model row. Base address mode expands the default
+`https://opencode.ai/zen/go/v1` (or the entered base) into
+`/chat/completions`, `/messages` and `/responses` before writing the provider
+TOML. Full mode writes the three complete URLs exactly as entered. API keys use
+masked input and `provider.set_api_key` to write
+`credentials/<id>.key`; they are never written to provider TOML or echoed.
+Disabled providers hide their models until they are enabled again.
+
 Redirected or non-interactive runs automatically fall back to the plain-text
-prompt. `kl run` always uses the existing non-interactive output.
+prompt. `/settings` in that mode prints a hint instead of being sent to the
+model. `kl run` always uses the existing non-interactive output.
 
 ## Configuration
 
