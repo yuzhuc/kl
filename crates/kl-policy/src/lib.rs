@@ -19,6 +19,13 @@ pub enum Action {
     Plugin,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolAccess {
+    Full,
+    ReadOnly,
+    VerifyOnly,
+}
+
 impl Action {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -141,6 +148,77 @@ impl PolicyEngine {
             Action::Shell => self.evaluate_shell(resource),
             Action::GitRead | Action::GitWrite => self.evaluate_git(resource),
             Action::Plugin => self.evaluate_plugin(resource),
+        }
+    }
+
+    pub fn evaluate_with_access(
+        &self,
+        access: ToolAccess,
+        action: Action,
+        resource: &str,
+    ) -> Evaluation {
+        match access {
+            ToolAccess::Full => self.evaluate(action, resource),
+            ToolAccess::ReadOnly => self.evaluate_read_only(action, resource),
+            ToolAccess::VerifyOnly => self.evaluate_verification(action, resource),
+        }
+    }
+
+    pub fn evaluate_read_only(&self, action: Action, resource: &str) -> Evaluation {
+        match action {
+            Action::Read => self.evaluate(action, resource),
+            Action::GitRead => self.limited_git_read(resource, "review-only stage"),
+            Action::Edit => Evaluation::deny("review-only stage: edits are not allowed"),
+            Action::Shell => Evaluation::deny("review-only stage: shell is not allowed"),
+            Action::GitWrite => Evaluation::deny("review-only stage: git writes are not allowed"),
+            Action::Plugin => Evaluation::deny("review-only stage: plugins are not allowed"),
+        }
+    }
+
+    pub fn evaluate_verification(&self, action: Action, resource: &str) -> Evaluation {
+        match action {
+            Action::Read => self.evaluate(action, resource),
+            Action::GitRead => self.limited_git_read(resource, "verification stage"),
+            Action::Shell => self.evaluate_verification_shell(resource),
+            Action::Edit => Evaluation::deny("verification stage: edits are not allowed"),
+            Action::GitWrite => Evaluation::deny("verification stage: git writes are not allowed"),
+            Action::Plugin => Evaluation::deny("verification stage: plugins are not allowed"),
+        }
+    }
+
+    fn limited_git_read(&self, resource: &str, label: &str) -> Evaluation {
+        let evaluation = self.evaluate(Action::GitRead, resource);
+        if evaluation.effect == Effect::Allow {
+            evaluation
+        } else {
+            Evaluation::deny(format!(
+                "{label}: only read-only git commands are allowed ({})",
+                evaluation.reason
+            ))
+        }
+    }
+
+    fn evaluate_verification_shell(&self, command: &str) -> Evaluation {
+        let command = command.trim();
+        if command.is_empty() {
+            return Evaluation::deny("empty command");
+        }
+        if let Some((needle, reason)) = dangerous_command(command) {
+            return Evaluation::deny(format!("dangerous command denied ({reason}): {needle}"));
+        }
+        if !self.config.network_allowlist.is_empty() {
+            for host in extract_hosts(command) {
+                if !host_allowed(&self.config.network_allowlist, &host) {
+                    return Evaluation::deny(format!("network host is not allowlisted: {host}"));
+                }
+            }
+        }
+        if is_verification_command(command) {
+            Evaluation::allow("verification command allowed", None)
+        } else {
+            Evaluation::deny(
+                "verification stage allows only test/build/lint and read-only git commands",
+            )
         }
     }
 
@@ -380,6 +458,47 @@ fn dangerous_command(command: &str) -> Option<(&'static str, &'static str)> {
     None
 }
 
+fn is_verification_command(command: &str) -> bool {
+    let command = command.trim().to_ascii_lowercase();
+    if command.is_empty()
+        || command.contains(['>', '<', '|', ';', '&', '`'])
+        || command.contains("$(")
+        || command.contains('\n')
+        || command.contains('\r')
+    {
+        return false;
+    }
+    if command.starts_with("git ")
+        && (command.contains("--output")
+            || command
+                .split_whitespace()
+                .any(|arg| arg == "-o" || arg.starts_with("-o"))
+            || command.contains("--ext-diff")
+            || command.contains("--textconv"))
+    {
+        return false;
+    }
+    let allowed = [
+        "cargo test",
+        "cargo check",
+        "cargo clippy",
+        "cargo build",
+        "cargo fmt --all -- --check",
+        "dotnet test",
+        "dotnet build",
+        "git diff",
+        "git status",
+        "git log",
+        "git show",
+        "git grep",
+        "git rev-parse",
+        "git ls-files",
+    ];
+    allowed
+        .iter()
+        .any(|prefix| command == *prefix || command.starts_with(&format!("{prefix} ")))
+}
+
 pub fn is_read_only_git(args: &str) -> bool {
     let tokens: Vec<&str> = args.split_whitespace().collect();
     tokens
@@ -429,17 +548,33 @@ fn host_allowed(allowed: &[String], host: &str) -> bool {
 }
 
 fn is_git_read_only(subcommand: &str, args: &[&str]) -> bool {
+    if args.iter().any(|arg| {
+        *arg == "--output"
+            || arg.starts_with("--output=")
+            || *arg == "-o"
+            || arg.starts_with("-o")
+            || *arg == "--ext-diff"
+            || *arg == "--textconv"
+    }) {
+        return false;
+    }
     match subcommand {
         "status" | "diff" | "log" | "show" | "rev-parse" | "ls-files" | "blame" | "describe"
         | "shortlog" | "grep" | "help" | "version" => true,
-        "branch" => !args.iter().any(|arg| {
+        "branch" => args.iter().all(|arg| {
             matches!(
                 *arg,
-                "-d" | "-D" | "-m" | "-M" | "--delete" | "--move" | "--copy"
+                "-a" | "-r"
+                    | "-v"
+                    | "--all"
+                    | "--remotes"
+                    | "--verbose"
+                    | "--list"
+                    | "--show-current"
             )
         }),
         "remote" => args.is_empty() || args.iter().all(|arg| *arg == "-v" || *arg == "--verbose"),
-        "tag" => !args.iter().any(|arg| matches!(*arg, "-d" | "--delete")),
+        "tag" => args.is_empty() || args.iter().all(|arg| *arg == "-l" || *arg == "--list"),
         "stash" => args.first().is_some_and(|arg| *arg == "list"),
         _ => false,
     }
@@ -448,6 +583,91 @@ fn is_git_read_only(subcommand: &str, args: &[&str]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn read_only_access_denies_mutation_and_allows_reads() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("a.txt"), "hello").unwrap();
+        let policy = engine(temp.path(), PolicyConfig::default());
+        assert_eq!(
+            policy
+                .evaluate_with_access(ToolAccess::ReadOnly, Action::Read, "a.txt")
+                .effect,
+            Effect::Allow
+        );
+        assert_eq!(
+            policy
+                .evaluate_with_access(ToolAccess::ReadOnly, Action::GitRead, "diff")
+                .effect,
+            Effect::Allow
+        );
+        for command in ["branch newbranch", "diff --output=leak.txt"] {
+            assert_eq!(
+                policy
+                    .evaluate_with_access(ToolAccess::ReadOnly, Action::GitRead, command)
+                    .effect,
+                Effect::Deny,
+                "{command}"
+            );
+        }
+        for action in [
+            Action::Edit,
+            Action::Shell,
+            Action::GitWrite,
+            Action::Plugin,
+        ] {
+            assert_eq!(
+                policy
+                    .evaluate_with_access(ToolAccess::ReadOnly, action, "a.txt")
+                    .effect,
+                Effect::Deny,
+                "{action:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn verification_access_allows_tests_and_denies_writes() {
+        let temp = tempfile::tempdir().unwrap();
+        let policy = engine(temp.path(), PolicyConfig::default());
+        for command in [
+            "cargo test",
+            "cargo clippy --workspace --all-targets -- -D warnings",
+            "dotnet test",
+            "git diff --stat",
+        ] {
+            assert_eq!(
+                policy
+                    .evaluate_with_access(ToolAccess::VerifyOnly, Action::Shell, command)
+                    .effect,
+                Effect::Allow,
+                "{command}"
+            );
+        }
+        for command in [
+            "echo hacked > a.txt",
+            "cargo fmt",
+            "git commit -m x",
+            "git diff --output=leak.txt",
+        ] {
+            assert_eq!(
+                policy
+                    .evaluate_with_access(ToolAccess::VerifyOnly, Action::Shell, command)
+                    .effect,
+                Effect::Deny,
+                "{command}"
+            );
+        }
+        for action in [Action::Edit, Action::GitWrite, Action::Plugin] {
+            assert_eq!(
+                policy
+                    .evaluate_with_access(ToolAccess::VerifyOnly, action, "x")
+                    .effect,
+                Effect::Deny,
+                "{action:?}"
+            );
+        }
+    }
 
     fn engine(workspace: &Path, config: PolicyConfig) -> PolicyEngine {
         PolicyEngine::new(workspace, config).unwrap()
@@ -582,5 +802,18 @@ mod tests {
             policy.evaluate(Action::GitWrite, "push --force").effect,
             Effect::Deny
         );
+        assert_eq!(
+            policy
+                .evaluate(Action::GitRead, "branch --show-current")
+                .effect,
+            Effect::Allow
+        );
+        for command in ["branch newbranch", "tag v1", "diff --output=leak.txt"] {
+            assert_eq!(
+                policy.evaluate(Action::GitRead, command).effect,
+                Effect::Ask,
+                "{command}"
+            );
+        }
     }
 }

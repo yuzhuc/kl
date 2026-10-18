@@ -55,10 +55,13 @@ ordinary agent turn; `deep` runs five ordinary turns in order: explorer,
 planner, implementer, reviewer, verifier. Each stage uses the existing
 `ProviderRouter` and shared session history. Deep mode stops on cancellation,
 stage/tool/token/time limits, and keeps stage outputs as evidence in the final
-turn text. Reviewer and verifier prompts require file:line evidence; the
-verifier is instructed not to modify or expand the change. A workspace
-fingerprint taken before review fails the turn if reviewer or verifier changes
-the workspace.
+turn text. Reviewer and verifier prompts require file:line evidence; the verifier is
+instructed not to modify or expand the change. Reviewer stages use
+`ToolAccess::ReadOnly` and verifier stages use `ToolAccess::VerifyOnly`. The
+existing `PolicyEngine` denies edits, writes, shell writes, git writes and
+plugins before tool execution; verifier shell is restricted to a test/build/
+lint and read-only git allowlist. A workspace fingerprint taken before review
+is retained as a second defense against out-of-band changes.
 
 ## Automated review
 
@@ -67,7 +70,10 @@ collects `git diff` plus untracked files, scans changed lines and full files,
 and merges deterministic findings with runtime audit denies/sandbox violations
 and optional structured LLM findings. `quick`, `standard` and `strict` control
 the confidence threshold; strict includes low-confidence findings and marks
-them. The same pipeline is exercised by deterministic fixture repositories.
+them. The optional review-model call is bounded by `review_timeout_secs` and a
+cancellation token; timeout or cancellation returns an
+`llm-review-unavailable` finding instead of blocking the request. The same
+pipeline is exercised by deterministic fixture repositories.
 
 ## Agent loop
 
@@ -138,9 +144,9 @@ See `schemas/protocol/v1/`, `schemas/plugin/manifest-v1.schema.json` and
 - WASM plugin runtime is not implemented; sidecar is the current runtime.
 - Deep mode is five ordinary agent turns, not a separate agent runtime.
   Repository symbol indexing is not implemented.
-- Reviewer/verifier workspace edits are detected by a fingerprint guard and fail
-  the turn; prompts also prohibit edits. Policy approvals remain the hard
-  boundary.
+- Reviewer/verifier edits are denied at the tool-policy boundary; a workspace
+  fingerprint remains as a second defense. Policy approvals remain the hard
+  boundary for `Full` stages.
 - No UDS/Named Pipe transport; the transport boundary is ready for one.
 - Live Provider smoke remains pending until API keys are supplied.
 - `kl review` can run without a provider; in that case local findings remain
