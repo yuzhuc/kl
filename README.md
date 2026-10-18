@@ -129,6 +129,8 @@ replays the most recent visible user, assistant and tool summaries before
 accepting input. Live turn events continue from the new turn and are not
 replayed twice.
 
+If no provider is configured, `kl` still opens the chat page and shows a hint to use `/settings`. After a provider and default model are saved, the chat page creates a session automatically without restarting.
+
 From the chat input, enter `/settings` or `/设置` to open the settings page.
 The page uses a two-column layout: Model, Agent, Plugins and Skills on the
 left, and the selected group on the right. Model and Plugins are implemented;

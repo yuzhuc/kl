@@ -111,7 +111,7 @@ public sealed class ChatTuiState
     public string Workspace { get; init; }
     public string Provider { get; set; }
     public string Model { get; set; }
-    public string SessionId { get; init; }
+    public string SessionId { get; set; }
     public bool Verbose { get; init; }
     public string Input { get; set; } = string.Empty;
     public int Cursor { get; set; }

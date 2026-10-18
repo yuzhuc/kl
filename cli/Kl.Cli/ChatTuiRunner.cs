@@ -22,15 +22,25 @@ public static class ChatTuiRunner
         Connection? connection = null;
         try
         {
-            connection = await OpenSessionAsync(
-                options,
-                options.Session,
-                cancellationToken).ConfigureAwait(false);
-            var state = NewState(connection.Session, options.Verbose);
-            await LoadTranscriptAsync(connection.Session, state, cancellationToken)
-                .ConfigureAwait(false);
-            state.History = await LoadHistoryAsync(connection.Session, state)
-                .ConfigureAwait(false);
+            ChatTuiState state;
+            try
+            {
+                connection = await OpenSessionAsync(
+                    options,
+                    options.Session,
+                    cancellationToken).ConfigureAwait(false);
+                state = NewState(connection.Session, options.Verbose);
+                await LoadTranscriptAsync(connection.Session, state, cancellationToken)
+                    .ConfigureAwait(false);
+                state.History = await LoadHistoryAsync(connection.Session, state)
+                    .ConfigureAwait(false);
+            }
+            catch (JsonRpcException error) when (error.Code == -32005)
+            {
+                state = NewStateWithoutSession(options);
+                state.AddError(
+                    "No provider configured. Type /settings to configure a provider and model.");
+            }
 
             var keys = Channel.CreateUnbounded<ConsoleKeyInfo>(
                 new UnboundedChannelOptions { SingleReader = true });
@@ -57,10 +67,13 @@ public static class ChatTuiRunner
             while (!exit)
             {
                 var changed = false;
-                while (connection.Presenter.Events.TryRead(out var sessionEvent))
+                if (connection is not null)
                 {
-                    state.Apply(sessionEvent);
-                    changed = true;
+                    while (connection.Presenter.Events.TryRead(out var sessionEvent))
+                    {
+                        state.Apply(sessionEvent);
+                        changed = true;
+                    }
                 }
 
                 var width = Math.Max(20, Console.WindowWidth);
@@ -87,7 +100,8 @@ public static class ChatTuiRunner
                         if (key.KeyChar == '\u0003'
                             || (key.Key == ConsoleKey.C && control))
                         {
-                            if (state.IsTurnActive || state.HasPendingApproval)
+                            if (connection is not null
+                                && (state.IsTurnActive || state.HasPendingApproval))
                             {
                                 await connection.Session.CancelAsync(cancellationToken)
                                     .ConfigureAwait(false);
@@ -113,6 +127,11 @@ public static class ChatTuiRunner
                                     options,
                                     state,
                                     cancellationToken).ConfigureAwait(false);
+                                connection = await TryOpenSessionAfterSettingsAsync(
+                                    options,
+                                    state,
+                                    connection,
+                                    cancellationToken).ConfigureAwait(false);
                                 break;
                             case SettingsCommandKind.SetDefaultModel:
                                 await SetSettingsDefaultAsync(
@@ -121,6 +140,11 @@ public static class ChatTuiRunner
                                     command.Provider ?? string.Empty,
                                     command.Model ?? string.Empty,
                                     cancellationToken).ConfigureAwait(false);
+                                connection = await TryOpenSessionAfterSettingsAsync(
+                                    options,
+                                    state,
+                                    connection,
+                                    cancellationToken).ConfigureAwait(false);
                                 break;
                             case SettingsCommandKind.ToggleProvider:
                                 await ToggleSettingsProviderAsync(
@@ -128,6 +152,11 @@ public static class ChatTuiRunner
                                     state,
                                     command.Provider ?? string.Empty,
                                     command.Enabled == true,
+                                    cancellationToken).ConfigureAwait(false);
+                                connection = await TryOpenSessionAfterSettingsAsync(
+                                    options,
+                                    state,
+                                    connection,
                                     cancellationToken).ConfigureAwait(false);
                                 break;
                             case SettingsCommandKind.SetPluginEnabled:
@@ -195,11 +224,20 @@ public static class ChatTuiRunner
                                     cancellationToken).ConfigureAwait(false);
                                 break;
                             }
+                            if (connection is null)
+                            {
+                                state.AddError(
+                                    "No provider configured. Type /settings to configure a provider and model.");
+                                state.Input = string.Empty;
+                                state.Cursor = 0;
+                                break;
+                            }
                             state.AddUserMessage(prompt);
                             _ = TrackTurnAsync(connection.Session, connection.Presenter, prompt);
                             break;
                         case ChatKeyAction.CancelOrExit:
-                            if (state.IsTurnActive || state.HasPendingApproval)
+                            if (connection is not null
+                                && (state.IsTurnActive || state.HasPendingApproval))
                             {
                                 await connection.Session.CancelAsync(cancellationToken)
                                     .ConfigureAwait(false);
@@ -212,6 +250,11 @@ public static class ChatTuiRunner
                             }
                             break;
                         case ChatKeyAction.OpenHistory:
+                            if (connection is null)
+                            {
+                                state.StatusMessage = "configure provider first";
+                                break;
+                            }
                             state.History = await LoadHistoryAsync(
                                 connection.Session,
                                 state).ConfigureAwait(false);
@@ -235,6 +278,10 @@ public static class ChatTuiRunner
                             }
                             break;
                         case ChatKeyAction.HistoryOpen:
+                            if (connection is null)
+                            {
+                                break;
+                            }
                             if (!state.IsTurnActive && state.History.Count > 0)
                             {
                                 var selected = state.History[
@@ -264,6 +311,10 @@ public static class ChatTuiRunner
                             }
                             break;
                         case ChatKeyAction.HistoryNew:
+                            if (connection is null)
+                            {
+                                break;
+                            }
                             if (!state.IsTurnActive)
                             {
                                 await connection.Session.DisposeAsync().ConfigureAwait(false);
@@ -303,10 +354,16 @@ public static class ChatTuiRunner
                             state.ScrollTranscript(-1, width, height);
                             break;
                         case ChatKeyAction.ApprovalAllow:
-                            ResolveApproval(connection.Presenter, state, allow: true);
+                            if (connection is not null)
+                            {
+                                ResolveApproval(connection.Presenter, state, allow: true);
+                            }
                             break;
                         case ChatKeyAction.ApprovalDeny:
-                            ResolveApproval(connection.Presenter, state, allow: false);
+                            if (connection is not null)
+                            {
+                                ResolveApproval(connection.Presenter, state, allow: false);
+                            }
                             break;
                     }
                     dirty = true;
@@ -314,7 +371,8 @@ public static class ChatTuiRunner
 
                 if (Interlocked.Exchange(ref cancelRequested, 0) != 0)
                 {
-                    if (state.IsTurnActive || state.HasPendingApproval)
+                    if (connection is not null
+                        && (state.IsTurnActive || state.HasPendingApproval))
                     {
                         await connection.Session.CancelAsync(cancellationToken)
                             .ConfigureAwait(false);
@@ -342,6 +400,41 @@ public static class ChatTuiRunner
         }
     }
 
+    private static ChatTuiState NewStateWithoutSession(CliOptions options) =>
+        new(
+            Path.GetFullPath(options.Workspace ?? Directory.GetCurrentDirectory()),
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            options.Verbose);
+
+    private static async Task<Connection?> TryOpenSessionAfterSettingsAsync(
+        CliOptions options,
+        ChatTuiState state,
+        Connection? current,
+        CancellationToken cancellationToken)
+    {
+        if (current is not null)
+        {
+            return current;
+        }
+
+        try
+        {
+            var connection = await OpenSessionAsync(options, null, cancellationToken)
+                .ConfigureAwait(false);
+            state.SessionId = connection.Session.SessionId;
+            state.Provider = connection.Session.Provider;
+            state.Model = connection.Session.Model;
+            state.AddInfo($"Connected to {state.Provider}/{state.Model}");
+            return connection;
+        }
+        catch (JsonRpcException error)
+        {
+            state.StatusMessage = "provider not ready: " + error.Message;
+            return null;
+        }
+    }
     private static async Task LoadSettingsAsync(
         CliOptions options,
         ChatTuiState state,
