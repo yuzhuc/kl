@@ -72,18 +72,20 @@ pub struct SidecarTool {
     name: String,
     description: String,
     parameters: Value,
+    requires_process: bool,
 }
 
 impl SidecarTool {
     pub fn new(host: Arc<PluginHost>, plugin_id: impl Into<String>) -> Option<Self> {
         let plugin_id = plugin_id.into();
         let manifest = host.manifest(&plugin_id)?;
+        let requires_process = !manifest.is_wasm();
         Some(Self {
             host,
             plugin_id,
             name: manifest.tool_name(),
             description: format!(
-                "Sidecar plugin tool `{}` from plugin `{}` v{}",
+                "Plugin tool `{}` from plugin `{}` v{}",
                 manifest.tool_name(),
                 manifest.id,
                 manifest.version
@@ -91,6 +93,7 @@ impl SidecarTool {
             parameters: manifest
                 .tool_parameters
                 .unwrap_or_else(|| serde_json::json!({"type": "object"})),
+            requires_process,
         })
     }
 }
@@ -116,10 +119,12 @@ impl Tool for SidecarTool {
     }
 
     fn execute(&self, context: &ToolContext<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
-        context
-            .sandbox
-            .ensure_process_execution()
-            .map_err(|error| ToolError::Policy(error.to_string()))?;
+        if self.requires_process {
+            context
+                .sandbox
+                .ensure_process_execution()
+                .map_err(|error| ToolError::Policy(error.to_string()))?;
+        }
         self.host
             .tool_execute(
                 &self.plugin_id,
