@@ -47,7 +47,10 @@ use kl_review::{
     llm_warning, model_prompt, parse_model_findings, runtime_findings, scan_local,
 };
 use kl_sandbox::SandboxManager;
-use kl_store::{SessionData, SessionMeta, SessionStore, StoreError};
+use kl_store::{
+    SessionData, SessionMeta, SessionStore, StoreError, TURN_STATE_IDLE,
+    TURN_STATE_WAITING_APPROVAL, TURN_STATE_WORKING,
+};
 use kl_tools::ToolRegistry;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -309,13 +312,26 @@ impl ApprovalBroker {
 struct CoreApprovalGate {
     broker: Arc<ApprovalBroker>,
     hub: EventHub,
+    sessions: Arc<Mutex<HashMap<String, SessionState>>>,
     session_id: String,
     cancel: Arc<AtomicBool>,
 }
 
 impl ApprovalGate for CoreApprovalGate {
     fn request(&self, request: ApprovalRequest) -> ApprovalDecision {
+        let _ = set_turn_state(
+            &self.sessions,
+            &self.hub.store,
+            &self.session_id,
+            TURN_STATE_WAITING_APPROVAL,
+        );
         let decision = self.broker.wait(&request.approval_id, &self.cancel);
+        let _ = set_turn_state(
+            &self.sessions,
+            &self.hub.store,
+            &self.session_id,
+            TURN_STATE_WORKING,
+        );
         let _ = self.hub.emit(
             &self.session_id,
             CoreEvent::ToolApprovalResolved {
@@ -813,6 +829,21 @@ struct SessionState {
     meta: SessionMeta,
     messages: Vec<ChatMessage>,
     active_turn: Option<String>,
+}
+
+fn set_turn_state(
+    sessions: &Arc<Mutex<HashMap<String, SessionState>>>,
+    store: &SessionStore,
+    session_id: &str,
+    turn_state: &str,
+) -> Result<(), StoreError> {
+    let meta = store.set_turn_state(session_id, turn_state)?;
+    let mut sessions = sessions.lock().unwrap_or_else(|error| error.into_inner());
+    if let Some(state) = sessions.get_mut(session_id) {
+        state.meta.turn_state = meta.turn_state;
+        state.meta.updated_at = meta.updated_at;
+    }
+    Ok(())
 }
 
 struct Core {
@@ -1554,6 +1585,21 @@ impl Core {
             PolicyEngine::new(PathBuf::from(&workspace), self.effective_policy_config())
                 .map_err(|error| rpc_error(error_codes::INVALID_PARAMS, error.to_string()))?,
         );
+        if let Err(error) = set_turn_state(
+            &self.sessions,
+            &self.store,
+            &params.session_id,
+            TURN_STATE_WORKING,
+        ) {
+            let mut sessions = self
+                .sessions
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            if let Some(state) = sessions.get_mut(&params.session_id) {
+                state.active_turn = None;
+            }
+            return Err(store_error(error));
+        }
         let cancel = Arc::new(AtomicBool::new(false));
         self.cancels
             .lock()
@@ -1594,6 +1640,7 @@ impl Core {
             let gate = CoreApprovalGate {
                 broker: approvals,
                 hub: hub.clone(),
+                sessions: sessions.clone(),
                 session_id: thread_session.clone(),
                 cancel: thread_cancel.clone(),
             };
@@ -1660,6 +1707,7 @@ impl Core {
                 if let Some(state) = sessions.get_mut(&thread_session) {
                     state.messages = history;
                     state.active_turn = None;
+                    state.meta.turn_state = TURN_STATE_IDLE.to_owned();
                     state.meta.provider = thread_metadata.provider.clone();
                     state.meta.model = thread_metadata.model.clone();
                     state.meta.status = Some(match &result {
@@ -2256,6 +2304,7 @@ fn session_info(meta: &SessionMeta, message_count: usize) -> SessionInfo {
         created_at: meta.created_at.clone(),
         updated_at: meta.updated_at.clone(),
         message_count,
+        turn_state: meta.turn_state.clone(),
         status: meta.status.clone(),
         task: meta.task.clone(),
         prompt: meta.prompt.clone(),
@@ -2709,6 +2758,7 @@ pub fn run_with_io_args<R: BufRead>(
 mod tests {
     use super::*;
     use std::io::Cursor;
+    use std::sync::Barrier;
 
     #[derive(Clone, Default)]
     struct Buffer(Arc<Mutex<Vec<u8>>>);
@@ -2721,6 +2771,59 @@ mod tests {
 
         fn flush(&mut self) -> io::Result<()> {
             Ok(())
+        }
+    }
+
+    struct BlockingApprovalProvider {
+        first: Arc<Barrier>,
+        release_first: Arc<Barrier>,
+        second: Arc<Barrier>,
+        release_second: Arc<Barrier>,
+        calls: AtomicUsize,
+    }
+
+    impl Provider for BlockingApprovalProvider {
+        fn id(&self) -> &str {
+            "scripted"
+        }
+
+        fn kind(&self) -> &str {
+            "scripted"
+        }
+
+        fn models(&self) -> Vec<ModelInfo> {
+            vec![ModelInfo::new("scripted")]
+        }
+
+        fn stream_chat(
+            &self,
+            _request: &ChatRequest,
+            _cancel: &CancellationToken,
+            _on_event: &mut dyn FnMut(ChatEvent),
+        ) -> Result<ChatOutcome, ProviderError> {
+            if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+                self.first.wait();
+                self.release_first.wait();
+                Ok(ChatOutcome {
+                    text: String::new(),
+                    tool_calls: vec![kl_provider::ToolCall {
+                        id: "call-1".to_owned(),
+                        name: "write_file".to_owned(),
+                        arguments: r#"{"path":"out.txt","content":"approved"}"#.to_owned(),
+                    }],
+                    finish_reason: FinishReason::ToolCalls,
+                    usage: Usage::default(),
+                })
+            } else {
+                self.second.wait();
+                self.release_second.wait();
+                Ok(ChatOutcome {
+                    text: "done".to_owned(),
+                    tool_calls: Vec::new(),
+                    finish_reason: FinishReason::Stop,
+                    usage: Usage::default(),
+                })
+            }
         }
     }
 
@@ -2994,6 +3097,111 @@ scripted_path = "script.json"
         assert!(create["result"]["session_id"].as_str().is_some());
         assert_eq!(list["result"]["sessions"].as_array().unwrap().len(), 1);
     }
+
+    #[test]
+    fn turn_state_tracks_working_approval_and_completion() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = temp.path().join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let config = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let (mut core, buffer) = new_test_core(config, home.path());
+        core.handshaken = true;
+
+        let (_, metadata) = core.router.get(Some("scripted"), Some("scripted")).unwrap();
+        let first = Arc::new(Barrier::new(2));
+        let release_first = Arc::new(Barrier::new(2));
+        let second = Arc::new(Barrier::new(2));
+        let release_second = Arc::new(Barrier::new(2));
+        core.router.register(
+            metadata,
+            Arc::new(BlockingApprovalProvider {
+                first: first.clone(),
+                release_first: release_first.clone(),
+                second: second.clone(),
+                release_second: release_second.clone(),
+                calls: AtomicUsize::new(0),
+            }),
+        );
+
+        let created = core
+            .session_create(json!({"workspace": workspace.to_string_lossy()}))
+            .unwrap();
+        let session_id = created["session_id"].as_str().unwrap().to_owned();
+        assert_eq!(created["turn_state"], TURN_STATE_IDLE);
+        let listed = core.session_list().unwrap();
+        assert_eq!(listed["sessions"][0]["turn_state"], TURN_STATE_IDLE);
+
+        core.turn_start(json!({"session_id": session_id, "prompt": "write a file"}))
+            .unwrap();
+        first.wait();
+        assert_eq!(
+            session_turn_state(&core, &session_id).as_deref(),
+            Some(TURN_STATE_WORKING)
+        );
+        release_first.wait();
+
+        wait_for_session_turn_state(&core, &session_id, TURN_STATE_WAITING_APPROVAL);
+        let approval_id = wait_for_approval_id(&buffer);
+        let response = core
+            .approval_respond(json!({
+                "session_id": session_id,
+                "approval_id": approval_id,
+                "decision": "allow"
+            }))
+            .unwrap();
+        assert_eq!(response["accepted"], true);
+
+        wait_for_session_turn_state(&core, &session_id, TURN_STATE_WORKING);
+        second.wait();
+        assert_eq!(
+            session_turn_state(&core, &session_id).as_deref(),
+            Some(TURN_STATE_WORKING)
+        );
+        release_second.wait();
+
+        wait_for_threads(&mut core);
+        assert_eq!(
+            session_turn_state(&core, &session_id).as_deref(),
+            Some(TURN_STATE_IDLE)
+        );
+        let listed = core.session_list().unwrap();
+        assert_eq!(listed["sessions"][0]["turn_state"], TURN_STATE_IDLE);
+    }
+
+    #[test]
+    fn turn_state_survives_core_restart() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = temp.path().join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let config = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let session_id = {
+            let (mut core, _) = new_test_core(config.clone(), home.path());
+            core.handshaken = true;
+            let created = core
+                .session_create(json!({"workspace": workspace.to_string_lossy()}))
+                .unwrap();
+            let session_id = created["session_id"].as_str().unwrap().to_owned();
+            core.store
+                .set_turn_state(&session_id, TURN_STATE_WAITING_APPROVAL)
+                .unwrap();
+            session_id
+        };
+
+        let (mut restarted, _) = new_test_core(config, home.path());
+        restarted.handshaken = true;
+        let listed = restarted.session_list().unwrap();
+        assert_eq!(
+            listed["sessions"][0]["turn_state"],
+            TURN_STATE_WAITING_APPROVAL
+        );
+        let resumed = restarted
+            .session_resume(json!({"session_id": session_id}))
+            .unwrap();
+        assert_eq!(resumed["turn_state"], TURN_STATE_WAITING_APPROVAL);
+    }
+
     use kl_provider::{ChatOutcome, FinishReason, ModelInfo, ProviderErrorKind};
 
     fn copy_dir(source: &Path, target: &Path) {
@@ -3048,6 +3256,46 @@ scripted_path = "script.json"
         );
         for handle in core.threads.drain(..) {
             handle.join().unwrap();
+        }
+    }
+
+    fn session_turn_state(core: &Core, session_id: &str) -> Option<String> {
+        core.store
+            .load(session_id)
+            .ok()
+            .map(|data| data.meta.turn_state)
+    }
+
+    fn wait_for_session_turn_state(core: &Core, session_id: &str, expected: &str) {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            if session_turn_state(core, session_id).as_deref() == Some(expected) {
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "turn state did not become {expected}: {:?}",
+                session_turn_state(core, session_id)
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    fn wait_for_approval_id(buffer: &Buffer) -> String {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            for value in output_lines(buffer) {
+                if value["params"]["event"]["type"] == "tool.approval.requested" {
+                    if let Some(id) = value["params"]["event"]["data"]["approval_id"].as_str() {
+                        return id.to_owned();
+                    }
+                }
+            }
+            assert!(
+                Instant::now() < deadline,
+                "tool approval request was not emitted"
+            );
+            std::thread::sleep(Duration::from_millis(10));
         }
     }
 

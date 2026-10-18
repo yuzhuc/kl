@@ -506,6 +506,8 @@ pub struct SessionInfo {
     pub created_at: String,
     pub updated_at: String,
     pub message_count: usize,
+    #[serde(default = "default_session_turn_state")]
+    pub turn_state: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -514,6 +516,10 @@ pub struct SessionInfo {
     pub prompt: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_message: Option<String>,
+}
+
+fn default_session_turn_state() -> String {
+    "idle".to_owned()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
