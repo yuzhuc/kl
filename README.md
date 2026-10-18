@@ -132,10 +132,11 @@ replayed twice.
 If no provider is configured, `kl` still opens the chat page and shows a hint to use `/settings`. After a provider and default model are saved, the chat page creates a session automatically without restarting.
 
 From the chat input, enter `/settings` or `/设置` to open the settings page.
-The page uses a two-column layout: Model, Agent, Plugins and Skills on the
-left, and the selected group on the right. Model and Plugins are implemented;
-Agent and Skills are placeholders. Use Up/Down to move, Tab/Shift+Tab to switch
-columns, Enter to edit or confirm, Esc to return, and Ctrl+S to save.
+The page uses a two-column layout: Model, Agent, Plugins, Skills and Config on
+the left, and the selected group on the right. Model, Plugins and Config are
+implemented; Agent and Skills are placeholders. Use Up/Down to move,
+Tab/Shift+Tab to switch columns, Enter to edit or confirm, Esc to return,
+Ctrl+S to save, and F2 to save and exit.
 
 The Model group lists providers with enabled, key, model-count and protocol
 status, plus model metadata. It can add or edit providers, toggle a provider
@@ -146,7 +147,13 @@ on a model row. Base address mode expands the default
 TOML. Full mode writes the three complete URLs exactly as entered. API keys use
 masked input and `provider.set_api_key` to write
 `credentials/<id>.key`; they are never written to provider TOML or echoed.
-Disabled providers hide their models until they are enabled again.
+Disabled providers hide their models until they are enabled again. In the model
+editor, Ctrl+S saves the model and its provider; F2 saves everything and returns
+to the chat page.
+
+The Config group currently exposes the settings-page language. Enter or Space
+toggles between English and Simplified Chinese. The choice is stored in
+`~/.kl/ui.json` and reused on the next launch.
 
 The Plugins group reads `plugin.list` and shows each plugin's id, version, kind,
 enabled state, health and detail. Selecting a plugin shows its basic metadata

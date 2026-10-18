@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace Kl.Cli;
 
 public static class SettingsTuiRunner
@@ -40,9 +42,48 @@ public static class SettingsTuiRunner
         }
     }
 
-    private static SettingsSnapshot WithCredentialState(
-        SettingsSnapshot snapshot,
-        CliOptions options)
+    public static UiLanguage LoadLanguage(CliOptions options)
+    {
+        try
+        {
+            var path = UiSettingsPath(options);
+            if (!File.Exists(path))
+            {
+                return UiLanguage.English;
+            }
+            using var document = JsonDocument.Parse(File.ReadAllText(path));
+            return document.RootElement.TryGetProperty("language", out var value)
+                && value.GetString() == "zh-CN"
+                ? UiLanguage.ChineseSimplified
+                : UiLanguage.English;
+        }
+        catch (Exception error)
+            when (error is IOException or UnauthorizedAccessException
+                or JsonException)
+        {
+            return UiLanguage.English;
+        }
+    }
+
+    public static async Task SaveLanguageAsync(
+        CliOptions options,
+        UiLanguage language,
+        CancellationToken cancellationToken = default)
+    {
+        var path = UiSettingsPath(options);
+        var directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+        var json = JsonSerializer.Serialize(
+            new { language = language == UiLanguage.ChineseSimplified ? "zh-CN" : "en" },
+            new JsonSerializerOptions { WriteIndented = true });
+        await File.WriteAllTextAsync(path, json + Environment.NewLine, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static string HomePath(CliOptions options)
     {
         var home = options.HomePath;
         if (string.IsNullOrWhiteSpace(home))
@@ -55,6 +96,17 @@ public static class SettingsTuiRunner
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                 ".kl");
         }
+        return home;
+    }
+
+    private static string UiSettingsPath(CliOptions options) =>
+        Path.Combine(HomePath(options), "ui.json");
+
+    private static SettingsSnapshot WithCredentialState(
+        SettingsSnapshot snapshot,
+        CliOptions options)
+    {
+        var home = HomePath(options);
 
         var providers = snapshot.Providers
             .Select(provider =>

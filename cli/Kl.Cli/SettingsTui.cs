@@ -3,12 +3,19 @@ using System.Text.Json;
 
 namespace Kl.Cli;
 
+public enum UiLanguage
+{
+    English,
+    ChineseSimplified
+}
+
 public enum SettingsGroup
 {
     Model,
     Agent,
     Plugins,
-    Skills
+    Skills,
+    Config
 }
 
 public enum SettingsPane
@@ -35,7 +42,9 @@ public enum SettingsCommandKind
     None,
     Close,
     SaveProvider,
+    SaveProviderAndClose,
     SetDefaultModel,
+    SetLanguage,
     ToggleProvider,
     SetPluginEnabled,
     ReloadPlugin,
@@ -47,7 +56,8 @@ public sealed record SettingsCommand(
     string? Provider = null,
     string? Model = null,
     bool? Enabled = null,
-    string? Plugin = null)
+    string? Plugin = null,
+    UiLanguage? Language = null)
 {
     public static readonly SettingsCommand None = new(SettingsCommandKind.None);
 }
@@ -742,7 +752,8 @@ public sealed class SettingsTuiState
         SettingsGroup.Model,
         SettingsGroup.Agent,
         SettingsGroup.Plugins,
-        SettingsGroup.Skills
+        SettingsGroup.Skills,
+        SettingsGroup.Config
     ];
 
     public SettingsSnapshot Snapshot { get; private set; } = SettingsSnapshot.Empty;
@@ -758,6 +769,7 @@ public sealed class SettingsTuiState
     public SettingsModelDraft? ModelDraft { get; private set; }
     public string? Status { get; set; }
     public string? Error { get; set; }
+    public UiLanguage Language { get; private set; } = UiLanguage.English;
     public bool IsLoading { get; private set; }
     public PluginAction? PendingPluginAction { get; private set; }
     public string? PendingPluginId { get; private set; }
@@ -803,6 +815,22 @@ public sealed class SettingsTuiState
         }
     }
 
+    public void SetLanguage(UiLanguage language)
+    {
+        Language = language;
+    }
+
+    private SettingsCommand ToggleLanguage()
+    {
+        SetLanguage(Language == UiLanguage.English
+            ? UiLanguage.ChineseSimplified
+            : UiLanguage.English);
+        Error = null;
+        Status = null;
+        return new SettingsCommand(
+            SettingsCommandKind.SetLanguage,
+            Language: Language);
+    }
     public void BeginLoad()
     {
         IsLoading = true;
@@ -976,6 +1004,10 @@ public sealed class SettingsTuiState
     public SettingsCommand HandleKey(ConsoleKeyInfo key)
     {
         var control = (key.Modifiers & ConsoleModifiers.Control) != 0;
+        if (key.Key == ConsoleKey.F2)
+        {
+            return SaveAndExit();
+        }
         if (control && (key.Key == ConsoleKey.S || key.KeyChar == '\u0013'))
         {
             return Save();
@@ -983,6 +1015,15 @@ public sealed class SettingsTuiState
         if (control && key.Key == ConsoleKey.C)
         {
             return new SettingsCommand(SettingsCommandKind.Close);
+        }
+
+        if (Pane == SettingsPane.Content && Group == SettingsGroup.Config)
+        {
+            if (key.Key == ConsoleKey.Enter
+                || key.KeyChar is ' ' or 'l' or 'L')
+            {
+                return ToggleLanguage();
+            }
         }
 
         if (Pane == SettingsPane.Content && Group == SettingsGroup.Plugins)
@@ -1111,14 +1152,34 @@ public sealed class SettingsTuiState
         }
         if (View == SettingsView.ModelEditor)
         {
-            SaveModelDraft();
-            return SettingsCommand.None;
+            return SaveModelDraft()
+                ? new SettingsCommand(SettingsCommandKind.SaveProvider)
+                : SettingsCommand.None;
         }
         if (View == SettingsView.ProviderEditor)
         {
             return new SettingsCommand(SettingsCommandKind.SaveProvider);
         }
         return new SettingsCommand(SettingsCommandKind.Reload);
+    }
+
+    private SettingsCommand SaveAndExit()
+    {
+        if (Group != SettingsGroup.Model)
+        {
+            return new SettingsCommand(SettingsCommandKind.Close);
+        }
+        if (View == SettingsView.ModelEditor)
+        {
+            return SaveModelDraft()
+                ? new SettingsCommand(SettingsCommandKind.SaveProviderAndClose)
+                : SettingsCommand.None;
+        }
+        if (View == SettingsView.ProviderEditor)
+        {
+            return new SettingsCommand(SettingsCommandKind.SaveProviderAndClose);
+        }
+        return new SettingsCommand(SettingsCommandKind.Close);
     }
 
     private void TogglePane()
@@ -1145,6 +1206,10 @@ public sealed class SettingsTuiState
                 0,
                 Math.Max(0, Snapshot.Plugins.Count - 1));
             ClearPluginPending();
+            return;
+        }
+        if (Group == SettingsGroup.Config)
+        {
             return;
         }
         if (View == SettingsView.Providers)
@@ -1351,17 +1416,17 @@ public sealed class SettingsTuiState
         PendingPluginId = null;
     }
 
-    private void SaveModelDraft()
+    private bool SaveModelDraft()
     {
         if (Draft is null || ModelDraft is null)
         {
-            return;
+            return false;
         }
         var error = ModelDraft.Validate();
         if (error is not null)
         {
             Error = error;
-            return;
+            return false;
         }
         if (_modelEditIndex >= 0 && _modelEditIndex < Draft.Models.Count)
         {
@@ -1375,7 +1440,8 @@ public sealed class SettingsTuiState
         _modelEditIndex = -1;
         View = SettingsView.ProviderEditor;
         Error = null;
-        Status = "model updated; Ctrl+S saves the provider";
+        Status = "model updated; saving provider...";
+        return true;
     }
 
     private void OpenProviderEditorForModel(SettingsModel model)

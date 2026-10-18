@@ -42,6 +42,8 @@ public static class ChatTuiRunner
                     "No provider configured. Type /settings to configure a provider and model.");
             }
 
+            state.Settings.SetLanguage(SettingsTuiRunner.LoadLanguage(options));
+
             var keys = Channel.CreateUnbounded<ConsoleKeyInfo>(
                 new UnboundedChannelOptions { SingleReader = true });
             _ = Task.Run(() =>
@@ -132,6 +134,30 @@ public static class ChatTuiRunner
                                     state,
                                     connection,
                                     cancellationToken).ConfigureAwait(false);
+                                break;
+                            case SettingsCommandKind.SaveProviderAndClose:
+                                await SaveSettingsProviderAsync(
+                                    options,
+                                    state,
+                                    cancellationToken).ConfigureAwait(false);
+                                if (state.Settings.Error is null)
+                                {
+                                    state.Screen = ChatScreen.Chat;
+                                    connection = await TryOpenSessionAfterSettingsAsync(
+                                        options,
+                                        state,
+                                        connection,
+                                        cancellationToken).ConfigureAwait(false);
+                                }
+                                break;
+                            case SettingsCommandKind.SetLanguage:
+                                state.Settings.SetLanguage(
+                                    command.Language ?? UiLanguage.English);
+                                await SettingsTuiRunner.SaveLanguageAsync(
+                                    options,
+                                    state.Settings.Language,
+                                    cancellationToken).ConfigureAwait(false);
+                                state.Settings.Status = "language saved";
                                 break;
                             case SettingsCommandKind.SetDefaultModel:
                                 await SetSettingsDefaultAsync(

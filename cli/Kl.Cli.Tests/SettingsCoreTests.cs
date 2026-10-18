@@ -208,6 +208,28 @@ public sealed class SettingsCoreTests
         }
     }
 
+    [Fact]
+    public async Task LanguagePreferencePersists()
+    {
+        var root = TempRoot();
+        try
+        {
+            var options = Options(root);
+            Assert.Equal(UiLanguage.English, SettingsTuiRunner.LoadLanguage(options));
+
+            await SettingsTuiRunner.SaveLanguageAsync(
+                options,
+                UiLanguage.ChineseSimplified);
+
+            Assert.Equal(
+                UiLanguage.ChineseSimplified,
+                SettingsTuiRunner.LoadLanguage(options));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
     private static ProviderDraft Draft(bool enabled, SettingsAddressMode mode)
     {
         var draft = ProviderDraft.New();

@@ -449,6 +449,56 @@ public sealed class SettingsTuiTests
         Assert.False(ChatCommand.IsSettings("/other"));
     }
 
+    [Fact]
+    public void CtrlSOnModelEditorSavesTheProvider()
+    {
+        var state = new SettingsTuiState();
+        state.Load(ParseSnapshot(TwoModelProviderList(), ConfigWithProvider(enabled: true)));
+        state.HandleKey(Key(ConsoleKey.Tab, '\t'));
+        state.HandleKey(Key(ConsoleKey.Enter));
+        state.EditModel(0);
+
+        var command = state.HandleKey(Key(ConsoleKey.S, '\u0013', control: true));
+
+        Assert.Equal(SettingsCommandKind.SaveProvider, command.Kind);
+    }
+
+    [Fact]
+    public void CtrlEnterOnModelEditorSavesProviderAndClosesSettings()
+    {
+        var state = new SettingsTuiState();
+        state.Load(ParseSnapshot(TwoModelProviderList(), ConfigWithProvider(enabled: true)));
+        state.HandleKey(Key(ConsoleKey.Tab, '\t'));
+        state.HandleKey(Key(ConsoleKey.Enter));
+        state.EditModel(0);
+
+        var command = state.HandleKey(Key(ConsoleKey.F2));
+
+        Assert.Equal(SettingsCommandKind.SaveProviderAndClose, command.Kind);
+    }
+
+    [Fact]
+    public void ConfigGroupTogglesLanguageAndRendersChinese()
+    {
+        var state = new SettingsTuiState();
+        state.Load(SettingsSnapshot.Empty);
+        for (var index = 0; index < 4; index++)
+        {
+            state.HandleKey(Key(ConsoleKey.DownArrow));
+        }
+        state.HandleKey(Key(ConsoleKey.Tab, '\t'));
+
+        var command = state.HandleKey(Key(ConsoleKey.Enter));
+
+        Assert.Equal(SettingsCommandKind.SetLanguage, command.Kind);
+        Assert.Equal(UiLanguage.ChineseSimplified, command.Language);
+        Assert.Equal(UiLanguage.ChineseSimplified, state.Language);
+        var render = SettingsTuiRenderer.Render(100, 24, state);
+        Assert.Contains("KL 设置", render);
+        Assert.Contains("配置", render);
+        Assert.Contains("语言", render);
+        Assert.Contains("F2 保存并退出", render);
+    }
     private static SettingsSnapshot ParseSnapshot(
         string providerList,
         string config,
