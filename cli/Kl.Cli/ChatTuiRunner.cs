@@ -44,6 +44,7 @@ public static class ChatTuiRunner
         Connection? connection = null;
         try
         {
+            await SplashScreen.ShowAsync(CanUseTui, cancellationToken).ConfigureAwait(false);
             var language = SettingsTuiRunner.LoadLanguage(options);
             ChatTuiState state;
             try
