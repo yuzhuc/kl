@@ -1,4 +1,4 @@
-# ADR 0009: lightweight repository index and test selection
+# ADR 0010: lightweight repository index and test selection
 
 - Status: accepted
 - Date: 2026-10-18
