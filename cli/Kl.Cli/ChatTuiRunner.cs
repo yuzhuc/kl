@@ -130,6 +130,21 @@ public static class ChatTuiRunner
                                     command.Enabled == true,
                                     cancellationToken).ConfigureAwait(false);
                                 break;
+                            case SettingsCommandKind.SetPluginEnabled:
+                                await SetSettingsPluginEnabledAsync(
+                                    options,
+                                    state,
+                                    command.Plugin ?? string.Empty,
+                                    command.Enabled == true,
+                                    cancellationToken).ConfigureAwait(false);
+                                break;
+                            case SettingsCommandKind.ReloadPlugin:
+                                await ReloadSettingsPluginAsync(
+                                    options,
+                                    state,
+                                    command.Plugin ?? string.Empty,
+                                    cancellationToken).ConfigureAwait(false);
+                                break;
                             case SettingsCommandKind.Reload:
                                 await LoadSettingsAsync(
                                     options,
@@ -172,6 +187,8 @@ public static class ChatTuiRunner
                                 state.Input = string.Empty;
                                 state.Cursor = 0;
                                 state.Screen = ChatScreen.Settings;
+                                state.Settings.BeginLoad();
+                                RenderFrame(width, height, state);
                                 await LoadSettingsAsync(
                                     options,
                                     state,
@@ -330,7 +347,7 @@ public static class ChatTuiRunner
         ChatTuiState state,
         CancellationToken cancellationToken)
     {
-        state.Settings.Status = "loading settings...";
+        state.Settings.BeginLoad();
         try
         {
             var snapshot = await SettingsTuiRunner.LoadAsync(options, cancellationToken)
@@ -339,7 +356,7 @@ public static class ChatTuiRunner
         }
         catch (Exception error) when (IsSettingsError(error))
         {
-            state.Settings.Error = "settings unavailable: " + error.Message;
+            state.Settings.FailLoad("settings unavailable: " + error.Message);
         }
     }
 
@@ -408,6 +425,68 @@ public static class ChatTuiRunner
         catch (Exception error) when (IsSettingsError(error))
         {
             state.Settings.Error = error.Message;
+        }
+    }
+
+    private static async Task SetSettingsPluginEnabledAsync(
+        CliOptions options,
+        ChatTuiState state,
+        string plugin,
+        bool enabled,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(plugin))
+        {
+            return;
+        }
+        state.Settings.Error = null;
+        state.Settings.Status = enabled ? "enabling plugin..." : "disabling plugin...";
+        try
+        {
+            await SettingsTuiRunner.SetPluginEnabledAsync(
+                    options,
+                    plugin,
+                    enabled,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            var snapshot = await SettingsTuiRunner.LoadAsync(options, cancellationToken)
+                .ConfigureAwait(false);
+            state.Settings.LoadPlugins(snapshot, plugin);
+            state.Settings.Status = enabled ? "plugin enabled" : "plugin disabled";
+        }
+        catch (Exception error) when (IsSettingsError(error))
+        {
+            state.Settings.Error = "plugin action failed: " + error.Message;
+        }
+    }
+
+    private static async Task ReloadSettingsPluginAsync(
+        CliOptions options,
+        ChatTuiState state,
+        string plugin,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(plugin))
+        {
+            return;
+        }
+        state.Settings.Error = null;
+        state.Settings.Status = "reloading plugin...";
+        try
+        {
+            await SettingsTuiRunner.ReloadPluginAsync(
+                    options,
+                    plugin,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            var snapshot = await SettingsTuiRunner.LoadAsync(options, cancellationToken)
+                .ConfigureAwait(false);
+            state.Settings.LoadPlugins(snapshot, plugin);
+            state.Settings.Status = "plugin reloaded";
+        }
+        catch (Exception error) when (IsSettingsError(error))
+        {
+            state.Settings.Error = "plugin reload failed: " + error.Message;
         }
     }
 

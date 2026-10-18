@@ -55,6 +55,151 @@ public sealed class SettingsTuiTests
     }
 
     [Fact]
+    public void PluginListParsesSafeFieldsAndSortsById()
+    {
+        var snapshot = ParseSnapshot(
+            """
+            { "models": [] }
+            """,
+            """{ "config": { "providers": {} } }""",
+            PluginList());
+
+        Assert.Equal(
+            ["alpha-tool", "zeta-provider"],
+            snapshot.Plugins.Select(plugin => plugin.Id));
+
+        var tool = snapshot.Plugins[0];
+        Assert.Equal("1.2.3", tool.Version);
+        Assert.Equal("tool", tool.Kind);
+        Assert.True(tool.Enabled);
+        Assert.True(tool.Healthy);
+        Assert.Equal("wasm component", tool.Detail);
+        Assert.Equal("run_alpha", tool.ToolName);
+        Assert.Empty(tool.Models);
+
+        var provider = snapshot.Plugins[1];
+        Assert.False(provider.Enabled);
+        Assert.False(provider.Healthy);
+        Assert.Equal(["zeta-1"], provider.Models);
+    }
+
+    [Fact]
+    public void PluginGroupShowsListDetailsAndRecentErrorWithoutRawParameters()
+    {
+        var state = new SettingsTuiState();
+        state.LoadPlugins(
+            ParseSnapshot(
+                """
+                { "models": [] }
+                """,
+                """{ "config": { "providers": {} } }""",
+                PluginList()),
+            "zeta-provider");
+
+        var render = SettingsTuiRenderer.Render(140, 40, state);
+
+        Assert.Contains("Plugins", render);
+        Assert.Contains("alpha-tool", render);
+        Assert.Contains("zeta-provider", render);
+        Assert.Contains("v1.2.3", render);
+        Assert.Contains("provider", render);
+        Assert.Contains("disabled", render);
+        Assert.Contains("unhealthy", render);
+        Assert.Contains("startup failed", render);
+        Assert.Contains("Recent error: startup failed", render);
+        Assert.Contains("Models: zeta-1", render);
+        Assert.Contains(SettingsTuiRenderer.PluginFooterHints, render);
+        Assert.DoesNotContain("super-secret", render);
+        Assert.DoesNotContain("hidden-token", render);
+    }
+
+    [Fact]
+    public void PluginActionsRequireConfirmationAndEmitCommands()
+    {
+        var snapshot = ParseSnapshot(
+            """
+            { "models": [] }
+            """,
+            """{ "config": { "providers": {} } }""",
+            PluginList());
+
+        var state = new SettingsTuiState();
+        state.LoadPlugins(snapshot, "alpha-tool");
+        var pendingDisable = state.HandleKey(Key(ConsoleKey.D, 'd'));
+        Assert.Equal(SettingsCommandKind.None, pendingDisable.Kind);
+        Assert.Equal(PluginAction.Disable, state.PendingPluginAction);
+        Assert.Contains("Press d again or Enter to confirm", state.Status);
+        var disable = state.HandleKey(Key(ConsoleKey.D, 'd'));
+        Assert.Equal(SettingsCommandKind.SetPluginEnabled, disable.Kind);
+        Assert.Equal("alpha-tool", disable.Plugin);
+        Assert.False(disable.Enabled);
+
+        state.LoadPlugins(snapshot, "zeta-provider");
+        var pendingEnable = state.HandleKey(Key(ConsoleKey.E, 'e'));
+        Assert.Equal(SettingsCommandKind.None, pendingEnable.Kind);
+        var enable = state.HandleKey(Key(ConsoleKey.Enter));
+        Assert.Equal(SettingsCommandKind.SetPluginEnabled, enable.Kind);
+        Assert.Equal("zeta-provider", enable.Plugin);
+        Assert.True(enable.Enabled);
+
+        state.LoadPlugins(snapshot, "alpha-tool");
+        var pendingReload = state.HandleKey(Key(ConsoleKey.R, 'r'));
+        Assert.Equal(SettingsCommandKind.None, pendingReload.Kind);
+        Assert.Equal(PluginAction.Reload, state.PendingPluginAction);
+        var reload = state.HandleKey(Key(ConsoleKey.R, 'r'));
+        Assert.Equal(SettingsCommandKind.ReloadPlugin, reload.Kind);
+        Assert.Equal("alpha-tool", reload.Plugin);
+    }
+
+    [Fact]
+    public void PluginGroupShowsLoadingEmptyAndErrorStates()
+    {
+        var state = new SettingsTuiState();
+        state.LoadPlugins(SettingsSnapshot.Empty);
+        var empty = SettingsTuiRenderer.Render(100, 24, state);
+        Assert.Contains("No plugins installed", empty);
+
+        state.LoadPlugins(SettingsSnapshot.Empty);
+        state.BeginLoad();
+        var loading = SettingsTuiRenderer.Render(100, 24, state);
+        Assert.Contains("Loading plugins...", loading);
+
+        state.FailLoad("plugin.list failed");
+        var failed = SettingsTuiRenderer.Render(100, 24, state);
+        Assert.Contains("[error] plugin.list failed", failed);
+
+        state.LoadPlugins(SettingsSnapshot.Empty);
+        state.Error = "plugin action failed: permission denied";
+        var actionFailed = SettingsTuiRenderer.Render(100, 24, state);
+        Assert.Contains("[error] plugin action failed: permission denied", actionFailed);
+    }
+
+    [Fact]
+    public void PluginGroupHandlesResize()
+    {
+        var snapshot = ParseSnapshot(
+            """
+            { "models": [] }
+            """,
+            """{ "config": { "providers": {} } }""",
+            PluginList());
+
+        var small = new SettingsTuiState();
+        small.LoadPlugins(snapshot, "alpha-tool");
+        var large = new SettingsTuiState();
+        large.LoadPlugins(snapshot, "alpha-tool");
+
+        var smallFrame = SettingsTuiRenderer.Render(70, 16, small);
+        var largeFrame = SettingsTuiRenderer.Render(120, 30, large);
+
+        Assert.Equal(16, smallFrame.Split('\n').Length);
+        Assert.Equal(30, largeFrame.Split('\n').Length);
+        Assert.Contains("alpha-tool", smallFrame);
+        Assert.Contains("Selected plugin", largeFrame);
+        Assert.NotEqual(smallFrame, largeFrame);
+    }
+
+    [Fact]
     public void ResizeRequestsRedrawAndChangesFrameSize()
     {
         Assert.True(ChatTuiRenderer.NeedsRedraw(false, false, 80, 24, 100, 24));
@@ -304,12 +449,50 @@ public sealed class SettingsTuiTests
         Assert.False(ChatCommand.IsSettings("/other"));
     }
 
-    private static SettingsSnapshot ParseSnapshot(string providerList, string config)
+    private static SettingsSnapshot ParseSnapshot(
+        string providerList,
+        string config,
+        string? pluginList = null)
     {
         using var providers = JsonDocument.Parse(providerList);
         using var configDocument = JsonDocument.Parse(config);
-        return SettingsSnapshot.FromJson(providers.RootElement, configDocument.RootElement);
+        using var plugins = JsonDocument.Parse(
+            pluginList ?? """{ "plugins": [] }""");
+        return SettingsSnapshot.FromJson(
+            providers.RootElement,
+            configDocument.RootElement,
+            plugins.RootElement);
     }
+
+    private static string PluginList() => """
+        {
+          "plugins": [
+            {
+              "id": "zeta-provider",
+              "version": "2.0.0",
+              "kind": "provider",
+              "enabled": false,
+              "healthy": false,
+              "models": ["zeta-1"],
+              "detail": "startup failed",
+              "parameters": {
+                "api_key": "super-secret",
+                "token": "hidden-token"
+              }
+            },
+            {
+              "id": "alpha-tool",
+              "version": "1.2.3",
+              "kind": "tool",
+              "enabled": true,
+              "healthy": true,
+              "tool_name": "run_alpha",
+              "models": [],
+              "detail": "wasm component"
+            }
+          ]
+        }
+        """;
 
     private static string TwoModelProviderList() => """
         {

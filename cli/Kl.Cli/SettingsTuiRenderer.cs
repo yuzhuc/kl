@@ -7,6 +7,8 @@ public static class SettingsTuiRenderer
     public const string Title = "KL Settings";
     public const string FooterHints =
         "↑/↓ move  Tab/Shift+Tab pane  Enter edit/confirm  Esc back  Ctrl+S save";
+    public const string PluginFooterHints =
+        "↑/↓ move  Tab/Shift+Tab pane  e enable  d disable  r reload  Enter confirm  Esc back";
 
     public static string Render(int width, int height, SettingsTuiState state)
     {
@@ -30,7 +32,7 @@ public static class SettingsTuiRenderer
             var rightText = row < visible.Count ? visible[row] : string.Empty;
             lines.Add(Fit(leftText, leftWidth) + " | " + Fit(rightText, rightWidth));
         }
-        lines.Add(FooterHints);
+        lines.Add(state.Group == SettingsGroup.Plugins ? PluginFooterHints : FooterHints);
         return string.Join('\n', lines.Take(height).Select(line => Fit(line, width)));
     }
 
@@ -53,6 +55,10 @@ public static class SettingsTuiRenderer
         SettingsTuiState state,
         int width)
     {
+        if (state.Group == SettingsGroup.Plugins)
+        {
+            return RenderPluginList(state);
+        }
         if (state.Group != SettingsGroup.Model)
         {
             return (
@@ -139,6 +145,78 @@ public static class SettingsTuiRenderer
         lines.Add(string.Empty);
         lines.Add(
             "Enter edit / set default  n new  e edit  a add model  Space enable/disable");
+        return (lines, selectedLine);
+    }
+
+    private static (List<string> Lines, int SelectedLine) RenderPluginList(
+        SettingsTuiState state)
+    {
+        var lines = new List<string>();
+        if (state.IsLoading)
+        {
+            lines.Add("Loading plugins...");
+            return (lines, -1);
+        }
+        if (!string.IsNullOrWhiteSpace(state.Error))
+        {
+            lines.Add("[error] " + state.Error);
+        }
+        else if (!string.IsNullOrWhiteSpace(state.Status))
+        {
+            lines.Add(state.Status);
+        }
+
+        lines.Add("Plugins");
+        if (state.Snapshot.Plugins.Count == 0)
+        {
+            lines.Add("  No plugins installed. Use `kl plugin install <path>`.");
+        }
+
+        var selectedLine = -1;
+        for (var index = 0; index < state.Snapshot.Plugins.Count; index++)
+        {
+            var plugin = state.Snapshot.Plugins[index];
+            var selected = state.Pane == SettingsPane.Content
+                && state.ListRow == index;
+            if (selected)
+            {
+                selectedLine = lines.Count;
+            }
+            var detail = OneLine(plugin.Detail);
+            lines.Add(
+                $"{(selected ? ">" : " ")} {plugin.Id}  v{plugin.Version}  " +
+                $"{plugin.Kind}  {(plugin.Enabled ? "enabled" : "disabled")}  " +
+                $"{(plugin.Healthy ? "healthy" : "unhealthy")}  " +
+                $"{(detail.Length == 0 ? "-" : detail)}");
+        }
+
+        if (state.SelectedPlugin is { } selectedPlugin)
+        {
+            var detail = OneLine(selectedPlugin.Detail);
+            lines.Add(string.Empty);
+            lines.Add("Selected plugin");
+            lines.Add("  Id: " + selectedPlugin.Id);
+            lines.Add("  Version: " + selectedPlugin.Version);
+            lines.Add("  Kind: " + selectedPlugin.Kind);
+            lines.Add("  Enabled: " + (selectedPlugin.Enabled ? "yes" : "no"));
+            lines.Add("  Healthy: " + (selectedPlugin.Healthy ? "yes" : "no"));
+            lines.Add("  Tool: " + (selectedPlugin.ToolName ?? "-"));
+            lines.Add(
+                "  Models: " + (selectedPlugin.Models.Count == 0
+                    ? "-"
+                    : string.Join(", ", selectedPlugin.Models)));
+            lines.Add("  Detail: " + (detail.Length == 0 ? "-" : detail));
+            lines.Add(
+                "  Recent error: " + (selectedPlugin.Healthy
+                    ? "none"
+                    : detail.Length == 0
+                        ? "plugin reported unhealthy"
+                        : detail));
+        }
+
+        lines.Add(string.Empty);
+        lines.Add("e enable  d disable  r reload  Space toggle  Enter confirm");
+        lines.Add("Install remains: kl plugin install <path>");
         return (lines, selectedLine);
     }
 
@@ -308,6 +386,14 @@ public static class SettingsTuiRenderer
         state.RightScroll = Math.Clamp(start, 0, maximum);
         return lines.Skip(state.RightScroll).Take(height).ToList();
     }
+
+    private static string OneLine(string value) =>
+        string.Join(
+            " ",
+            (value ?? string.Empty)
+                .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+                .Select(part => part.Trim())
+                .Where(part => part.Length > 0));
 
     private static string Fit(string text, int width)
     {

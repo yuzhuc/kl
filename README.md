@@ -131,9 +131,9 @@ replayed twice.
 
 From the chat input, enter `/settings` or `/设置` to open the settings page.
 The page uses a two-column layout: Model, Agent, Plugins and Skills on the
-left, and the selected group on the right. Model is implemented; the other
-three are placeholders. Use Up/Down to move, Tab/Shift+Tab to switch columns,
-Enter to edit or confirm, Esc to return, and Ctrl+S to save.
+left, and the selected group on the right. Model and Plugins are implemented;
+Agent and Skills are placeholders. Use Up/Down to move, Tab/Shift+Tab to switch
+columns, Enter to edit or confirm, Esc to return, and Ctrl+S to save.
 
 The Model group lists providers with enabled, key, model-count and protocol
 status, plus model metadata. It can add or edit providers, toggle a provider
@@ -145,6 +145,15 @@ TOML. Full mode writes the three complete URLs exactly as entered. API keys use
 masked input and `provider.set_api_key` to write
 `credentials/<id>.key`; they are never written to provider TOML or echoed.
 Disabled providers hide their models until they are enabled again.
+
+The Plugins group reads `plugin.list` and shows each plugin's id, version, kind,
+enabled state, health and detail. Selecting a plugin shows its basic metadata
+and the most recent host-provided error detail; raw manifest parameters and
+credentials are not rendered. Use `e` to enable, `d` to disable, `r` to reload,
+or Space to toggle, then press the same key again or Enter to confirm. Esc
+cancels a pending confirmation. The list is reloaded after every successful
+action, so a disabled plugin immediately shows its new state. Installation stays
+in the existing command: `kl plugin install <path>`.
 
 Redirected or non-interactive runs automatically fall back to the plain-text
 prompt. `/settings` in that mode prints a hint instead of being sent to the
