@@ -1,12 +1,11 @@
 use crate::{
-    ChatEvent, ChatMessage, ChatOutcome, ChatRequest, FinishReason, Protocol, ProtocolAdapter,
-    ProviderError, ProviderErrorKind, Role, ToolCall, ToolDefinition, Usage, http_post_stream,
-    read_sse,
+    CancellationToken, ChatEvent, ChatMessage, ChatOutcome, ChatRequest, FinishReason, Protocol,
+    ProtocolAdapter, ProviderError, ProviderErrorKind, Role, ToolCall, ToolDefinition, Usage,
+    http_post_stream, read_sse,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader};
-use std::sync::atomic::AtomicBool;
 
 pub struct OpenAiChatAdapter {
     endpoint: String,
@@ -25,7 +24,7 @@ impl OpenAiChatAdapter {
     pub fn parse_stream<R: BufRead>(
         &self,
         reader: R,
-        cancel: &AtomicBool,
+        cancel: &CancellationToken,
         on_event: &mut dyn FnMut(ChatEvent),
     ) -> Result<ChatOutcome, ProviderError> {
         let mut text = String::new();
@@ -170,7 +169,7 @@ impl ProtocolAdapter for OpenAiChatAdapter {
     fn stream_chat(
         &self,
         request: &ChatRequest,
-        cancel: &AtomicBool,
+        cancel: &CancellationToken,
         on_event: &mut dyn FnMut(ChatEvent),
     ) -> Result<ChatOutcome, ProviderError> {
         let Some(api_key) = &self.api_key else {
@@ -292,11 +291,15 @@ mod tests {
         );
         let mut deltas = String::new();
         let outcome = adapter()
-            .parse_stream(Cursor::new(stream), &AtomicBool::new(false), &mut |event| {
-                if let ChatEvent::TextDelta(text) = event {
-                    deltas.push_str(&text);
-                }
-            })
+            .parse_stream(
+                Cursor::new(stream),
+                &CancellationToken::new(),
+                &mut |event| {
+                    if let ChatEvent::TextDelta(text) = event {
+                        deltas.push_str(&text);
+                    }
+                },
+            )
             .unwrap();
         assert_eq!(deltas, "Hello");
         assert_eq!(outcome.text, "Hello");
@@ -315,7 +318,7 @@ mod tests {
             "data: [DONE]\n\n",
         );
         let outcome = adapter()
-            .parse_stream(Cursor::new(stream), &AtomicBool::new(false), &mut |_| {})
+            .parse_stream(Cursor::new(stream), &CancellationToken::new(), &mut |_| {})
             .unwrap();
         assert_eq!(outcome.finish_reason, FinishReason::ToolCalls);
         assert_eq!(outcome.tool_calls.len(), 1);

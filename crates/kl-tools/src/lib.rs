@@ -67,6 +67,8 @@ pub enum ToolError {
     Io(String),
     #[error("execution error: {0}")]
     Execution(String),
+    #[error("sandbox violation: {0}")]
+    Sandbox(kl_sandbox::SandboxViolation),
     #[error("not found: {0}")]
     NotFound(String),
 }

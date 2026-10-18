@@ -43,20 +43,32 @@ platform variables such as `PATH`, `SystemRoot`, `ComSpec`, `TEMP`, `HOME` and
 the listed variables are passed; all others are removed. An empty list inherits
 the parent environment.
 
-Shell command text is still not a complete OS sandbox; complex scripts can
-obscure paths or network access. This is enforced at the policy/protocol layer
-until stronger platform sandboxes are added.
+Policy checks are a trust boundary, not a substitute for OS isolation.
 
 ## Sandbox backend status
 
-`sandbox.mode = "policy"` is the default. `strict` requires a real backend and
-fails closed if the selected backend is unavailable.
+`sandbox.mode = "policy"` is the default and uses the policy backend. `strict`
+requires a real OS backend and fails closed if the selected backend is
+unavailable.
+
+On Windows, the `appcontainer` backend launches shell, git and sidecar
+processes with an AppContainer token and a kill-on-close Job Object. A
+`kl-sandbox-runner` helper clears the inherited environment before launching
+the target. Workspace roots are granted explicitly; sensitive paths are
+protected by removing the AppContainer ACE and setting a protected DACL.
+Network isolation is not claimed as verified, and the policy network allowlist
+remains active. The runner binary must be shipped next to `kl-core`.
 
 The MXC probe detects the external `MXC launcher: enumerate MXC volume Z:`
-failure. In non-strict mode KL isolates it by continuing with policy-only
-execution; in strict mode shell and plugin process execution are denied.
-`kl doctor` exposes `sandbox_backend`, `sandbox_strict` and
-`sandbox_z_isolation`.
+failure. In non-strict mode KL reports an explicit policy-only fallback; in
+strict mode a selected MXC backend fails closed. `kl doctor` exposes
+`sandbox_backend`, `sandbox_strict`, `sandbox_probe`, `sandbox_capabilities`,
+`sandbox_mxc` and `sandbox_z_isolation`.
+
+Every policy or OS sandbox denial emits a persisted `sandbox.violation` event
+and a normal failing audit record. Sensitive-path ACL hardening changes the
+DACL of the affected path. If the git installation root cannot be granted to
+the AppContainer SID, git fails closed with an explicit sandbox error.
 
 ## Plugin permissions
 

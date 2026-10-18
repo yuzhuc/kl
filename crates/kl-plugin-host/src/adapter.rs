@@ -1,12 +1,12 @@
 use crate::{PluginError, PluginHost};
 use kl_policy::Action;
 use kl_provider::{
-    ChatEvent, ChatOutcome, ChatRequest, ModelInfo, Provider, ProviderError, ProviderErrorKind,
+    CancellationToken, ChatEvent, ChatOutcome, ChatRequest, ModelInfo, Provider, ProviderError,
+    ProviderErrorKind,
 };
 use kl_tools::{PolicyRequest, Tool, ToolContext, ToolError, ToolOutcome};
 use serde_json::Value;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 pub struct SidecarProvider {
     host: Arc<PluginHost>,
@@ -46,10 +46,10 @@ impl Provider for SidecarProvider {
     fn stream_chat(
         &self,
         request: &ChatRequest,
-        cancel: &AtomicBool,
+        cancel: &CancellationToken,
         on_event: &mut dyn FnMut(ChatEvent),
     ) -> Result<ChatOutcome, ProviderError> {
-        if cancel.load(Ordering::Relaxed) {
+        if cancel.is_cancelled() {
             return Err(ProviderError::cancelled());
         }
         let outcome = self
@@ -57,7 +57,7 @@ impl Provider for SidecarProvider {
             .provider_chat(&self.id, request)
             .map_err(provider_error)?;
         for chunk in chunk_text(&outcome.text, 64) {
-            if cancel.load(Ordering::Relaxed) {
+            if cancel.is_cancelled() {
                 return Err(ProviderError::cancelled());
             }
             on_event(ChatEvent::TextDelta(chunk));
@@ -151,6 +151,7 @@ fn provider_error(error: PluginError) -> ProviderError {
 fn tool_error(error: PluginError) -> ToolError {
     match error {
         PluginError::PermissionDenied(message) => ToolError::Policy(message),
+        PluginError::Sandbox(violation) => ToolError::Sandbox(violation),
         other => ToolError::Execution(other.to_string()),
     }
 }

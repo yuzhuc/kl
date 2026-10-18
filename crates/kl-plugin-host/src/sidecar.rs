@@ -1,8 +1,9 @@
 use crate::manifest::PluginManifest;
+use kl_exec::CommandSpec;
+use kl_sandbox::{SandboxManager, SandboxPolicy};
 use serde_json::{Value, json};
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread::{self, JoinHandle};
@@ -27,8 +28,8 @@ pub enum SidecarError {
 type Pending = Arc<Mutex<HashMap<u64, mpsc::Sender<Result<Value, SidecarError>>>>>;
 
 pub(crate) struct SidecarProcess {
-    child: Mutex<Child>,
-    stdin: Mutex<Option<ChildStdin>>,
+    child: Mutex<kl_sandbox::SandboxChild>,
+    stdin: Mutex<Option<Box<dyn Write + Send>>>,
     pending: Pending,
     next_id: AtomicU64,
     request_lock: Mutex<()>,
@@ -44,42 +45,42 @@ impl SidecarProcess {
         manifest_path: &std::path::Path,
         token: &str,
         env_overrides: &[(String, String)],
+        sandbox: &SandboxManager,
+        policy: &SandboxPolicy,
     ) -> Result<Self, SidecarError> {
         let entrypoint = manifest.entrypoint_path(manifest_path);
-        let mut command = Command::new(&entrypoint);
-        command
-            .current_dir(PluginManifest::manifest_dir(manifest_path))
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .env_clear();
-        add_safe_environment(&mut command);
+        let mut spec = CommandSpec::new(
+            entrypoint.to_string_lossy().to_string(),
+            Vec::new(),
+            PluginManifest::manifest_dir(manifest_path),
+        );
+        spec.clear_env = true;
+        spec.env = safe_environment();
         for name in &manifest.permissions.env {
             if let Ok(value) = std::env::var(name) {
-                command.env(name, value);
+                spec.env.push((name.clone(), value));
             }
         }
         for (name, value) in env_overrides {
-            command.env(name, value);
+            spec.env.push((name.clone(), value.clone()));
         }
-        command
-            .env("KL_PLUGIN_ID", &manifest.id)
-            .env("KL_PLUGIN_VERSION", &manifest.version)
-            .env("KL_PLUGIN_TOKEN", token);
+        spec.env
+            .push(("KL_PLUGIN_ID".to_owned(), manifest.id.clone()));
+        spec.env
+            .push(("KL_PLUGIN_VERSION".to_owned(), manifest.version.clone()));
+        spec.env
+            .push(("KL_PLUGIN_TOKEN".to_owned(), token.to_owned()));
         if let Some(config_path) = manifest.config_path(manifest_path) {
             if config_path.exists() {
-                command.env("KL_PLUGIN_CONFIG", config_path);
+                spec.env.push((
+                    "KL_PLUGIN_CONFIG".to_owned(),
+                    config_path.to_string_lossy().to_string(),
+                ));
             }
         }
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-            command.creation_flags(CREATE_NO_WINDOW);
-        }
 
-        let mut child = command
-            .spawn()
+        let mut child = sandbox
+            .spawn(&spec, policy)
             .map_err(|error| SidecarError::Spawn(format!("{}: {error}", entrypoint.display())))?;
         let stdin = child
             .stdin
@@ -114,7 +115,6 @@ impl SidecarProcess {
             stderr_handle: Mutex::new(Some(stderr_handle)),
         })
     }
-
     pub fn request(
         &self,
         method: &str,
@@ -298,7 +298,7 @@ impl Drop for SidecarProcess {
 }
 
 fn spawn_stdout_reader(
-    stdout: ChildStdout,
+    stdout: Box<dyn Read + Send>,
     pending: Pending,
     alive: Arc<AtomicBool>,
 ) -> JoinHandle<()> {
@@ -331,7 +331,7 @@ fn spawn_stdout_reader(
 }
 
 fn spawn_stderr_reader(
-    stderr: std::process::ChildStderr,
+    stderr: Box<dyn Read + Send>,
     log: Arc<Mutex<Vec<String>>>,
 ) -> JoinHandle<()> {
     thread::spawn(move || {
@@ -386,10 +386,9 @@ fn dispatch_line(line: &str, pending: &Pending) -> bool {
     true
 }
 
-fn add_safe_environment(command: &mut Command) {
-    #[cfg(windows)]
-    {
-        for name in [
+fn safe_environment() -> Vec<(String, String)> {
+    let names: &[&str] = if cfg!(windows) {
+        &[
             "PATH",
             "PATHEXT",
             "SystemRoot",
@@ -397,18 +396,16 @@ fn add_safe_environment(command: &mut Command) {
             "ComSpec",
             "TEMP",
             "TMP",
-        ] {
-            if let Ok(value) = std::env::var(name) {
-                command.env(name, value);
-            }
-        }
-    }
-    #[cfg(not(windows))]
-    {
-        for name in ["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL"] {
-            if let Ok(value) = std::env::var(name) {
-                command.env(name, value);
-            }
-        }
-    }
+        ]
+    } else {
+        &["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL"]
+    };
+    names
+        .iter()
+        .filter_map(|name| {
+            std::env::var(name)
+                .ok()
+                .map(|value| ((*name).to_owned(), value))
+        })
+        .collect()
 }

@@ -11,6 +11,10 @@ use sidecar::SidecarProcess;
 
 use kl_policy::{PolicyConfig, PolicyEngine};
 use kl_provider::{ChatOutcome, ChatRequest};
+use kl_sandbox::{
+    SandboxError, SandboxManager, SandboxPolicy, SandboxRequest, SandboxViolation,
+    SandboxViolationKind,
+};
 use kl_tools::ToolOutcome;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -42,6 +46,8 @@ pub enum PluginError {
     PermissionDenied(String),
     #[error("plugin protocol error: {0}")]
     Protocol(String),
+    #[error("sandbox violation: {0}")]
+    Sandbox(#[from] SandboxViolation),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -59,6 +65,7 @@ pub struct PluginInfo {
 
 pub(crate) struct SidecarInstance {
     pub(crate) manifest: PluginManifest,
+    pub(crate) manifest_path: PathBuf,
     pub(crate) token: String,
     pub(crate) process: Arc<SidecarProcess>,
     in_flight: Arc<AtomicUsize>,
@@ -70,26 +77,31 @@ impl SidecarInstance {
         manifest: PluginManifest,
         manifest_path: PathBuf,
         env_overrides: &[(String, String)],
+        sandbox: &SandboxManager,
     ) -> Result<Self, PluginError> {
         let token = uuid::Uuid::new_v4().to_string();
+        let plugin_dir = PluginManifest::manifest_dir(&manifest_path);
+        let policy = manifest_policy(&manifest, &manifest_path, &plugin_dir);
         let process = Arc::new(SidecarProcess::spawn(
             &manifest,
             &manifest_path,
             &token,
             env_overrides,
+            sandbox,
+            &policy,
         )?);
         let timeout = Duration::from_millis(manifest.health_timeout_ms.max(100));
         process.handshake(&manifest, &token, timeout)?;
         process.health(&token, timeout)?;
         Ok(Self {
             manifest,
+            manifest_path,
             token,
             process,
             in_flight: Arc::new(AtomicUsize::new(0)),
             draining: AtomicBool::new(false),
         })
     }
-
     fn healthy(&self) -> bool {
         !self.draining.load(Ordering::Relaxed) && self.process.is_alive()
     }
@@ -151,21 +163,38 @@ pub struct PluginHost {
     root: PathBuf,
     entries: Mutex<HashMap<String, PluginEntry>>,
     request_timeout: Duration,
+    sandbox: Arc<SandboxManager>,
 }
 
 impl PluginHost {
     pub fn new(root: impl AsRef<Path>) -> Result<Self, PluginError> {
+        Self::with_sandbox(root, Arc::new(SandboxManager::policy_only()))
+    }
+
+    pub fn with_sandbox(
+        root: impl AsRef<Path>,
+        sandbox: Arc<SandboxManager>,
+    ) -> Result<Self, PluginError> {
         let root = root.as_ref().to_path_buf();
         fs::create_dir_all(root.join("installed"))?;
         let host = Self {
             root,
             entries: Mutex::new(HashMap::new()),
             request_timeout: Duration::from_secs(30),
+            sandbox,
         };
         host.load_installed();
         Ok(host)
     }
 
+    fn start_instance(
+        &self,
+        manifest: PluginManifest,
+        manifest_path: PathBuf,
+        env_overrides: &[(String, String)],
+    ) -> Result<SidecarInstance, PluginError> {
+        SidecarInstance::start(manifest, manifest_path, env_overrides, &self.sandbox)
+    }
     pub fn root(&self) -> &Path {
         &self.root
     }
@@ -208,11 +237,8 @@ impl PluginHost {
         })?;
         let installed = PluginManifest::load(&installed_manifest)?;
 
-        let new_instance = Arc::new(SidecarInstance::start(
-            installed.clone(),
-            installed_manifest.clone(),
-            &[],
-        )?);
+        let new_instance =
+            Arc::new(self.start_instance(installed.clone(), installed_manifest.clone(), &[])?);
         self.set_current(&id, &version_dir, &installed_manifest)?;
         let _ = fs::remove_file(self.root.join("installed").join(&id).join(".disabled"));
         let old = {
@@ -265,11 +291,8 @@ impl PluginHost {
                 entry.active.clone(),
             )
         };
-        let new_instance = Arc::new(SidecarInstance::start(
-            manifest.clone(),
-            manifest_path.clone(),
-            &[],
-        )?);
+        let new_instance =
+            Arc::new(self.start_instance(manifest.clone(), manifest_path.clone(), &[])?);
         {
             let mut entries = self
                 .entries
@@ -298,7 +321,7 @@ impl PluginHost {
                 .ok_or_else(|| PluginError::NotFound(id.to_owned()))?;
             (entry.manifest.clone(), entry.manifest_path.clone())
         };
-        let instance = Arc::new(SidecarInstance::start(manifest, manifest_path, &[])?);
+        let instance = Arc::new(self.start_instance(manifest, manifest_path, &[])?);
         let marker = self.root.join("installed").join(id).join(".disabled");
         let _ = fs::remove_file(marker);
         let mut entries = self
@@ -359,14 +382,13 @@ impl PluginHost {
         let previous = fs::read(&config_path).ok();
         write_atomic(&config_path, &serde_json::to_vec_pretty(&config)?)?;
 
-        let new_instance =
-            match SidecarInstance::start(manifest.clone(), manifest_path.clone(), &[]) {
-                Ok(instance) => Arc::new(instance),
-                Err(error) => {
-                    restore_file(&config_path, previous.as_deref())?;
-                    return Err(error);
-                }
-            };
+        let new_instance = match self.start_instance(manifest.clone(), manifest_path.clone(), &[]) {
+            Ok(instance) => Arc::new(instance),
+            Err(error) => {
+                restore_file(&config_path, previous.as_deref())?;
+                return Err(error);
+            }
+        };
         {
             let mut entries = self
                 .entries
@@ -432,6 +454,25 @@ impl PluginHost {
             )));
         }
         validate_tool_permissions(&instance.manifest, args, workspace)?;
+        let policy = manifest_policy(&instance.manifest, &instance.manifest_path, workspace);
+        self.sandbox.grant(&policy).map_err(plugin_sandbox_error)?;
+        if let Some(raw_path) = args.get("path").and_then(Value::as_str) {
+            let write = args.get("write").and_then(Value::as_bool).unwrap_or(false)
+                || args.get("mode").and_then(Value::as_str) == Some("write");
+            self.sandbox
+                .enforce(
+                    &SandboxRequest {
+                        kind: if write {
+                            SandboxViolationKind::WriteOutsideWorkspace
+                        } else {
+                            SandboxViolationKind::ReadSensitivePath
+                        },
+                        resource: raw_path.to_owned(),
+                    },
+                    &policy,
+                )
+                .map_err(plugin_sandbox_error)?;
+        }
         let result = instance.request(
             "tool.execute",
             json!({
@@ -592,7 +633,7 @@ impl PluginHost {
                     );
                 continue;
             }
-            match SidecarInstance::start(manifest.clone(), manifest_path.clone(), &[]) {
+            match self.start_instance(manifest.clone(), manifest_path.clone(), &[]) {
                 Ok(instance) => {
                     self.entries
                         .lock()
@@ -628,6 +669,40 @@ impl PluginHost {
     }
 }
 
+fn manifest_policy(
+    manifest: &PluginManifest,
+    manifest_path: &Path,
+    workspace: &Path,
+) -> SandboxPolicy {
+    let plugin_dir = PluginManifest::manifest_dir(manifest_path);
+    let read_roots = permission_roots(workspace, &manifest.permissions.fs_read);
+    let write_roots = permission_roots(workspace, &manifest.permissions.fs_write);
+    let mut policy =
+        SandboxPolicy::plugin(&manifest.id, workspace, plugin_dir, read_roots, write_roots);
+    policy.allow_network = !manifest.permissions.network.is_empty();
+    policy
+}
+
+fn permission_roots(workspace: &Path, entries: &[String]) -> Vec<PathBuf> {
+    entries
+        .iter()
+        .map(|entry| {
+            let entry = entry.trim().trim_matches('/').replace('\\', "/");
+            if entry.is_empty() || entry == "." || entry == "workspace" {
+                workspace.to_path_buf()
+            } else {
+                workspace.join(entry)
+            }
+        })
+        .collect()
+}
+
+fn plugin_sandbox_error(error: SandboxError) -> PluginError {
+    match error {
+        SandboxError::Violation(violation) => PluginError::Sandbox(violation),
+        other => PluginError::PermissionDenied(other.to_string()),
+    }
+}
 fn current_manifest(plugin_root: &Path) -> Option<PathBuf> {
     let text = fs::read_to_string(plugin_root.join("current.json")).ok()?;
     let value: Value = serde_json::from_str(&text).ok()?;

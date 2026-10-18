@@ -1,12 +1,12 @@
 use kl_plugin_host::{
     PluginError, PluginHost, PluginPermissions, SidecarError, SidecarProvider, SidecarTool,
 };
-use kl_provider::{ChatEvent, ChatMessage, ChatRequest, Provider};
+use kl_provider::{CancellationToken, ChatEvent, ChatMessage, ChatRequest, Provider};
+use kl_sandbox::{SandboxBackendKind, SandboxConfig, SandboxManager, SandboxMode};
 use kl_tools::Tool;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
 
 fn make_source(
     root: &Path,
@@ -188,7 +188,7 @@ fn provider_hot_upgrade_keeps_the_same_adapter() {
     let request = ChatRequest::new("fake-model", vec![ChatMessage::user("hello")]);
     let mut deltas = String::new();
     let first = provider
-        .stream_chat(&request, &AtomicBool::new(false), &mut |event| {
+        .stream_chat(&request, &CancellationToken::new(), &mut |event| {
             if let ChatEvent::TextDelta(text) = event {
                 deltas.push_str(&text);
             }
@@ -208,7 +208,7 @@ fn provider_hot_upgrade_keeps_the_same_adapter() {
     );
     host.install_from_dir(&source_v2).unwrap();
     let second = provider
-        .stream_chat(&request, &AtomicBool::new(false), &mut |_| {})
+        .stream_chat(&request, &CancellationToken::new(), &mut |_| {})
         .unwrap();
     assert_eq!(second.text, "provider two");
     assert_eq!(host.get("fake-provider").unwrap().version, "2");
@@ -404,5 +404,46 @@ fn disable_drains_and_enable_restarts() {
         host.tool_execute("toggle-tool", "fake_tool", &json!({}), &workspace)
             .unwrap()
             .success
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn malicious_sidecar_cannot_read_outside_workspace() {
+    let temp = tempfile::tempdir().unwrap();
+    let workspace = workspace(temp.path());
+    let secret = temp.path().join("secret.txt");
+    std::fs::write(&secret, "TOP_SECRET").unwrap();
+    let manager = SandboxManager::probe(&SandboxConfig {
+        mode: SandboxMode::Strict,
+        backend: SandboxBackendKind::AppContainer,
+        ..SandboxConfig::default()
+    });
+    if !manager.status().available {
+        return;
+    }
+    let source = make_source(
+        temp.path(),
+        "escape-tool",
+        "1",
+        "tool",
+        json!({"escape_read": secret}),
+        PluginPermissions {
+            fs_read: vec!["workspace".to_owned()],
+            ..PluginPermissions::default()
+        },
+        2000,
+    );
+    let host =
+        Arc::new(PluginHost::with_sandbox(temp.path().join("host"), Arc::new(manager)).unwrap());
+    host.install_from_dir(&source).unwrap();
+    let output = host
+        .tool_execute("escape-tool", "fake_tool", &json!({}), &workspace)
+        .unwrap();
+    assert!(!output.output.contains("TOP_SECRET"), "{}", output.output);
+    assert!(
+        output.output.contains("escape-read-denied"),
+        "{}",
+        output.output
     );
 }

@@ -338,7 +338,10 @@ impl Core {
         std::fs::create_dir_all(&context.home)?;
         let config = Config::load(&context.config_path)?;
         let sandbox = Arc::new(SandboxManager::probe(&config.sandbox));
-        let plugin_host = Arc::new(PluginHost::new(context.home.join("plugins"))?);
+        let plugin_host = Arc::new(PluginHost::with_sandbox(
+            context.home.join("plugins"),
+            sandbox.clone(),
+        )?);
         let config_dir = Config::config_dir(&context.config_path);
         let catalog = ProviderCatalog::load(&config, &config_dir, &context.home)?;
         let routes = build_routes(&catalog, &config, &config_dir)?;
@@ -594,6 +597,32 @@ impl Core {
             } else {
                 "non-strict; policy-only fallback is allowed".to_owned()
             },
+        });
+        checks.push(DoctorCheck {
+            name: "sandbox_probe".to_owned(),
+            ok: sandbox.available,
+            detail: sandbox.probe_detail.clone(),
+        });
+        checks.push(DoctorCheck {
+            name: "sandbox_capabilities".to_owned(),
+            ok: true,
+            detail: format!(
+                "os_isolation={} read={} write={} children={} network={} | {}",
+                sandbox.capabilities.os_isolation,
+                sandbox.capabilities.filesystem_read_restriction,
+                sandbox.capabilities.filesystem_write_restriction,
+                sandbox.capabilities.child_process_containment,
+                sandbox.capabilities.network_isolation,
+                sandbox.capabilities.notes.join("; ")
+            ),
+        });
+        checks.push(DoctorCheck {
+            name: "sandbox_mxc".to_owned(),
+            ok: sandbox.backend != "mxc" || sandbox.mxc_error.is_none(),
+            detail: sandbox
+                .mxc_error
+                .clone()
+                .unwrap_or_else(|| "MXC probe succeeded".to_owned()),
         });
         checks.push(DoctorCheck {
             name: "sandbox_z_isolation".to_owned(),

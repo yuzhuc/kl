@@ -4,9 +4,11 @@ KL is a provider-neutral coding agent with a Rust trusted core and a C#/.NET
 terminal client. It does not use a Python runtime or Python build scripts.
 
 Status: **stage 0, stage 1 MVP, stage 1.5 hardening, stage 2 sidecar
-plugin-host MVP, provider routing, terminal chat page, and provider
-configuration commands complete**. Live external Provider smoke is pending
-until API keys are supplied; see `tests/fixtures/providers/live-smoke.status.json`.
+plugin-host MVP, provider routing, terminal chat page, provider configuration
+commands, and stage 2.5 Windows AppContainer sandbox + provider cancellation
+cleanup complete**. Stage 3 automated review and quality modes are next. Live
+external Provider smoke is pending until API keys are supplied; see
+`tests/fixtures/providers/live-smoke.status.json`.
 
 ## Architecture
 
@@ -31,8 +33,9 @@ kl (C#/.NET)  -- JSON-RPC 2.0 over stdio -->  kl-core (Rust)
   command denial, approval effects.
 - `crates/kl-audit` — rotated append-only JSONL audit plus SQLite query index.
 - `crates/kl-store` — session metadata, message projection and event log.
-- `crates/kl-sandbox` — sandbox backend probing, strict-mode fail-closed and
-  MXC Z: failure isolation.
+- `crates/kl-sandbox` — unified sandbox boundary with Windows AppContainer +
+  kill-on-close Job Object, strict-mode fail-closed, MXC probing and the
+  `kl-sandbox-runner` clean-environment launcher.
 - `crates/kl-plugin-host` — manifest v1, sidecar JSON-RPC supervisor, health
   checks, drain, hot swap and capability checks.
 - `crates/kl-exec` — process execution with timeout, cancellation and bounded
@@ -138,7 +141,7 @@ env_allowlist = []           # empty = inherit shell environment
 
 [sandbox]
 mode = "policy"              # policy | strict | off
-backend = "auto"             # auto | mxc | policy | off
+backend = "auto"             # auto | appcontainer | mxc | policy | off
 probe_timeout_ms = 1500
 
 [audit]
@@ -237,11 +240,15 @@ only the listed variables. `policy.network_allowlist` validates URLs found in
 shell commands and denies hosts outside the list. Empty lists preserve the
 previous inherit/no-URL-check behavior.
 
-`[sandbox]` controls backend probing. `strict` fails closed if no real OS
-sandbox is available. A detected MXC `Z:` enumeration failure is isolated: in
-non-strict mode KL falls back to policy-only; in strict mode shell/plugin
-process execution is denied. `kl doctor` shows `sandbox_backend`,
-`sandbox_strict` and `sandbox_z_isolation`.
+`[sandbox]` controls process isolation. `policy` uses the policy engine only.
+`strict` requires a real OS backend and fails closed if it is unavailable. On
+Windows, `backend = "appcontainer"` (or `auto` in strict mode) runs shell, git
+and sidecar processes through an AppContainer token and a kill-on-close Job
+Object. A `kl-sandbox-runner` helper clears the inherited environment before
+starting the target process, so plugin environment allowlists remain effective.
+MXC is probed explicitly; an unavailable launcher is reported and never
+silently treated as an OS sandbox. `kl doctor` shows the backend, strict mode,
+probe result, capability matrix and MXC status.
 
 `[audit]` controls raw JSONL rotation. `kl audit` queries the SQLite index while
 the rotated `events*.jsonl` files remain the source of truth.
@@ -342,20 +349,28 @@ Core methods: `kl.handshake`, `kl.ping`, `kl.doctor`, `session.create`,
 
 Events: `session.created`, `turn.started`, `turn.delta`, `turn.reasoning`,
 `tool.started`, `tool.output`, `tool.approval.requested`,
-`tool.approval.resolved`, `tool.completed`, `audit.recorded`,
+`tool.approval.resolved`, `tool.completed`, `sandbox.violation`, `audit.recorded`,
 `turn.completed`, `turn.failed`.
 
 ## Limitations / next stage
 
-- No OS-level file/network sandbox yet; sandbox probing and strict fail-closed
-  behavior are implemented, but enforcement remains policy/protocol based.
+- Windows AppContainer enforces workspace filesystem isolation and child-process
+  containment. Network isolation is not claimed as verified; the policy
+  allowlist remains active. Linux and macOS expose an explicit unimplemented
+  backend rather than pretending policy checks are OS isolation.
+- Protecting sensitive paths on Windows removes the AppContainer ACE and makes
+  that DACL protected. This is persistent ACL hardening of those paths.
+- Strict git execution requires the git installation root to be ACL-grantable.
+  If it is on a volume whose root cannot be granted, the git tool fails closed
+  with an explicit sandbox error.
 - WASM plugin hosting is not implemented; sidecar is the current plugin runtime.
 - No multi-agent quality modes or repository symbol index.
-- Cancellation returns the turn promptly and detaches the provider stream; a
-  stalled network read may remain in its worker until the provider timeout.
+- Provider cancellation uses a `CancellationToken` that interrupts the streaming
+  read loop; the worker is joined within two seconds and the connection is
+  dropped.
 - Live OpenAI Chat, Anthropic and OpenAI Responses smoke is pending because no
   API keys were available in the implementation environment. The offline mock
   SSE conformance tests pass for all three protocols.
 
-Next stage entry point: add WASM plugin runtime, stronger OS sandbox backends,
-and live provider conformance/replay fixtures.
+Next stage entry point: add Linux/macOS OS backends, WASM plugin runtime,
+verified network isolation, and live provider conformance/replay fixtures.

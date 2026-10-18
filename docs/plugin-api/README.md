@@ -89,8 +89,9 @@ Host-side permission checks:
 
 ## Limitations
 
-- Protocol-level checks do not replace an OS sandbox; a malicious sidecar can
-  still attempt direct filesystem/network access. Strict sandbox mode is the
-  path to stronger enforcement.
+- On Windows, strict mode runs sidecars through AppContainer and a
+  kill-on-close Job Object. A malicious sidecar that attempts to read outside
+  its granted roots is denied by the OS. Network isolation is not claimed as
+  verified; the manifest host allowlist remains active.
 - WASM components are not implemented yet.
 - Plugin signatures and a remote marketplace are not implemented yet.

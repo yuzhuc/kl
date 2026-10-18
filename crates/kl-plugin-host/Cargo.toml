@@ -10,6 +10,8 @@ description = "KL sidecar plugin manifest, supervisor and adapters"
 kl-policy = { path = "../kl-policy" }
 kl-provider = { path = "../kl-provider" }
 kl-tools = { path = "../kl-tools" }
+kl-sandbox = { path = "../kl-sandbox" }
+kl-exec = { path = "../kl-exec" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

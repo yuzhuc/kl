@@ -13,7 +13,7 @@ Rust trusted core (kl-core)
   Agent loop (provider-neutral)
   ToolRegistry (built-ins + sidecar tools)
   PolicyEngine (path/command/git/network/env/plugin/approval)
-  SandboxManager (policy/strict probing, MXC Z: isolation)
+  SandboxManager (policy/AppContainer backends, strict probing, MXC status)
   PluginHost (manifest v1, sidecar supervisor, health, drain, hot swap)
   AuditLog (rotated JSONL + SQLite index)
   SessionStore (session.json, state.json, events.jsonl)
@@ -104,8 +104,9 @@ See `schemas/protocol/v1/`, `schemas/plugin/manifest-v1.schema.json` and
 
 ## Deliberate gaps
 
-- OS-level file/network sandbox enforcement is still policy/protocol based;
-  strict mode fails closed when a backend is unavailable.
+- Windows has AppContainer filesystem and child-process isolation. Network
+  isolation is not verified; the policy allowlist remains active. Linux and
+  macOS report an unimplemented OS backend and strict mode fails closed.
 - WASM plugin runtime is not implemented; sidecar is the current runtime.
 - No multi-agent quality modes or repository symbol index.
 - No UDS/Named Pipe transport; the transport boundary is ready for one.

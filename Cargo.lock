@@ -543,8 +543,10 @@ name = "kl-plugin-host"
 version = "0.1.0"
 dependencies = [
  "dunce",
+ "kl-exec",
  "kl-policy",
  "kl-provider",
+ "kl-sandbox",
  "kl-tools",
  "serde",
  "serde_json",
@@ -591,8 +593,10 @@ version = "0.1.0"
 dependencies = [
  "kl-exec",
  "serde",
+ "serde_json",
  "tempfile",
  "thiserror",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

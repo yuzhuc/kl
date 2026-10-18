@@ -523,6 +523,14 @@ pub enum CoreEvent {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         diff: Option<String>,
     },
+    #[serde(rename = "sandbox.violation")]
+    SandboxViolation {
+        turn_id: String,
+        call_id: String,
+        kind: String,
+        resource: String,
+        message: String,
+    },
     #[serde(rename = "audit.recorded")]
     AuditRecorded {
         #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -347,6 +347,7 @@
                     "tool.approval.requested",
                     "tool.approval.resolved",
                     "tool.completed",
+                    "sandbox.violation",
                     "audit.recorded",
                     "turn.completed",
                     "turn.failed"

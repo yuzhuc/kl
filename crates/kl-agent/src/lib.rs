@@ -5,11 +5,11 @@ use kl_audit::{AuditRecord, AuditSink};
 use kl_policy::{Effect, PolicyEngine};
 use kl_protocol::{ApprovalDecision, CoreEvent};
 use kl_provider::{
-    ChatEvent, ChatMessage, ChatOutcome, ChatRequest, ModelMetadata, Provider, ProviderError,
-    ProviderErrorKind, ToolCall,
+    CancellationToken, ChatEvent, ChatMessage, ChatOutcome, ChatRequest, ModelMetadata, Provider,
+    ProviderError, ProviderErrorKind, ToolCall,
 };
 use kl_sandbox::SandboxManager;
-use kl_tools::{PolicyRequest, ToolContext, ToolRegistry};
+use kl_tools::{PolicyRequest, ToolContext, ToolError, ToolRegistry};
 use serde_json::{Value, json};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -287,16 +287,24 @@ impl Agent {
     ) -> Result<ChatOutcome, AgentError> {
         let (sender, receiver) = mpsc::channel();
         let provider = self.provider.clone();
-        let provider_cancel = cancel.clone();
-        std::thread::spawn(move || {
-            let result = provider.stream_chat(&request, &provider_cancel, &mut |event| {
+        let token = CancellationToken::from_arc(cancel.clone());
+        let worker_token = token.clone();
+        let mut worker = Some(std::thread::spawn(move || {
+            let result = provider.stream_chat(&request, &worker_token, &mut |event| {
                 let _ = sender.send(ProviderMessage::Event(event));
             });
             let _ = sender.send(ProviderMessage::Done(result));
-        });
+        }));
 
         loop {
             if cancel.load(Ordering::Relaxed) {
+                token.cancel();
+                if !join_worker(&mut worker, Duration::from_secs(2)) {
+                    return Err(AgentError::Provider(ProviderError::new(
+                        ProviderErrorKind::Transport,
+                        "provider worker did not stop within 2 seconds",
+                    )));
+                }
                 return Err(AgentError::Provider(ProviderError::cancelled()));
             }
             match receiver.recv_timeout(Duration::from_millis(100)) {
@@ -316,8 +324,12 @@ impl Agent {
                         sink.emit(mapped)?;
                     }
                 }
-                Ok(ProviderMessage::Done(Ok(outcome))) => return Ok(outcome),
+                Ok(ProviderMessage::Done(Ok(outcome))) => {
+                    join_worker(&mut worker, Duration::from_secs(1));
+                    return Ok(outcome);
+                }
                 Ok(ProviderMessage::Done(Err(error))) => {
+                    join_worker(&mut worker, Duration::from_secs(1));
                     if cancel.load(Ordering::Relaxed) {
                         return Err(AgentError::Provider(ProviderError::cancelled()));
                     }
@@ -325,6 +337,8 @@ impl Agent {
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {}
                 Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    token.cancel();
+                    join_worker(&mut worker, Duration::from_secs(2));
                     return Err(AgentError::Provider(ProviderError::new(
                         ProviderErrorKind::Transport,
                         "provider stream disconnected",
@@ -333,7 +347,6 @@ impl Agent {
             }
         }
     }
-
     fn finish_cancelled(
         &self,
         turn_id: &str,
@@ -437,6 +450,13 @@ impl Agent {
         let mut approved: Option<bool> = None;
         if evaluation.effect == Effect::Deny {
             let message = format!("policy denied: {}", evaluation.reason);
+            let _ = sink.emit(CoreEvent::SandboxViolation {
+                turn_id: turn_id.to_owned(),
+                call_id: call.id.clone(),
+                kind: "policy_denied".to_owned(),
+                resource: audit_resource.clone(),
+                message: message.clone(),
+            });
             audit.ok = false;
             audit.error = Some(message.clone());
             audit.with_output("");
@@ -558,6 +578,24 @@ impl Agent {
             }
             Err(error) => {
                 let message = error.to_string();
+                let kind = match &error {
+                    ToolError::Sandbox(violation) => Some(violation.kind.as_str().to_owned()),
+                    ToolError::Policy(_) => Some("policy_denied".to_owned()),
+                    _ => None,
+                };
+                if let Some(kind) = kind {
+                    let _ = sink.emit(CoreEvent::SandboxViolation {
+                        turn_id: turn_id.to_owned(),
+                        call_id: call.id.clone(),
+                        kind,
+                        resource: args
+                            .get("path")
+                            .and_then(Value::as_str)
+                            .unwrap_or(&call.name)
+                            .to_owned(),
+                        message: message.clone(),
+                    });
+                }
                 audit.ok = false;
                 audit.error = Some(message.clone());
                 audit.with_output("");
@@ -657,6 +695,23 @@ impl Agent {
     }
 }
 
+fn join_worker(worker: &mut Option<std::thread::JoinHandle<()>>, timeout: Duration) -> bool {
+    let started = Instant::now();
+    loop {
+        let Some(handle) = worker.as_ref() else {
+            return true;
+        };
+        if handle.is_finished() {
+            let handle = worker.take().expect("worker exists");
+            let _ = handle.join();
+            return true;
+        }
+        if started.elapsed() >= timeout {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
 fn system_prompt(workspace: &std::path::Path) -> String {
     format!(
         "You are KL, a terminal coding agent. Work only inside the workspace at {}.\n\
@@ -738,11 +793,11 @@ mod tests {
         fn stream_chat(
             &self,
             _request: &ChatRequest,
-            cancel: &AtomicBool,
+            cancel: &CancellationToken,
             on_event: &mut dyn FnMut(ChatEvent),
         ) -> Result<ChatOutcome, ProviderError> {
             for index in 0..100 {
-                if cancel.load(Ordering::Relaxed) {
+                if cancel.is_cancelled() {
                     return Err(ProviderError::cancelled());
                 }
                 on_event(ChatEvent::TextDelta(format!("chunk-{index}")));
@@ -795,7 +850,7 @@ mod tests {
         fn stream_chat(
             &self,
             _request: &ChatRequest,
-            _cancel: &AtomicBool,
+            _cancel: &CancellationToken,
             _on_event: &mut dyn FnMut(ChatEvent),
         ) -> Result<ChatOutcome, ProviderError> {
             Err(ProviderError::new(
@@ -822,7 +877,7 @@ mod tests {
         fn stream_chat(
             &self,
             request: &ChatRequest,
-            _cancel: &AtomicBool,
+            _cancel: &CancellationToken,
             on_event: &mut dyn FnMut(ChatEvent),
         ) -> Result<ChatOutcome, ProviderError> {
             assert_eq!(request.model, "test-model");
@@ -1249,5 +1304,89 @@ mod tests {
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].approved, Some(false));
         assert!(!records[0].ok);
+    }
+}
+
+#[cfg(test)]
+mod violation_tests {
+    use super::*;
+    use kl_audit::MemoryAudit;
+    use kl_policy::PolicyConfig;
+    use kl_provider::{Protocol, ScriptedProvider};
+    use std::sync::atomic::AtomicBool;
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    struct Sink {
+        events: Mutex<Vec<CoreEvent>>,
+    }
+
+    impl EventSink for Sink {
+        fn emit(&self, event: CoreEvent) -> Result<(), AgentError> {
+            self.events.lock().unwrap().push(event);
+            Ok(())
+        }
+    }
+
+    struct Gate;
+
+    impl ApprovalGate for Gate {
+        fn request(&self, _request: ApprovalRequest) -> ApprovalDecision {
+            ApprovalDecision::Allow
+        }
+    }
+
+    #[test]
+    fn policy_denial_emits_sandbox_violation_and_one_audit_record() {
+        let temp = tempfile::tempdir().unwrap();
+        let provider = Arc::new(
+            ScriptedProvider::from_json(
+                "scripted",
+                r#"[{"tool_calls":[{"id":"call-1","name":"read_file","arguments":{"path":"../secret.txt"}}]},{"text":"done"}]"#,
+            )
+            .unwrap(),
+        );
+        let policy = Arc::new(PolicyEngine::new(temp.path(), PolicyConfig::default()).unwrap());
+        let audit = Arc::new(MemoryAudit::default());
+        let agent = Agent::new(
+            provider,
+            ModelMetadata::new(
+                "test",
+                "test-model",
+                Protocol::Scripted,
+                "offline://test",
+                32_000,
+                0.75,
+                1234,
+            ),
+            Arc::new(ToolRegistry::builtin()),
+            policy,
+            Arc::new(SandboxManager::policy_only()),
+            audit.clone(),
+            AgentConfig::default(),
+        );
+        let sink = Sink::default();
+        let mut history = Vec::new();
+        agent
+            .run_turn(
+                "session",
+                "turn",
+                "go",
+                &mut history,
+                Arc::new(AtomicBool::new(false)),
+                &sink,
+                &Gate,
+            )
+            .unwrap();
+
+        let records = audit.records();
+        assert_eq!(records.len(), 1);
+        assert!(!records[0].ok);
+        assert_eq!(records[0].decision, "deny");
+        let events = sink.events.lock().unwrap();
+        assert!(events.iter().any(|event| matches!(
+            event,
+            CoreEvent::SandboxViolation { kind, .. } if kind == "policy_denied"
+        )));
     }
 }
