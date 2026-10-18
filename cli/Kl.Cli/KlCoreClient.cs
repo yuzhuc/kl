@@ -144,6 +144,7 @@ public sealed class KlCoreClient : IAsyncDisposable
         string prompt,
         string? provider,
         string? model,
+        string? quality,
         CancellationToken cancellationToken = default)
     {
         var parameters = new Dictionary<string, object?>
@@ -159,7 +160,34 @@ public sealed class KlCoreClient : IAsyncDisposable
         {
             parameters["model"] = model;
         }
+        if (!string.IsNullOrWhiteSpace(quality))
+        {
+            parameters["quality"] = quality;
+        }
         return RequestAsync(Protocol.TurnStart, parameters, cancellationToken);
+    }
+
+    public Task<JsonElement> ReviewAsync(
+        string workspace,
+        string? baseRef,
+        string? mode,
+        bool strict,
+        CancellationToken cancellationToken = default)
+    {
+        var parameters = new Dictionary<string, object?>
+        {
+            ["workspace"] = workspace,
+            ["strict"] = strict
+        };
+        if (!string.IsNullOrWhiteSpace(baseRef))
+        {
+            parameters["base"] = baseRef;
+        }
+        if (!string.IsNullOrWhiteSpace(mode))
+        {
+            parameters["mode"] = mode;
+        }
+        return RequestAsync(Protocol.ReviewRun, parameters, cancellationToken);
     }
 
     public Task<JsonElement> CancelTurnAsync(

@@ -66,6 +66,40 @@ public sealed class CommandLineTests
         Assert.Equal("gpt-5-responses", options.Model);
     }
     [Fact]
+    public void ParsesReviewOptions()
+    {
+        var options = CommandLine.Parse([
+            "review", "--base", "HEAD~1", "--strict", "--mode", "strict", "--quality", "deep"
+        ]);
+        Assert.Equal("review", options.Command);
+        Assert.Equal("HEAD~1", options.BaseRef);
+        Assert.True(options.Strict);
+        Assert.Equal("strict", options.ReviewMode);
+        Assert.Equal("deep", options.Quality);
+    }
+
+    [Fact]
+    public void ParsesQualityOption()
+    {
+        var options = CommandLine.Parse(["run", "fix", "it", "--quality", "fast"]);
+        Assert.Equal("fast", options.Quality);
+    }
+
+    [Fact]
+    public void RejectsUnknownReviewMode()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            CommandLine.Parse(["review", "--mode", "turbo"]));
+    }
+
+    [Fact]
+    public void RejectsUnknownQualityMode()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            CommandLine.Parse(["run", "task", "--quality", "ultra"]));
+    }
+
+    [Fact]
     public void RejectsUnknownOption()
     {
         Assert.Throws<ArgumentException>(() => CommandLine.Parse(["doctor", "--bogus"]));

@@ -280,7 +280,61 @@
         "session_id": { "type": "string" },
         "prompt": { "type": "string" },
         "provider": { "type": "string" },
-        "model": { "type": "string" }
+        "model": { "type": "string" },
+        "quality": { "enum": ["fast", "balanced", "deep"] }
+      },
+      "additionalProperties": false
+    },
+    "reviewRunParams": {
+      "type": "object",
+      "required": ["workspace"],
+      "properties": {
+        "workspace": { "type": "string" },
+        "base": { "type": "string" },
+        "mode": { "enum": ["quick", "standard", "strict"] },
+        "strict": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "reviewFinding": {
+      "type": "object",
+      "required": [
+        "rule",
+        "source",
+        "file",
+        "line",
+        "severity",
+        "confidence",
+        "evidence",
+        "recommendation",
+        "introduced",
+        "low_confidence"
+      ],
+      "properties": {
+        "rule": { "type": "string" },
+        "source": { "type": "string" },
+        "file": { "type": "string" },
+        "line": { "type": "integer", "minimum": 0 },
+        "severity": { "enum": ["critical", "high", "medium", "low", "info"] },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "evidence": { "type": "string" },
+        "recommendation": { "type": "string" },
+        "introduced": { "type": "boolean" },
+        "low_confidence": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "reviewResult": {
+      "type": "object",
+      "required": ["mode", "summary", "changed_files", "findings"],
+      "properties": {
+        "mode": { "enum": ["quick", "standard", "strict"] },
+        "summary": { "type": "string" },
+        "changed_files": { "type": "integer", "minimum": 0 },
+        "findings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/reviewFinding" }
+        }
       },
       "additionalProperties": false
     },

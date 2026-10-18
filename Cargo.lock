@@ -519,6 +519,7 @@ dependencies = [
  "kl-policy",
  "kl-protocol",
  "kl-provider",
+ "kl-review",
  "kl-sandbox",
  "kl-store",
  "kl-tools",
@@ -585,6 +586,17 @@ dependencies = [
  "tempfile",
  "thiserror",
  "ureq",
+]
+
+[[package]]
+name = "kl-review"
+version = "0.1.0"
+dependencies = [
+ "regex",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
 ]
 
 [[package]]

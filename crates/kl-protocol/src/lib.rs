@@ -37,6 +37,7 @@ pub mod methods {
     pub const PROVIDER_SET_ENABLED: &str = "provider.set_enabled";
     pub const CONFIG_SET_DEFAULT_MODEL: &str = "config.set_default_model";
     pub const AUDIT_TAIL: &str = "audit.tail";
+    pub const REVIEW_RUN: &str = "review.run";
     pub const CONFIG_GET: &str = "config.get";
     pub const PLUGIN_LIST: &str = "plugin.list";
     pub const PLUGIN_INSTALL: &str = "plugin.install";
@@ -398,6 +399,8 @@ pub struct TurnStartParams {
     pub provider: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quality: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -465,6 +468,39 @@ fn default_audit_limit() -> usize {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AuditTailResult {
     pub records: Vec<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ReviewRunParams {
+    pub workspace: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
+    #[serde(default)]
+    pub strict: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ReviewFinding {
+    pub rule: String,
+    pub source: String,
+    pub file: String,
+    pub line: u32,
+    pub severity: String,
+    pub confidence: f32,
+    pub evidence: String,
+    pub recommendation: String,
+    pub introduced: bool,
+    pub low_confidence: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ReviewResult {
+    pub mode: String,
+    pub summary: String,
+    pub changed_files: usize,
+    pub findings: Vec<ReviewFinding>,
 }
 
 /// Events emitted by the core and persisted to the session event log.

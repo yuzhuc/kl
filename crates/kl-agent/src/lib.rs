@@ -6,7 +6,7 @@ use kl_policy::{Effect, PolicyEngine};
 use kl_protocol::{ApprovalDecision, CoreEvent};
 use kl_provider::{
     CancellationToken, ChatEvent, ChatMessage, ChatOutcome, ChatRequest, ModelMetadata, Provider,
-    ProviderError, ProviderErrorKind, ToolCall,
+    ProviderError, ProviderErrorKind, ToolCall, Usage,
 };
 use kl_sandbox::SandboxManager;
 use kl_tools::{PolicyRequest, ToolContext, ToolError, ToolRegistry};
@@ -22,6 +22,8 @@ pub struct AgentConfig {
     pub max_tool_calls_per_turn: usize,
     pub max_tool_output_bytes: usize,
     pub command_timeout: Duration,
+    /// Zero means unlimited. Providers that omit usage cannot be budgeted.
+    pub max_total_tokens: u64,
 }
 
 impl Default for AgentConfig {
@@ -31,6 +33,7 @@ impl Default for AgentConfig {
             max_tool_calls_per_turn: 32,
             max_tool_output_bytes: 32 * 1024,
             command_timeout: Duration::from_secs(120),
+            max_total_tokens: 0,
         }
     }
 }
@@ -54,6 +57,7 @@ impl TurnStatus {
 pub struct TurnResult {
     pub status: TurnStatus,
     pub text: String,
+    pub usage: Usage,
 }
 
 #[derive(Debug, Clone)]
@@ -88,6 +92,8 @@ pub enum AgentError {
     Tool(String),
     #[error("maximum iterations reached")]
     MaxIterations,
+    #[error("token budget exceeded")]
+    TokenBudgetExceeded,
 }
 
 enum ProviderMessage {
@@ -159,6 +165,7 @@ impl Agent {
         approvals: &dyn ApprovalGate,
     ) -> Result<TurnResult, AgentError> {
         self.provider.begin_turn();
+        let mut usage = Usage::default();
         history.push(ChatMessage::user(prompt));
         sink.emit(CoreEvent::TurnStarted {
             turn_id: turn_id.to_owned(),
@@ -167,7 +174,7 @@ impl Agent {
         let mut state = TurnState::Model { iteration: 0 };
         loop {
             if cancel.load(Ordering::Relaxed) {
-                return self.finish_cancelled(turn_id, history, sink);
+                return self.finish_cancelled(turn_id, history, sink, usage);
             }
 
             state = match state {
@@ -196,7 +203,7 @@ impl Agent {
                         Err(AgentError::Provider(error))
                             if error.kind == ProviderErrorKind::Cancelled =>
                         {
-                            return self.finish_cancelled(turn_id, history, sink);
+                            return self.finish_cancelled(turn_id, history, sink, usage);
                         }
                         Err(error) => {
                             let _ = sink.emit(CoreEvent::TurnFailed {
@@ -207,8 +214,24 @@ impl Agent {
                         }
                     };
 
+                    usage.input_tokens += outcome.usage.input_tokens;
+                    usage.output_tokens += outcome.usage.output_tokens;
+                    if self.config.max_total_tokens > 0
+                        && usage.input_tokens + usage.output_tokens > self.config.max_total_tokens
+                    {
+                        let message = format!(
+                            "token budget exceeded: {} > {}",
+                            usage.input_tokens + usage.output_tokens,
+                            self.config.max_total_tokens
+                        );
+                        sink.emit(CoreEvent::TurnFailed {
+                            turn_id: turn_id.to_owned(),
+                            message: message.clone(),
+                        })?;
+                        return Err(AgentError::TokenBudgetExceeded);
+                    }
                     if cancel.load(Ordering::Relaxed) {
-                        return self.finish_cancelled(turn_id, history, sink);
+                        return self.finish_cancelled(turn_id, history, sink, usage);
                     }
 
                     if outcome.tool_calls.is_empty() {
@@ -224,6 +247,7 @@ impl Agent {
                         return Ok(TurnResult {
                             status: TurnStatus::Completed,
                             text: outcome.text,
+                            usage,
                         });
                     }
 
@@ -265,7 +289,7 @@ impl Agent {
                             .execute_tool_call(session_id, turn_id, call, &cancel, sink, approvals);
                         history.push(ChatMessage::tool(&call.id, result));
                         if cancel.load(Ordering::Relaxed) {
-                            return self.finish_cancelled(turn_id, history, sink);
+                            return self.finish_cancelled(turn_id, history, sink, usage);
                         }
                         TurnState::Tools {
                             iteration,
@@ -352,6 +376,7 @@ impl Agent {
         turn_id: &str,
         history: &mut Vec<ChatMessage>,
         sink: &dyn EventSink,
+        usage: Usage,
     ) -> Result<TurnResult, AgentError> {
         history.push(ChatMessage::assistant_with_text(
             "Cancelled by user.",
@@ -365,6 +390,7 @@ impl Agent {
         Ok(TurnResult {
             status: TurnStatus::Cancelled,
             text: "Cancelled by user.".to_owned(),
+            usage,
         })
     }
 

@@ -11,6 +11,7 @@ members = [
     "crates/kl-provider",
     "crates/kl-tools",
     "crates/kl-agent",
+    "crates/kl-review",
     "crates/kl-core",
 ]
 

@@ -17,6 +17,9 @@ Rust trusted core (kl-core)
   PluginHost (manifest v1, sidecar supervisor, health, drain, hot swap)
   AuditLog (rotated JSONL + SQLite index)
   SessionStore (session.json, state.json, events.jsonl)
+  ReviewPipeline (git diff, local/security rules, optional LLM review)
+  QualityModes (fast/balanced; deep: explorer -> planner -> implementer ->
+                reviewer -> verifier)
 ```
 
 ## Request lifecycle
@@ -40,6 +43,31 @@ Rust trusted core (kl-core)
 8. One audit record is written for every tool call, including denied and
    invalid calls. AuditLog appends raw JSONL and inserts a SQLite index row.
 9. At the end of a turn the projected message list is written to `state.json`.
+10. `review.run` is a separate synchronous method: it collects the diff,
+    runs deterministic rules and optional model review, converts runtime audit
+    denies/sandbox violations into findings, then applies the selected
+    confidence threshold.
+
+## Quality modes
+
+`turn.start` accepts an optional `quality` value. `fast` and `balanced` are one
+ordinary agent turn; `deep` runs five ordinary turns in order: explorer,
+planner, implementer, reviewer, verifier. Each stage uses the existing
+`ProviderRouter` and shared session history. Deep mode stops on cancellation,
+stage/tool/token/time limits, and keeps stage outputs as evidence in the final
+turn text. Reviewer and verifier prompts require file:line evidence; the
+verifier is instructed not to modify or expand the change. A workspace
+fingerprint taken before review fails the turn if reviewer or verifier changes
+the workspace.
+
+## Automated review
+
+`kl review` is intentionally separate from `kl audit`. The review pipeline
+collects `git diff` plus untracked files, scans changed lines and full files,
+and merges deterministic findings with runtime audit denies/sandbox violations
+and optional structured LLM findings. `quick`, `standard` and `strict` control
+the confidence threshold; strict includes low-confidence findings and marks
+them. The same pipeline is exercised by deterministic fixture repositories.
 
 ## Agent loop
 
@@ -108,6 +136,12 @@ See `schemas/protocol/v1/`, `schemas/plugin/manifest-v1.schema.json` and
   isolation is not verified; the policy allowlist remains active. Linux and
   macOS report an unimplemented OS backend and strict mode fails closed.
 - WASM plugin runtime is not implemented; sidecar is the current runtime.
-- No multi-agent quality modes or repository symbol index.
+- Deep mode is five ordinary agent turns, not a separate agent runtime.
+  Repository symbol indexing is not implemented.
+- Reviewer/verifier workspace edits are detected by a fingerprint guard and fail
+  the turn; prompts also prohibit edits. Policy approvals remain the hard
+  boundary.
 - No UDS/Named Pipe transport; the transport boundary is ready for one.
 - Live Provider smoke remains pending until API keys are supplied.
+- `kl review` can run without a provider; in that case local findings remain
+  and a `llm-review-unavailable` low-confidence finding is emitted.

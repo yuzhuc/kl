@@ -48,6 +48,41 @@ impl Default for AuditConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum QualityMode {
+    Fast,
+    #[default]
+    Balanced,
+    Deep,
+}
+
+impl QualityMode {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.to_ascii_lowercase().as_str() {
+            "fast" => Some(Self::Fast),
+            "balanced" => Some(Self::Balanced),
+            "deep" => Some(Self::Deep),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Fast => "fast",
+            Self::Balanced => "balanced",
+            Self::Deep => "deep",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default)]
+pub struct RoleSettings {
+    pub provider: Option<String>,
+    pub model: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct AgentSettings {
@@ -55,10 +90,18 @@ pub struct AgentSettings {
     pub model: String,
     /// Offline-only scripted provider source. Never used by native adapters.
     pub scripted_path: Option<String>,
+    /// Keep the scripted cursor across evaluation turns; used by offline demos.
+    pub scripted_sequential: bool,
+    pub quality: QualityMode,
+    pub roles: BTreeMap<String, RoleSettings>,
     pub max_iterations: usize,
     pub max_tool_output_bytes: usize,
     pub command_timeout_secs: u64,
     pub approval_timeout_secs: u64,
+    pub deep_max_stages: usize,
+    pub deep_max_tool_calls: usize,
+    pub deep_token_budget: u64,
+    pub deep_timeout_secs: u64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -214,10 +257,17 @@ impl Default for AgentSettings {
             provider: String::new(),
             model: String::new(),
             scripted_path: None,
+            scripted_sequential: false,
+            quality: QualityMode::default(),
+            roles: BTreeMap::new(),
             max_iterations: 12,
             max_tool_output_bytes: 32 * 1024,
             command_timeout_secs: 120,
             approval_timeout_secs: 180,
+            deep_max_stages: 5,
+            deep_max_tool_calls: 48,
+            deep_token_budget: 120_000,
+            deep_timeout_secs: 900,
         }
     }
 }
@@ -268,10 +318,17 @@ impl Config {
                 "provider": self.agent.provider,
                 "model": self.agent.model,
                 "scripted_path": self.agent.scripted_path,
+                "scripted_sequential": self.agent.scripted_sequential,
+                "quality": self.agent.quality,
+                "roles": self.agent.roles,
                 "max_iterations": self.agent.max_iterations,
                 "max_tool_output_bytes": self.agent.max_tool_output_bytes,
                 "command_timeout_secs": self.agent.command_timeout_secs,
                 "approval_timeout_secs": self.agent.approval_timeout_secs,
+                "deep_max_stages": self.agent.deep_max_stages,
+                "deep_max_tool_calls": self.agent.deep_max_tool_calls,
+                "deep_token_budget": self.agent.deep_token_budget,
+                "deep_timeout_secs": self.agent.deep_timeout_secs,
             },
             "policy": self.policy,
             "sandbox": self.sandbox,

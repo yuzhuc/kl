@@ -7,11 +7,15 @@
 mod config;
 
 pub use config::{
-    Config, ConfigError, ProviderCatalog, config_set_default_model, provider_set_api_key,
-    provider_set_enabled, provider_upsert,
+    Config, ConfigError, ProviderCatalog, QualityMode, RoleSettings, config_set_default_model,
+    provider_set_api_key, provider_set_enabled, provider_upsert,
 };
 
-use kl_agent::{Agent, AgentConfig, AgentError, ApprovalGate, ApprovalRequest, EventSink};
+use config::AgentSettings;
+use kl_agent::{
+    Agent, AgentConfig, AgentError, ApprovalGate, ApprovalRequest, EventSink, TurnResult,
+    TurnStatus,
+};
 use kl_audit::AuditLog;
 use kl_plugin_host::{
     PluginError, PluginHost, PluginInfo, PluginKind, SidecarProvider, SidecarTool,
@@ -23,14 +27,20 @@ use kl_protocol::{
     HandshakeResult, IncomingMessage, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION, PingParams,
     PingResult, PluginIdParams, PluginInstallParams, PluginListResult, ProviderEnabledResult,
     ProviderKeyResult, ProviderListResult, ProviderModelSummary, ProviderSetApiKeyParams,
-    ProviderSetEnabledParams, ProviderUpsertParams, ProviderUpsertResult, RequestId, RpcError,
-    SessionCreateParams, SessionInfo, SessionListResult, SessionResumeParams,
-    SetDefaultModelParams, TurnCancelParams, TurnCancelResult, TurnStartParams, TurnStartResult,
-    error_codes, failure, failure_with_data, methods, negotiate, success, validate_envelope,
+    ProviderSetEnabledParams, ProviderUpsertParams, ProviderUpsertResult, RequestId, ReviewFinding,
+    ReviewResult, ReviewRunParams, RpcError, SessionCreateParams, SessionInfo, SessionListResult,
+    SessionResumeParams, SetDefaultModelParams, TurnCancelParams, TurnCancelResult,
+    TurnStartParams, TurnStartResult, error_codes, failure, failure_with_data, methods, negotiate,
+    success, validate_envelope,
 };
 use kl_provider::{
-    AnthropicAdapter, BoundProvider, ChatMessage, ModelMetadata, OpenAiChatAdapter,
-    OpenAiResponsesAdapter, Protocol, ProtocolAdapter, Provider, ProviderRouter, ScriptedProvider,
+    AnthropicAdapter, BoundProvider, CancellationToken, ChatEvent, ChatMessage, ChatRequest,
+    ModelMetadata, OpenAiChatAdapter, OpenAiResponsesAdapter, Protocol, ProtocolAdapter, Provider,
+    ProviderError, ProviderRouter, ScriptedProvider, Usage,
+};
+use kl_review::{
+    Finding, ReviewContext, ReviewError, ReviewMode, ReviewReport, collect_context, finalize,
+    llm_warning, model_prompt, parse_model_findings, runtime_findings, scan_local,
 };
 use kl_sandbox::SandboxManager;
 use kl_store::{SessionData, SessionMeta, SessionStore, StoreError};
@@ -39,9 +49,11 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -54,9 +66,12 @@ pub const FEATURES: &[&str] = &[
     "approvals",
     "providers",
     "plugins",
+    "review",
+    "quality-modes",
 ];
 
 type ProviderRoutes = Vec<(ModelMetadata, Arc<dyn Provider>)>;
+type ResolvedStage = (Arc<dyn Provider>, ModelMetadata, Option<String>);
 
 /// Thread-safe newline-delimited JSON writer shared with turn threads.
 #[derive(Clone)]
@@ -309,6 +324,451 @@ impl ApprovalGate for CoreApprovalGate {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DeepStage {
+    Explorer,
+    Planner,
+    Implementer,
+    Reviewer,
+    Verifier,
+}
+
+impl DeepStage {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Explorer => "explorer",
+            Self::Planner => "planner",
+            Self::Implementer => "implementer",
+            Self::Reviewer => "reviewer",
+            Self::Verifier => "verifier",
+        }
+    }
+
+    fn prompt(self, task: &str) -> String {
+        match self {
+            Self::Explorer => format!(
+                "You are the explorer stage. Inspect the workspace and session history. Use read_file, grep, glob and git diff to find the files, symbols, tests and risks relevant to this task. Do not modify files. End with a concise exploration report.\n\nTask:\n{task}"
+            ),
+            Self::Planner => format!(
+                "You are the planner stage. Use the explorer report and session history to produce an ordered implementation plan with explicit acceptance checks. Do not modify files. End with PLAN and the verification commands.\n\nTask:\n{task}"
+            ),
+            Self::Implementer => format!(
+                "You are the implementer stage. Implement the plan using the available tools. Make the smallest correct change, run focused verification, and do not expand scope. End with IMPLEMENTATION and the commands/results you ran.\n\nTask:\n{task}"
+            ),
+            Self::Reviewer => format!(
+                "You are the reviewer stage. Inspect the actual git diff and relevant files. Do not modify files. Report every finding with file:line, severity, confidence, evidence, and a concrete fix. If there are no findings, say so explicitly. End with REVIEW.\n\nTask:\n{task}"
+            ),
+            Self::Verifier => format!(
+                "You are the verifier stage. Verify the implementation by running the relevant tests, build, and type/lint checks. Do not modify files or expand the change. Report commands, results, and residual risks with file:line evidence. End with VERIFY.\n\nTask:\n{task}"
+            ),
+        }
+    }
+}
+
+const DEEP_STAGES: [DeepStage; 5] = [
+    DeepStage::Explorer,
+    DeepStage::Planner,
+    DeepStage::Implementer,
+    DeepStage::Reviewer,
+    DeepStage::Verifier,
+];
+
+struct StageSink {
+    hub: EventHub,
+    session_id: String,
+    stage: &'static str,
+    stage_turn: String,
+    base_turn: String,
+    cancel: Arc<AtomicBool>,
+    tool_calls: Arc<AtomicUsize>,
+    max_tool_calls: usize,
+    budget_exceeded: Arc<AtomicBool>,
+}
+
+impl EventSink for StageSink {
+    fn emit(&self, event: CoreEvent) -> Result<(), AgentError> {
+        if matches!(&event, CoreEvent::ToolStarted { .. }) {
+            let count = self.tool_calls.fetch_add(1, Ordering::Relaxed) + 1;
+            if count >= self.max_tool_calls {
+                self.budget_exceeded.store(true, Ordering::Relaxed);
+                self.cancel.store(true, Ordering::Relaxed);
+            }
+        }
+        let forwarded = match event {
+            CoreEvent::TurnStarted { .. } => CoreEvent::TurnStarted {
+                turn_id: self.stage_turn.clone(),
+            },
+            CoreEvent::TurnCompleted { status, text, .. } => {
+                if status == "cancelled" {
+                    return Ok(());
+                }
+                CoreEvent::TurnDelta {
+                    turn_id: self.base_turn.clone(),
+                    text: format!("\n[{}] {}\n", self.stage, text.trim()),
+                }
+            }
+            CoreEvent::TurnFailed { message, .. } => CoreEvent::TurnDelta {
+                turn_id: self.base_turn.clone(),
+                text: format!("\n[{}] failed: {}\n", self.stage, message.trim()),
+            },
+            other => other,
+        };
+        self.hub
+            .emit(&self.session_id, forwarded)
+            .map(|_| ())
+            .map_err(AgentError::Event)
+    }
+}
+
+struct Watchdog {
+    stop: Arc<AtomicBool>,
+    handle: Option<JoinHandle<()>>,
+}
+
+impl Drop for Watchdog {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+fn deep_watchdog(
+    cancel: Arc<AtomicBool>,
+    timed_out: Arc<AtomicBool>,
+    timeout: Duration,
+) -> Watchdog {
+    let stop = Arc::new(AtomicBool::new(false));
+    let thread_stop = stop.clone();
+    let handle = thread::spawn(move || {
+        let deadline = Instant::now() + timeout;
+        loop {
+            if thread_stop.load(Ordering::Relaxed) || cancel.load(Ordering::Relaxed) {
+                return;
+            }
+            if Instant::now() >= deadline {
+                timed_out.store(true, Ordering::Relaxed);
+                cancel.store(true, Ordering::Relaxed);
+                return;
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+    });
+    Watchdog {
+        stop,
+        handle: Some(handle),
+    }
+}
+
+struct DeepTurn {
+    router: ProviderRouter,
+    settings: AgentSettings,
+    tools: Arc<ToolRegistry>,
+    policy: Arc<PolicyEngine>,
+    sandbox: Arc<SandboxManager>,
+    audit: Arc<dyn kl_audit::AuditSink>,
+    sink: SessionSink,
+    gate: CoreApprovalGate,
+    cancel: Arc<AtomicBool>,
+    session_id: String,
+    base_turn_id: String,
+    default_provider: String,
+    default_model: String,
+    task: String,
+    workspace: PathBuf,
+}
+
+impl DeepTurn {
+    fn run(self, history: &mut Vec<ChatMessage>) -> Result<TurnResult, AgentError> {
+        let timed_out = Arc::new(AtomicBool::new(false));
+        let _watchdog = deep_watchdog(
+            self.cancel.clone(),
+            timed_out.clone(),
+            Duration::from_secs(self.settings.deep_timeout_secs.max(1)),
+        );
+        let tool_calls = Arc::new(AtomicUsize::new(0));
+        let budget_exceeded = Arc::new(AtomicBool::new(false));
+        let max_tools = self.settings.deep_max_tool_calls.max(1);
+        let token_budget = self.settings.deep_token_budget;
+        let mut usage = Usage::default();
+        let mut outputs = Vec::new();
+        let mut stable_workspace = None;
+        let max_stages = self.settings.deep_max_stages.clamp(1, DEEP_STAGES.len());
+        for stage in DEEP_STAGES.iter().take(max_stages).copied() {
+            if self.cancel.load(Ordering::Relaxed) {
+                return self.stop_or_cancel(&timed_out, &budget_exceeded, usage);
+            }
+            let used = usage.input_tokens + usage.output_tokens;
+            if token_budget > 0 && used >= token_budget {
+                return Err(AgentError::TokenBudgetExceeded);
+            }
+            let remaining_tools = max_tools.saturating_sub(tool_calls.load(Ordering::Relaxed));
+            if remaining_tools == 0 {
+                return Err(AgentError::Tool("deep tool budget exceeded".to_owned()));
+            }
+            if stage == DeepStage::Reviewer {
+                stable_workspace = Some(workspace_fingerprint(&self.workspace));
+            }
+            let (provider, metadata, warning) = resolve_stage_provider(
+                &self.router,
+                &self.settings,
+                stage,
+                &self.default_provider,
+                &self.default_model,
+            )?;
+            if let Some(warning) = warning {
+                self.emit_delta(&format!("[{}] {warning}\n", stage.name()))?;
+            }
+            let stage_turn = format!("{}:{}", self.base_turn_id, stage.name());
+            let stage_sink = StageSink {
+                hub: self.sink.hub.clone(),
+                session_id: self.session_id.clone(),
+                stage: stage.name(),
+                stage_turn: stage_turn.clone(),
+                base_turn: self.base_turn_id.clone(),
+                cancel: self.cancel.clone(),
+                tool_calls: tool_calls.clone(),
+                max_tool_calls: max_tools,
+                budget_exceeded: budget_exceeded.clone(),
+            };
+            let agent_config = AgentConfig {
+                max_iterations: self.settings.max_iterations.max(1),
+                max_tool_calls_per_turn: remaining_tools.clamp(1, 32),
+                max_tool_output_bytes: self.settings.max_tool_output_bytes,
+                command_timeout: Duration::from_secs(self.settings.command_timeout_secs.max(1)),
+                max_total_tokens: if token_budget == 0 {
+                    0
+                } else {
+                    token_budget.saturating_sub(used)
+                },
+            };
+            let agent = Agent::new(
+                provider,
+                metadata,
+                self.tools.clone(),
+                self.policy.clone(),
+                self.sandbox.clone(),
+                self.audit.clone(),
+                agent_config,
+            );
+            let prompt = stage.prompt(&self.task);
+            let result = agent.run_turn(
+                &self.session_id,
+                &stage_turn,
+                &prompt,
+                history,
+                self.cancel.clone(),
+                &stage_sink,
+                &self.gate,
+            );
+            match result {
+                Ok(result) => {
+                    usage.input_tokens += result.usage.input_tokens;
+                    usage.output_tokens += result.usage.output_tokens;
+                    if result.status == TurnStatus::Cancelled {
+                        return self.stop_or_cancel(&timed_out, &budget_exceeded, usage);
+                    }
+                    outputs.push(format!("[{}] {}", stage.name(), result.text.trim()));
+                }
+                Err(error) => {
+                    if self.cancel.load(Ordering::Relaxed) {
+                        return self.stop_or_cancel(&timed_out, &budget_exceeded, usage);
+                    }
+                    if matches!(error, AgentError::TokenBudgetExceeded) {
+                        return Err(error);
+                    }
+                    outputs.push(format!("[{}] failed: {error}", stage.name()));
+                    if stage == DeepStage::Implementer {
+                        return Err(error);
+                    }
+                }
+            }
+            if matches!(stage, DeepStage::Reviewer | DeepStage::Verifier) {
+                if let Some(expected) = &stable_workspace {
+                    if workspace_fingerprint(&self.workspace) != *expected {
+                        self.emit_delta(
+                            "[review/verify] workspace changed; refusing to continue\n",
+                        )?;
+                        return Err(AgentError::Tool(
+                            "reviewer or verifier modified the workspace".to_owned(),
+                        ));
+                    }
+                }
+            }
+        }
+        let completed: Vec<&str> = DEEP_STAGES
+            .iter()
+            .take(max_stages)
+            .map(|stage| stage.name())
+            .collect();
+        let text = format!(
+            "deep mode completed: {}\n\n{}",
+            completed.join(" -> "),
+            outputs.join("\n\n")
+        );
+        self.sink.emit(CoreEvent::TurnCompleted {
+            turn_id: self.base_turn_id.clone(),
+            status: TurnStatus::Completed.as_str().to_owned(),
+            text: text.clone(),
+        })?;
+        Ok(TurnResult {
+            status: TurnStatus::Completed,
+            text,
+            usage,
+        })
+    }
+
+    fn stop_or_cancel(
+        self,
+        timed_out: &AtomicBool,
+        budget_exceeded: &AtomicBool,
+        usage: Usage,
+    ) -> Result<TurnResult, AgentError> {
+        if timed_out.load(Ordering::Relaxed) {
+            return Err(AgentError::Tool("deep time budget exceeded".to_owned()));
+        }
+        if budget_exceeded.load(Ordering::Relaxed) {
+            return Err(AgentError::Tool("deep tool budget exceeded".to_owned()));
+        }
+        let text = "Cancelled by user.".to_owned();
+        self.sink.emit(CoreEvent::TurnCompleted {
+            turn_id: self.base_turn_id.clone(),
+            status: TurnStatus::Cancelled.as_str().to_owned(),
+            text: text.clone(),
+        })?;
+        Ok(TurnResult {
+            status: TurnStatus::Cancelled,
+            text,
+            usage,
+        })
+    }
+
+    fn emit_delta(&self, text: &str) -> Result<(), AgentError> {
+        self.sink.emit(CoreEvent::TurnDelta {
+            turn_id: self.base_turn_id.clone(),
+            text: text.to_owned(),
+        })
+    }
+}
+
+fn workspace_fingerprint(workspace: &Path) -> String {
+    let mut hasher = DefaultHasher::new();
+    let is_git = std::process::Command::new("git")
+        .arg("-C")
+        .arg(workspace)
+        .args(["rev-parse", "--is-inside-work-tree"])
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false);
+    if is_git {
+        if let Ok(output) = std::process::Command::new("git")
+            .arg("-C")
+            .arg(workspace)
+            .args(["diff", "--no-ext-diff"])
+            .output()
+        {
+            output.stdout.hash(&mut hasher);
+        }
+        if let Ok(output) = std::process::Command::new("git")
+            .arg("-C")
+            .arg(workspace)
+            .args(["status", "--porcelain"])
+            .output()
+        {
+            output.stdout.hash(&mut hasher);
+        }
+        if let Ok(output) = std::process::Command::new("git")
+            .arg("-C")
+            .arg(workspace)
+            .args(["ls-files", "--others", "--exclude-standard"])
+            .output()
+        {
+            for path in String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+            {
+                path.hash(&mut hasher);
+                if let Ok(bytes) = std::fs::read(workspace.join(path)) {
+                    bytes.hash(&mut hasher);
+                }
+            }
+        }
+    } else {
+        hash_tree(workspace, &mut hasher);
+    }
+    format!("{:x}", hasher.finish())
+}
+
+fn hash_tree(directory: &Path, hasher: &mut DefaultHasher) {
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return;
+    };
+    let mut entries: Vec<_> = entries.flatten().collect();
+    entries.sort_by_key(|entry| entry.path());
+    for entry in entries {
+        let name = entry.file_name();
+        if matches!(
+            name.to_str(),
+            Some(".git" | "target" | "bin" | "obj" | ".kl" | "node_modules")
+        ) {
+            continue;
+        }
+        let path = entry.path();
+        if entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
+            hash_tree(&path, hasher);
+        } else if let Ok(bytes) = std::fs::read(&path) {
+            path.hash(hasher);
+            bytes.hash(hasher);
+        }
+    }
+}
+fn resolve_stage_provider(
+    router: &ProviderRouter,
+    settings: &AgentSettings,
+    stage: DeepStage,
+    default_provider: &str,
+    default_model: &str,
+) -> Result<ResolvedStage, AgentError> {
+    let mut warning = None;
+    if let Some(role) = settings.roles.get(stage.name()) {
+        let provider_id = role.provider.as_deref().unwrap_or(default_provider);
+        let model = role
+            .model
+            .as_deref()
+            .or_else(|| (provider_id == default_provider).then_some(default_model));
+        match router.get(Some(provider_id), model) {
+            Ok((provider, metadata)) => {
+                let (available, detail) = provider.available();
+                if available {
+                    return Ok((provider, metadata, None));
+                }
+                warning = Some(format!(
+                    "role provider `{}` unavailable ({}); falling back to {default_provider}/{default_model}",
+                    provider.id(),
+                    detail
+                ));
+            }
+            Err(error) => {
+                warning = Some(format!(
+                    "role override rejected ({}); falling back to {default_provider}/{default_model}",
+                    error
+                ));
+            }
+        }
+    }
+    let (provider, metadata) = router
+        .get(Some(default_provider), Some(default_model))
+        .map_err(AgentError::Provider)?;
+    let (available, detail) = provider.available();
+    if !available {
+        return Err(AgentError::Provider(ProviderError::config(format!(
+            "provider `{}` unavailable: {detail}",
+            provider.id()
+        ))));
+    }
+    Ok((provider, metadata, warning))
+}
 struct SessionState {
     meta: SessionMeta,
     messages: Vec<ChatMessage>,
@@ -460,6 +920,7 @@ impl Core {
             methods::PROVIDER_SET_ENABLED => self.provider_set_enabled(params),
             methods::CONFIG_SET_DEFAULT_MODEL => self.config_set_default_model(params),
             methods::AUDIT_TAIL => self.audit_tail(params),
+            methods::REVIEW_RUN => self.review_run(params),
             methods::CONFIG_GET => self.config_get(),
             methods::PLUGIN_LIST => self.plugin_list(),
             methods::PLUGIN_INSTALL => self.plugin_install(params),
@@ -782,6 +1243,15 @@ impl Core {
 
     fn turn_start(&mut self, params: Value) -> Result<Value, RpcError> {
         let params: TurnStartParams = parse_params(params, "turn.start")?;
+        let quality = match params.quality.as_deref() {
+            Some(raw) => QualityMode::parse(raw).ok_or_else(|| {
+                rpc_error(
+                    error_codes::INVALID_PARAMS,
+                    format!("unknown quality mode: {raw}"),
+                )
+            })?,
+            None => self.config.agent.quality,
+        };
         let turn_id = uuid::Uuid::new_v4().to_string();
 
         self.threads.retain(|handle| !handle.is_finished());
@@ -843,27 +1313,22 @@ impl Core {
         let tools = self.tools.clone();
         let approvals = self.approvals.clone();
         let cancels = self.cancels.clone();
+        let router = self.router.clone();
+        let agent_settings = self.config.agent.clone();
         let agent_config = AgentConfig {
             max_iterations: self.config.agent.max_iterations.max(1),
             max_tool_calls_per_turn: 32,
             max_tool_output_bytes: self.config.agent.max_tool_output_bytes,
             command_timeout: Duration::from_secs(self.config.agent.command_timeout_secs.max(1)),
+            max_total_tokens: 0,
         };
+        let is_deep = quality == QualityMode::Deep;
 
         let thread_session = session_id.clone();
         let thread_turn = turn_id.clone();
         let thread_metadata = metadata.clone();
         let thread_cancel = cancel.clone();
         let handle = thread::spawn(move || {
-            let agent = Agent::new(
-                provider,
-                thread_metadata.clone(),
-                tools,
-                policy,
-                sandbox,
-                audit,
-                agent_config,
-            );
             let sink = SessionSink {
                 hub: hub.clone(),
                 session_id: thread_session.clone(),
@@ -875,17 +1340,54 @@ impl Core {
                 cancel: thread_cancel.clone(),
             };
             let mut history = history;
-            let result = agent.run_turn(
-                &thread_session,
-                &thread_turn,
-                &prompt,
-                &mut history,
-                thread_cancel.clone(),
-                &sink,
-                &gate,
-            );
+            let result = if is_deep {
+                DeepTurn {
+                    router,
+                    settings: agent_settings,
+                    tools,
+                    policy,
+                    sandbox,
+                    audit,
+                    sink,
+                    gate,
+                    cancel: thread_cancel,
+                    session_id: thread_session.clone(),
+                    base_turn_id: thread_turn.clone(),
+                    default_provider: thread_metadata.provider.clone(),
+                    default_model: thread_metadata.model.clone(),
+                    task: prompt,
+                    workspace: PathBuf::from(&workspace),
+                }
+                .run(&mut history)
+            } else {
+                let agent = Agent::new(
+                    provider,
+                    thread_metadata.clone(),
+                    tools,
+                    policy,
+                    sandbox,
+                    audit,
+                    agent_config,
+                );
+                let prompt = if quality == QualityMode::Fast {
+                    format!("Work quickly and keep the response concise.\n{prompt}")
+                } else {
+                    prompt
+                };
+                agent.run_turn(
+                    &thread_session,
+                    &thread_turn,
+                    &prompt,
+                    &mut history,
+                    thread_cancel,
+                    &sink,
+                    &gate,
+                )
+            };
             if let Err(error) = &result {
-                if !matches!(error, AgentError::Provider(_) | AgentError::MaxIterations) {
+                let terminal_emitted = !is_deep
+                    && matches!(error, AgentError::Provider(_) | AgentError::MaxIterations);
+                if !terminal_emitted {
                     let _ = hub.emit(
                         &thread_session,
                         CoreEvent::TurnFailed {
@@ -1027,6 +1529,76 @@ impl Core {
             .tail(params.limit.clamp(1, 1000))
             .map_err(|error| rpc_error(error_codes::INTERNAL_ERROR, error.to_string()))?;
         to_value(kl_protocol::AuditTailResult { records })
+    }
+
+    fn review_run(&self, params: Value) -> Result<Value, RpcError> {
+        let params: ReviewRunParams = parse_params(params, methods::REVIEW_RUN)?;
+        let workspace = dunce::canonicalize(&params.workspace).map_err(|error| {
+            rpc_error(
+                error_codes::INVALID_PARAMS,
+                format!("workspace is not accessible: {error}"),
+            )
+        })?;
+        if !workspace.is_dir() {
+            return Err(rpc_error(
+                error_codes::INVALID_PARAMS,
+                "workspace must be a directory",
+            ));
+        }
+        let mode = review_mode(&params)?;
+        let context = collect_context(&workspace, params.base.clone()).map_err(review_error)?;
+        let mut findings = scan_local(&context);
+        let records = self
+            .audit
+            .tail(1000)
+            .map_err(|error| rpc_error(error_codes::INTERNAL_ERROR, error.to_string()))?;
+        findings.extend(runtime_findings(&records));
+        findings.extend(self.llm_review(&context, mode));
+        let report = finalize(mode, context.changed_files.len(), findings);
+        to_value(review_result(report))
+    }
+
+    fn llm_review(&self, context: &ReviewContext, mode: ReviewMode) -> Vec<Finding> {
+        let prompt = model_prompt(context, mode);
+        let result: Result<String, String> = self
+            .router
+            .get(None, None)
+            .map_err(|error| error.to_string())
+            .and_then(|(provider, metadata)| {
+                let (available, detail) = provider.available();
+                if !available {
+                    return Err(format!(
+                        "provider `{}` is unavailable: {detail}",
+                        provider.id()
+                    ));
+                }
+                let mut request =
+                    ChatRequest::new(metadata.model.clone(), vec![ChatMessage::user(prompt)]);
+                request.system =
+                    "You are a code review model. Return only the requested JSON array.".to_owned();
+                request.max_tokens = metadata.max_output_tokens;
+                provider.begin_turn();
+                provider
+                    .stream_chat(
+                        &request,
+                        &CancellationToken::new(),
+                        &mut |_event: ChatEvent| {},
+                    )
+                    .map(|outcome| outcome.text)
+                    .map_err(|error| error.to_string())
+            });
+        match result {
+            Ok(text) => parse_model_findings(&text).unwrap_or_else(|error| {
+                vec![llm_warning(
+                    &format!("LLM review response could not be parsed: {error}"),
+                    "Run the review again or inspect the raw model response.",
+                )]
+            }),
+            Err(error) => vec![llm_warning(
+                &format!("LLM review unavailable: {error}"),
+                "Configure an available provider to enable model-assisted review.",
+            )],
+        }
     }
 
     fn plugin_list(&self) -> Result<Value, RpcError> {
@@ -1217,8 +1789,12 @@ fn build_routes(
                 path.display().to_string(),
             )));
         }
-        let scripted = ScriptedProvider::from_file("scripted", &path)
-            .map_err(|error| CoreError::Config(ConfigError::Scripted(error.to_string())))?;
+        let scripted = if config.agent.scripted_sequential {
+            ScriptedProvider::from_file_sequential("scripted", &path)
+        } else {
+            ScriptedProvider::from_file("scripted", &path)
+        }
+        .map_err(|error| CoreError::Config(ConfigError::Scripted(error.to_string())))?;
         let model = if config.agent.provider == "scripted" && !config.agent.model.is_empty() {
             config.agent.model.clone()
         } else {
@@ -1311,6 +1887,49 @@ fn check_provider_available(provider: &dyn Provider) -> Result<(), RpcError> {
             message: format!("provider `{}` is unavailable: {detail}", provider.id()),
             data: Some(json!({"provider": provider.id()})),
         })
+    }
+}
+
+fn review_mode(params: &ReviewRunParams) -> Result<ReviewMode, RpcError> {
+    if params.strict {
+        return Ok(ReviewMode::Strict);
+    }
+    match params.mode.as_deref().unwrap_or("standard") {
+        "quick" => Ok(ReviewMode::Quick),
+        "standard" => Ok(ReviewMode::Standard),
+        "strict" => Ok(ReviewMode::Strict),
+        other => Err(rpc_error(
+            error_codes::INVALID_PARAMS,
+            format!("unknown review mode: {other}"),
+        )),
+    }
+}
+
+fn review_error(error: ReviewError) -> RpcError {
+    rpc_error(error_codes::INVALID_PARAMS, error.to_string())
+}
+
+fn review_result(report: ReviewReport) -> ReviewResult {
+    ReviewResult {
+        mode: report.mode,
+        summary: report.summary,
+        changed_files: report.changed_files,
+        findings: report
+            .findings
+            .into_iter()
+            .map(|finding| ReviewFinding {
+                rule: finding.rule,
+                source: finding.source,
+                file: finding.file,
+                line: finding.line,
+                severity: finding.severity.as_str().to_owned(),
+                confidence: finding.confidence,
+                evidence: finding.evidence,
+                recommendation: finding.recommendation,
+                introduced: finding.introduced,
+                low_confidence: finding.low_confidence,
+            })
+            .collect(),
     }
 }
 
@@ -1691,5 +2310,408 @@ scripted_path = "script.json"
         assert_eq!(create["result"]["provider"], "scripted", "{create}");
         assert!(create["result"]["session_id"].as_str().is_some());
         assert_eq!(list["result"]["sessions"].as_array().unwrap().len(), 1);
+    }
+    use kl_provider::{ChatOutcome, FinishReason, ModelInfo, ProviderErrorKind};
+
+    fn copy_dir(source: &Path, target: &Path) {
+        std::fs::create_dir_all(target).unwrap();
+        for entry in std::fs::read_dir(source).unwrap() {
+            let entry = entry.unwrap();
+            if entry.file_name() == ".git" {
+                continue;
+            }
+            let destination = target.join(entry.file_name());
+            if entry.file_type().unwrap().is_dir() {
+                copy_dir(&entry.path(), &destination);
+            } else {
+                std::fs::copy(entry.path(), destination).unwrap();
+            }
+        }
+    }
+
+    fn test_git(workspace: &Path, args: &[&str]) {
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(workspace)
+            .args([
+                "-c",
+                "user.email=review@example.test",
+                "-c",
+                "user.name=review",
+            ])
+            .args(args)
+            .status()
+            .unwrap();
+        assert!(status.success(), "git {:?} failed", args);
+    }
+
+    fn output_lines(buffer: &Buffer) -> Vec<Value> {
+        let bytes = buffer.0.lock().unwrap().clone();
+        String::from_utf8(bytes)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect()
+    }
+
+    fn wait_for_threads(core: &mut Core) {
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while Instant::now() < deadline && core.threads.iter().any(|handle| !handle.is_finished()) {
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        assert!(
+            core.threads.iter().all(|handle| handle.is_finished()),
+            "core turn thread did not finish"
+        );
+        for handle in core.threads.drain(..) {
+            handle.join().unwrap();
+        }
+    }
+
+    fn deep_config(temp: &Path) -> PathBuf {
+        std::fs::write(
+            temp.join("script.json"),
+            r#"[
+                {"text":"explored src/lib.rs:1"},
+                {"text":"PLAN write out.txt"},
+                {"tool_calls":[{"name":"write_file","arguments":{"path":"out.txt","content":"done"}}]},
+                {"text":"IMPLEMENTATION wrote out.txt:1"},
+                {"text":"REVIEW out.txt:1 evidence=done"},
+                {"text":"VERIFY out.txt:1 tests passed"}
+            ]"#,
+        )
+        .unwrap();
+        let config = temp.join("kl.toml");
+        std::fs::write(
+            &config,
+            r#"
+[agent]
+provider = "scripted"
+model = "scripted"
+scripted_path = "script.json"
+scripted_sequential = true
+quality = "deep"
+
+[policy]
+auto_approve_edits = true
+"#,
+        )
+        .unwrap();
+        config
+    }
+
+    fn new_test_core(config: PathBuf, home: &Path) -> (Core, Buffer) {
+        let buffer = Buffer::default();
+        let core = Core::new(
+            ServerContext::resolve(Some(config), Some(home.to_path_buf())),
+            Emitter::new(Box::new(buffer.clone())),
+        )
+        .unwrap();
+        (core, buffer)
+    }
+
+    #[test]
+    fn review_run_finds_fixture_rules_without_a_provider() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let workspace = temp.path().join("repo");
+        copy_dir(&root.join("tests/fixtures/review-repo/base"), &workspace);
+        test_git(&workspace, &["init"]);
+        test_git(&workspace, &["add", "."]);
+        test_git(&workspace, &["commit", "-m", "base"]);
+        copy_dir(&root.join("tests/fixtures/review-repo/changed"), &workspace);
+        let home = tempfile::tempdir().unwrap();
+        let escaped = workspace.to_string_lossy().replace('\\', "\\\\");
+        let input = format!(
+            "{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"kl.handshake\",\"params\":{{\"client_name\":\"test\",\"client_version\":\"0.1.0\",\"protocol_versions\":[1]}}}}\n\
+             {{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"review.run\",\"params\":{{\"workspace\":\"{escaped}\",\"mode\":\"strict\"}}}}\n"
+        );
+        let output = serve(&input, None, home.path().to_path_buf());
+        let review = output.iter().find(|value| value["id"] == 2).unwrap();
+        let rules: Vec<&str> = review["result"]["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|finding| finding["rule"].as_str().unwrap())
+            .collect();
+        for expected in [
+            "debug-unwrap",
+            "secret-openai",
+            "missing-test",
+            "cross-file-command-injection",
+            "llm-review-unavailable",
+        ] {
+            assert!(
+                rules.contains(&expected),
+                "missing {expected}; got {rules:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn deep_mode_runs_five_stages_and_writes_the_workspace() {
+        let temp = tempfile::tempdir().unwrap();
+        let config = deep_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let (mut core, buffer) = new_test_core(config, home.path());
+        core.handshaken = true;
+        let workspace = temp.path().to_string_lossy().to_string();
+        let created = core
+            .session_create(json!({"workspace": workspace}))
+            .unwrap();
+        let session_id = created["session_id"].as_str().unwrap().to_owned();
+        core.turn_start(json!({
+            "session_id": session_id,
+            "prompt": "write done to out.txt",
+            "quality": "deep"
+        }))
+        .unwrap();
+        wait_for_threads(&mut core);
+        let output = output_lines(&buffer);
+        let completed = output
+            .iter()
+            .find(|value| value["params"]["event"]["type"] == "turn.completed")
+            .expect("turn.completed event");
+        assert_eq!(
+            completed["params"]["event"]["data"]["status"], "completed",
+            "{completed}"
+        );
+        let text = completed["params"]["event"]["data"]["text"]
+            .as_str()
+            .unwrap();
+        assert!(text.contains("explorer -> planner -> implementer -> reviewer -> verifier"));
+        assert!(text.contains("REVIEW out.txt:1"));
+        assert!(text.contains("VERIFY out.txt:1"));
+        assert_eq!(
+            std::fs::read_to_string(temp.path().join("out.txt")).unwrap(),
+            "done"
+        );
+    }
+
+    struct SlowProvider;
+
+    impl Provider for SlowProvider {
+        fn id(&self) -> &str {
+            "slow"
+        }
+
+        fn kind(&self) -> &str {
+            "test"
+        }
+
+        fn models(&self) -> Vec<ModelInfo> {
+            vec![ModelInfo::new("slow")]
+        }
+
+        fn available(&self) -> (bool, String) {
+            (true, "slow provider".to_owned())
+        }
+
+        fn stream_chat(
+            &self,
+            _request: &ChatRequest,
+            cancel: &CancellationToken,
+            _on_event: &mut dyn FnMut(ChatEvent),
+        ) -> Result<ChatOutcome, ProviderError> {
+            for _ in 0..50 {
+                if cancel.is_cancelled() {
+                    return Err(ProviderError::cancelled());
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Ok(ChatOutcome {
+                text: "slow".to_owned(),
+                tool_calls: Vec::new(),
+                finish_reason: FinishReason::Stop,
+                usage: Usage::default(),
+            })
+        }
+    }
+
+    #[test]
+    fn deep_mode_cancels_without_waiting_for_all_stages() {
+        let temp = tempfile::tempdir().unwrap();
+        let config = deep_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let (mut core, buffer) = new_test_core(config, home.path());
+        core.handshaken = true;
+        core.router = ProviderRouter::new(
+            vec![(
+                ModelMetadata::new(
+                    "slow",
+                    "slow",
+                    Protocol::Scripted,
+                    "test://slow",
+                    8192,
+                    0.8,
+                    4096,
+                ),
+                Arc::new(SlowProvider) as Arc<dyn Provider>,
+            )],
+            "slow",
+            "slow",
+        );
+        core.config.agent.provider = "slow".to_owned();
+        core.config.agent.model = "slow".to_owned();
+        let workspace = temp.path().to_string_lossy().to_string();
+        let created = core
+            .session_create(json!({"workspace": workspace}))
+            .unwrap();
+        let session_id = created["session_id"].as_str().unwrap().to_owned();
+        let started = core
+            .turn_start(json!({
+                "session_id": session_id,
+                "prompt": "cancel this deep turn",
+                "quality": "deep"
+            }))
+            .unwrap();
+        let turn_id = started["turn_id"].as_str().unwrap().to_owned();
+        core.turn_cancel(json!({
+            "session_id": session_id,
+            "turn_id": turn_id
+        }))
+        .unwrap();
+        wait_for_threads(&mut core);
+        let output = output_lines(&buffer);
+        let completed = output
+            .iter()
+            .find(|value| value["params"]["event"]["type"] == "turn.completed")
+            .expect("turn.completed event");
+        assert_eq!(
+            completed["params"]["event"]["data"]["status"], "cancelled",
+            "{completed}"
+        );
+    }
+    struct FailAfterProvider {
+        calls: AtomicUsize,
+    }
+
+    impl Provider for FailAfterProvider {
+        fn id(&self) -> &str {
+            "fail-after"
+        }
+
+        fn kind(&self) -> &str {
+            "test"
+        }
+
+        fn models(&self) -> Vec<ModelInfo> {
+            vec![ModelInfo::new("fail-after")]
+        }
+
+        fn available(&self) -> (bool, String) {
+            (true, "fails after two calls".to_owned())
+        }
+
+        fn stream_chat(
+            &self,
+            _request: &ChatRequest,
+            _cancel: &CancellationToken,
+            _on_event: &mut dyn FnMut(ChatEvent),
+        ) -> Result<ChatOutcome, ProviderError> {
+            let call = self.calls.fetch_add(1, Ordering::Relaxed);
+            if call < 2 {
+                return Ok(ChatOutcome {
+                    text: format!("stage {call}"),
+                    tool_calls: Vec::new(),
+                    finish_reason: FinishReason::Stop,
+                    usage: Usage::default(),
+                });
+            }
+            Err(ProviderError::new(ProviderErrorKind::Server, "boom"))
+        }
+    }
+
+    #[test]
+    fn deep_mode_reports_implementer_provider_failure() {
+        let temp = tempfile::tempdir().unwrap();
+        let config = deep_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let (mut core, buffer) = new_test_core(config, home.path());
+        core.handshaken = true;
+        core.router = ProviderRouter::new(
+            vec![(
+                ModelMetadata::new(
+                    "fail-after",
+                    "fail-after",
+                    Protocol::Scripted,
+                    "test://fail-after",
+                    8192,
+                    0.8,
+                    4096,
+                ),
+                Arc::new(FailAfterProvider {
+                    calls: AtomicUsize::new(0),
+                }) as Arc<dyn Provider>,
+            )],
+            "fail-after",
+            "fail-after",
+        );
+        core.config.agent.provider = "fail-after".to_owned();
+        core.config.agent.model = "fail-after".to_owned();
+        let workspace = temp.path().to_string_lossy().to_string();
+        let created = core
+            .session_create(json!({"workspace": workspace}))
+            .unwrap();
+        let session_id = created["session_id"].as_str().unwrap().to_owned();
+        core.turn_start(json!({
+            "session_id": session_id,
+            "prompt": "fail during implementation",
+            "quality": "deep"
+        }))
+        .unwrap();
+        wait_for_threads(&mut core);
+        let output = output_lines(&buffer);
+        let failed = output
+            .iter()
+            .find(|value| value["params"]["event"]["type"] == "turn.failed")
+            .expect("turn.failed event");
+        let message = failed["params"]["event"]["data"]["message"]
+            .as_str()
+            .unwrap();
+        assert!(message.contains("boom"), "{message}");
+    }
+    #[test]
+    fn deep_mode_rejects_reviewer_workspace_edits() {
+        let temp = tempfile::tempdir().unwrap();
+        let config = deep_config(temp.path());
+        std::fs::write(
+            temp.path().join("script.json"),
+            r#"[
+                {"text":"explored"},
+                {"text":"plan"},
+                {"tool_calls":[{"name":"write_file","arguments":{"path":"out.txt","content":"done"}}]},
+                {"text":"implemented"},
+                {"tool_calls":[{"name":"write_file","arguments":{"path":"sneaky.txt","content":"extra"}}]},
+                {"text":"reviewed"},
+                {"text":"verified"}
+            ]"#,
+        )
+        .unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let (mut core, buffer) = new_test_core(config, home.path());
+        core.handshaken = true;
+        let workspace = temp.path().to_string_lossy().to_string();
+        let created = core
+            .session_create(json!({"workspace": workspace}))
+            .unwrap();
+        let session_id = created["session_id"].as_str().unwrap().to_owned();
+        core.turn_start(json!({
+            "session_id": session_id,
+            "prompt": "review without editing",
+            "quality": "deep"
+        }))
+        .unwrap();
+        wait_for_threads(&mut core);
+        let output = output_lines(&buffer);
+        let failed = output
+            .iter()
+            .find(|value| value["params"]["event"]["type"] == "turn.failed")
+            .expect("turn.failed event");
+        let message = failed["params"]["event"]["data"]["message"]
+            .as_str()
+            .unwrap();
+        assert!(message.contains("modified the workspace"), "{message}");
+        assert!(temp.path().join("sneaky.txt").exists());
     }
 }

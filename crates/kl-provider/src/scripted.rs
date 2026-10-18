@@ -14,6 +14,7 @@ pub struct ScriptedProvider {
     models: Vec<ModelInfo>,
     turns: Vec<ScriptTurn>,
     cursor: AtomicUsize,
+    reset_on_begin_turn: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -42,7 +43,15 @@ impl ScriptedProvider {
             models: vec![ModelInfo::new("scripted")],
             turns,
             cursor: AtomicUsize::new(0),
+            reset_on_begin_turn: true,
         }
+    }
+
+    /// Keep advancing through the script across evaluation turns.
+    pub fn sequential(id: impl Into<String>, turns: Vec<ScriptTurn>) -> Self {
+        let mut provider = Self::new(id, turns);
+        provider.reset_on_begin_turn = false;
+        provider
     }
 
     pub fn from_json(id: impl Into<String>, json: &str) -> Result<Self, ProviderError> {
@@ -52,11 +61,30 @@ impl ScriptedProvider {
     }
 
     pub fn from_file(id: impl Into<String>, path: impl AsRef<Path>) -> Result<Self, ProviderError> {
+        Self::from_file_with_reset(id, path, true)
+    }
+
+    pub fn from_file_sequential(
+        id: impl Into<String>,
+        path: impl AsRef<Path>,
+    ) -> Result<Self, ProviderError> {
+        Self::from_file_with_reset(id, path, false)
+    }
+
+    fn from_file_with_reset(
+        id: impl Into<String>,
+        path: impl AsRef<Path>,
+        reset_on_begin_turn: bool,
+    ) -> Result<Self, ProviderError> {
         let path = path.as_ref();
         let text = std::fs::read_to_string(path).map_err(|error| {
             ProviderError::config(format!("cannot read script {}: {error}", path.display()))
         })?;
-        Self::from_json(id, &text)
+        let turns: Vec<ScriptTurn> = serde_json::from_str(&text)
+            .map_err(|error| ProviderError::config(format!("invalid script: {error}")))?;
+        let mut provider = Self::new(id, turns);
+        provider.reset_on_begin_turn = reset_on_begin_turn;
+        Ok(provider)
     }
 
     pub fn empty(id: impl Into<String>) -> Self {
@@ -86,7 +114,9 @@ impl Provider for ScriptedProvider {
     }
 
     fn begin_turn(&self) {
-        self.cursor.store(0, Ordering::SeqCst);
+        if self.reset_on_begin_turn {
+            self.cursor.store(0, Ordering::SeqCst);
+        }
     }
 
     fn stream_chat(
@@ -197,5 +227,34 @@ mod tests {
             .stream_chat(&request, &CancellationToken::new(), &mut |_| {})
             .unwrap();
         assert_eq!(reset.tool_calls.len(), 1);
+    }
+
+    #[test]
+    fn sequential_mode_keeps_the_cursor_across_turns() {
+        let provider = ScriptedProvider::sequential(
+            "scripted",
+            vec![
+                ScriptTurn {
+                    text: "one".to_owned(),
+                    reasoning: String::new(),
+                    tool_calls: Vec::new(),
+                },
+                ScriptTurn {
+                    text: "two".to_owned(),
+                    reasoning: String::new(),
+                    tool_calls: Vec::new(),
+                },
+            ],
+        );
+        let request = ChatRequest::new("scripted", vec![]);
+        let first = provider
+            .stream_chat(&request, &CancellationToken::new(), &mut |_| {})
+            .unwrap();
+        provider.begin_turn();
+        let second = provider
+            .stream_chat(&request, &CancellationToken::new(), &mut |_| {})
+            .unwrap();
+        assert_eq!(first.text, "one");
+        assert_eq!(second.text, "two");
     }
 }

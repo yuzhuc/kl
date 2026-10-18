@@ -80,6 +80,8 @@ internal static class Program
                 return await ProviderCli.ModelAsync(options, ui).ConfigureAwait(false);
             case "plugin":
                 return await PluginAsync(options, ui).ConfigureAwait(false);
+            case "review":
+                return await ReviewAsync(options, ui).ConfigureAwait(false);
             case "audit":
                 return await AuditAsync(options, ui).ConfigureAwait(false);
             case "config":
@@ -323,6 +325,23 @@ internal static class Program
         return 0;
     }
 
+    private static async Task<int> ReviewAsync(CliOptions options, ConsoleUi ui)
+    {
+        var workspace = Path.GetFullPath(options.Workspace ?? Directory.GetCurrentDirectory());
+        var mode = options.Strict ? "strict" : options.ReviewMode ?? "standard";
+        await using var client = KlCoreClient.Start(options);
+        AttachDiagnostics(client, options, ui);
+        await client.HandshakeAsync().ConfigureAwait(false);
+        var result = await client.ReviewAsync(
+                workspace,
+                options.BaseRef,
+                mode,
+                options.Strict)
+            .ConfigureAwait(false);
+        ui.Line(ReviewOutput.Render(result));
+        return ReviewOutput.ExitCode(result);
+    }
+
     private static async Task<int> AuditAsync(CliOptions options, ConsoleUi ui)
     {
         var limit = 20;
@@ -398,6 +417,7 @@ internal static class Program
               kl plugin reload <id>      reload a plugin without restarting core
               kl plugin enable <id>      enable a plugin
               kl plugin disable <id>     drain and disable a plugin
+              kl review [--base <ref>]   review the current diff
               kl audit [limit]           show recent audit records
               kl config                  show the redacted configuration
               kl version                 print versions
@@ -410,6 +430,10 @@ internal static class Program
               --provider <id>            override provider
               --model <id>               override model
               --session <id>             resume a specific session
+              --base <ref>               review changes since a git ref
+              --strict                   show low-confidence review findings
+              --mode <mode>              review mode: quick|standard|strict
+              --quality <mode>           quality mode: fast|balanced|deep
               --yes, -y                  auto-approve tool requests
               --verbose, -v              show core diagnostics
             """);

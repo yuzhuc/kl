@@ -1,0 +1,36 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "kl_protocol": 1,
+  "result": {
+    "mode": "strict",
+    "summary": "1 changed files; 1 high, 1 low",
+    "changed_files": 1,
+    "findings": [
+      {
+        "rule": "secret-openai",
+        "source": "secret-scan",
+        "file": "src/a.rs",
+        "line": 3,
+        "severity": "high",
+        "confidence": 0.99,
+        "evidence": "sk-abc<redacted>",
+        "recommendation": "rotate the key",
+        "introduced": true,
+        "low_confidence": false
+      },
+      {
+        "rule": "llm-review-unavailable",
+        "source": "llm",
+        "file": "",
+        "line": 0,
+        "severity": "low",
+        "confidence": 0.4,
+        "evidence": "no provider",
+        "recommendation": "configure a provider",
+        "introduced": true,
+        "low_confidence": true
+      }
+    ]
+  }
+}

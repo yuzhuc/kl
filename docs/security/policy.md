@@ -88,7 +88,9 @@ and on every request.
 `~/.kl/audit/events.jsonl` is the raw append-only JSONL log. It rotates at
 `audit.rotate_bytes` and keeps `audit.keep_files` archives. SQLite
 `~/.kl/audit/audit.sqlite` is the query index used by `kl audit`; the raw
-rotated JSONL files remain the source of truth.
+rotated JSONL files remain the source of truth. `kl review` reads the audit tail
+separately and surfaces denied tool calls and sandbox violations as review
+findings; it does not replace or rewrite runtime audit records.
 
 Each record contains:
 

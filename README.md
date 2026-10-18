@@ -5,8 +5,8 @@ terminal client. It does not use a Python runtime or Python build scripts.
 
 Status: **stage 0, stage 1 MVP, stage 1.5 hardening, stage 2 sidecar
 plugin-host MVP, provider routing, terminal chat page, provider configuration
-commands, and stage 2.5 Windows AppContainer sandbox + provider cancellation
-cleanup complete**. Stage 3 automated review and quality modes are next. Live
+commands, stage 2.5 Windows AppContainer sandbox + provider cancellation
+cleanup, and stage 3 automated review + quality modes complete**. Live
 external Provider smoke is pending until API keys are supplied; see
 `tests/fixtures/providers/live-smoke.status.json`.
 
@@ -18,6 +18,8 @@ kl (C#/.NET)  -- JSON-RPC 2.0 over stdio -->  kl-core (Rust)
                                               provider router
                                               tools + policy + approvals
                                               sessions + audit
+                                              review pipeline
+                                              quality-mode stages
 ```
 
 - `crates/kl-protocol` — wire envelopes, version negotiation, events, stable
@@ -29,6 +31,9 @@ kl (C#/.NET)  -- JSON-RPC 2.0 over stdio -->  kl-core (Rust)
   Responses and a deterministic scripted provider for offline tests/demos.
 - `crates/kl-tools` — `read_file`, `write_file`, `edit_file`, `grep`, `glob`,
   `shell`, `git`.
+- `crates/kl-review` — deterministic diff context, local/security rules,
+  secret and dependency scans, runtime-audit findings, optional LLM review,
+  deduplication and confidence thresholds.
 - `crates/kl-policy` — workspace containment, sensitive paths, dangerous
   command denial, approval effects.
 - `crates/kl-audit` — rotated append-only JSONL audit plus SQLite query index.
@@ -89,6 +94,12 @@ build the Rust core first.
 .\cli\Kl.Cli\bin\Debug\net10.0\kl.exe resume
 .\cli\Kl.Cli\bin\Debug\net10.0\kl.exe resume <session-id> --yes
 
+# review the current diff; strict shows low-confidence findings
+.\cli\Kl.Cli\bin\Debug\net10.0\kl.exe review --workspace . --strict
+
+# deep quality mode
+.\cli\Kl.Cli\bin\Debug\net10.0\kl.exe run "fix the failing test" --quality deep --workspace . --yes
+
 # providers, audit, redacted config
 .\cli\Kl.Cli\bin\Debug\net10.0\kl.exe provider list
 .\cli\Kl.Cli\bin\Debug\net10.0\kl.exe audit 20
@@ -125,10 +136,25 @@ provider file is never read.
 [agent]
 provider = "opencode"
 model = "gpt-5-responses"
+quality = "balanced"          # fast | balanced | deep
 max_iterations = 12
 max_tool_output_bytes = 32768
 command_timeout_secs = 120
 approval_timeout_secs = 180
+deep_max_stages = 5
+deep_max_tool_calls = 48
+deep_token_budget = 120000
+deep_timeout_secs = 900
+
+# Optional role-specific overrides for deep mode. Unset values inherit the
+# default provider/model; a failed override falls back to the default route.
+[agent.roles.explorer]
+provider = "opencode"
+model = "gpt-5-responses"
+
+[agent.roles.reviewer]
+provider = "opencode"
+model = "gpt-5-responses"
 
 [policy]
 auto_approve_edits = false
@@ -233,6 +259,7 @@ only through the agent settings:
 provider = "scripted"
 model = "scripted"
 scripted_path = "script.json"
+scripted_sequential = true      # keep the script cursor across deep stages
 ```
 
 `policy.env_allowlist` switches shell/git execution to a clean environment plus
@@ -252,6 +279,53 @@ probe result, capability matrix and MXC status.
 
 `[audit]` controls raw JSONL rotation. `kl audit` queries the SQLite index while
 the rotated `events*.jsonl` files remain the source of truth.
+
+## Automated review
+
+`kl review` is separate from `kl audit`. `kl audit` remains the runtime tool
+audit log. `kl review` inspects code changes and supports:
+
+```powershell
+kl review                         # standard review of the working-tree diff
+kl review --base origin/main     # review changes since a git ref
+kl review --strict               # keep low-confidence findings
+kl review --mode quick           # quick | standard | strict
+```
+
+The pipeline collects `git diff`, scans dangerous patterns, secrets, wildcard
+dependencies and missing tests, performs cross-file risk checks, proposes
+Rust/.NET verification commands, converts runtime audit denies and sandbox
+violations into findings, and optionally calls the configured provider for a
+structured diff review. Findings are deduplicated and sorted by severity.
+`--strict` never silently hides low-confidence items; they are marked
+`LOW-CONFIDENCE`. The deterministic fixture
+`tests/fixtures/review-repo` is used by Rust tests and the CLI demo:
+
+```powershell
+pwsh scripts/demo-review.ps1
+```
+
+## Quality modes
+
+`fast`, `balanced` and `deep` are selected with `--quality` or
+`[agent].quality`. The default is `balanced`, which preserves the existing
+single-turn behavior. `deep` runs explicit ordinary agent turns:
+
+```
+explorer -> planner -> implementer -> reviewer -> verifier
+```
+
+All stages share session history and use the existing `ProviderRouter`; there
+is no new provider protocol or cross-protocol conversion. Each stage inherits
+the default provider/model, with optional `[agent.roles.<stage>]` overrides.
+Deep mode is bounded by stage count, total tool calls, token usage reported by
+the provider, and a wall-clock watchdog. Cancellation is honored between and
+during stages. Explorer/planner/reviewer/verifier failures are recorded and do
+not discard a successful implementation; implementer failure stops the turn.
+Reviewer and verifier prompts require file:line evidence, and the verifier is
+instructed to verify only and not expand the change. The deep turn also
+fingerprints the workspace before review and fails if reviewer/verifier changes
+it.
 
 ## Offline end-to-end demo
 
@@ -344,8 +418,11 @@ handshake negotiates the supported version range.
 
 Core methods: `kl.handshake`, `kl.ping`, `kl.doctor`, `session.create`,
 `session.resume`, `session.list`, `turn.start`, `turn.cancel`,
-`tool.approval.respond`, `provider.list`, `provider.upsert`,\n`provider.set_api_key`, `provider.set_enabled`, `config.set_default_model`,\n`plugin.list`, `plugin.install`,
-`plugin.reload`, `plugin.enable`, `plugin.disable`, `audit.tail`, `config.get`.
+`tool.approval.respond`, `provider.list`, `provider.upsert`,
+`provider.set_api_key`, `provider.set_enabled`, `config.set_default_model`,
+`plugin.list`, `plugin.install`, `plugin.reload`, `plugin.enable`,
+`plugin.disable`, `audit.tail`, `review.run`, `config.get`. `turn.start`
+accepts an optional `quality` value (`fast`, `balanced`, `deep`).
 
 Events: `session.created`, `turn.started`, `turn.delta`, `turn.reasoning`,
 `tool.started`, `tool.output`, `tool.approval.requested`,
@@ -364,7 +441,11 @@ Events: `session.created`, `turn.started`, `turn.delta`, `turn.reasoning`,
   If it is on a volume whose root cannot be granted, the git tool fails closed
   with an explicit sandbox error.
 - WASM plugin hosting is not implemented; sidecar is the current plugin runtime.
-- No multi-agent quality modes or repository symbol index.
+- Deep quality mode is explicit orchestration of five ordinary agent turns, not
+  a separate multi-agent runtime. Repository symbol indexing is not implemented.
+- Reviewer/verifier workspace edits are detected by a fingerprint guard and fail
+  the deep turn; prompts also prohibit edits. Shell/edit approvals remain the
+  hard policy boundary.
 - Provider cancellation uses a `CancellationToken` that interrupts the streaming
   read loop; the worker is joined within two seconds and the connection is
   dropped.
@@ -373,4 +454,5 @@ Events: `session.created`, `turn.started`, `turn.delta`, `turn.reasoning`,
   SSE conformance tests pass for all three protocols.
 
 Next stage entry point: add Linux/macOS OS backends, WASM plugin runtime,
-verified network isolation, and live provider conformance/replay fixtures.
+verified network isolation, repository symbol indexing, and live provider
+conformance/replay fixtures.

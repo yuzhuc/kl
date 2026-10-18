@@ -84,6 +84,22 @@ public sealed class ProtocolContractTests
     }
 
     [Fact]
+    public void ReviewResultMatchesSharedContract()
+    {
+        using var document = Read("review_result.json");
+        var result = document.RootElement.GetProperty("result");
+        Assert.Equal("strict", result.GetProperty("mode").GetString());
+        Assert.Equal(1, result.GetProperty("changed_files").GetInt32());
+        var findings = result.GetProperty("findings");
+        Assert.Equal(2, findings.GetArrayLength());
+        Assert.Equal("secret-openai", findings[0].GetProperty("rule").GetString());
+        Assert.Equal("src/a.rs", findings[0].GetProperty("file").GetString());
+        Assert.Equal(3, findings[0].GetProperty("line").GetInt32());
+        Assert.True(findings[1].GetProperty("low_confidence").GetBoolean());
+        Assert.Equal(0, findings[1].GetProperty("line").GetInt32());
+    }
+
+    [Fact]
     public void VersionMismatchUsesStableErrorCode()
     {
         using var document = Read("error_version_mismatch.json");
