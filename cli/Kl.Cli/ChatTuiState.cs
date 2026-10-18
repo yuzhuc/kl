@@ -6,7 +6,8 @@ public enum ChatScreen
 {
     Chat,
     History,
-    Shortcuts
+    Shortcuts,
+    Settings
 }
 
 public enum TranscriptKind
@@ -94,6 +95,7 @@ public sealed class ChatTuiState
     public bool AssistantStarted { get; set; }
     public List<HistorySession> History { get; set; } = [];
     public int HistorySelection { get; set; }
+    public SettingsTuiState Settings { get; } = new();
 
     public bool HasPendingApproval => PendingApprovalId is not null;
 
@@ -357,6 +359,16 @@ public sealed class ChatTuiState
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
+}
+
+public static class ChatCommand
+{
+    public static bool IsSettings(string input)
+    {
+        var command = input.Trim();
+        return command.Equals("/settings", StringComparison.OrdinalIgnoreCase)
+            || command.Equals("/设置", StringComparison.Ordinal);
+    }
 }
 
 public static class ChatKeyMapper

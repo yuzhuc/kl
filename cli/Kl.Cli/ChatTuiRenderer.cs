@@ -9,6 +9,11 @@ public static class ChatTuiRenderer
 
     public static string Render(int width, int height, ChatTuiState state)
     {
+        if (state.Screen == ChatScreen.Settings)
+        {
+            return SettingsTuiRenderer.Render(width, height, state.Settings);
+        }
+
         width = Math.Max(20, width);
         height = Math.Max(8, height);
         var bodyHeight = Math.Max(1, height - 4);
@@ -36,6 +41,15 @@ public static class ChatTuiRenderer
 
         return string.Join('\n', lines.Take(height).Select(line => Fit(line, width)));
     }
+
+    public static bool NeedsRedraw(
+        bool changed,
+        bool dirty,
+        int width,
+        int height,
+        int lastWidth,
+        int lastHeight) =>
+        changed || dirty || width != lastWidth || height != lastHeight;
 
     public static int MaxTranscriptScroll(ChatTuiState state, int width, int height)
     {
