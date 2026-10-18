@@ -805,14 +805,17 @@ dependencies = [
 name = "kl-plugin-host"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "dunce",
  "kl-exec",
  "kl-policy",
  "kl-provider",
  "kl-sandbox",
  "kl-tools",
+ "ring",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "thiserror",
  "toml",
