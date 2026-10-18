@@ -24,6 +24,7 @@ kl-store = { path = "../kl-store" }
 kl-tools = { path = "../kl-tools" }
 kl-sandbox = { path = "../kl-sandbox" }
 kl-plugin-host = { path = "../kl-plugin-host" }
+kl-index = { path = "../kl-index" }
 kl-review = { path = "../kl-review" }
 serde.workspace = true
 serde_json.workspace = true
