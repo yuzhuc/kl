@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 
 namespace Kl.Cli;
@@ -19,7 +20,8 @@ public enum TranscriptKind
     Diff,
     Error,
     Info,
-    Worked
+    Worked,
+    Reasoning
 }
 
 public enum ChatKeyAction
@@ -48,7 +50,17 @@ public enum ChatKeyAction
     ScrollUp,
     ScrollDown,
     ApprovalAllow,
-    ApprovalDeny
+    ApprovalDeny,
+    SelectUp,
+    SelectDown,
+    CopyLastAssistant,
+    ClearScreen,
+    Exit,
+    ToggleReasoning,
+    ModelPickerUp,
+    ModelPickerDown,
+    ModelPickerAccept,
+    ModelPickerClose
 }
 
 public sealed record TranscriptEntry(TranscriptKind Kind, string Text);
@@ -96,6 +108,8 @@ public sealed record HistoryMessage(
 
 public sealed class ChatTuiState
 {
+    public const char FieldSeparator = '\u001f';
+
     public ChatTuiState(
         string workspace = "",
         string provider = "",
@@ -130,9 +144,19 @@ public sealed class ChatTuiState
     public int HistorySelection { get; set; }
     public int CommandPaletteSelection { get; set; }
     public bool CommandPaletteDismissed { get; set; }
+    public bool ReasoningVisible { get; set; } = true;
+    public ChatModelPickerState ModelPicker { get; } = new();
     public SettingsTuiState Settings { get; } = new();
 
+    public int? SelectionAnchor { get; private set; }
+    public int? SelectionCursor { get; private set; }
+
     public bool HasPendingApproval => PendingApprovalId is not null;
+
+    public bool HasSelection =>
+        SelectionAnchor is not null && SelectionCursor is not null;
+
+    public UiLanguage Language => Settings.Language;
 
     public void Insert(char character)
     {
@@ -179,11 +203,77 @@ public sealed class ChatTuiState
         ResetCommandPalette();
     }
 
+    public void ToggleReasoning() => ReasoningVisible = !ReasoningVisible;
+
+    public void ClearSelection()
+    {
+        SelectionAnchor = null;
+        SelectionCursor = null;
+    }
+
+    public void ExtendSelection(int delta, int totalLines)
+    {
+        if (totalLines <= 0)
+        {
+            ClearSelection();
+            return;
+        }
+
+        if (SelectionAnchor is null || SelectionCursor is null)
+        {
+            SelectionAnchor = totalLines - 1;
+            SelectionCursor = Math.Clamp(totalLines - 1 + delta, 0, totalLines - 1);
+            return;
+        }
+
+        SelectionCursor = Math.Clamp(SelectionCursor.Value + delta, 0, totalLines - 1);
+    }
+
+    public string? SelectedText(int width)
+    {
+        if (SelectionAnchor is not { } anchor || SelectionCursor is not { } cursor)
+        {
+            return null;
+        }
+
+        var lines = ChatTuiRenderer.TranscriptLines(this, width);
+        if (lines.Count == 0)
+        {
+            return null;
+        }
+
+        var start = Math.Clamp(Math.Min(anchor, cursor), 0, lines.Count - 1);
+        var end = Math.Clamp(Math.Max(anchor, cursor), 0, lines.Count - 1);
+        return string.Join(
+            "\n",
+            lines.Skip(start)
+                .Take(end - start + 1)
+                .Select(DiffRender.Ansi.Strip));
+    }
+
+    public string? LastAssistantText() =>
+        Transcript.LastOrDefault(entry => entry.Kind == TranscriptKind.Assistant)?.Text;
+
+    public void ClearTranscript()
+    {
+        Transcript.Clear();
+        TranscriptScroll = 0;
+        PendingApprovalId = null;
+        StatusMessage = null;
+        IsTurnActive = false;
+        TurnStartedAt = null;
+        AssistantStarted = false;
+        ClearSelection();
+        CommandPaletteSelection = 0;
+        CommandPaletteDismissed = false;
+    }
+
     public void AddUserMessage(string text)
     {
         Transcript.Add(new TranscriptEntry(TranscriptKind.User, text));
         TranscriptScroll = 0;
         ClearInput();
+        ClearSelection();
         IsTurnActive = true;
         TurnStartedAt = DateTimeOffset.Now;
         AssistantStarted = false;
@@ -264,8 +354,7 @@ public sealed class ChatTuiState
                     break;
                 }
                 if (Transcript.Count > 0
-                    && Transcript[^1].Kind == TranscriptKind.Info
-                    && Transcript[^1].Text.StartsWith("[reasoning] ", StringComparison.Ordinal))
+                    && Transcript[^1].Kind == TranscriptKind.Reasoning)
                 {
                     Transcript[^1] = Transcript[^1] with
                     {
@@ -275,8 +364,8 @@ public sealed class ChatTuiState
                 else
                 {
                     Transcript.Add(new TranscriptEntry(
-                        TranscriptKind.Info,
-                        "[reasoning] " + sessionEvent.Text));
+                        TranscriptKind.Reasoning,
+                        sessionEvent.Text));
                 }
                 break;
             case SessionEventKind.ToolStarted:
@@ -310,12 +399,14 @@ public sealed class ChatTuiState
                 break;
             case SessionEventKind.ApprovalRequested:
                 PendingApprovalId = sessionEvent.ApprovalId;
-                var approval = $"{sessionEvent.Name} ({sessionEvent.Action}) {sessionEvent.Resource}";
-                if (!string.IsNullOrWhiteSpace(sessionEvent.Reason))
-                {
-                    approval += $" — {sessionEvent.Reason}";
-                }
-                Transcript.Add(new TranscriptEntry(TranscriptKind.Approval, approval));
+                Transcript.Add(new TranscriptEntry(
+                    TranscriptKind.Approval,
+                    string.Join(
+                        FieldSeparator,
+                        sessionEvent.Name ?? string.Empty,
+                        sessionEvent.Action ?? string.Empty,
+                        sessionEvent.Resource ?? string.Empty,
+                        sessionEvent.Reason ?? string.Empty)));
                 break;
             case SessionEventKind.ApprovalResolved:
                 PendingApprovalId = null;
@@ -378,12 +469,14 @@ public sealed class ChatTuiState
         if (TurnStartedAt is { } started)
         {
             var completed = DateTimeOffset.Now;
-            var seconds = Math.Max(0.1, Math.Round(
-                (completed - started).TotalSeconds,
-                1));
+            var seconds = Math.Max(
+                0.1,
+                Math.Round((completed - started).TotalSeconds, 1));
             Transcript.Add(new TranscriptEntry(
                 TranscriptKind.Worked,
-                $"Worked for {seconds:0.0}s • {completed:HH:mm}"));
+                seconds.ToString("0.0", CultureInfo.InvariantCulture)
+                    + FieldSeparator
+                    + completed.ToString("HH:mm", CultureInfo.InvariantCulture)));
         }
 
         IsTurnActive = false;
@@ -480,6 +573,8 @@ public sealed class ChatTuiState
 
 public static class ChatCommand
 {
+    // Legacy plain-text chat path. The TUI command palette only accepts
+    // /settings; this compatibility check keeps the non-TUI fallback working.
     public static bool IsSettings(string input)
     {
         var command = input.Trim();
@@ -493,9 +588,54 @@ public static class ChatKeyMapper
     public static ChatKeyAction Map(ConsoleKeyInfo key, ChatTuiState state)
     {
         var control = (key.Modifiers & ConsoleModifiers.Control) != 0;
-        if (key.KeyChar == '' || (key.Key == ConsoleKey.C && control))
+        var shift = (key.Modifiers & ConsoleModifiers.Shift) != 0;
+
+        if (state.ModelPicker.IsOpen)
+        {
+            switch (key.Key)
+            {
+                case ConsoleKey.UpArrow:
+                    return ChatKeyAction.ModelPickerUp;
+                case ConsoleKey.DownArrow:
+                    return ChatKeyAction.ModelPickerDown;
+                case ConsoleKey.Enter:
+                    return ChatKeyAction.ModelPickerAccept;
+                case ConsoleKey.Escape:
+                    return ChatKeyAction.ModelPickerClose;
+            }
+            if (control && key.Key is ConsoleKey.P)
+            {
+                return ChatKeyAction.ModelPickerUp;
+            }
+            if (control && key.Key is ConsoleKey.N)
+            {
+                return ChatKeyAction.ModelPickerDown;
+            }
+        }
+
+        if (control && shift && key.Key == ConsoleKey.C)
+        {
+            return ChatKeyAction.CopyLastAssistant;
+        }
+
+        if (key.KeyChar == '\u0003' || (key.Key == ConsoleKey.C && control))
         {
             return ChatKeyAction.CancelOrExit;
+        }
+
+        if (control && key.Key == ConsoleKey.L)
+        {
+            return ChatKeyAction.ClearScreen;
+        }
+
+        if (control && key.Key == ConsoleKey.D)
+        {
+            return ChatKeyAction.Exit;
+        }
+
+        if (control && key.Key == ConsoleKey.R)
+        {
+            return ChatKeyAction.ToggleReasoning;
         }
 
         if (state.PendingApprovalId is not null)
@@ -521,6 +661,14 @@ public static class ChatKeyMapper
                 case ConsoleKey.Escape:
                     return ChatKeyAction.CommandPaletteClose;
             }
+            if (control && key.Key is ConsoleKey.P)
+            {
+                return ChatKeyAction.CommandPaletteUp;
+            }
+            if (control && key.Key is ConsoleKey.N)
+            {
+                return ChatKeyAction.CommandPaletteDown;
+            }
         }
 
         if (state.Screen == ChatScreen.History)
@@ -542,6 +690,15 @@ public static class ChatKeyMapper
             return key.Key == ConsoleKey.Escape || key.KeyChar == '?'
                 ? ChatKeyAction.ToggleShortcuts
                 : ChatKeyAction.None;
+        }
+
+        if (shift && key.Key == ConsoleKey.UpArrow)
+        {
+            return ChatKeyAction.SelectUp;
+        }
+        if (shift && key.Key == ConsoleKey.DownArrow)
+        {
+            return ChatKeyAction.SelectDown;
         }
 
         return key.Key switch

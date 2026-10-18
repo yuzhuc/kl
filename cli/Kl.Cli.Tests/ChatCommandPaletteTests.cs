@@ -5,61 +5,241 @@ namespace Kl.Cli.Tests;
 public sealed class ChatCommandPaletteTests
 {
     [Fact]
-    public void TypingSlashOpensPaletteWithCommands()
+    public void SlashShowsFirstEightRegisteredCommands()
     {
         var state = new ChatTuiState();
-
+        state.AddInfo("seed");
         state.Insert('/');
 
         Assert.True(ChatCommandPalette.IsOpen(state));
-        Assert.Equal(6, ChatCommandPalette.Matches(state.Input).Count);
-        Assert.Equal("/settings", ChatCommandPalette.Selected(state)?.Name);
+        Assert.Equal(12, ChatCommandPalette.Matches(state.Input).Count);
+        Assert.Equal("/init", ChatCommandPalette.Selected(state)?.Name);
 
-        var render = ChatTuiRenderer.Render(100, 24, state);
-        Assert.Contains("> /settings  Open settings", render);
-        Assert.Contains(" /设置  打开设置", render);
-        Assert.Contains(" /history  Open conversation history", render);
-        Assert.Contains(" /new  Start a new session", render);
-        Assert.Contains(" /help  Show keyboard shortcuts", render);
-        Assert.Contains(" /exit  Exit KL", render);
-
-        var lines = render.Split('\n');
-        Assert.Equal(24, lines.Length);
-        var exitIndex = Array.FindIndex(lines, line => line.Contains("/exit"));
-        var inputIndex = Array.FindIndex(lines, line => line.Contains("> /|"));
-        Assert.True(exitIndex >= 0);
-        Assert.True(inputIndex >= 0);
-        Assert.True(exitIndex < inputIndex);
+        var lines = ChatTuiRenderer.CommandPaletteLines(state, 100);
+        Assert.Equal(8, lines.Count);
+        Assert.Contains(lines, line => line.Contains("/init"));
+        Assert.Contains(lines, line => line.Contains("/settings"));
+        Assert.DoesNotContain(lines, line => line.Contains("/resume"));
     }
 
     [Fact]
-    public void PrefixSeOnlyShowsSettingsAliases()
+    public void SelectionScrollsToNinthItem()
     {
-        var state = new ChatTuiState { Input = "/se", Cursor = 3 };
+        var state = new ChatTuiState();
+        state.AddInfo("seed");
+        state.Input = "/";
+        state.Cursor = 1;
 
-        var names = ChatCommandPalette.Matches(state.Input)
-            .Select(command => command.Name);
+        for (var index = 0; index < 8; index++)
+        {
+            ChatCommandPalette.MoveSelection(state, 1);
+        }
 
-        Assert.Equal(new[] { "/settings", "/设置" }, names);
-        Assert.Equal("/settings", ChatCommandPalette.Selected(state)?.Name);
+        Assert.Equal("/resume", ChatCommandPalette.Selected(state)?.Name);
+        var lines = ChatTuiRenderer.CommandPaletteLines(state, 100);
+        Assert.Contains(lines, line => line.Contains("/resume"));
+        Assert.DoesNotContain(lines, line => line.Contains("/init"));
     }
 
     [Fact]
-    public void UpAndDownChangePaletteSelection()
+    public void PrefixSeOnlyShowsSettings()
+    {
+        var matches = ChatCommandPalette.Matches("/se");
+        Assert.Single(matches);
+        Assert.Equal("/settings", matches[0].Name);
+    }
+
+    [Fact]
+    public void ChineseQueryDoesNotOpenPalette()
+    {
+        var state = new ChatTuiState();
+        state.Insert('/');
+        state.Insert('设');
+
+        Assert.Equal("/设", state.Input);
+        Assert.False(ChatCommandPalette.IsQuery(state.Input));
+        Assert.Empty(ChatCommandPalette.Matches(state.Input));
+        Assert.False(ChatCommandPalette.IsOpen(state));
+        Assert.Null(ChatCommandPalette.FindExact("/设置"));
+    }
+
+    [Fact]
+    public void DescriptionsFollowLanguageAndNamesStayEnglish()
+    {
+        var state = new ChatTuiState();
+        state.AddInfo("seed");
+        state.Input = "/st";
+        state.Cursor = 3;
+        state.Settings.SetLanguage(UiLanguage.ChineseSimplified);
+
+        var chinese = ChatTuiRenderer.Render(100, 24, state);
+        Assert.Contains("/status", chinese);
+        Assert.Contains("查看当前会话配置", chinese);
+        Assert.DoesNotContain("show current session configuration", chinese);
+
+        state.Settings.SetLanguage(UiLanguage.English);
+        var english = ChatTuiRenderer.Render(100, 24, state);
+        Assert.Contains("/status", english);
+        Assert.Contains("show current session configuration", english);
+        Assert.DoesNotContain("查看当前会话配置", english);
+    }
+
+    [Fact]
+    public void OverlayDoesNotChangeTranscriptOrScroll()
+    {
+        var state = new ChatTuiState();
+        for (var index = 0; index < 30; index++)
+        {
+            state.AddInfo($"line-{index:00}");
+        }
+        state.TranscriptScroll = 5;
+
+        var beforeTranscript = ChatTuiRenderer.TranscriptLines(state, 80);
+        var beforeScroll = state.TranscriptScroll;
+        var beforeMaximum = ChatTuiRenderer.MaxTranscriptScroll(state, 80, 24);
+        var beforeBody = ChatTuiRenderer.Render(80, 24, state)
+            .Split('\n')
+            .Skip(2)
+            .Take(20 - 8)
+            .ToArray();
+
+        state.Input = "/";
+        state.Cursor = 1;
+
+        var afterTranscript = ChatTuiRenderer.TranscriptLines(state, 80);
+        var afterBody = ChatTuiRenderer.Render(80, 24, state)
+            .Split('\n')
+            .Skip(2)
+            .Take(20 - 8)
+            .ToArray();
+
+        Assert.Equal(beforeTranscript, afterTranscript);
+        Assert.Equal(beforeScroll, state.TranscriptScroll);
+        Assert.Equal(
+            beforeMaximum,
+            ChatTuiRenderer.MaxTranscriptScroll(state, 80, 24));
+        Assert.Equal(beforeBody, afterBody);
+    }
+
+    [Fact]
+    public void PaletteColumnsAlignAndNeverOverflow()
+    {
+        foreach (var width in new[] { 40, 60, 80, 100 })
+        {
+            var state = new ChatTuiState();
+            state.AddInfo("seed");
+            state.Input = "/";
+            state.Cursor = 1;
+
+            var matches = ChatCommandPalette.Matches(state.Input);
+            var nameWidth = matches.Max(command => DisplayText.Width(command.Name));
+            var descriptionColumn = 2 + nameWidth + 2;
+            Assert.True(
+                width - descriptionColumn >= (width * 30 + 99) / 100,
+                $"description column too narrow at width {width}");
+
+            var lines = ChatTuiRenderer.CommandPaletteLines(state, width);
+            Assert.Equal(8, lines.Count);
+            for (var index = 0; index < lines.Count; index++)
+            {
+                var line = lines[index];
+                Assert.True(DiffRender.Ansi.VisibleWidth(line) <= width);
+                var plain = DiffRender.Ansi.Strip(line);
+                Assert.Equal(width, plain.Length);
+                Assert.Equal(2, plain.IndexOf(matches[index].Name));
+                Assert.Equal(' ', plain[descriptionColumn - 1]);
+                var description = ChatCommandPalette.Description(
+                    matches[index],
+                    UiLanguage.English);
+                Assert.StartsWith(
+                    new string(description.Take(1).ToArray()),
+                    plain[descriptionColumn..].TrimEnd());
+            }
+        }
+    }
+
+    [Fact]
+    public void SelectedRowUsesArrowAndInverseAndNonSelectedUsesTwoSpaces()
+    {
+        var state = new ChatTuiState();
+        state.AddInfo("seed");
+        state.Input = "/";
+        state.Cursor = 1;
+
+        var lines = ChatTuiRenderer.CommandPaletteLines(state, 100);
+        Assert.StartsWith(DiffRender.Ansi.Inverse + "› ", lines[0]);
+        Assert.StartsWith("  /status", DiffRender.Ansi.Strip(lines[1]));
+
+        state.DismissCommandPalette();
+        Assert.False(ChatCommandPalette.IsOpen(state));
+        Assert.DoesNotContain(
+            "› /init",
+            ChatTuiRenderer.Render(100, 24, state));
+    }
+
+    [Fact]
+    public void UpDownControlPAndControlNCycleSelection()
     {
         var state = new ChatTuiState { Input = "/", Cursor = 1 };
 
         Assert.Equal(
             ChatKeyAction.CommandPaletteDown,
             ChatKeyMapper.Map(Key(ConsoleKey.DownArrow), state));
-        ChatCommandPalette.MoveSelection(state, 1);
-        Assert.Equal("/设置", ChatCommandPalette.Selected(state)?.Name);
-
+        Assert.Equal(
+            ChatKeyAction.CommandPaletteDown,
+            ChatKeyMapper.Map(Key(ConsoleKey.N, '\u000e', control: true), state));
         Assert.Equal(
             ChatKeyAction.CommandPaletteUp,
-            ChatKeyMapper.Map(Key(ConsoleKey.UpArrow), state));
+            ChatKeyMapper.Map(Key(ConsoleKey.P, '\u0010', control: true), state));
+
         ChatCommandPalette.MoveSelection(state, -1);
-        Assert.Equal("/settings", ChatCommandPalette.Selected(state)?.Name);
+        Assert.Equal(
+            "/exit",
+            ChatCommandPalette.Selected(state)?.Name);
+
+        ChatCommandPalette.MoveSelection(state, 1);
+        Assert.Equal(
+            "/init",
+            ChatCommandPalette.Selected(state)?.Name);
+    }
+
+    [Fact]
+    public void EscapeKeepsInputAndOnlyTokenChangesReopen()
+    {
+        var state = new ChatTuiState { Input = "/", Cursor = 1 };
+
+        Assert.Equal(
+            ChatKeyAction.CommandPaletteClose,
+            ChatKeyMapper.Map(Key(ConsoleKey.Escape), state));
+
+        state.DismissCommandPalette();
+        Assert.False(ChatCommandPalette.IsOpen(state));
+        Assert.Equal("/", state.Input);
+
+        state.MoveCursorLeft();
+        state.MoveCursorRight();
+        Assert.False(ChatCommandPalette.IsOpen(state));
+
+        state.Insert('s');
+        Assert.True(ChatCommandPalette.IsOpen(state));
+    }
+
+    [Fact]
+    public void ExactMatchWinsAndHiddenAliasesResolve()
+    {
+        Assert.Equal(
+            "/resume",
+            ChatCommandPalette.Matches("/history")[0].Name);
+        Assert.Equal(
+            ChatCommandKind.Resume,
+            ChatCommandPalette.FindExact("/history")?.Kind);
+        Assert.Equal(
+            ChatCommandKind.Copy,
+            ChatCommandPalette.FindExact("/copy")?.Kind);
+        Assert.Null(ChatCommandPalette.FindExact("/settings now"));
+        Assert.DoesNotContain(
+            ChatCommandPalette.Matches("/"),
+            command => command.Name == "/copy");
     }
 
     [Fact]
@@ -70,60 +250,25 @@ public sealed class ChatCommandPaletteTests
         var action = ChatKeyMapper.Map(Key(ConsoleKey.Enter), state);
 
         Assert.Equal(ChatKeyAction.CommandPaletteAccept, action);
-        Assert.NotEqual(ChatKeyAction.Send, action);
-        Assert.Equal("/history", ChatCommandPalette.Selected(state)?.Name);
+        Assert.Equal("/resume", ChatCommandPalette.Selected(state)?.Name);
     }
 
     [Fact]
-    public void EscapeClosesPalette()
+    public void UnknownSlashInputIsNeverAPrompt()
     {
-        var state = new ChatTuiState { Input = "/", Cursor = 1 };
-
-        Assert.Equal(
-            ChatKeyAction.CommandPaletteClose,
-            ChatKeyMapper.Map(Key(ConsoleKey.Escape), state));
-
-        state.DismissCommandPalette();
-
-        Assert.False(ChatCommandPalette.IsOpen(state));
-        Assert.DoesNotContain(
-            "Open settings",
-            ChatTuiRenderer.Render(100, 24, state));
+        Assert.True(ChatTuiRunner.IsPrompt("fix it"));
+        Assert.False(ChatTuiRunner.IsPrompt("/nope"));
+        Assert.Null(ChatCommandPalette.FindExact("/nope"));
+        Assert.False(ChatCommandPalette.IsOpen(new ChatTuiState
+        {
+            Input = "/nope",
+            Cursor = 5
+        }));
     }
 
-    [Fact]
-    public void ExactSettingsAliasesRemainDirectlyExecutable()
-    {
-        Assert.Equal(
-            ChatCommandKind.Settings,
-            ChatCommandPalette.FindExact("/settings")?.Kind);
-        Assert.Equal(
-            ChatCommandKind.Settings,
-            ChatCommandPalette.FindExact(" /设置 ")?.Kind);
-        Assert.Null(ChatCommandPalette.FindExact("/settings now"));
-    }
-
-    [Fact]
-    public void ExactAliasSelectsItsOwnRow()
-    {
-        var state = new ChatTuiState { Input = "/设置", Cursor = 3 };
-
-        Assert.Equal("/设置", ChatCommandPalette.Selected(state)?.Name);
-    }
-
-    [Fact]
-    public void PaletteStillOpensWithoutProviderOrSession()
-    {
-        var state = new ChatTuiState();
-
-        state.Insert('/');
-
-        Assert.Equal(string.Empty, state.Provider);
-        Assert.Equal(string.Empty, state.SessionId);
-        Assert.True(ChatCommandPalette.IsOpen(state));
-        Assert.NotNull(ChatCommandPalette.Selected(state));
-    }
-
-    private static ConsoleKeyInfo Key(ConsoleKey key) =>
-        new('\0', key, shift: false, alt: false, control: false);
+    private static ConsoleKeyInfo Key(
+        ConsoleKey key,
+        char character = '\0',
+        bool control = false) =>
+        new(character, key, shift: false, alt: false, control);
 }

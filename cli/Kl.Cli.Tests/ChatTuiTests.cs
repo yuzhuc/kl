@@ -6,6 +6,61 @@ namespace Kl.Cli.Tests;
 public sealed class ChatTuiTests
 {
     [Fact]
+    public void HomeEnglishSnapshot()
+    {
+        var state = new ChatTuiState();
+        var render = ChatTuiRenderer.Render(100, 24, state);
+
+        Assert.Contains(
+            "To get started, describe a task or try one of these commands:",
+            render);
+        Assert.Contains(
+            "  /init          create an AGENTS.md file with instructions for KL",
+            render);
+        Assert.Contains(
+            "  /status        show current session configuration",
+            render);
+        Assert.Contains(
+            "  /permissions   choose what KL is allowed to do",
+            render);
+        Assert.Contains(
+            "  /model         choose what model and reasoning effort to use",
+            render);
+        Assert.Contains(
+            "  /review        review changes and find issues",
+            render);
+        Assert.Contains(
+            "  /settings      configure a provider and model",
+            render);
+    }
+
+    [Fact]
+    public void HomeChineseSnapshot()
+    {
+        var state = new ChatTuiState();
+        state.Settings.SetLanguage(UiLanguage.ChineseSimplified);
+        var render = ChatTuiRenderer.Render(100, 24, state);
+
+        Assert.Contains("开始使用：描述一个任务，或尝试以下命令：", render);
+        Assert.Contains("  /init          创建 AGENTS.md 并写入 KL 指令", render);
+        Assert.Contains("  /status        查看当前会话配置", render);
+        Assert.Contains("  /permissions   选择 KL 的权限与审批方式", render);
+        Assert.Contains("  /model         选择模型和推理强度", render);
+        Assert.Contains("  /review        审查当前改动并发现问题", render);
+        Assert.Contains("  /settings      配置 Provider 和模型", render);
+    }
+
+    [Fact]
+    public void HomeHidesSettingsHintWhenProviderIsConfigured()
+    {
+        var state = new ChatTuiState("D:\\work", "openai", "gpt-5", "session-1");
+        var render = ChatTuiRenderer.Render(100, 24, state);
+
+        Assert.Contains("To get started", render);
+        Assert.DoesNotContain("configure a provider and model", render);
+    }
+
+    [Fact]
     public void RenderShowsHeaderInputAndFooter()
     {
         var state = new ChatTuiState("D:\\work", "openai", "gpt-5", "session-1");
@@ -15,10 +70,9 @@ public sealed class ChatTuiTests
         Assert.Equal(24, lines.Length);
         Assert.Equal(">_ KL (v0.1.0)", lines[0].TrimEnd());
         Assert.Contains("> Ask KL to do anything", render);
-        Assert.Contains("openai/gpt-5", render);
-        Assert.Contains("reasoning: default", render);
-        Assert.Contains("← history", render);
-        Assert.Contains("? shortcuts", render);
+        Assert.Contains("openai/gpt-5", render.Split('\n')[^1]);
+        Assert.Contains("Ctrl+R reasoning", render.Split('\n')[^1]);
+        Assert.Contains("? shortcuts", render.Split('\n')[^1]);
     }
 
     [Fact]
@@ -28,7 +82,13 @@ public sealed class ChatTuiTests
         state.Transcript.Add(new TranscriptEntry(TranscriptKind.User, "fix it"));
         state.Transcript.Add(new TranscriptEntry(TranscriptKind.Assistant, "done"));
         state.Transcript.Add(new TranscriptEntry(TranscriptKind.Tool, "shell cargo test"));
-        state.Transcript.Add(new TranscriptEntry(TranscriptKind.Approval, "edit src/lib.rs"));
+        state.Apply(new SessionEvent(
+            SessionEventKind.ApprovalRequested,
+            Name: "edit",
+            ApprovalId: "a1",
+            Action: "write",
+            Resource: "src/lib.rs",
+            Reason: "modifies a tracked file"));
         state.Transcript.Add(new TranscriptEntry(TranscriptKind.Diff, "-old\n+new"));
         state.Transcript.Add(new TranscriptEntry(TranscriptKind.Error, "boom"));
 
@@ -37,7 +97,9 @@ public sealed class ChatTuiTests
         Assert.Contains("You: fix it", render);
         Assert.Contains("KL: done", render);
         Assert.Contains("[tool] shell cargo test", render);
-        Assert.Contains("[approval] edit src/lib.rs", render);
+        Assert.Contains("[approval]", render);
+        Assert.Contains("tool: edit", render);
+        Assert.Contains("command/path: write src/lib.rs", render);
         Assert.Contains("+new", render);
         Assert.Contains("[error] boom", render);
     }
@@ -160,8 +222,84 @@ public sealed class ChatTuiTests
     public void ControlCIsCancelOrExitEvenWithoutModifierFlags()
     {
         var state = new ChatTuiState();
-        var key = new ConsoleKeyInfo('', ConsoleKey.C, shift: false, alt: false, control: false);
+        var key = new ConsoleKeyInfo('\u0003', ConsoleKey.C, shift: false, alt: false, control: false);
         Assert.Equal(ChatKeyAction.CancelOrExit, ChatKeyMapper.Map(key, state));
+    }
+
+    [Fact]
+    public void CtrlCBranchesBetweenCancelCopyAndExit()
+    {
+        var idle = new ChatTuiState();
+        Assert.Equal(CtrlCAction.Exit, ChatTuiRunner.ResolveCtrlC(idle, hasConnection: true));
+
+        var active = new ChatTuiState { IsTurnActive = true };
+        Assert.Equal(CtrlCAction.Cancel, ChatTuiRunner.ResolveCtrlC(active, hasConnection: true));
+
+        active.IsTurnActive = false;
+        active.ExtendSelection(-1, 4);
+        Assert.True(active.HasSelection);
+        Assert.Equal(
+            CtrlCAction.CopySelection,
+            ChatTuiRunner.ResolveCtrlC(active, hasConnection: true));
+    }
+
+    [Fact]
+    public void SelectionKeysMapAndSelectionTextIsStable()
+    {
+        var state = new ChatTuiState();
+        state.AddInfo("one");
+        state.AddInfo("two");
+
+        Assert.Equal(
+            ChatKeyAction.SelectUp,
+            ChatKeyMapper.Map(Key(ConsoleKey.UpArrow, shift: true), state));
+        Assert.Equal(
+            ChatKeyAction.SelectDown,
+            ChatKeyMapper.Map(Key(ConsoleKey.DownArrow, shift: true), state));
+
+        state.ExtendSelection(-1, 2);
+        Assert.Equal("one\ntwo", state.SelectedText(80));
+        state.ClearSelection();
+        Assert.False(state.HasSelection);
+    }
+
+    [Fact]
+    public void CopyShortcutKeysMap()
+    {
+        var state = new ChatTuiState();
+
+        Assert.Equal(
+            ChatKeyAction.CopyLastAssistant,
+            ChatKeyMapper.Map(
+                Key(ConsoleKey.C, '\u0003', control: true, shift: true),
+                state));
+        Assert.Equal(
+            ChatKeyAction.ClearScreen,
+            ChatKeyMapper.Map(Key(ConsoleKey.L, '\u000c', control: true), state));
+        Assert.Equal(
+            ChatKeyAction.Exit,
+            ChatKeyMapper.Map(Key(ConsoleKey.D, '\u0004', control: true), state));
+        Assert.Equal(
+            ChatKeyAction.ToggleReasoning,
+            ChatKeyMapper.Map(Key(ConsoleKey.R, '\u0012', control: true), state));
+    }
+
+    [Fact]
+    public void CopyTargetIsLastAssistantAndExcludesReasoning()
+    {
+        var state = new ChatTuiState();
+        state.Apply(new SessionEvent(SessionEventKind.TurnStarted));
+        state.Apply(new SessionEvent(
+            SessionEventKind.ReasoningDelta,
+            Text: "secret-thought"));
+        state.Apply(new SessionEvent(
+            SessionEventKind.AssistantDelta,
+            Text: "answer"));
+        state.Apply(new SessionEvent(
+            SessionEventKind.ReasoningDelta,
+            Text: "more-thought"));
+
+        Assert.Equal("answer", state.LastAssistantText());
     }
 
     [Fact]
@@ -193,15 +331,134 @@ public sealed class ChatTuiTests
     }
 
     [Fact]
-    public void ReasoningDeltaAppearsInTranscript()
+    public void ReasoningMergesAndCanBeHidden()
     {
         var state = new ChatTuiState();
         state.Apply(new SessionEvent(
             SessionEventKind.ReasoningDelta,
-            Text: "thinking"));
+            Text: "sec"));
+        state.Apply(new SessionEvent(
+            SessionEventKind.ReasoningDelta,
+            Text: "ret"));
 
-        Assert.Contains(state.Transcript, entry => entry.Text.Contains("thinking"));
+        var reasoning = Assert.Single(
+            state.Transcript,
+            entry => entry.Kind == TranscriptKind.Reasoning);
+        Assert.Equal("secret", reasoning.Text);
+        var visible = ChatTuiRenderer.Render(100, 24, state);
+        Assert.Contains("Thinking… secret", visible);
+
+        state.ToggleReasoning();
+        var hidden = ChatTuiRenderer.Render(100, 24, state);
+        Assert.Contains("Thinking… (Ctrl+R to show)", hidden);
+        Assert.DoesNotContain("secret", hidden);
+
+        state.ToggleReasoning();
+        Assert.Contains("Thinking… secret", ChatTuiRenderer.Render(100, 24, state));
     }
+
+    [Fact]
+    public void DiffLinesAreColoredByKind()
+    {
+        var state = new ChatTuiState();
+        state.Transcript.Add(new TranscriptEntry(
+            TranscriptKind.Diff,
+            "+new\n-old\n@@ hunk\n context"));
+
+        var lines = ChatTuiRenderer.TranscriptLines(state, 100);
+
+        Assert.Contains(lines, line => line.Contains("[diff]"));
+        Assert.Contains(lines, line =>
+            line.Contains(DiffRender.Ansi.Green) && line.Contains("+new"));
+        Assert.Contains(lines, line =>
+            line.Contains(DiffRender.Ansi.Red) && line.Contains("-old"));
+        Assert.Contains(lines, line =>
+            line.Contains(DiffRender.Ansi.BoldCyan) && line.Contains("@@ hunk"));
+    }
+
+    [Fact]
+    public void ApprovalCardRedactsSecretsAndHighlightsChoices()
+    {
+        var state = new ChatTuiState();
+        state.Apply(new SessionEvent(
+            SessionEventKind.ApprovalRequested,
+            Name: "shell",
+            ApprovalId: "a1",
+            Action: "run",
+            Resource: "cargo test --api_key=super-secret",
+            Reason: "executes a command"));
+
+        var render = ChatTuiRenderer.Render(100, 24, state);
+
+        Assert.Contains("[approval]", render);
+        Assert.Contains("tool: shell", render);
+        Assert.Contains("command/path: run cargo test --api_key=***", render);
+        Assert.Contains("risk: executes a command", render);
+        Assert.Contains("[a] allow", render);
+        Assert.Contains("[d] deny", render);
+        Assert.DoesNotContain("super-secret", render);
+    }
+
+    [Fact]
+    public void LongToolOutputIsTruncatedWithOmittedCount()
+    {
+        var state = new ChatTuiState();
+        var text = string.Join(
+            "\n",
+            Enumerable.Range(0, 30).Select(index => $"line-{index}"));
+        state.Transcript.Add(new TranscriptEntry(TranscriptKind.Tool, text));
+
+        var render = ChatTuiRenderer.Render(100, 40, state);
+
+        Assert.Contains("line-0", render);
+        Assert.Contains("line-19", render);
+        Assert.DoesNotContain("line-20", render);
+        Assert.Contains("(10 lines omitted)", render);
+    }
+
+    [Fact]
+    public void ModelPickerShowsProtocolContextAndThreshold()
+    {
+        using var document = JsonDocument.Parse(
+            """
+            {
+              "models": [
+                {
+                  "provider": "local",
+                  "model": "gpt-test",
+                  "protocol": "openai-responses",
+                  "context_window": 256000,
+                  "compact_threshold": 0.9,
+                  "enabled": true
+                },
+                {
+                  "provider": "local",
+                  "model": "disabled",
+                  "protocol": "openai-chat",
+                  "context_window": 1000,
+                  "compact_threshold": 0.5,
+                  "enabled": false
+                }
+              ]
+            }
+            """);
+
+        var models = ChatModelPicker.Parse(document.RootElement);
+        Assert.Single(models);
+        var picker = new ChatModelPickerState();
+        picker.Open(models, "local", "gpt-test");
+        var lines = ChatModelPicker.Render(
+            picker,
+            100,
+            10,
+            UiLanguage.English);
+
+        Assert.Contains(lines, line => line.Contains("protocol=openai-responses"));
+        Assert.Contains(lines, line => line.Contains("context_window=256000"));
+        Assert.Contains(lines, line => line.Contains("compact_threshold=0.9"));
+        Assert.StartsWith("› ", DiffRender.Ansi.Strip(lines[1]));
+    }
+
     [Fact]
     public void ToolOutputStartsOnANewLine()
     {
@@ -216,6 +473,7 @@ public sealed class ChatTuiTests
 
         Assert.Equal("read_file {\"path\":\"a.txt\"}\ncontents", state.Transcript[^1].Text);
     }
+
     [Fact]
     public void ParsesMissingHistoryFieldsAsEmpty()
     {
@@ -319,6 +577,7 @@ public sealed class ChatTuiTests
     private static ConsoleKeyInfo Key(
         ConsoleKey key,
         char character = '\0',
-        bool control = false) =>
-        new(character, key, shift: false, alt: false, control);
+        bool control = false,
+        bool shift = false) =>
+        new(character, key, shift, alt: false, control);
 }
