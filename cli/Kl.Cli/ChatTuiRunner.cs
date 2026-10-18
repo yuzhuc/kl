@@ -252,25 +252,81 @@ public static class ChatTuiRunner
                     switch (action)
                     {
                         case ChatKeyAction.Insert:
-                            state.Insert(key.KeyChar);
+                            if (state.Screen == ChatScreen.History
+                                && state.HistorySearching)
+                            {
+                                state.InsertHistorySearch(key.KeyChar);
+                            }
+                            else
+                            {
+                                state.Insert(key.KeyChar);
+                            }
                             break;
                         case ChatKeyAction.Backspace:
-                            state.Backspace();
+                            if (state.Screen == ChatScreen.History
+                                && state.HistorySearching)
+                            {
+                                state.BackspaceHistorySearch();
+                            }
+                            else
+                            {
+                                state.Backspace();
+                            }
                             break;
                         case ChatKeyAction.Delete:
-                            state.Delete();
+                            if (state.Screen == ChatScreen.History
+                                && state.HistorySearching)
+                            {
+                                state.DeleteHistorySearch();
+                            }
+                            else
+                            {
+                                state.Delete();
+                            }
                             break;
                         case ChatKeyAction.CursorLeft:
-                            state.MoveCursorLeft();
+                            if (state.Screen == ChatScreen.History
+                                && state.HistorySearching)
+                            {
+                                state.MoveHistorySearchLeft();
+                            }
+                            else
+                            {
+                                state.MoveCursorLeft();
+                            }
                             break;
                         case ChatKeyAction.CursorRight:
-                            state.MoveCursorRight();
+                            if (state.Screen == ChatScreen.History
+                                && state.HistorySearching)
+                            {
+                                state.MoveHistorySearchRight();
+                            }
+                            else
+                            {
+                                state.MoveCursorRight();
+                            }
                             break;
                         case ChatKeyAction.CursorHome:
-                            state.MoveCursorHome();
+                            if (state.Screen == ChatScreen.History
+                                && state.HistorySearching)
+                            {
+                                state.MoveHistorySearchHome();
+                            }
+                            else
+                            {
+                                state.MoveCursorHome();
+                            }
                             break;
                         case ChatKeyAction.CursorEnd:
-                            state.MoveCursorEnd();
+                            if (state.Screen == ChatScreen.History
+                                && state.HistorySearching)
+                            {
+                                state.MoveHistorySearchEnd();
+                            }
+                            else
+                            {
+                                state.MoveCursorEnd();
+                            }
                             break;
                         case ChatKeyAction.CommandPaletteUp:
                             ChatCommandPalette.MoveSelection(state, -1);
@@ -364,43 +420,55 @@ public static class ChatTuiRunner
                             state.History = await LoadHistoryAsync(
                                 connection.Session,
                                 state).ConfigureAwait(false);
-                            state.HistorySelection = 0;
+                            state.ResetHistoryView();
                             state.Screen = ChatScreen.History;
                             break;
                         case ChatKeyAction.HistoryUp:
-                            if (state.History.Count > 0)
-                            {
-                                state.HistorySelection = Math.Max(
-                                    0,
-                                    state.HistorySelection - 1);
-                            }
+                            state.HistorySelection = HistoryView.MoveSelection(
+                                state.HistorySelection,
+                                -1,
+                                state.GetHistoryView().Tasks.Count);
                             break;
                         case ChatKeyAction.HistoryDown:
-                            if (state.History.Count > 0)
-                            {
-                                state.HistorySelection = Math.Min(
-                                    state.History.Count - 1,
-                                    state.HistorySelection + 1);
-                            }
+                            state.HistorySelection = HistoryView.MoveSelection(
+                                state.HistorySelection,
+                                1,
+                                state.GetHistoryView().Tasks.Count);
+                            break;
+                        case ChatKeyAction.HistoryNextFilter:
+                            state.SetHistoryFilter(HistoryView.MoveFilter(
+                                state.HistoryFilter,
+                                1));
+                            break;
+                        case ChatKeyAction.HistoryPreviousFilter:
+                            state.SetHistoryFilter(HistoryView.MoveFilter(
+                                state.HistoryFilter,
+                                -1));
+                            break;
+                        case ChatKeyAction.HistorySearch:
+                            state.StartHistorySearch();
+                            break;
+                        case ChatKeyAction.HistorySearchAccept:
+                            state.CloseHistorySearch(clear: false);
+                            break;
+                        case ChatKeyAction.HistorySearchClose:
+                            state.CloseHistorySearch(clear: true);
                             break;
                         case ChatKeyAction.HistoryOpen:
                             if (connection is null)
                             {
                                 break;
                             }
-                            if (!state.IsTurnActive && state.History.Count > 0)
+                            var selected = state.GetHistoryView().Selected(
+                                state.HistorySelection);
+                            if (!state.IsTurnActive && selected is not null)
                             {
-                                var selected = state.History[
-                                    Math.Clamp(
-                                        state.HistorySelection,
-                                        0,
-                                        state.History.Count - 1)];
                                 var currentLanguage = state.Language;
                                 await connection.Session.DisposeAsync()
                                     .ConfigureAwait(false);
                                 connection = await OpenSessionAsync(
                                     options,
-                                    selected.SessionId,
+                                    selected.Session.SessionId,
                                     cancellationToken).ConfigureAwait(false);
                                 state = NewState(
                                     connection.Session,

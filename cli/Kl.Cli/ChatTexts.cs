@@ -198,6 +198,9 @@ public static class ChatTexts
     public static string HistoryTitle(UiLanguage language) =>
         T(language, "History", "历史");
 
+    public static string HistoryGroupBy(UiLanguage language) =>
+        T(language, "Group: Workspace", "分组：工作区");
+
     public static string Workspace(UiLanguage language, string workspace) =>
         T(language, $"Workspace: {workspace}", $"工作区：{workspace}");
 
@@ -213,11 +216,86 @@ public static class ChatTexts
     public static string Prompt(UiLanguage language, string value) =>
         T(language, $"prompt: {value}", $"提示：{value}");
 
+    public static string HistoryFilterLabel(UiLanguage language, HistoryFilter filter) =>
+        filter switch
+        {
+            HistoryFilter.NeedsYou => T(language, "Needs you", "待处理"),
+            HistoryFilter.Working => T(language, "Working", "运行中"),
+            HistoryFilter.Ready => T(language, "Ready", "就绪"),
+            HistoryFilter.Inactive => T(language, "Inactive", "已结束"),
+            _ => T(language, "All", "全部")
+        };
+
+    public static string HistoryStatus(UiLanguage language, HistoryTaskStatus status) =>
+        status switch
+        {
+            HistoryTaskStatus.NeedsYou => T(language, "Needs you", "待处理"),
+            HistoryTaskStatus.Working => T(language, "Working", "运行中"),
+            HistoryTaskStatus.Ready => T(language, "Ready", "就绪"),
+            _ => T(language, "Inactive", "已结束")
+        };
+
+    public static string HistorySearch(UiLanguage language) =>
+        T(language, "Search", "搜索");
+
+    public static string TaskDetails(UiLanguage language) =>
+        T(language, "Task details", "任务详情");
+
+    public static string NoTaskSelected(UiLanguage language) =>
+        T(language, "No task selected.", "未选择任务。");
+
+    public static string HistoryStatusLine(UiLanguage language, string value) =>
+        T(language, $"Status: {value}", $"状态：{value}");
+
+    public static string HistoryModelLine(UiLanguage language, string value) =>
+        T(language, $"Model: {value}", $"模型：{value}");
+
+    public static string HistoryProjectLine(UiLanguage language, string value) =>
+        T(language, $"Project: {value}", $"项目：{value}");
+
+    public static string HistoryPromptLine(UiLanguage language, string value) =>
+        T(language, $"Prompt: {value}", $"提示：{value}");
+
+    public static string HistoryLastLine(UiLanguage language, string value) =>
+        T(language, $"Last: {value}", $"最后：{value}");
+
+    public static string UntitledTask(UiLanguage language) =>
+        T(language, "Untitled task", "未命名任务");
+
     public static string NoSessions(UiLanguage language) =>
         T(
             language,
             "No sessions yet. Press n to start a new session.",
             "暂无会话。按 n 新建会话。");
+
+    public static string NoSearchResults(UiLanguage language) =>
+        T(
+            language,
+            "No tasks match this search.",
+            "没有匹配的任务。");
+
+    public static string HistoryFooter(UiLanguage language, bool searching) =>
+        searching
+            ? T(
+                language,
+                "↑/↓ select  Tab filter  Enter keep  Esc clear",
+                "↑/↓ 选择  Tab 筛选  Enter 保留  Esc 清空")
+            : T(
+                language,
+                "↑/↓ select  Tab filter  Enter resume  n new  / search  ? shortcuts",
+                "↑/↓ 选择  Tab 筛选  Enter 恢复  n 新建  / 搜索  ? 快捷键");
+
+    public static string SecondsAgo(UiLanguage language, int value) =>
+        T(language, $"{value}s ago", $"{value}秒前");
+
+    public static string MinutesAgo(UiLanguage language, int value) =>
+        T(language, $"{value}m ago", $"{value}分前");
+
+    public static string HoursAgo(UiLanguage language, int value) =>
+        T(language, $"{value}h ago", $"{value}小时前");
+
+    public static string DaysAgo(UiLanguage language, int value) =>
+        T(language, $"{value}d ago", $"{value}天前");
 
     public static string ShortcutsTitle(UiLanguage language) =>
         T(language, "Shortcuts", "快捷键");

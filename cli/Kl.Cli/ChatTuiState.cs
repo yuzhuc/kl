@@ -45,6 +45,11 @@ public enum ChatKeyAction
     HistoryDown,
     HistoryOpen,
     HistoryNew,
+    HistoryNextFilter,
+    HistoryPreviousFilter,
+    HistorySearch,
+    HistorySearchAccept,
+    HistorySearchClose,
     HistoryBack,
     ToggleShortcuts,
     ScrollUp,
@@ -142,6 +147,10 @@ public sealed class ChatTuiState
     public bool AssistantStarted { get; set; }
     public List<HistorySession> History { get; set; } = [];
     public int HistorySelection { get; set; }
+    public HistoryFilter HistoryFilter { get; set; } = Kl.Cli.HistoryFilter.All;
+    public string HistorySearch { get; set; } = string.Empty;
+    public int HistorySearchCursor { get; set; }
+    public bool HistorySearching { get; set; }
     public int CommandPaletteSelection { get; set; }
     public bool CommandPaletteDismissed { get; set; }
     public bool ReasoningVisible { get; set; } = true;
@@ -204,6 +213,90 @@ public sealed class ChatTuiState
     }
 
     public void ToggleReasoning() => ReasoningVisible = !ReasoningVisible;
+
+    public HistoryView GetHistoryView() =>
+        HistoryView.Build(
+            History,
+            HistoryFilter,
+            HistorySearch,
+            SessionId,
+            HasPendingApproval,
+            IsTurnActive);
+
+    public void ResetHistoryView()
+    {
+        HistoryFilter = Kl.Cli.HistoryFilter.All;
+        HistorySearch = string.Empty;
+        HistorySearchCursor = 0;
+        HistorySearching = false;
+        HistorySelection = 0;
+    }
+
+    public void SetHistoryFilter(HistoryFilter filter)
+    {
+        HistoryFilter = filter;
+        HistorySelection = 0;
+    }
+
+    public void StartHistorySearch()
+    {
+        HistorySearching = true;
+        HistorySearchCursor = HistorySearch.Length;
+    }
+
+    public void CloseHistorySearch(bool clear)
+    {
+        if (clear)
+        {
+            HistorySearch = string.Empty;
+            HistorySearchCursor = 0;
+            HistorySelection = 0;
+        }
+        HistorySearching = false;
+    }
+
+    public void InsertHistorySearch(char character)
+    {
+        HistorySearch = HistorySearch.Insert(
+            Math.Clamp(HistorySearchCursor, 0, HistorySearch.Length),
+            character.ToString());
+        HistorySearchCursor = Math.Clamp(
+            HistorySearchCursor + 1,
+            0,
+            HistorySearch.Length);
+        HistorySelection = 0;
+    }
+
+    public void BackspaceHistorySearch()
+    {
+        if (HistorySearchCursor <= 0)
+        {
+            return;
+        }
+        HistorySearch = HistorySearch.Remove(HistorySearchCursor - 1, 1);
+        HistorySearchCursor--;
+        HistorySelection = 0;
+    }
+
+    public void DeleteHistorySearch()
+    {
+        if (HistorySearchCursor >= HistorySearch.Length)
+        {
+            return;
+        }
+        HistorySearch = HistorySearch.Remove(HistorySearchCursor, 1);
+        HistorySelection = 0;
+    }
+
+    public void MoveHistorySearchLeft() =>
+        HistorySearchCursor = Math.Max(0, HistorySearchCursor - 1);
+
+    public void MoveHistorySearchRight() =>
+        HistorySearchCursor = Math.Min(HistorySearch.Length, HistorySearchCursor + 1);
+
+    public void MoveHistorySearchHome() => HistorySearchCursor = 0;
+
+    public void MoveHistorySearchEnd() => HistorySearchCursor = HistorySearch.Length;
 
     public void ClearSelection()
     {
@@ -638,6 +731,48 @@ public static class ChatKeyMapper
             return ChatKeyAction.ToggleReasoning;
         }
 
+        if (state.Screen == ChatScreen.History)
+        {
+            if (state.HistorySearching)
+            {
+                return key.Key switch
+                {
+                    ConsoleKey.UpArrow => ChatKeyAction.HistoryUp,
+                    ConsoleKey.DownArrow => ChatKeyAction.HistoryDown,
+                    ConsoleKey.Tab when shift => ChatKeyAction.HistoryPreviousFilter,
+                    ConsoleKey.Tab => ChatKeyAction.HistoryNextFilter,
+                    ConsoleKey.Enter => ChatKeyAction.HistorySearchAccept,
+                    ConsoleKey.Escape => ChatKeyAction.HistorySearchClose,
+                    ConsoleKey.Backspace => ChatKeyAction.Backspace,
+                    ConsoleKey.Delete => ChatKeyAction.Delete,
+                    ConsoleKey.LeftArrow => ChatKeyAction.CursorLeft,
+                    ConsoleKey.RightArrow => ChatKeyAction.CursorRight,
+                    ConsoleKey.Home => ChatKeyAction.CursorHome,
+                    ConsoleKey.End => ChatKeyAction.CursorEnd,
+                    _ when key.KeyChar >= ' '
+                        && key.KeyChar != '\u007f'
+                        && !control
+                        && (key.Modifiers & ConsoleModifiers.Alt) == 0 =>
+                        ChatKeyAction.Insert,
+                    _ => ChatKeyAction.None
+                };
+            }
+
+            return key.Key switch
+            {
+                ConsoleKey.UpArrow => ChatKeyAction.HistoryUp,
+                ConsoleKey.DownArrow => ChatKeyAction.HistoryDown,
+                ConsoleKey.Tab when shift => ChatKeyAction.HistoryPreviousFilter,
+                ConsoleKey.Tab => ChatKeyAction.HistoryNextFilter,
+                ConsoleKey.Enter => ChatKeyAction.HistoryOpen,
+                ConsoleKey.Escape => ChatKeyAction.HistoryBack,
+                _ when key.KeyChar == '/' => ChatKeyAction.HistorySearch,
+                _ when key.KeyChar is 'n' or 'N' => ChatKeyAction.HistoryNew,
+                _ when key.KeyChar == '?' => ChatKeyAction.ToggleShortcuts,
+                _ => ChatKeyAction.None
+            };
+        }
+
         if (state.PendingApprovalId is not null)
         {
             return key.KeyChar switch
@@ -669,20 +804,6 @@ public static class ChatKeyMapper
             {
                 return ChatKeyAction.CommandPaletteDown;
             }
-        }
-
-        if (state.Screen == ChatScreen.History)
-        {
-            return key.Key switch
-            {
-                ConsoleKey.UpArrow => ChatKeyAction.HistoryUp,
-                ConsoleKey.DownArrow => ChatKeyAction.HistoryDown,
-                ConsoleKey.Enter => ChatKeyAction.HistoryOpen,
-                ConsoleKey.Escape => ChatKeyAction.HistoryBack,
-                _ when key.KeyChar is 'n' or 'N' => ChatKeyAction.HistoryNew,
-                _ when key.KeyChar == '?' => ChatKeyAction.ToggleShortcuts,
-                _ => ChatKeyAction.None
-            };
         }
 
         if (state.Screen == ChatScreen.Shortcuts)
