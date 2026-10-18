@@ -1,0 +1,25 @@
+{
+  "id": "wasm-tool",
+  "version": "0.1.0",
+  "api": 1,
+  "kind": "tool",
+  "entrypoint": "tool.wat",
+  "runtime": "wasm",
+  "capabilities": ["tool"],
+  "permissions": {
+    "network": [],
+    "env": [],
+    "fs_read": [],
+    "fs_write": []
+  },
+  "tool_name": "wasm_tool",
+  "tool_parameters": {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+  },
+  "health_timeout_ms": 3000,
+  "drain_timeout_ms": 1000,
+  "call_timeout_ms": 5000,
+  "memory_limit_mb": 64
+}

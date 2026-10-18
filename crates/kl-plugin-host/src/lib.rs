@@ -1,6 +1,7 @@
 mod adapter;
 mod manifest;
 mod sidecar;
+mod wasm;
 
 pub use adapter::{SidecarProvider, SidecarTool};
 pub use manifest::{
@@ -8,6 +9,8 @@ pub use manifest::{
 };
 pub use sidecar::SidecarError;
 use sidecar::SidecarProcess;
+pub use wasm::WasmError;
+use wasm::WasmInstance;
 
 use kl_policy::{PolicyConfig, PolicyEngine};
 use kl_provider::{ChatOutcome, ChatRequest};
@@ -36,6 +39,8 @@ pub enum PluginError {
     Json(#[from] serde_json::Error),
     #[error("sidecar error: {0}")]
     Sidecar(#[from] SidecarError),
+    #[error("wasm error: {0}")]
+    Wasm(#[from] WasmError),
     #[error("plugin not found: {0}")]
     NotFound(String),
     #[error("plugin disabled: {0}")]
@@ -151,10 +156,46 @@ impl Drop for InFlightGuard {
     }
 }
 
+#[derive(Clone)]
+enum ActiveInstance {
+    Sidecar(Arc<SidecarInstance>),
+    Wasm(Arc<WasmInstance>),
+}
+
+impl ActiveInstance {
+    fn manifest(&self) -> &PluginManifest {
+        match self {
+            Self::Sidecar(instance) => &instance.manifest,
+            Self::Wasm(instance) => instance.manifest(),
+        }
+    }
+
+    fn is_healthy(&self) -> bool {
+        match self {
+            Self::Sidecar(instance) => instance.healthy(),
+            Self::Wasm(instance) => instance.is_healthy(),
+        }
+    }
+
+    fn stop(&self, timeout: Duration) {
+        match self {
+            Self::Sidecar(instance) => instance.stop(timeout),
+            Self::Wasm(instance) => instance.stop(timeout),
+        }
+    }
+
+    fn detail(&self) -> String {
+        match self {
+            Self::Sidecar(instance) => format!("sidecar pid {}", instance.process.pid()),
+            Self::Wasm(_) => "wasm component".to_owned(),
+        }
+    }
+}
+
 struct PluginEntry {
     manifest: PluginManifest,
     manifest_path: PathBuf,
-    active: Option<Arc<SidecarInstance>>,
+    active: Option<ActiveInstance>,
     enabled: bool,
     detail: Option<String>,
 }
@@ -192,8 +233,19 @@ impl PluginHost {
         manifest: PluginManifest,
         manifest_path: PathBuf,
         env_overrides: &[(String, String)],
-    ) -> Result<SidecarInstance, PluginError> {
-        SidecarInstance::start(manifest, manifest_path, env_overrides, &self.sandbox)
+    ) -> Result<ActiveInstance, PluginError> {
+        if manifest.is_wasm() {
+            return Ok(ActiveInstance::Wasm(Arc::new(WasmInstance::start(
+                manifest,
+                &manifest_path,
+            )?)));
+        }
+        Ok(ActiveInstance::Sidecar(Arc::new(SidecarInstance::start(
+            manifest,
+            manifest_path,
+            env_overrides,
+            &self.sandbox,
+        )?)))
     }
     pub fn root(&self) -> &Path {
         &self.root
@@ -238,7 +290,7 @@ impl PluginHost {
         let installed = PluginManifest::load(&installed_manifest)?;
 
         let new_instance =
-            Arc::new(self.start_instance(installed.clone(), installed_manifest.clone(), &[])?);
+            self.start_instance(installed.clone(), installed_manifest.clone(), &[])?;
         self.set_current(&id, &version_dir, &installed_manifest)?;
         let _ = fs::remove_file(self.root.join("installed").join(&id).join(".disabled"));
         let old = {
@@ -291,8 +343,7 @@ impl PluginHost {
                 entry.active.clone(),
             )
         };
-        let new_instance =
-            Arc::new(self.start_instance(manifest.clone(), manifest_path.clone(), &[])?);
+        let new_instance = self.start_instance(manifest.clone(), manifest_path.clone(), &[])?;
         {
             let mut entries = self
                 .entries
@@ -321,7 +372,7 @@ impl PluginHost {
                 .ok_or_else(|| PluginError::NotFound(id.to_owned()))?;
             (entry.manifest.clone(), entry.manifest_path.clone())
         };
-        let instance = Arc::new(self.start_instance(manifest, manifest_path, &[])?);
+        let instance = self.start_instance(manifest, manifest_path, &[])?;
         let marker = self.root.join("installed").join(id).join(".disabled");
         let _ = fs::remove_file(marker);
         let mut entries = self
@@ -383,7 +434,7 @@ impl PluginHost {
         write_atomic(&config_path, &serde_json::to_vec_pretty(&config)?)?;
 
         let new_instance = match self.start_instance(manifest.clone(), manifest_path.clone(), &[]) {
-            Ok(instance) => Arc::new(instance),
+            Ok(instance) => instance,
             Err(error) => {
                 restore_file(&config_path, previous.as_deref())?;
                 return Err(error);
@@ -431,9 +482,14 @@ impl PluginHost {
         request: &ChatRequest,
     ) -> Result<ChatOutcome, PluginError> {
         let instance = self.active_instance(id, PluginKind::Provider)?;
-        let result = instance.request(
+        let ActiveInstance::Sidecar(sidecar) = instance else {
+            return Err(PluginError::KindMismatch(format!(
+                "plugin `{id}` does not use the sidecar runtime"
+            )));
+        };
+        let result = sidecar.request(
             "provider.chat",
-            json!({"token": instance.token, "request": request}),
+            json!({"token": sidecar.token, "request": request}),
             self.request_timeout,
         )?;
         serde_json::from_value(result).map_err(|error| PluginError::Protocol(error.to_string()))
@@ -447,42 +503,52 @@ impl PluginHost {
         workspace: &Path,
     ) -> Result<ToolOutcome, PluginError> {
         let instance = self.active_instance(id, PluginKind::Tool)?;
-        if instance.manifest.tool_name() != tool {
+        let manifest = instance.manifest();
+        if manifest.tool_name() != tool {
             return Err(PluginError::KindMismatch(format!(
                 "plugin `{id}` exposes `{}`, not `{tool}`",
-                instance.manifest.tool_name()
+                manifest.tool_name()
             )));
         }
-        validate_tool_permissions(&instance.manifest, args, workspace)?;
-        let policy = manifest_policy(&instance.manifest, &instance.manifest_path, workspace);
-        self.sandbox.grant(&policy).map_err(plugin_sandbox_error)?;
-        if let Some(raw_path) = args.get("path").and_then(Value::as_str) {
-            let write = args.get("write").and_then(Value::as_bool).unwrap_or(false)
-                || args.get("mode").and_then(Value::as_str) == Some("write");
-            self.sandbox
-                .enforce(
-                    &SandboxRequest {
-                        kind: if write {
-                            SandboxViolationKind::WriteOutsideWorkspace
-                        } else {
-                            SandboxViolationKind::ReadSensitivePath
-                        },
-                        resource: raw_path.to_owned(),
-                    },
-                    &policy,
-                )
-                .map_err(plugin_sandbox_error)?;
-        }
-        let result = instance.request(
-            "tool.execute",
-            json!({
-                "token": instance.token,
+        validate_tool_permissions(manifest, args, workspace)?;
+        let result = match &instance {
+            ActiveInstance::Sidecar(sidecar) => {
+                let policy = manifest_policy(&sidecar.manifest, &sidecar.manifest_path, workspace);
+                self.sandbox.grant(&policy).map_err(plugin_sandbox_error)?;
+                if let Some(raw_path) = args.get("path").and_then(Value::as_str) {
+                    let write = args.get("write").and_then(Value::as_bool).unwrap_or(false)
+                        || args.get("mode").and_then(Value::as_str) == Some("write");
+                    self.sandbox
+                        .enforce(
+                            &SandboxRequest {
+                                kind: if write {
+                                    SandboxViolationKind::WriteOutsideWorkspace
+                                } else {
+                                    SandboxViolationKind::ReadSensitivePath
+                                },
+                                resource: raw_path.to_owned(),
+                            },
+                            &policy,
+                        )
+                        .map_err(plugin_sandbox_error)?;
+                }
+                sidecar.request(
+                    "tool.execute",
+                    json!({
+                        "token": sidecar.token,
+                        "tool": tool,
+                        "args": args,
+                        "workspace": workspace,
+                    }),
+                    self.request_timeout,
+                )?
+            }
+            ActiveInstance::Wasm(wasm) => wasm.execute(json!({
                 "tool": tool,
                 "args": args,
                 "workspace": workspace,
-            }),
-            self.request_timeout,
-        )?;
+            }))?,
+        };
         Ok(ToolOutcome {
             success: result
                 .get("success")
@@ -513,11 +579,7 @@ impl PluginHost {
         entries.get(id).map(|entry| entry.manifest.clone())
     }
 
-    fn active_instance(
-        &self,
-        id: &str,
-        kind: PluginKind,
-    ) -> Result<Arc<SidecarInstance>, PluginError> {
+    fn active_instance(&self, id: &str, kind: PluginKind) -> Result<ActiveInstance, PluginError> {
         let entries = self
             .entries
             .lock()
@@ -549,18 +611,16 @@ impl PluginHost {
             healthy: entry
                 .active
                 .as_ref()
-                .map(|active| active.healthy())
+                .map(|active| active.is_healthy())
                 .unwrap_or(false),
             tool_name: entry.manifest.tool_name.clone().or_else(|| {
                 (entry.manifest.kind == PluginKind::Tool).then(|| entry.manifest.tool_name())
             }),
             models: entry.manifest.models(),
-            detail: entry.detail.clone().or_else(|| {
-                entry
-                    .active
-                    .as_ref()
-                    .map(|active| format!("sidecar pid {}", active.process.pid()))
-            }),
+            detail: entry
+                .detail
+                .clone()
+                .or_else(|| entry.active.as_ref().map(ActiveInstance::detail)),
         }
     }
 
@@ -643,7 +703,7 @@ impl PluginHost {
                             PluginEntry {
                                 manifest,
                                 manifest_path,
-                                active: Some(Arc::new(instance)),
+                                active: Some(instance),
                                 enabled: true,
                                 detail: None,
                             },
