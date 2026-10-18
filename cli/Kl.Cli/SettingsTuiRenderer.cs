@@ -32,11 +32,21 @@ public static class SettingsTuiRenderer
             var rightText = row < visible.Count ? visible[row] : string.Empty;
             lines.Add(Fit(leftText, leftWidth) + " | " + Fit(rightText, rightWidth));
         }
-        lines.Add(state.Group == SettingsGroup.Plugins
-            ? SettingsTexts.PluginFooter(state.Language)
-            : SettingsTexts.Footer(state.Language));
+        lines.Add(Footer(state));
         return string.Join('\n', lines.Take(height).Select(line => Fit(line, width)));
     }
+
+    private static string Footer(SettingsTuiState state) => state.Group switch
+    {
+        SettingsGroup.Plugins => SettingsTexts.PluginFooter(state.Language),
+        SettingsGroup.Config => SettingsTexts.ConfigFooter(state.Language),
+        SettingsGroup.Agent => state.View == SettingsView.AgentMenu
+            ? SettingsTexts.AgentMenuFooter(state.Language)
+            : SettingsTexts.AgentEditFooter(state.Language),
+        SettingsGroup.Model when state.View == SettingsView.ModelPicker =>
+            SettingsTexts.ModelPickerFooter(state.Language),
+        _ => SettingsTexts.Footer(state.Language)
+    };
 
     private static List<string> RenderGroups(SettingsTuiState state)
     {
@@ -68,19 +78,20 @@ public static class SettingsTuiRenderer
         {
             return RenderConfig(state);
         }
+        if (state.Group == SettingsGroup.Agent)
+        {
+            return RenderAgent(state);
+        }
         if (state.Group != SettingsGroup.Model)
         {
-            return (
-            [
-                SettingsTexts.Group(state.Group, state.Language),
-                SettingsTexts.ComingSoon(state.Language)
-            ], -1);
+            return ([SettingsTexts.Group(state.Group, state.Language)], -1);
         }
 
         return state.View switch
         {
             SettingsView.ProviderEditor => RenderProviderEditor(state),
             SettingsView.ModelEditor => RenderModelEditor(state),
+            SettingsView.ModelPicker => RenderModelPicker(state),
             _ => RenderProviderList(state)
         };
     }
@@ -165,8 +176,8 @@ public static class SettingsTuiRenderer
         lines.Add(string.Empty);
         lines.Add(SettingsTexts.T(
             state.Language,
-            "Enter edit / set default  n new  e edit  a add model  Space enable/disable",
-            "Enter 编辑/设为默认  n 新增  e 编辑  a 添加模型  空格 启用/禁用"));
+            "Enter edit / set default  q quick select  n new  e edit  a add model  Space enable/disable",
+            "Enter 编辑/设为默认  q 快速选择  n 新增  e 编辑  a 添加模型  空格 启用/禁用"));
         return (lines, selectedLine);
     }
 
@@ -191,10 +202,246 @@ public static class SettingsTuiRenderer
             $"{(state.Pane == SettingsPane.Content ? "> " : "  ")}" +
             $"{language}: [English] [简体中文]");
         lines.Add(string.Empty);
-        lines.Add(SettingsTexts.T(
-            state.Language,
-            "Enter/Space toggles language. F2 saves and exits.",
-            "Enter/空格 切换语言。F2 保存并退出。"));
+        var readOnly = SettingsTexts.ReadOnly(state.Language);
+        lines.Add($"{SettingsTexts.ConfigPath(state.Language)} ({readOnly}): " +
+            $"{(state.Snapshot.Paths.ConfigPath.Length == 0 ? "-" : state.Snapshot.Paths.ConfigPath)}");
+        lines.Add($"{SettingsTexts.UiConfigPath(state.Language)} ({readOnly}): " +
+            $"{(state.Snapshot.Paths.UiPath.Length == 0 ? "-" : state.Snapshot.Paths.UiPath)}");
+        lines.Add($"{SettingsTexts.KlHome(state.Language)} ({readOnly}): " +
+            $"{(state.Snapshot.Paths.HomePath.Length == 0 ? "-" : state.Snapshot.Paths.HomePath)}");
+        return (lines, selectedLine);
+    }
+
+    private static (List<string> Lines, int SelectedLine) RenderAgent(
+        SettingsTuiState state) => state.View switch
+        {
+            SettingsView.Permissions => RenderPermissions(state),
+            SettingsView.Reasoning => RenderReasoning(state),
+            _ => RenderAgentMenu(state)
+        };
+
+    private static (List<string> Lines, int SelectedLine) RenderAgentMenu(
+        SettingsTuiState state)
+    {
+        var lines = new List<string>();
+        AddStatus(lines, state);
+        lines.Add(SettingsTexts.AgentMenu(state.Language));
+        lines.Add(SettingsTexts.AgentMenuIntro(state.Language));
+        lines.Add(string.Empty);
+        var selectedLine = -1;
+        var pages = new[]
+        {
+            (SettingsTexts.Permissions(state.Language),
+                SettingsTexts.T(state.Language, "Approval mode and sandbox", "批准模式与沙箱")),
+            (SettingsTexts.Reasoning(state.Language),
+                SettingsTexts.T(state.Language, "Reasoning effort support", "推理强度支持"))
+        };
+        for (var index = 0; index < pages.Length; index++)
+        {
+            var selected = state.Pane == SettingsPane.Content && state.ListRow == index;
+            if (selected)
+            {
+                selectedLine = lines.Count;
+            }
+            lines.Add(
+                $"{(selected ? "> " : "  ")}{pages[index].Item1}  -  {pages[index].Item2}");
+        }
+        return (lines, selectedLine);
+    }
+
+    private static (List<string> Lines, int SelectedLine) RenderPermissions(
+        SettingsTuiState state)
+    {
+        var lines = new List<string>();
+        AddStatus(lines, state);
+        AddAgentReadError(lines, state);
+        lines.Add(SettingsTexts.Permissions(state.Language));
+        lines.Add(SettingsTexts.PermissionsIntro(state.Language));
+        lines.Add(SettingsTexts.ApprovalMode(state.Language));
+
+        var selectedLine = -1;
+        for (var index = 0; index < SettingsAgentValues.ApprovalModes.Count; index++)
+        {
+            var mode = SettingsAgentValues.ApprovalModes[index];
+            var selected = state.Pane == SettingsPane.Content && state.ListRow == index;
+            if (selected)
+            {
+                selectedLine = lines.Count;
+            }
+            var current = mode == state.CurrentApprovalMode ? "*" : " ";
+            lines.Add(
+                $"{(selected ? "> " : "  ")}{current} {ApprovalModeText(mode, state.Language)}");
+        }
+
+        lines.Add(string.Empty);
+        lines.Add($"{SettingsTexts.SandboxBackend(state.Language)}: " +
+            $"{(state.Snapshot.AgentConfig.SandboxBackend.Length == 0
+                ? SettingsTexts.Unknown(state.Language)
+                : state.Snapshot.AgentConfig.SandboxBackend)}");
+        lines.Add($"{SettingsTexts.SandboxStrict(state.Language)}: " +
+            $"{YesNoUnknown(state.Snapshot.AgentConfig.SandboxStrict, state.Language)}");
+        return (lines, selectedLine);
+    }
+
+    private static (List<string> Lines, int SelectedLine) RenderReasoning(
+        SettingsTuiState state)
+    {
+        var lines = new List<string>();
+        AddStatus(lines, state);
+        AddAgentReadError(lines, state);
+        lines.Add(SettingsTexts.Reasoning(state.Language));
+        lines.Add(SettingsTexts.ReasoningIntro(state.Language));
+        var provider = state.Snapshot.AgentConfig.Provider.Length == 0
+            ? state.Snapshot.ActiveProvider
+            : state.Snapshot.AgentConfig.Provider;
+        var model = state.Snapshot.AgentConfig.Model.Length == 0
+            ? state.Snapshot.ActiveModel
+            : state.Snapshot.AgentConfig.Model;
+        lines.Add($"{SettingsTexts.T(state.Language, "Provider/model", "供应商/模型")}: " +
+            $"{(provider.Length == 0 ? "-" : provider)}/" +
+            $"{(model.Length == 0 ? "-" : model)}");
+        lines.Add($"{SettingsTexts.ReasoningSupport(state.Language)}: " +
+            $"{SupportText(state.Snapshot.AgentConfig.ReasoningSupported, state.Language)}");
+        lines.Add(SettingsTexts.ReasoningEffort(state.Language));
+
+        var selectedLine = -1;
+        for (var index = 0; index < SettingsAgentValues.ReasoningEfforts.Count; index++)
+        {
+            var effort = SettingsAgentValues.ReasoningEfforts[index];
+            var selected = state.Pane == SettingsPane.Content && state.ListRow == index;
+            if (selected)
+            {
+                selectedLine = lines.Count;
+            }
+            var current = effort == state.CurrentReasoningEffort ? "*" : " ";
+            lines.Add(
+                $"{(selected ? "> " : "  ")}{current} {EffortText(effort, state.Language)}");
+        }
+        return (lines, selectedLine);
+    }
+
+    private static void AddStatus(List<string> lines, SettingsTuiState state)
+    {
+        if (state.Notice == SettingsNotice.PermissionsSaved)
+        {
+            lines.Add(SettingsTexts.T(state.Language,
+                "permissions saved",
+                "权限已保存"));
+        }
+        else if (state.Notice == SettingsNotice.ReasoningSaved)
+        {
+            lines.Add(SettingsTexts.T(state.Language,
+                "reasoning saved",
+                "推理设置已保存"));
+        }
+        else if (!string.IsNullOrWhiteSpace(state.Error))
+        {
+            lines.Add("[error] " + state.Error);
+        }
+        else if (!string.IsNullOrWhiteSpace(state.Status))
+        {
+            lines.Add(state.Status);
+        }
+    }
+
+    private static void AddAgentReadError(List<string> lines, SettingsTuiState state)
+    {
+        if (state.Notice == SettingsNotice.None
+            && string.IsNullOrWhiteSpace(state.Error)
+            && !string.IsNullOrWhiteSpace(state.Snapshot.AgentConfig.ReadError))
+        {
+            lines.Add("[error] " + state.Snapshot.AgentConfig.ReadError);
+        }
+    }
+
+    private static string ApprovalModeText(
+        SettingsApprovalMode mode,
+        UiLanguage language) => mode switch
+        {
+            SettingsApprovalMode.Ask => SettingsTexts.T(language,
+                "ask - approve before changes",
+                "ask - 修改前询问"),
+            SettingsApprovalMode.Auto => SettingsTexts.T(language,
+                "auto - approve automatically",
+                "auto - 自动批准"),
+            SettingsApprovalMode.ReadOnly => SettingsTexts.T(language,
+                "read-only - no changes",
+                "read-only - 只读"),
+            _ => mode.ToString()
+        };
+
+    private static string EffortText(
+        SettingsReasoningEffort effort,
+        UiLanguage language) => effort switch
+        {
+            SettingsReasoningEffort.Default => SettingsTexts.T(language,
+                "default - provider decides",
+                "default - 供应商决定"),
+            SettingsReasoningEffort.Low => SettingsTexts.T(language,
+                "low - fastest",
+                "low - 最快"),
+            SettingsReasoningEffort.Medium => SettingsTexts.T(language,
+                "medium - balanced",
+                "medium - 均衡"),
+            SettingsReasoningEffort.High => SettingsTexts.T(language,
+                "high - deepest",
+                "high - 最深"),
+            _ => effort.ToString()
+        };
+
+    private static string SupportText(bool? supported, UiLanguage language) =>
+        supported switch
+        {
+            true => SettingsTexts.Supported(language),
+            false => SettingsTexts.Unsupported(language),
+            _ => SettingsTexts.Unknown(language)
+        };
+
+    private static string YesNoUnknown(bool? value, UiLanguage language) =>
+        value switch
+        {
+            true => SettingsTexts.T(language, "yes", "是"),
+            false => SettingsTexts.T(language, "no", "否"),
+            _ => SettingsTexts.Unknown(language)
+        };
+
+    private static (List<string> Lines, int SelectedLine) RenderModelPicker(
+        SettingsTuiState state)
+    {
+        var lines = new List<string>();
+        AddStatus(lines, state);
+        lines.Add(SettingsTexts.QuickSelect(state.Language));
+        lines.Add(SettingsTexts.QuickSelectIntro(state.Language));
+        var models = state.QuickModels;
+        var selectedLine = -1;
+        if (models.Count == 0)
+        {
+            lines.Add(SettingsTexts.T(state.Language,
+                "  No enabled-provider models available.",
+                "  暂无已启用供应商的模型。"));
+            return (lines, selectedLine);
+        }
+
+        for (var index = 0; index < models.Count; index++)
+        {
+            var model = models[index];
+            var selected = state.Pane == SettingsPane.Content && state.ListRow == index;
+            if (selected)
+            {
+                selectedLine = lines.Count;
+            }
+            var active = model.Provider == state.Snapshot.ActiveProvider
+                && model.Id == state.Snapshot.ActiveModel
+                ? "*"
+                : " ";
+            lines.Add(
+                $"{(selected ? "> " : "  ")}{active} {model.Provider}/{model.Id} " +
+                $"[{model.Protocol}]");
+            lines.Add($"    context_window={model.ContextWindow}");
+            lines.Add(
+                $"    compact_threshold={model.CompactThreshold.ToString("0.###", CultureInfo.InvariantCulture)}");
+            lines.Add($"    max_output_tokens={model.MaxOutputTokens}");
+        }
         return (lines, selectedLine);
     }
 
