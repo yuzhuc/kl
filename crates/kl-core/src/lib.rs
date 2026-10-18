@@ -22,17 +22,20 @@ use kl_plugin_host::{
 };
 use kl_policy::{PolicyEngine, PolicyError, ToolAccess};
 use kl_protocol::{
-    ApprovalDecision, ApprovalRespondParams, AuditTailParams, CORE_NAME, CORE_VERSION, CoreEvent,
-    DefaultModelResult, DoctorCheck, DoctorResult, EventNotification, HandshakeParams,
-    HandshakeResult, IncomingMessage, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION, PingParams,
+    AgentConfigResult, AgentConfigSetParams, ApprovalDecision, ApprovalMode, ApprovalRespondParams,
+    AuditTailParams, CORE_NAME, CORE_VERSION, CoreEvent, DefaultModelResult, DoctorCheck,
+    DoctorResult, EventNotification, HandshakeParams, HandshakeResult, IncomingMessage,
+    MIN_PROTOCOL_VERSION, PROTOCOL_VERSION, PermissionsResult, PermissionsSetParams, PingParams,
     PingResult, PluginIdParams, PluginInstallParams, PluginListResult, ProviderEnabledResult,
     ProviderKeyResult, ProviderListResult, ProviderModelSummary, ProviderSetApiKeyParams,
     ProviderSetEnabledParams, ProviderUpsertParams, ProviderUpsertResult, RequestId, ReviewFinding,
-    ReviewResult, ReviewRunParams, RpcError, SessionCreateParams, SessionHistoryEntry,
+    ReviewResult, ReviewRunParams, RpcError, SandboxCapabilitiesSummary, SandboxSummary,
+    SessionCompactParams, SessionCompactResult, SessionCreateParams, SessionHistoryEntry,
     SessionHistoryParams, SessionHistoryResult, SessionHistoryToolSummary, SessionInfo,
-    SessionListResult, SessionResumeParams, SetDefaultModelParams, TurnCancelParams,
-    TurnCancelResult, TurnStartParams, TurnStartResult, error_codes, failure, failure_with_data,
-    methods, negotiate, success, validate_envelope,
+    SessionListResult, SessionResumeParams, SessionStatusParams, SessionStatusResult,
+    SetDefaultModelParams, TurnCancelParams, TurnCancelResult, TurnStartParams, TurnStartResult,
+    WorkspaceInitParams, WorkspaceInitResult, error_codes, failure, failure_with_data, methods,
+    negotiate, success, validate_envelope,
 };
 use kl_provider::{
     AnthropicAdapter, BoundProvider, CancellationToken, ChatEvent, ChatMessage, ChatOutcome,
@@ -570,10 +573,14 @@ impl DeepTurn {
                 } else {
                     token_budget.saturating_sub(used)
                 },
-                tool_access: match stage {
-                    DeepStage::Reviewer => ToolAccess::ReadOnly,
-                    DeepStage::Verifier => ToolAccess::VerifyOnly,
-                    _ => ToolAccess::Full,
+                tool_access: if self.settings.approval_mode == ApprovalMode::ReadOnly {
+                    ToolAccess::ReadOnly
+                } else {
+                    match stage {
+                        DeepStage::Reviewer => ToolAccess::ReadOnly,
+                        DeepStage::Verifier => ToolAccess::VerifyOnly,
+                        _ => ToolAccess::Full,
+                    }
                 },
             };
             let agent = Agent::new(
@@ -820,6 +827,7 @@ struct Core {
     plugin_host: Arc<PluginHost>,
     hub: EventHub,
     sessions: Arc<Mutex<HashMap<String, SessionState>>>,
+    current_session: Option<String>,
     approvals: Arc<ApprovalBroker>,
     cancels: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
     threads: Vec<JoinHandle<()>>,
@@ -868,6 +876,7 @@ impl Core {
             plugin_host,
             hub,
             sessions: Arc::new(Mutex::new(HashMap::new())),
+            current_session: None,
             approvals: Arc::new(ApprovalBroker::new(approval_timeout)),
             cancels: Arc::new(Mutex::new(HashMap::new())),
             threads: Vec::new(),
@@ -945,9 +954,13 @@ impl Core {
             methods::SESSION_RESUME => self.session_resume(params),
             methods::SESSION_HISTORY => self.session_history(params),
             methods::SESSION_LIST => self.session_list(),
+            methods::SESSION_STATUS => self.session_status(params),
+            methods::SESSION_COMPACT => self.session_compact(params),
             methods::TURN_START => self.turn_start(params),
             methods::TURN_CANCEL => self.turn_cancel(params),
             methods::APPROVAL_RESPOND => self.approval_respond(params),
+            methods::PERMISSIONS_GET => self.permissions_get(),
+            methods::PERMISSIONS_SET => self.permissions_set(params),
             methods::PROVIDER_LIST => self.provider_list(),
             methods::PROVIDER_UPSERT => self.provider_upsert(params),
             methods::PROVIDER_SET_API_KEY => self.provider_set_api_key(params),
@@ -956,6 +969,9 @@ impl Core {
             methods::AUDIT_TAIL => self.audit_tail(params),
             methods::REVIEW_RUN => self.review_run(params),
             methods::CONFIG_GET => self.config_get(),
+            methods::WORKSPACE_INIT => self.workspace_init(params),
+            methods::AGENT_CONFIG_GET => self.agent_config_get(),
+            methods::AGENT_CONFIG_SET => self.agent_config_set(params),
             methods::PLUGIN_LIST => self.plugin_list(),
             methods::PLUGIN_INSTALL => self.plugin_install(params),
             methods::PLUGIN_RELOAD => self.plugin_reload(params),
@@ -1213,6 +1229,7 @@ impl Core {
                 },
             );
         }
+        self.current_session = Some(session_id.clone());
         let _ = self.hub.emit(
             &session_id,
             CoreEvent::SessionCreated {
@@ -1230,6 +1247,7 @@ impl Core {
                 .lock()
                 .unwrap_or_else(|error| error.into_inner());
             if let Some(state) = sessions.get(&params.session_id) {
+                self.current_session = Some(params.session_id.clone());
                 return to_value(session_info(&state.meta, state.messages.len()));
             }
         }
@@ -1250,18 +1268,21 @@ impl Core {
             .map_err(store_error)?;
         self.hub.register(&params.session_id, seq);
         let info = session_info(&data.meta, messages.len());
+        let session_id = params.session_id;
         let mut sessions = self
             .sessions
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         sessions.insert(
-            params.session_id,
+            session_id.clone(),
             SessionState {
                 meta: data.meta,
                 messages,
                 active_turn: None,
             },
         );
+        drop(sessions);
+        self.current_session = Some(session_id);
         to_value(info)
     }
 
@@ -1292,6 +1313,189 @@ impl Core {
                 .map(|meta| session_info(meta, meta.message_count))
                 .collect(),
         })
+    }
+
+    fn session_status(&mut self, params: Value) -> Result<Value, RpcError> {
+        let params: SessionStatusParams = parse_params(params, methods::SESSION_STATUS)?;
+        let session_id = self.resolve_session_id(params.session_id.as_deref())?;
+        self.ensure_session_loaded(&session_id)?;
+        let (workspace, provider, model, turn_active) = {
+            let sessions = self
+                .sessions
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            let state = sessions.get(&session_id).ok_or_else(|| {
+                rpc_error(
+                    error_codes::SESSION_NOT_FOUND,
+                    format!("session not found: {session_id}"),
+                )
+            })?;
+            (
+                state.meta.workspace.clone(),
+                state.meta.provider.clone(),
+                state.meta.model.clone(),
+                state.active_turn.is_some(),
+            )
+        };
+        let (_, metadata) = self
+            .router
+            .get(Some(&provider), Some(&model))
+            .map_err(provider_error)?;
+        to_value(SessionStatusResult {
+            session_id,
+            workspace,
+            provider,
+            model,
+            context_window: metadata.context_window,
+            compact_threshold: metadata.compact_threshold,
+            max_output_tokens: metadata.max_output_tokens,
+            turn_active,
+            approval_mode: self.config.agent.approval_mode,
+            sandbox: self.sandbox_summary(),
+        })
+    }
+
+    fn session_compact(&mut self, params: Value) -> Result<Value, RpcError> {
+        let params: SessionCompactParams = parse_params(params, methods::SESSION_COMPACT)?;
+        let session_id = self.resolve_session_id(params.session_id.as_deref())?;
+        self.ensure_session_loaded(&session_id)?;
+        let (messages, metadata) = {
+            let sessions = self
+                .sessions
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            let state = sessions.get(&session_id).ok_or_else(|| {
+                rpc_error(
+                    error_codes::SESSION_NOT_FOUND,
+                    format!("session not found: {session_id}"),
+                )
+            })?;
+            if let Some(active) = &state.active_turn {
+                return Err(rpc_error(
+                    error_codes::TURN_IN_PROGRESS,
+                    format!("turn already running: {active}"),
+                ));
+            }
+            let (provider, metadata) = self
+                .router
+                .get(Some(&state.meta.provider), Some(&state.meta.model))
+                .map_err(provider_error)?;
+            let policy = Arc::new(
+                PolicyEngine::new(
+                    PathBuf::from(&state.meta.workspace),
+                    self.effective_policy_config(),
+                )
+                .map_err(|error| rpc_error(error_codes::INVALID_PARAMS, error.to_string()))?,
+            );
+            let agent = Agent::new(
+                provider,
+                metadata.clone(),
+                self.tools.clone(),
+                policy,
+                self.sandbox.clone(),
+                self.audit.clone(),
+                AgentConfig {
+                    max_iterations: self.config.agent.max_iterations.max(1),
+                    max_tool_calls_per_turn: 32,
+                    max_tool_output_bytes: self.config.agent.max_tool_output_bytes,
+                    command_timeout: Duration::from_secs(
+                        self.config.agent.command_timeout_secs.max(1),
+                    ),
+                    max_total_tokens: 0,
+                    tool_access: self.tool_access(),
+                },
+            );
+            let compacted = agent.compact_history(&state.messages).map_err(|error| {
+                rpc_error(
+                    error_codes::INVALID_PARAMS,
+                    format!("cannot compact session: {error}"),
+                )
+            })?;
+            (compacted, metadata)
+        };
+        let omitted_messages = messages.omitted_messages;
+        let estimated_tokens = messages.estimated_tokens;
+        let history = messages.history;
+        {
+            let mut sessions = self
+                .sessions
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            let state = sessions.get_mut(&session_id).ok_or_else(|| {
+                rpc_error(
+                    error_codes::SESSION_NOT_FOUND,
+                    format!("session not found: {session_id}"),
+                )
+            })?;
+            if let Some(active) = &state.active_turn {
+                return Err(rpc_error(
+                    error_codes::TURN_IN_PROGRESS,
+                    format!("turn already running: {active}"),
+                ));
+            }
+            state.messages = history;
+            let data = SessionData {
+                meta: state.meta.clone(),
+                messages: state
+                    .messages
+                    .iter()
+                    .map(|message| serde_json::to_value(message).unwrap_or(Value::Null))
+                    .collect(),
+            };
+            self.store.save(&data).map_err(store_error)?;
+        }
+        to_value(SessionCompactResult {
+            omitted_messages,
+            estimated_tokens,
+            context_window: metadata.context_window,
+            compact_threshold: metadata.compact_threshold,
+        })
+    }
+
+    fn resolve_session_id(&self, requested: Option<&str>) -> Result<String, RpcError> {
+        if let Some(session_id) = requested.filter(|session_id| !session_id.is_empty()) {
+            return Ok(session_id.to_owned());
+        }
+        let sessions = self
+            .sessions
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if let Some(session_id) = &self.current_session {
+            if sessions.contains_key(session_id) {
+                return Ok(session_id.clone());
+            }
+        }
+        if let Some((session_id, _)) = sessions
+            .iter()
+            .filter(|(_, state)| state.active_turn.is_some())
+            .max_by_key(|(_, state)| &state.meta.updated_at)
+        {
+            return Ok(session_id.clone());
+        }
+        if let Some((session_id, _)) = sessions
+            .iter()
+            .max_by_key(|(_, state)| &state.meta.updated_at)
+        {
+            return Ok(session_id.clone());
+        }
+        Err(rpc_error(
+            error_codes::SESSION_NOT_FOUND,
+            "no active session",
+        ))
+    }
+
+    fn ensure_session_loaded(&mut self, session_id: &str) -> Result<(), RpcError> {
+        let loaded = self
+            .sessions
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .contains_key(session_id);
+        if loaded {
+            self.current_session = Some(session_id.to_owned());
+            return Ok(());
+        }
+        self.session_resume(json!({ "session_id": session_id }))
+            .map(|_| ())
     }
 
     fn turn_start(&mut self, params: Value) -> Result<Value, RpcError> {
@@ -1347,7 +1551,7 @@ impl Core {
         };
 
         let policy = Arc::new(
-            PolicyEngine::new(PathBuf::from(&workspace), self.config.policy.clone())
+            PolicyEngine::new(PathBuf::from(&workspace), self.effective_policy_config())
                 .map_err(|error| rpc_error(error_codes::INVALID_PARAMS, error.to_string()))?,
         );
         let cancel = Arc::new(AtomicBool::new(false));
@@ -1374,7 +1578,7 @@ impl Core {
             max_tool_output_bytes: self.config.agent.max_tool_output_bytes,
             command_timeout: Duration::from_secs(self.config.agent.command_timeout_secs.max(1)),
             max_total_tokens: 0,
-            tool_access: ToolAccess::Full,
+            tool_access: self.tool_access(),
         };
         let is_deep = quality == QualityMode::Deep;
 
@@ -1515,6 +1719,64 @@ impl Core {
                 error_codes::APPROVAL_NOT_FOUND,
                 format!("approval not pending: {}", params.approval_id),
             ))
+        }
+    }
+
+    fn permissions_get(&self) -> Result<Value, RpcError> {
+        to_value(self.permissions_result())
+    }
+
+    fn permissions_set(&mut self, params: Value) -> Result<Value, RpcError> {
+        let params: PermissionsSetParams = parse_params(params, methods::PERMISSIONS_SET)?;
+        config::permissions_set(&self.context.config_path, params.approval_mode)
+            .map_err(config_write_error)?;
+        self.config.agent.approval_mode = params.approval_mode;
+        let auto_approve = params.approval_mode == ApprovalMode::Auto;
+        self.config.policy.auto_approve_edits = auto_approve;
+        self.config.policy.auto_approve_shell = auto_approve;
+        self.config.policy.auto_approve_plugins = auto_approve;
+        to_value(self.permissions_result())
+    }
+
+    fn permissions_result(&self) -> PermissionsResult {
+        PermissionsResult {
+            approval_mode: self.config.agent.approval_mode,
+            policy_summary: policy_summary(self.config.agent.approval_mode).to_owned(),
+            sandbox: self.sandbox_summary(),
+        }
+    }
+
+    fn sandbox_summary(&self) -> SandboxSummary {
+        let status = self.sandbox.status();
+        SandboxSummary {
+            backend: status.backend.clone(),
+            strict: status.strict,
+            capabilities: SandboxCapabilitiesSummary {
+                os_isolation: status.capabilities.os_isolation,
+                filesystem_read_restriction: status.capabilities.filesystem_read_restriction,
+                filesystem_write_restriction: status.capabilities.filesystem_write_restriction,
+                child_process_containment: status.capabilities.child_process_containment,
+                network_isolation: status.capabilities.network_isolation,
+                notes: status.capabilities.notes.clone(),
+            },
+        }
+    }
+
+    fn effective_policy_config(&self) -> kl_policy::PolicyConfig {
+        let mut policy = self.config.policy.clone();
+        if self.config.agent.approval_mode == ApprovalMode::Auto {
+            policy.auto_approve_edits = true;
+            policy.auto_approve_shell = true;
+            policy.auto_approve_plugins = true;
+        }
+        policy
+    }
+
+    fn tool_access(&self) -> ToolAccess {
+        if self.config.agent.approval_mode == ApprovalMode::ReadOnly {
+            ToolAccess::ReadOnly
+        } else {
+            ToolAccess::Full
         }
     }
 
@@ -1742,6 +2004,123 @@ impl Core {
             "config": self.config.redacted(),
             "providers": self.catalog.redacted(),
         }))
+    }
+
+    fn agent_config_get(&self) -> Result<Value, RpcError> {
+        to_value(AgentConfigResult {
+            reasoning_effort: self.config.agent.reasoning_effort,
+        })
+    }
+
+    fn agent_config_set(&mut self, params: Value) -> Result<Value, RpcError> {
+        let params: AgentConfigSetParams = parse_params(params, methods::AGENT_CONFIG_SET)?;
+        config::agent_config_set(&self.context.config_path, params.reasoning_effort)
+            .map_err(config_write_error)?;
+        self.config.agent.reasoning_effort = params.reasoning_effort;
+        self.agent_config_get()
+    }
+
+    fn workspace_init(&self, params: Value) -> Result<Value, RpcError> {
+        const AGENTS_TEMPLATE: &str = "# AGENTS.md\n\n## Project Instructions\n\n- Keep changes focused on the requested task.\n- Follow the repository's existing conventions.\n- Run relevant tests before finishing.\n";
+
+        let params: WorkspaceInitParams = parse_params(params, methods::WORKSPACE_INIT)?;
+        let (workspace, requested) = match self.loaded_workspace_root() {
+            Some(workspace) => {
+                let workspace = dunce::canonicalize(&workspace).map_err(|error| {
+                    rpc_error(
+                        error_codes::INVALID_PARAMS,
+                        format!("workspace is not accessible: {error}"),
+                    )
+                })?;
+                let requested = params
+                    .path
+                    .as_deref()
+                    .map(|path| workspace.join(path))
+                    .unwrap_or_else(|| workspace.clone());
+                (workspace, requested)
+            }
+            None => {
+                let root = match params.path.as_deref() {
+                    Some(path) => PathBuf::from(path),
+                    None => std::env::current_dir().map_err(|error| {
+                        rpc_error(error_codes::INTERNAL_ERROR, error.to_string())
+                    })?,
+                };
+                let root = dunce::canonicalize(&root).map_err(|error| {
+                    rpc_error(
+                        error_codes::INVALID_PARAMS,
+                        format!("workspace is not accessible: {error}"),
+                    )
+                })?;
+                (root.clone(), root)
+            }
+        };
+        let directory = dunce::canonicalize(&requested).map_err(|error| {
+            rpc_error(
+                error_codes::INVALID_PARAMS,
+                format!("workspace path is not accessible: {error}"),
+            )
+        })?;
+        if !directory.starts_with(&workspace) {
+            return Err(rpc_error(
+                error_codes::POLICY_DENIED,
+                "workspace.init path is outside the workspace",
+            ));
+        }
+        if !directory.is_dir() {
+            return Err(rpc_error(
+                error_codes::INVALID_PARAMS,
+                "workspace.init path must be a directory",
+            ));
+        }
+        let agents_path = directory.join("AGENTS.md");
+        match std::fs::symlink_metadata(&agents_path) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(rpc_error(
+                    error_codes::POLICY_DENIED,
+                    "AGENTS.md must not be a symlink",
+                ));
+            }
+            Ok(metadata) if !metadata.is_file() => {
+                return Err(rpc_error(
+                    error_codes::INVALID_PARAMS,
+                    "AGENTS.md must be a regular file",
+                ));
+            }
+            Ok(_) if !params.force => {
+                return to_value(WorkspaceInitResult {
+                    path: agents_path.display().to_string(),
+                    created: false,
+                });
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(rpc_error(error_codes::INTERNAL_ERROR, error.to_string()));
+            }
+        }
+        write_file_atomic(&agents_path, AGENTS_TEMPLATE.as_bytes())
+            .map_err(|error| rpc_error(error_codes::INTERNAL_ERROR, error.to_string()))?;
+        to_value(WorkspaceInitResult {
+            path: agents_path.display().to_string(),
+            created: true,
+        })
+    }
+
+    fn loaded_workspace_root(&self) -> Option<PathBuf> {
+        let sessions = self
+            .sessions
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if let Some(session_id) = &self.current_session {
+            if let Some(state) = sessions.get(session_id) {
+                return Some(PathBuf::from(&state.meta.workspace));
+            }
+        }
+        sessions
+            .values()
+            .max_by_key(|state| &state.meta.updated_at)
+            .map(|state| PathBuf::from(&state.meta.workspace))
     }
 
     fn shutdown(&mut self) {
@@ -2212,6 +2591,41 @@ fn store_error(error: StoreError) -> RpcError {
     }
 }
 
+fn policy_summary(mode: ApprovalMode) -> &'static str {
+    match mode {
+        ApprovalMode::Ask => {
+            "Workspace paths are enforced; actions selected by policy can require approval."
+        }
+        ApprovalMode::Auto => {
+            "Edits, shell commands, and plugins are auto-approved within policy; workspace paths are enforced."
+        }
+        ApprovalMode::ReadOnly => {
+            "Reads are allowed; edits, shell commands, plugin actions, and git writes are denied."
+        }
+    }
+}
+
+fn write_file_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("AGENTS.md");
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temporary = path.with_file_name(format!(".{name}.{}.{stamp}.tmp", std::process::id()));
+    if let Err(error) = std::fs::write(&temporary, bytes) {
+        let _ = std::fs::remove_file(&temporary);
+        return Err(error);
+    }
+    if let Err(error) = std::fs::rename(&temporary, path) {
+        let _ = std::fs::remove_file(&temporary);
+        return Err(error);
+    }
+    Ok(())
+}
+
 fn check_writable_dir(path: &Path, name: &str) -> DoctorCheck {
     let result = std::fs::create_dir_all(path).and_then(|()| {
         let probe = path.join(".write-probe");
@@ -2677,6 +3091,300 @@ auto_approve_edits = true
         )
         .unwrap();
         (core, buffer)
+    }
+
+    fn command_config(temp: &Path) -> PathBuf {
+        std::fs::write(temp.join("script.json"), r#"[{"text":"unused"}]"#).unwrap();
+        let config = temp.join("kl.toml");
+        std::fs::write(
+            &config,
+            r#"
+[agent]
+provider = "scripted"
+model = "scripted"
+scripted_path = "script.json"
+max_iterations = 2
+"#,
+        )
+        .unwrap();
+        config
+    }
+
+    #[test]
+    fn session_status_reports_the_loaded_session_and_turn_state() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = temp.path().join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let config = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let (mut core, _) = new_test_core(config, home.path());
+        core.handshaken = true;
+        let created = core
+            .session_create(json!({"workspace": workspace.to_string_lossy()}))
+            .unwrap();
+        let session_id = created["session_id"].as_str().unwrap().to_owned();
+
+        let status = core.session_status(json!({})).unwrap();
+        assert_eq!(status["session_id"], session_id);
+        assert_eq!(status["workspace"], workspace.to_string_lossy().as_ref());
+        assert_eq!(status["provider"], "scripted");
+        assert_eq!(status["model"], "scripted");
+        assert_eq!(status["context_window"], 8192);
+        assert_eq!(status["turn_active"], false);
+        assert_eq!(status["approval_mode"], "ask");
+        assert!(status["sandbox"]["backend"].as_str().is_some());
+        assert!(status["sandbox"]["capabilities"].is_object());
+
+        {
+            let mut sessions = core.sessions.lock().unwrap();
+            sessions.get_mut(&session_id).unwrap().active_turn = Some("turn-test".to_owned());
+        }
+        let active = core
+            .session_status(json!({"session_id": session_id}))
+            .unwrap();
+        assert_eq!(active["turn_active"], true);
+    }
+
+    #[test]
+    fn permissions_modes_are_hot_updated_and_persisted() {
+        let temp = tempfile::tempdir().unwrap();
+        let config_path = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let (mut core, _) = new_test_core(config_path.clone(), home.path());
+        core.handshaken = true;
+
+        for mode in ["ask", "auto", "read-only"] {
+            let result = core
+                .permissions_set(json!({"approval_mode": mode}))
+                .unwrap();
+            assert_eq!(result["approval_mode"], mode);
+            assert_eq!(core.permissions_get().unwrap(), result);
+            let saved = Config::load(&config_path).unwrap();
+            assert_eq!(saved.agent.approval_mode.as_str(), mode);
+            let auto = mode == "auto";
+            assert_eq!(saved.policy.auto_approve_edits, auto);
+            assert_eq!(saved.policy.auto_approve_shell, auto);
+            assert_eq!(saved.policy.auto_approve_plugins, auto);
+            assert_eq!(
+                core.tool_access(),
+                if mode == "read-only" {
+                    ToolAccess::ReadOnly
+                } else {
+                    ToolAccess::Full
+                }
+            );
+        }
+
+        let error = core
+            .permissions_set(json!({"approval_mode": "unknown"}))
+            .unwrap_err();
+        assert_eq!(error.code, error_codes::INVALID_PARAMS);
+        assert_eq!(
+            core.permissions_get().unwrap()["approval_mode"],
+            "read-only"
+        );
+    }
+
+    #[test]
+    fn permissions_and_reasoning_effort_survive_restart() {
+        let temp = tempfile::tempdir().unwrap();
+        let config_path = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        {
+            let (mut core, _) = new_test_core(config_path.clone(), home.path());
+            core.handshaken = true;
+            assert_eq!(
+                core.agent_config_get().unwrap()["reasoning_effort"],
+                "default"
+            );
+            core.permissions_set(json!({"approval_mode": "auto"}))
+                .unwrap();
+            core.agent_config_set(json!({"reasoning_effort": "high"}))
+                .unwrap();
+        }
+
+        let (mut restarted, _) = new_test_core(config_path, home.path());
+        restarted.handshaken = true;
+        assert_eq!(
+            restarted.permissions_get().unwrap()["approval_mode"],
+            "auto"
+        );
+        assert_eq!(
+            restarted.agent_config_get().unwrap()["reasoning_effort"],
+            "high"
+        );
+        let error = restarted
+            .agent_config_set(json!({"reasoning_effort": "extreme"}))
+            .unwrap_err();
+        assert_eq!(error.code, error_codes::INVALID_PARAMS);
+    }
+
+    #[test]
+    fn session_compact_reuses_agent_compaction_and_keeps_tool_pairs() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = temp.path().join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let config = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let (mut core, _) = new_test_core(config, home.path());
+        core.handshaken = true;
+        let created = core
+            .session_create(json!({"workspace": workspace.to_string_lossy()}))
+            .unwrap();
+        let session_id = created["session_id"].as_str().unwrap().to_owned();
+        let empty = core
+            .session_compact(json!({"session_id": session_id}))
+            .unwrap();
+        assert_eq!(empty["omitted_messages"], 0);
+        assert!(empty["estimated_tokens"].as_u64().unwrap() > 0);
+        let tool_call = kl_provider::ToolCall {
+            id: "latest-call".to_owned(),
+            name: "read_file".to_owned(),
+            arguments: r#"{"path":"README.md"}"#.to_owned(),
+        };
+        let mut messages = Vec::new();
+        for round in 0..3 {
+            messages.push(ChatMessage::user(format!("round {round}")));
+            if round == 2 {
+                messages.push(ChatMessage::assistant("", vec![tool_call.clone()]));
+                messages.push(ChatMessage::tool("latest-call", "file contents"));
+                messages.push(ChatMessage::assistant("latest answer", Vec::new()));
+            } else {
+                messages.push(ChatMessage::assistant(
+                    format!("answer {round}"),
+                    Vec::new(),
+                ));
+            }
+        }
+        {
+            let mut sessions = core.sessions.lock().unwrap();
+            sessions.get_mut(&session_id).unwrap().messages = messages;
+        }
+
+        let compacted = core
+            .session_compact(json!({"session_id": session_id}))
+            .unwrap();
+        assert!(compacted["omitted_messages"].as_u64().unwrap() > 0);
+        assert!(compacted["estimated_tokens"].as_u64().unwrap() > 0);
+        assert_eq!(compacted["context_window"], 8192);
+        assert!((compacted["compact_threshold"].as_f64().unwrap() - 0.8).abs() < 0.001);
+
+        let history = {
+            let sessions = core.sessions.lock().unwrap();
+            sessions.get(&session_id).unwrap().messages.clone()
+        };
+        let tool_ids: Vec<String> = history
+            .iter()
+            .filter_map(|message| message.tool_call_id.clone())
+            .collect();
+        for call in history.iter().flat_map(|message| &message.tool_calls) {
+            assert!(
+                tool_ids.contains(&call.id),
+                "tool call {} lost its result",
+                call.id
+            );
+        }
+        assert!(
+            history
+                .iter()
+                .any(|message| message.text() == "latest answer")
+        );
+        let persisted = core.store.load(&session_id).unwrap();
+        assert_eq!(persisted.messages.len(), history.len());
+
+        {
+            let mut sessions = core.sessions.lock().unwrap();
+            sessions.get_mut(&session_id).unwrap().active_turn = Some("turn-test".to_owned());
+        }
+        let active_error = core
+            .session_compact(json!({"session_id": session_id}))
+            .unwrap_err();
+        assert_eq!(active_error.code, error_codes::TURN_IN_PROGRESS);
+
+        let empty_home = tempfile::tempdir().unwrap();
+        let (mut empty, _) = new_test_core(temp.path().join("empty.toml"), empty_home.path());
+        empty.handshaken = true;
+        let error = empty.session_compact(json!({})).unwrap_err();
+        assert_eq!(error.code, error_codes::SESSION_NOT_FOUND);
+    }
+
+    #[test]
+    fn workspace_init_creates_without_overwriting_and_rejects_escape() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = temp.path().join("workspace");
+        let nested = workspace.join("nested");
+        let outside = temp.path().join("outside");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        let config = command_config(temp.path());
+        let config_path = config.clone();
+        let home = tempfile::tempdir().unwrap();
+        let (mut core, _) = new_test_core(config, home.path());
+        core.handshaken = true;
+        core.session_create(json!({"workspace": workspace.to_string_lossy()}))
+            .unwrap();
+
+        let created = core
+            .workspace_init(json!({"path": "nested", "force": false}))
+            .unwrap();
+        assert_eq!(created["created"], true);
+        let agents_path = PathBuf::from(created["path"].as_str().unwrap());
+        assert!(agents_path.is_file());
+        std::fs::write(&agents_path, "keep me").unwrap();
+
+        let existing = core
+            .workspace_init(json!({"path": "nested", "force": false}))
+            .unwrap();
+        assert_eq!(existing["created"], false);
+        assert_eq!(std::fs::read_to_string(&agents_path).unwrap(), "keep me");
+
+        let forced = core
+            .workspace_init(json!({"path": "nested", "force": true}))
+            .unwrap();
+        assert_eq!(forced["created"], true);
+        assert!(
+            std::fs::read_to_string(&agents_path)
+                .unwrap()
+                .starts_with("# AGENTS.md")
+        );
+
+        let error = core
+            .workspace_init(json!({"path": outside.to_string_lossy()}))
+            .unwrap_err();
+        assert_eq!(error.code, error_codes::POLICY_DENIED);
+        assert!(!outside.join("AGENTS.md").exists());
+
+        let standalone_home = tempfile::tempdir().unwrap();
+        let (mut standalone, _) = new_test_core(config_path, standalone_home.path());
+        standalone.handshaken = true;
+        let initialized = standalone
+            .workspace_init(json!({"path": workspace.to_string_lossy()}))
+            .unwrap();
+        assert_eq!(initialized["created"], true);
+        assert!(workspace.join("AGENTS.md").is_file());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn workspace_init_rejects_agents_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = temp.path().join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let outside = temp.path().join("outside.md");
+        std::fs::write(&outside, "outside").unwrap();
+        symlink(&outside, workspace.join("AGENTS.md")).unwrap();
+        let config = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let (mut core, _) = new_test_core(config, home.path());
+        core.handshaken = true;
+        core.session_create(json!({"workspace": workspace.to_string_lossy()}))
+            .unwrap();
+
+        let error = core.workspace_init(json!({"force": true})).unwrap_err();
+        assert_eq!(error.code, error_codes::POLICY_DENIED);
+        assert_eq!(std::fs::read_to_string(outside).unwrap(), "outside");
     }
 
     #[test]

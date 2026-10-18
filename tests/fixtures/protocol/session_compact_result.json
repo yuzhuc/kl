@@ -1,0 +1,11 @@
+{
+  "jsonrpc": "2.0",
+  "kl_protocol": 1,
+  "id": 13,
+  "result": {
+    "omitted_messages": 6,
+    "estimated_tokens": 2048,
+    "context_window": 128000,
+    "compact_threshold": 0.8
+  }
+}

@@ -381,6 +381,169 @@
       },
       "additionalProperties": false
     },
+    "approvalMode": {
+      "enum": ["ask", "auto", "read-only"]
+    },
+    "reasoningEffort": {
+      "enum": ["default", "low", "medium", "high"]
+    },
+    "sandboxCapabilitiesSummary": {
+      "type": "object",
+      "required": [
+        "os_isolation",
+        "filesystem_read_restriction",
+        "filesystem_write_restriction",
+        "child_process_containment",
+        "network_isolation",
+        "notes"
+      ],
+      "properties": {
+        "os_isolation": { "type": "boolean" },
+        "filesystem_read_restriction": { "type": "boolean" },
+        "filesystem_write_restriction": { "type": "boolean" },
+        "child_process_containment": { "type": "boolean" },
+        "network_isolation": { "type": "boolean" },
+        "notes": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "sandboxSummary": {
+      "type": "object",
+      "required": ["backend", "strict", "capabilities"],
+      "properties": {
+        "backend": { "type": "string" },
+        "strict": { "type": "boolean" },
+        "capabilities": { "$ref": "#/$defs/sandboxCapabilitiesSummary" }
+      },
+      "additionalProperties": false
+    },
+    "sessionStatusParams": {
+      "type": "object",
+      "properties": {
+        "session_id": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "sessionStatusResult": {
+      "type": "object",
+      "required": [
+        "session_id",
+        "workspace",
+        "provider",
+        "model",
+        "context_window",
+        "compact_threshold",
+        "max_output_tokens",
+        "turn_active",
+        "approval_mode",
+        "sandbox"
+      ],
+      "properties": {
+        "session_id": { "type": "string" },
+        "workspace": { "type": "string" },
+        "provider": { "type": "string" },
+        "model": { "type": "string" },
+        "context_window": { "type": "integer", "minimum": 1 },
+        "compact_threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "max_output_tokens": { "type": "integer", "minimum": 1 },
+        "turn_active": { "type": "boolean" },
+        "approval_mode": { "$ref": "#/$defs/approvalMode" },
+        "sandbox": { "$ref": "#/$defs/sandboxSummary" }
+      },
+      "additionalProperties": false
+    },
+    "permissionsGetParams": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "permissionsResult": {
+      "type": "object",
+      "required": ["approval_mode", "policy_summary", "sandbox"],
+      "properties": {
+        "approval_mode": { "$ref": "#/$defs/approvalMode" },
+        "policy_summary": { "type": "string" },
+        "sandbox": { "$ref": "#/$defs/sandboxSummary" }
+      },
+      "additionalProperties": false
+    },
+    "permissionsSetParams": {
+      "type": "object",
+      "required": ["approval_mode"],
+      "properties": {
+        "approval_mode": { "$ref": "#/$defs/approvalMode" }
+      },
+      "additionalProperties": false
+    },
+    "sessionCompactParams": {
+      "type": "object",
+      "properties": {
+        "session_id": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "sessionCompactResult": {
+      "type": "object",
+      "required": [
+        "omitted_messages",
+        "estimated_tokens",
+        "context_window",
+        "compact_threshold"
+      ],
+      "properties": {
+        "omitted_messages": { "type": "integer", "minimum": 0 },
+        "estimated_tokens": { "type": "integer", "minimum": 0 },
+        "context_window": { "type": "integer", "minimum": 1 },
+        "compact_threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "workspaceInitParams": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "force": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "workspaceInitResult": {
+      "type": "object",
+      "required": ["path", "created"],
+      "properties": {
+        "path": { "type": "string" },
+        "created": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "agentConfigGetParams": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "agentConfigResult": {
+      "type": "object",
+      "required": ["reasoning_effort"],
+      "properties": {
+        "reasoning_effort": { "$ref": "#/$defs/reasoningEffort" }
+      },
+      "additionalProperties": false
+    },
+    "agentConfigSetParams": {
+      "type": "object",
+      "required": ["reasoning_effort"],
+      "properties": {
+        "reasoning_effort": { "$ref": "#/$defs/reasoningEffort" }
+      },
+      "additionalProperties": false
+    },
     "pluginInstallParams": {
       "type": "object",
       "required": ["path"],

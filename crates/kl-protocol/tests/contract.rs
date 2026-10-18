@@ -2,9 +2,12 @@
 //! tests. A failure here means the two sides have drifted.
 
 use kl_protocol::{
-    CoreEvent, EventNotification, HandshakeParams, HandshakeResult, IncomingMessage, PingParams,
-    PingResult, ProviderListResult, RequestId, ReviewResult, SessionHistoryParams,
-    SessionHistoryResult, error_codes, methods,
+    AgentConfigResult, AgentConfigSetParams, ApprovalMode, CoreEvent, EventNotification,
+    HandshakeParams, HandshakeResult, IncomingMessage, PermissionsResult, PermissionsSetParams,
+    PingParams, PingResult, ProviderListResult, ReasoningEffort, RequestId, ReviewResult,
+    SessionCompactParams, SessionCompactResult, SessionHistoryParams, SessionHistoryResult,
+    SessionStatusParams, SessionStatusResult, WorkspaceInitParams, WorkspaceInitResult,
+    error_codes, methods,
 };
 use serde_json::Value;
 use std::path::PathBuf;
@@ -148,6 +151,118 @@ fn session_history_messages_match_shared_contract() {
         assert!(
             !serialized.contains(&format!("\"{forbidden}\"")),
             "history leaked {forbidden}: {serialized}"
+        );
+    }
+}
+
+#[test]
+fn command_support_messages_match_shared_contract() {
+    let status_request = read("session_status_request.json");
+    let message: IncomingMessage = serde_json::from_value(status_request).unwrap();
+    assert_eq!(message.method.as_deref(), Some(methods::SESSION_STATUS));
+    let params: SessionStatusParams = serde_json::from_value(message.params).unwrap();
+    assert_eq!(params.session_id.as_deref(), Some("session-1"));
+    let status_result: SessionStatusResult =
+        serde_json::from_value(read("session_status_result.json")["result"].clone()).unwrap();
+    assert_eq!(status_result.provider, "opencode");
+    assert_eq!(status_result.approval_mode, ApprovalMode::Ask);
+    assert!(!status_result.turn_active);
+
+    let get_request: IncomingMessage =
+        serde_json::from_value(read("permissions_get_request.json")).unwrap();
+    assert_eq!(
+        get_request.method.as_deref(),
+        Some(methods::PERMISSIONS_GET)
+    );
+    let permissions_result: PermissionsResult =
+        serde_json::from_value(read("permissions_result.json")["result"].clone()).unwrap();
+    assert_eq!(permissions_result.approval_mode, ApprovalMode::Auto);
+    assert!(!permissions_result.sandbox.strict);
+
+    let set_request: IncomingMessage =
+        serde_json::from_value(read("permissions_set_request.json")).unwrap();
+    assert_eq!(
+        set_request.method.as_deref(),
+        Some(methods::PERMISSIONS_SET)
+    );
+    let set_params: PermissionsSetParams = serde_json::from_value(set_request.params).unwrap();
+    assert_eq!(set_params.approval_mode, ApprovalMode::Auto);
+    let set_result: PermissionsResult =
+        serde_json::from_value(read("permissions_set_result.json")["result"].clone()).unwrap();
+    assert_eq!(set_result.approval_mode, ApprovalMode::Auto);
+
+    let compact_request: IncomingMessage =
+        serde_json::from_value(read("session_compact_request.json")).unwrap();
+    assert_eq!(
+        compact_request.method.as_deref(),
+        Some(methods::SESSION_COMPACT)
+    );
+    let compact_params: SessionCompactParams =
+        serde_json::from_value(compact_request.params).unwrap();
+    assert_eq!(compact_params.session_id.as_deref(), Some("session-1"));
+    let compact_result: SessionCompactResult =
+        serde_json::from_value(read("session_compact_result.json")["result"].clone()).unwrap();
+    assert_eq!(compact_result.omitted_messages, 6);
+    assert!(compact_result.estimated_tokens > 0);
+
+    let init_request: IncomingMessage =
+        serde_json::from_value(read("workspace_init_request.json")).unwrap();
+    assert_eq!(
+        init_request.method.as_deref(),
+        Some(methods::WORKSPACE_INIT)
+    );
+    let init_params: WorkspaceInitParams = serde_json::from_value(init_request.params).unwrap();
+    assert_eq!(init_params.path.as_deref(), Some("."));
+    let init_result: WorkspaceInitResult =
+        serde_json::from_value(read("workspace_init_result.json")["result"].clone()).unwrap();
+    assert!(init_result.created);
+
+    let agent_get: IncomingMessage =
+        serde_json::from_value(read("agent_config_get_request.json")).unwrap();
+    assert_eq!(agent_get.method.as_deref(), Some(methods::AGENT_CONFIG_GET));
+    let agent_result: AgentConfigResult =
+        serde_json::from_value(read("agent_config_result.json")["result"].clone()).unwrap();
+    assert_eq!(agent_result.reasoning_effort, ReasoningEffort::High);
+
+    let agent_set: IncomingMessage =
+        serde_json::from_value(read("agent_config_set_request.json")).unwrap();
+    assert_eq!(agent_set.method.as_deref(), Some(methods::AGENT_CONFIG_SET));
+    let agent_params: AgentConfigSetParams = serde_json::from_value(agent_set.params).unwrap();
+    assert_eq!(agent_params.reasoning_effort, ReasoningEffort::High);
+    let agent_set_result: AgentConfigResult =
+        serde_json::from_value(read("agent_config_set_result.json")["result"].clone()).unwrap();
+    assert_eq!(agent_set_result.reasoning_effort, ReasoningEffort::High);
+
+    for value in [
+        read("session_status_result.json"),
+        read("permissions_result.json"),
+        read("session_compact_result.json"),
+        read("workspace_init_result.json"),
+        read("agent_config_result.json"),
+    ] {
+        let serialized = value.to_string();
+        assert!(!serialized.contains("api_key"));
+        assert!(!serialized.contains("api_key_env"));
+    }
+}
+
+#[test]
+fn method_schema_is_valid_json_with_command_definitions() {
+    let path = fixtures().join("../../../schemas/protocol/v1/methods.schema.json");
+    let text = std::fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+    let schema: Value = serde_json::from_str(&text).unwrap();
+    for definition in [
+        "sessionStatusParams",
+        "sessionStatusResult",
+        "permissionsResult",
+        "sessionCompactResult",
+        "workspaceInitResult",
+        "agentConfigResult",
+    ] {
+        assert!(
+            schema["$defs"].get(definition).is_some(),
+            "missing schema definition: {definition}"
         );
     }
 }

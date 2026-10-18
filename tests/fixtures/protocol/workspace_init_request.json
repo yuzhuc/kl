@@ -1,0 +1,10 @@
+{
+  "jsonrpc": "2.0",
+  "kl_protocol": 1,
+  "id": 14,
+  "method": "workspace.init",
+  "params": {
+    "path": ".",
+    "force": false
+  }
+}

@@ -29,9 +29,13 @@ pub mod methods {
     pub const SESSION_RESUME: &str = "session.resume";
     pub const SESSION_HISTORY: &str = "session.history";
     pub const SESSION_LIST: &str = "session.list";
+    pub const SESSION_STATUS: &str = "session.status";
+    pub const SESSION_COMPACT: &str = "session.compact";
     pub const TURN_START: &str = "turn.start";
     pub const TURN_CANCEL: &str = "turn.cancel";
     pub const APPROVAL_RESPOND: &str = "tool.approval.respond";
+    pub const PERMISSIONS_GET: &str = "permissions.get";
+    pub const PERMISSIONS_SET: &str = "permissions.set";
     pub const PROVIDER_LIST: &str = "provider.list";
     pub const PROVIDER_UPSERT: &str = "provider.upsert";
     pub const PROVIDER_SET_API_KEY: &str = "provider.set_api_key";
@@ -40,6 +44,9 @@ pub mod methods {
     pub const AUDIT_TAIL: &str = "audit.tail";
     pub const REVIEW_RUN: &str = "review.run";
     pub const CONFIG_GET: &str = "config.get";
+    pub const WORKSPACE_INIT: &str = "workspace.init";
+    pub const AGENT_CONFIG_GET: &str = "agent.config.get";
+    pub const AGENT_CONFIG_SET: &str = "agent.config.set";
     pub const PLUGIN_LIST: &str = "plugin.list";
     pub const PLUGIN_INSTALL: &str = "plugin.install";
     pub const PLUGIN_RELOAD: &str = "plugin.reload";
@@ -352,6 +359,133 @@ pub struct SetDefaultModelParams {
 pub struct DefaultModelResult {
     pub provider: String,
     pub model: String,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ApprovalMode {
+    #[default]
+    Ask,
+    Auto,
+    ReadOnly,
+}
+
+impl ApprovalMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ask => "ask",
+            Self::Auto => "auto",
+            Self::ReadOnly => "read-only",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ReasoningEffort {
+    #[default]
+    Default,
+    Low,
+    Medium,
+    High,
+}
+
+impl ReasoningEffort {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct SessionStatusParams {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SandboxCapabilitiesSummary {
+    pub os_isolation: bool,
+    pub filesystem_read_restriction: bool,
+    pub filesystem_write_restriction: bool,
+    pub child_process_containment: bool,
+    pub network_isolation: bool,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SandboxSummary {
+    pub backend: String,
+    pub strict: bool,
+    pub capabilities: SandboxCapabilitiesSummary,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SessionStatusResult {
+    pub session_id: String,
+    pub workspace: String,
+    pub provider: String,
+    pub model: String,
+    pub context_window: u32,
+    pub compact_threshold: f32,
+    pub max_output_tokens: u32,
+    pub turn_active: bool,
+    pub approval_mode: ApprovalMode,
+    pub sandbox: SandboxSummary,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PermissionsResult {
+    pub approval_mode: ApprovalMode,
+    pub policy_summary: String,
+    pub sandbox: SandboxSummary,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PermissionsSetParams {
+    pub approval_mode: ApprovalMode,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct SessionCompactParams {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SessionCompactResult {
+    pub omitted_messages: usize,
+    pub estimated_tokens: u64,
+    pub context_window: u32,
+    pub compact_threshold: f32,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct WorkspaceInitParams {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub force: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct WorkspaceInitResult {
+    pub path: String,
+    pub created: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AgentConfigResult {
+    pub reasoning_effort: ReasoningEffort,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AgentConfigSetParams {
+    pub reasoning_effort: ReasoningEffort,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
