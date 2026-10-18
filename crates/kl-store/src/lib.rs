@@ -9,6 +9,10 @@ use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
+pub const TURN_STATE_IDLE: &str = "idle";
+pub const TURN_STATE_WORKING: &str = "working";
+pub const TURN_STATE_WAITING_APPROVAL: &str = "waiting_approval";
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SessionMeta {
     pub id: String,
@@ -27,6 +31,8 @@ pub struct SessionMeta {
     pub prompt: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_message: Option<String>,
+    #[serde(default = "default_turn_state")]
+    pub turn_state: String,
 }
 
 #[derive(Debug, Clone)]
@@ -81,6 +87,7 @@ impl SessionStore {
                 task: None,
                 prompt: None,
                 last_message: None,
+                turn_state: default_turn_state(),
             },
             messages: Vec::new(),
         };
@@ -155,6 +162,23 @@ impl SessionStore {
         Ok(())
     }
 
+    pub fn set_turn_state(
+        &self,
+        session_id: &str,
+        turn_state: &str,
+    ) -> Result<SessionMeta, StoreError> {
+        let directory = self.session_dir(session_id);
+        let meta_path = directory.join("session.json");
+        if !meta_path.exists() {
+            return Err(StoreError::NotFound(session_id.to_owned()));
+        }
+        let mut meta: SessionMeta = serde_json::from_slice(&fs::read(&meta_path)?)?;
+        meta.turn_state = turn_state.to_owned();
+        meta.updated_at = now();
+        write_atomic(&meta_path, &serde_json::to_vec_pretty(&meta)?)?;
+        Ok(meta)
+    }
+
     pub fn append_event(
         &self,
         session_id: &str,
@@ -208,6 +232,10 @@ struct EventRecord<'a> {
 
 fn now() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
+}
+
+fn default_turn_state() -> String {
+    TURN_STATE_IDLE.to_owned()
 }
 
 fn summarize_messages(messages: &[Value]) -> (Option<String>, Option<String>, Option<String>) {
@@ -277,6 +305,7 @@ mod tests {
         let store = SessionStore::new(temp.path()).unwrap();
         let mut data = store.create("D:\\work", "openai", "gpt-test").unwrap();
         assert_eq!(data.meta.status.as_deref(), Some("ready"));
+        assert_eq!(data.meta.turn_state, TURN_STATE_IDLE);
         data.messages.push(serde_json::json!({
             "role": "user",
             "content": [{"type": "text", "data": "fix it"}]
@@ -295,7 +324,46 @@ mod tests {
         assert_eq!(loaded.meta.task.as_deref(), Some("fix it"));
         assert_eq!(loaded.meta.prompt.as_deref(), Some("fix it"));
         assert_eq!(loaded.meta.last_message.as_deref(), Some("done"));
+        assert_eq!(loaded.meta.turn_state, TURN_STATE_IDLE);
         assert_eq!(store.list().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn turn_state_persists_and_updates_updated_at() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(temp.path()).unwrap();
+        let data = store.create("D:\\work", "openai", "gpt-test").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+
+        let meta = store
+            .set_turn_state(&data.meta.id, TURN_STATE_WAITING_APPROVAL)
+            .unwrap();
+        assert_eq!(meta.turn_state, TURN_STATE_WAITING_APPROVAL);
+        assert!(meta.updated_at > data.meta.updated_at);
+        assert_eq!(
+            store.load(&data.meta.id).unwrap().meta.turn_state,
+            TURN_STATE_WAITING_APPROVAL
+        );
+        assert_eq!(
+            store.list().unwrap()[0].turn_state,
+            TURN_STATE_WAITING_APPROVAL
+        );
+    }
+
+    #[test]
+    fn missing_turn_state_defaults_to_idle() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(temp.path()).unwrap();
+        let data = store.create("D:\\work", "openai", "gpt-test").unwrap();
+        let path = temp.path().join(&data.meta.id).join("session.json");
+        let mut value: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        value.as_object_mut().unwrap().remove("turn_state");
+        std::fs::write(&path, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+
+        assert_eq!(
+            store.load(&data.meta.id).unwrap().meta.turn_state,
+            TURN_STATE_IDLE
+        );
     }
 
     #[test]

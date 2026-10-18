@@ -40,7 +40,7 @@ public sealed class SettingsTuiTests
     }
 
     [Fact]
-    public void GroupMovementShowsPlaceholder()
+    public void AgentGroupShowsPermissionsAndReasoningPages()
     {
         var state = new SettingsTuiState();
         state.Load(SettingsSnapshot.Empty);
@@ -51,7 +51,270 @@ public sealed class SettingsTuiTests
         var render = SettingsTuiRenderer.Render(100, 24, state);
 
         Assert.Contains("Agent", render);
-        Assert.Contains("Coming soon.", render);
+        Assert.Contains("Permissions", render);
+        Assert.Contains("Reasoning", render);
+        Assert.DoesNotContain("Coming soon.", render);
+    }
+
+    [Fact]
+    public void AgentPermissionsShowsConfirmsAndSavesEveryMode()
+    {
+        var cases = new[]
+        {
+            (Mode: SettingsApprovalMode.Ask, Wire: "ask", Current: "auto"),
+            (Mode: SettingsApprovalMode.Auto, Wire: "auto", Current: "ask"),
+            (Mode: SettingsApprovalMode.ReadOnly, Wire: "read-only", Current: "ask")
+        };
+
+        foreach (var item in cases)
+        {
+            var state = new SettingsTuiState();
+            state.Load(AgentSnapshot(item.Current));
+            state.HandleKey(Key(ConsoleKey.DownArrow));
+            state.HandleKey(Key(ConsoleKey.Tab, '\t'));
+            state.HandleKey(Key(ConsoleKey.Enter));
+
+            Assert.Equal(SettingsView.Permissions, state.View);
+            var render = SettingsTuiRenderer.Render(100, 30, state);
+            Assert.Contains("ask - approve before changes", render);
+            Assert.Contains("auto - approve automatically", render);
+            Assert.Contains("read-only - no changes", render);
+            Assert.Contains("Sandbox backend: appcontainer", render);
+            Assert.Contains("Strict: yes", render);
+
+            var target = SettingsAgentValues.ApprovalModes
+                .ToList()
+                .IndexOf(item.Mode);
+            while (state.ListRow < target)
+            {
+                state.HandleKey(Key(ConsoleKey.DownArrow));
+            }
+            while (state.ListRow > target)
+            {
+                state.HandleKey(Key(ConsoleKey.UpArrow));
+            }
+
+            var pending = state.HandleKey(Key(ConsoleKey.Enter));
+            Assert.Equal(SettingsCommandKind.None, pending.Kind);
+            Assert.Equal(item.Mode, state.PendingApprovalMode);
+            Assert.Contains("Press Enter to confirm", state.Status);
+
+            var save = state.HandleKey(Key(ConsoleKey.Enter));
+            Assert.Equal(SettingsCommandKind.SavePermissions, save.Kind);
+            Assert.Equal(SettingsAgentRoutes.Permissions, save.Provider);
+            Assert.Equal(item.Wire, save.ApprovalMode);
+            Assert.Null(state.PendingApprovalMode);
+        }
+    }
+
+    [Fact]
+    public void AgentPermissionConfirmationCanBeCancelled()
+    {
+        var state = new SettingsTuiState();
+        state.Load(AgentSnapshot("ask"));
+        state.HandleKey(Key(ConsoleKey.DownArrow));
+        state.HandleKey(Key(ConsoleKey.Tab, '\t'));
+        state.HandleKey(Key(ConsoleKey.Enter));
+        state.HandleKey(Key(ConsoleKey.DownArrow));
+        state.HandleKey(Key(ConsoleKey.Enter));
+        Assert.Equal(SettingsApprovalMode.Auto, state.PendingApprovalMode);
+
+        var cancel = state.HandleKey(Key(ConsoleKey.Escape));
+
+        Assert.Equal(SettingsCommandKind.None, cancel.Kind);
+        Assert.Null(state.PendingApprovalMode);
+        Assert.Equal(SettingsView.Permissions, state.View);
+        Assert.Null(state.Status);
+    }
+
+    [Fact]
+    public void AgentReasoningShowsConfirmsAndSavesEveryEffort()
+    {
+        var cases = new[]
+        {
+            (Effort: SettingsReasoningEffort.Default, Wire: "default", Current: "high"),
+            (Effort: SettingsReasoningEffort.Low, Wire: "low", Current: "default"),
+            (Effort: SettingsReasoningEffort.Medium, Wire: "medium", Current: "default"),
+            (Effort: SettingsReasoningEffort.High, Wire: "high", Current: "default")
+        };
+
+        foreach (var item in cases)
+        {
+            var state = new SettingsTuiState();
+            state.Load(AgentSnapshot(effort: item.Current));
+            state.HandleKey(Key(ConsoleKey.DownArrow));
+            state.HandleKey(Key(ConsoleKey.Tab, '\t'));
+            state.HandleKey(Key(ConsoleKey.DownArrow));
+            state.HandleKey(Key(ConsoleKey.Enter));
+
+            Assert.Equal(SettingsView.Reasoning, state.View);
+            var render = SettingsTuiRenderer.Render(100, 30, state);
+            Assert.Contains("default - provider decides", render);
+            Assert.Contains("low - fastest", render);
+            Assert.Contains("medium - balanced", render);
+            Assert.Contains("high - deepest", render);
+            Assert.Contains("Reasoning support: supported", render);
+
+            var target = SettingsAgentValues.ReasoningEfforts
+                .ToList()
+                .IndexOf(item.Effort);
+            while (state.ListRow < target)
+            {
+                state.HandleKey(Key(ConsoleKey.DownArrow));
+            }
+            while (state.ListRow > target)
+            {
+                state.HandleKey(Key(ConsoleKey.UpArrow));
+            }
+
+            var pending = state.HandleKey(Key(ConsoleKey.Enter));
+            Assert.Equal(SettingsCommandKind.None, pending.Kind);
+            Assert.Equal(item.Effort, state.PendingReasoningEffort);
+
+            var save = state.HandleKey(Key(ConsoleKey.Enter));
+            Assert.Equal(SettingsCommandKind.SaveReasoning, save.Kind);
+            Assert.Equal(SettingsAgentRoutes.Reasoning, save.Provider);
+            Assert.Equal(item.Wire, save.Effort);
+        }
+    }
+
+    [Fact]
+    public void AgentReadFailureIsShownClearly()
+    {
+        var state = new SettingsTuiState();
+        state.Load(AgentSnapshot(
+            readError: "agent.config.get failed: permission denied"));
+        state.HandleKey(Key(ConsoleKey.DownArrow));
+        state.HandleKey(Key(ConsoleKey.Tab, '\t'));
+        state.HandleKey(Key(ConsoleKey.Enter));
+
+        var render = SettingsTuiRenderer.Render(100, 30, state);
+
+        Assert.Contains("[error] agent.config.get failed: permission denied", render);
+    }
+
+    [Fact]
+    public void QuickSelectShowsOnlyEnabledProviderModelsAndConfirmsDefault()
+    {
+        var state = new SettingsTuiState();
+        state.Load(ParseSnapshot(
+            EnabledAndDisabledModels(),
+            ConfigWithEnabledAndDisabledProviders()));
+        state.HandleKey(Key(ConsoleKey.Tab, '\t'));
+        state.HandleKey(Key(ConsoleKey.Q, 'q'));
+
+        Assert.Equal(SettingsView.ModelPicker, state.View);
+        Assert.Equal(["m1", "m2"], state.QuickModels.Select(model => model.Id));
+        var render = SettingsTuiRenderer.Render(120, 30, state);
+        Assert.Contains("p/m1", render);
+        Assert.Contains("p/m2", render);
+        Assert.DoesNotContain("hidden", render);
+        Assert.Contains("context_window=1000", render);
+        Assert.Contains("compact_threshold=0.8", render);
+        Assert.Contains("max_output_tokens=100", render);
+        Assert.DoesNotContain("key=", render);
+
+        state.HandleKey(Key(ConsoleKey.DownArrow));
+        var pending = state.HandleKey(Key(ConsoleKey.Enter));
+        Assert.Equal(SettingsCommandKind.None, pending.Kind);
+        Assert.Equal("m2", state.PendingDefaultModel?.Id);
+        var save = state.HandleKey(Key(ConsoleKey.Enter));
+        Assert.Equal(SettingsCommandKind.SetDefaultModel, save.Kind);
+        Assert.Equal("p", save.Provider);
+        Assert.Equal("m2", save.Model);
+    }
+
+    [Fact]
+    public void NewPagesSwitchBetweenEnglishAndChinese()
+    {
+        var agent = new SettingsTuiState();
+        agent.Load(AgentSnapshot());
+        agent.HandleKey(Key(ConsoleKey.DownArrow));
+        agent.HandleKey(Key(ConsoleKey.Tab, '\t'));
+        Assert.Contains("Approval mode and sandbox", SettingsTuiRenderer.Render(100, 24, agent));
+        agent.SetLanguage(UiLanguage.ChineseSimplified);
+        var agentChinese = SettingsTuiRenderer.Render(100, 24, agent);
+        Assert.Contains("批准模式与沙箱", agentChinese);
+        Assert.Contains("推理强度支持", agentChinese);
+        Assert.Contains("F2 保存并退出", agentChinese);
+
+        agent.HandleKey(Key(ConsoleKey.Enter));
+        var permissionsChinese = SettingsTuiRenderer.Render(100, 24, agent);
+        Assert.Contains("权限", permissionsChinese);
+        Assert.Contains("批准模式", permissionsChinese);
+        Assert.Contains("沙箱后端", permissionsChinese);
+        Assert.Contains("严格模式", permissionsChinese);
+        Assert.Contains("修改前询问", permissionsChinese);
+        Assert.Contains("Esc 取消/返回", permissionsChinese);
+
+        var reasoning = new SettingsTuiState();
+        reasoning.Load(AgentSnapshot());
+        reasoning.SetLanguage(UiLanguage.ChineseSimplified);
+        reasoning.HandleKey(Key(ConsoleKey.DownArrow));
+        reasoning.HandleKey(Key(ConsoleKey.Tab, '\t'));
+        reasoning.HandleKey(Key(ConsoleKey.DownArrow));
+        reasoning.HandleKey(Key(ConsoleKey.Enter));
+        var reasoningChinese = SettingsTuiRenderer.Render(100, 24, reasoning);
+        Assert.Contains("推理强度", reasoningChinese);
+        Assert.Contains("供应商/模型", reasoningChinese);
+        Assert.Contains("推理支持", reasoningChinese);
+        Assert.Contains("供应商决定", reasoningChinese);
+
+        var picker = new SettingsTuiState();
+        picker.Load(ParseSnapshot(
+            EnabledAndDisabledModels(),
+            ConfigWithEnabledAndDisabledProviders()));
+        picker.SetLanguage(UiLanguage.ChineseSimplified);
+        picker.HandleKey(Key(ConsoleKey.Tab, '\t'));
+        picker.HandleKey(Key(ConsoleKey.Q, 'q'));
+        var pickerChinese = SettingsTuiRenderer.Render(100, 24, picker);
+        Assert.Contains("快速选择模型", pickerChinese);
+        Assert.Contains("仅显示已启用供应商的模型", pickerChinese);
+        Assert.Contains("Esc 取消/返回", pickerChinese);
+    }
+
+    [Theory]
+    [InlineData(40)]
+    [InlineData(60)]
+    [InlineData(80)]
+    [InlineData(100)]
+    public void NewPagesDoNotExceedTerminalWidth(int width)
+    {
+        var permissions = new SettingsTuiState();
+        permissions.Load(AgentSnapshot());
+        permissions.SetLanguage(UiLanguage.ChineseSimplified);
+        permissions.HandleKey(Key(ConsoleKey.DownArrow));
+        permissions.HandleKey(Key(ConsoleKey.Tab, '\t'));
+        permissions.HandleKey(Key(ConsoleKey.Enter));
+        AssertRenderFits(width, permissions);
+
+        var reasoning = new SettingsTuiState();
+        reasoning.Load(AgentSnapshot());
+        reasoning.SetLanguage(UiLanguage.ChineseSimplified);
+        reasoning.HandleKey(Key(ConsoleKey.DownArrow));
+        reasoning.HandleKey(Key(ConsoleKey.Tab, '\t'));
+        reasoning.HandleKey(Key(ConsoleKey.DownArrow));
+        reasoning.HandleKey(Key(ConsoleKey.Enter));
+        AssertRenderFits(width, reasoning);
+
+        var picker = new SettingsTuiState();
+        picker.Load(ParseSnapshot(
+            EnabledAndDisabledModels(),
+            ConfigWithEnabledAndDisabledProviders()));
+        picker.SetLanguage(UiLanguage.ChineseSimplified);
+        picker.HandleKey(Key(ConsoleKey.Tab, '\t'));
+        picker.HandleKey(Key(ConsoleKey.Q, 'q'));
+        AssertRenderFits(width, picker);
+
+        var config = new SettingsTuiState();
+        config.Load(AgentSnapshot());
+        config.SetLanguage(UiLanguage.ChineseSimplified);
+        for (var index = 0; index < 4; index++)
+        {
+            config.HandleKey(Key(ConsoleKey.DownArrow));
+        }
+        config.HandleKey(Key(ConsoleKey.Tab, '\t'));
+        AssertRenderFits(width, config);
     }
 
     [Fact]
@@ -499,6 +762,43 @@ public sealed class SettingsTuiTests
         Assert.Contains("语言", render);
         Assert.Contains("F2 保存并退出", render);
     }
+    private static SettingsSnapshot AgentSnapshot(
+        string approvalMode = "ask",
+        string effort = "default",
+        bool? supported = true,
+        string? readError = null) =>
+        ParseSnapshot(TwoModelProviderList(), ConfigWithProvider(enabled: true)) with
+        {
+            AgentConfig = new SettingsAgentConfig(
+                approvalMode,
+                effort,
+                supported,
+                "appcontainer",
+                true,
+                "p",
+                "m1",
+                readError),
+            Paths = new SettingsPaths(
+                "/tmp/kl.toml",
+                "/tmp/home/ui.json",
+                "/tmp/home")
+        };
+
+    private static void AssertRenderFits(int width, SettingsTuiState state)
+    {
+        const int height = 24;
+        var render = SettingsTuiRenderer.Render(width, height, state);
+        var lines = render.Split('\n');
+
+        Assert.Equal(height, lines.Length);
+        foreach (var line in lines)
+        {
+            Assert.True(
+                DisplayText.Width(line) <= width,
+                $"width {width}: line is {DisplayText.Width(line)} columns: [{line}]");
+        }
+    }
+
     private static SettingsSnapshot ParseSnapshot(
         string providerList,
         string config,
@@ -580,6 +880,59 @@ public sealed class SettingsTuiTests
           "config": {
             "providers": {
               "p": { "enabled": {{enabled.ToString().ToLowerInvariant()}}, "path": "providers/p.toml" }
+            }
+          }
+        }
+        """;
+
+    private static string EnabledAndDisabledModels() => """
+        {
+          "active_provider": "p",
+          "active_model": "m1",
+          "models": [
+            {
+              "provider": "p",
+              "model": "m1",
+              "protocol": "openai-chat",
+              "url": "https://example.test/v1/chat/completions",
+              "context_window": 1000,
+              "compact_threshold": 0.8,
+              "max_output_tokens": 100,
+              "enabled": true,
+              "key_configured": true
+            },
+            {
+              "provider": "p",
+              "model": "m2",
+              "protocol": "openai-responses",
+              "url": "https://example.test/v1/responses",
+              "context_window": 2000,
+              "compact_threshold": 0.9,
+              "max_output_tokens": 200,
+              "enabled": true,
+              "key_configured": true
+            },
+            {
+              "provider": "d",
+              "model": "hidden",
+              "protocol": "openai-chat",
+              "url": "https://example.test/v1/chat/completions",
+              "context_window": 3000,
+              "compact_threshold": 0.7,
+              "max_output_tokens": 300,
+              "enabled": true,
+              "key_configured": true
+            }
+          ]
+        }
+        """;
+
+    private static string ConfigWithEnabledAndDisabledProviders() => """
+        {
+          "config": {
+            "providers": {
+              "p": { "enabled": true, "path": "providers/p.toml" },
+              "d": { "enabled": false, "path": "providers/d.toml" }
             }
           }
         }

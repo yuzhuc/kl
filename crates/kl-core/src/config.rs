@@ -1,7 +1,8 @@
 use kl_policy::PolicyConfig;
 use kl_protocol::{
-    DefaultModelResult, ProviderEnabledResult, ProviderKeyResult, ProviderSetApiKeyParams,
-    ProviderSetEnabledParams, ProviderUpsertParams, ProviderUpsertResult, SetDefaultModelParams,
+    ApprovalMode, DefaultModelResult, ProviderEnabledResult, ProviderKeyResult,
+    ProviderSetApiKeyParams, ProviderSetEnabledParams, ProviderUpsertParams, ProviderUpsertResult,
+    ReasoningEffort, SetDefaultModelParams,
 };
 use kl_provider::{ModelMetadata, Protocol};
 use kl_sandbox::SandboxConfig;
@@ -93,6 +94,8 @@ pub struct AgentSettings {
     /// Keep the scripted cursor across evaluation turns; used by offline demos.
     pub scripted_sequential: bool,
     pub quality: QualityMode,
+    pub approval_mode: ApprovalMode,
+    pub reasoning_effort: ReasoningEffort,
     pub roles: BTreeMap<String, RoleSettings>,
     pub max_iterations: usize,
     pub max_tool_output_bytes: usize,
@@ -260,6 +263,8 @@ impl Default for AgentSettings {
             scripted_path: None,
             scripted_sequential: false,
             quality: QualityMode::default(),
+            approval_mode: ApprovalMode::default(),
+            reasoning_effort: ReasoningEffort::default(),
             roles: BTreeMap::new(),
             max_iterations: 12,
             max_tool_output_bytes: 32 * 1024,
@@ -322,6 +327,8 @@ impl Config {
                 "scripted_path": self.agent.scripted_path,
                 "scripted_sequential": self.agent.scripted_sequential,
                 "quality": self.agent.quality,
+                "approval_mode": self.agent.approval_mode,
+                "reasoning_effort": self.agent.reasoning_effort,
                 "roles": self.agent.roles,
                 "max_iterations": self.agent.max_iterations,
                 "max_tool_output_bytes": self.agent.max_tool_output_bytes,
@@ -935,6 +942,41 @@ pub fn config_set_default_model(
         model: params.model.clone(),
     })
 }
+
+pub fn permissions_set(config_path: &Path, approval_mode: ApprovalMode) -> Result<(), ConfigError> {
+    let mut value = read_toml_value(config_path)?;
+    {
+        let agent = ensure_table(&mut value, "agent")?;
+        agent.insert(
+            "approval_mode".to_owned(),
+            toml::Value::String(approval_mode.as_str().to_owned()),
+        );
+        let policy = ensure_table(&mut value, "policy")?;
+        let auto_approve = approval_mode == ApprovalMode::Auto;
+        for key in [
+            "auto_approve_edits",
+            "auto_approve_shell",
+            "auto_approve_plugins",
+        ] {
+            policy.insert(key.to_owned(), toml::Value::Boolean(auto_approve));
+        }
+    }
+    write_toml_atomic(config_path, &value)
+}
+
+pub fn agent_config_set(
+    config_path: &Path,
+    reasoning_effort: ReasoningEffort,
+) -> Result<(), ConfigError> {
+    let mut value = read_toml_value(config_path)?;
+    let agent = ensure_table(&mut value, "agent")?;
+    agent.insert(
+        "reasoning_effort".to_owned(),
+        toml::Value::String(reasoning_effort.as_str().to_owned()),
+    );
+    write_toml_atomic(config_path, &value)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

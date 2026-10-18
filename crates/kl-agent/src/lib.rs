@@ -63,6 +63,13 @@ pub struct TurnResult {
 }
 
 #[derive(Debug, Clone)]
+pub struct CompactionResult {
+    pub history: Vec<ChatMessage>,
+    pub omitted_messages: usize,
+    pub estimated_tokens: u64,
+}
+
+#[derive(Debug, Clone)]
 pub struct ApprovalRequest {
     pub approval_id: String,
     pub turn_id: String,
@@ -155,6 +162,43 @@ impl Agent {
 
     pub fn metadata(&self) -> &ModelMetadata {
         &self.metadata
+    }
+
+    pub fn compact_history(&self, history: &[ChatMessage]) -> Result<CompactionResult, AgentError> {
+        let request = self.request_for(history);
+        if !history.iter().any(|message| message.role == Role::User) {
+            return Ok(CompactionResult {
+                history: history.to_vec(),
+                omitted_messages: 0,
+                estimated_tokens: estimate_history_tokens(
+                    &self.system_prompt,
+                    &request.tools,
+                    history,
+                ),
+            });
+        }
+        let budget = effective_context_budget(&self.metadata);
+        let compacted = compact_history(history, &self.system_prompt, &request.tools, budget)
+            .ok_or_else(|| {
+                AgentError::ContextWindowExceeded(format!(
+                    "history cannot be compacted within budget {budget}"
+                ))
+            })?;
+        let previous_omitted = history
+            .iter()
+            .filter_map(compaction_omitted)
+            .fold(0usize, usize::saturating_add);
+        let total_omitted = compacted
+            .iter()
+            .filter_map(compaction_omitted)
+            .fold(0usize, usize::saturating_add);
+        let estimated_tokens =
+            estimate_history_tokens(&self.system_prompt, &request.tools, &compacted);
+        Ok(CompactionResult {
+            history: compacted,
+            omitted_messages: total_omitted.saturating_sub(previous_omitted),
+            estimated_tokens,
+        })
     }
 
     #[allow(clippy::too_many_arguments)]

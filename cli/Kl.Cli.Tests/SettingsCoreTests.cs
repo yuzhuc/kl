@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Xunit;
 
 namespace Kl.Cli.Tests;
@@ -201,6 +202,103 @@ public sealed class SettingsCoreTests
 
             Assert.Equal("local", snapshot.ActiveProvider);
             Assert.Equal("model-1", snapshot.ActiveModel);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void AgentSettingPayloadsUseRequestedProtocolMethods()
+    {
+        Assert.Equal("permissions.set", SettingsTuiRunner.PermissionsSetMethod);
+        Assert.Equal("agent.config.get", SettingsTuiRunner.AgentConfigGetMethod);
+        Assert.Equal("agent.config.set", SettingsTuiRunner.AgentConfigSetMethod);
+
+        var permissions = SettingsTuiRunner.PermissionsSetParameters("read-only");
+        Assert.Equal("read-only", permissions["mode"]);
+
+        var reasoning = SettingsTuiRunner.AgentConfigSetParameters("high");
+        Assert.Equal("high", reasoning["effort"]);
+    }
+
+    [Fact]
+    public void SettingsSnapshotParsesAgentConfigPathsAndSandboxStatus()
+    {
+        using var providers = JsonDocument.Parse(
+            """
+            {
+              "active_provider": "p",
+              "active_model": "m",
+              "models": []
+            }
+            """);
+        using var config = JsonDocument.Parse(
+            """
+            {
+              "path": "/tmp/kl.toml",
+              "config": {
+                "sandbox": { "mode": "strict", "backend": "auto" }
+              }
+            }
+            """);
+        using var doctor = JsonDocument.Parse(
+            """
+            {
+              "checks": [
+                { "name": "sandbox_backend", "ok": true, "detail": "appcontainer: ready" },
+                { "name": "sandbox_strict", "ok": true, "detail": "strict mode requested" }
+              ]
+            }
+            """);
+        using var agentConfig = JsonDocument.Parse(
+            """
+            {
+              "provider": "p",
+              "model": "m",
+              "effort": "high",
+              "supported": true,
+              "approval_mode": "read-only"
+            }
+            """);
+
+        var snapshot = SettingsSnapshot.FromJson(
+            providers.RootElement,
+            config.RootElement,
+            doctor: doctor.RootElement,
+            agentConfig: agentConfig.RootElement);
+
+        Assert.Equal("/tmp/kl.toml", snapshot.Paths.ConfigPath);
+        Assert.Equal("appcontainer", snapshot.AgentConfig.SandboxBackend);
+        Assert.True(snapshot.AgentConfig.SandboxStrict);
+        Assert.Equal("read-only", snapshot.AgentConfig.ApprovalMode);
+        Assert.Equal("high", snapshot.AgentConfig.Effort);
+        Assert.True(snapshot.AgentConfig.ReasoningSupported);
+        Assert.Equal("p", snapshot.AgentConfig.Provider);
+        Assert.Equal("m", snapshot.AgentConfig.Model);
+    }
+
+    [Fact]
+    public async Task SettingsLoadIncludesPathsAndSandboxStatus()
+    {
+        var root = TempRoot();
+        try
+        {
+            var options = Options(root);
+            await SettingsTuiRunner.SaveProviderAsync(
+                options,
+                Draft(enabled: true, SettingsAddressMode.Base));
+
+            var snapshot = await SettingsTuiRunner.LoadAsync(options);
+
+            Assert.Equal(Path.GetFullPath(options.ConfigPath!), snapshot.Paths.ConfigPath);
+            Assert.Equal(
+                Path.Combine(options.HomePath!, "ui.json"),
+                snapshot.Paths.UiPath);
+            Assert.Equal(options.HomePath, snapshot.Paths.HomePath);
+            Assert.False(string.IsNullOrWhiteSpace(snapshot.AgentConfig.SandboxBackend));
+            Assert.NotNull(snapshot.AgentConfig.SandboxStrict);
         }
         finally
         {

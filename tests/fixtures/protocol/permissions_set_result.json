@@ -1,0 +1,23 @@
+{
+  "jsonrpc": "2.0",
+  "kl_protocol": 1,
+  "id": 12,
+  "result": {
+    "approval_mode": "auto",
+    "policy_summary": "Edits, shell commands, and plugins are auto-approved within policy; workspace paths are enforced.",
+    "sandbox": {
+      "backend": "policy",
+      "strict": false,
+      "capabilities": {
+        "os_isolation": false,
+        "filesystem_read_restriction": false,
+        "filesystem_write_restriction": false,
+        "child_process_containment": false,
+        "network_isolation": false,
+        "notes": [
+          "policy-only: path and command checks, no OS-level file isolation"
+        ]
+      }
+    }
+  }
+}

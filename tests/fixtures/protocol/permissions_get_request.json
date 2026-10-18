@@ -1,0 +1,7 @@
+{
+  "jsonrpc": "2.0",
+  "kl_protocol": 1,
+  "id": 11,
+  "method": "permissions.get",
+  "params": {}
+}
