@@ -15,7 +15,8 @@ public static class ChatTuiRenderer
 
         width = Math.Max(20, width);
         height = Math.Max(8, height);
-        var bodyHeight = Math.Max(1, height - 4);
+        var showInput = state.Screen != ChatScreen.History;
+        var bodyHeight = Math.Max(1, height - (showInput ? 4 : 3));
 
         var body = state.Screen switch
         {
@@ -32,7 +33,10 @@ public static class ChatTuiRenderer
             new string('-', width)
         };
         lines.AddRange(body);
-        lines.Add(RenderInput(state, width));
+        if (showInput)
+        {
+            lines.Add(RenderInput(state, width));
+        }
         lines.Add(RenderFooter(state, width));
 
         return string.Join('\n', lines.Take(height).Select(line =>
@@ -149,53 +153,234 @@ public static class ChatTuiRenderer
         int bodyHeight)
     {
         var language = state.Language;
-        var left = new List<string> { ChatTexts.HistoryTitle(language) };
-        var ordered = new List<HistorySession>();
-        var index = 0;
-        foreach (var group in state.History.GroupBy(session => session.Workspace))
+        var view = state.GetHistoryView();
+        var selection = view.Tasks.Count == 0
+            ? 0
+            : Math.Clamp(state.HistorySelection, 0, view.Tasks.Count - 1);
+        var selected = view.Selected(selection);
+        var now = DateTimeOffset.UtcNow;
+        var header = RenderHistoryHeader(state, view, width, language);
+
+        if (width >= 90)
         {
-            left.Add(ChatTexts.Workspace(language, group.Key));
-            foreach (var session in group)
+            var detailWidth = Math.Clamp(width / 3, 30, 44);
+            var leftWidth = width - detailWidth - 1;
+            var left = BuildHistoryList(
+                header,
+                view,
+                selection,
+                leftWidth,
+                bodyHeight,
+                language,
+                now);
+            var right = RenderHistoryDetails(selected, detailWidth, language);
+            return ComposeHistoryColumns(left, right, leftWidth, detailWidth, bodyHeight);
+        }
+
+        var details = RenderHistoryDetails(selected, width, language);
+        var listHeight = Math.Max(1, bodyHeight - details.Count - 1);
+        var stacked = BuildHistoryList(
+            header,
+            view,
+            selection,
+            width,
+            listHeight,
+            language,
+            now);
+        stacked.Add(string.Empty);
+        stacked.AddRange(details);
+        return PadBody(stacked, bodyHeight);
+    }
+
+    private static List<string> RenderHistoryHeader(
+        ChatTuiState state,
+        HistoryView view,
+        int width,
+        UiLanguage language)
+    {
+        var lines = new List<string>
+        {
+            state.HistorySearching || state.HistorySearch.Length > 0
+                ? RenderHistorySearchLine(state, width, language)
+                : ChatTexts.HistoryTitle(language) + "  " +
+                    ChatTexts.HistoryGroupBy(language)
+        };
+
+        var tabLine = string.Empty;
+        foreach (var filter in Enum.GetValues<HistoryFilter>())
+        {
+            var tab = ChatTexts.HistoryFilterLabel(language, filter) + " " +
+                view.Count(filter);
+            var candidate = tabLine.Length == 0 ? tab : tabLine + "   " + tab;
+            if (tabLine.Length > 0 && DisplayText.Width(candidate) > width)
             {
-                ordered.Add(session);
-                var marker = index == state.HistorySelection ? ">" : " ";
-                left.Add(
-                    $"{marker} {session.Task ?? string.Empty}  " +
-                    $"{session.Status ?? string.Empty}  " +
-                    $"{FormatTime(session.UpdatedAt)}");
-                index++;
+                lines.Add(tabLine);
+                tabLine = tab;
+            }
+            else
+            {
+                tabLine = candidate;
+            }
+        }
+        if (tabLine.Length > 0)
+        {
+            lines.Add(tabLine);
+        }
+
+        lines.Add(new string('─', Math.Max(1, width)));
+        return lines;
+    }
+
+    private static List<string> BuildHistoryList(
+        IReadOnlyList<string> header,
+        HistoryView view,
+        int selection,
+        int width,
+        int height,
+        UiLanguage language,
+        DateTimeOffset now)
+    {
+        var lines = new List<string>(header);
+        var groupLines = new List<string>();
+        var selectedLine = -1;
+        var taskIndex = 0;
+        var statusWidth = Enum.GetValues<HistoryTaskStatus>()
+            .Max(status => DisplayText.Width(ChatTexts.HistoryStatus(language, status)));
+        var timeWidth = Math.Max(
+            6,
+            view.Tasks.Count == 0
+                ? 0
+                : view.Tasks.Max(task => DisplayText.Width(
+                    FormatHistoryTime(task.Session.UpdatedAt, language, now))));
+
+        foreach (var group in view.Groups)
+        {
+            groupLines.Add(
+                DiffRender.Ansi.Fit(
+                    WorkspaceLabel(group.Workspace) + "  " + group.Tasks.Count,
+                    width));
+            groupLines.Add(new string('─', Math.Max(1, width)));
+            foreach (var task in group.Tasks)
+            {
+                if (taskIndex == selection)
+                {
+                    selectedLine = header.Count + groupLines.Count;
+                }
+                groupLines.Add(FormatHistoryTaskRow(
+                    task,
+                    taskIndex == selection,
+                    width,
+                    statusWidth,
+                    timeWidth,
+                    language,
+                    now));
+                taskIndex++;
             }
         }
 
-        if (ordered.Count == 0)
+        if (view.Tasks.Count == 0)
         {
-            left.Add(ChatTexts.NoSessions(language));
-            return PadBody(left.Take(bodyHeight).ToList(), bodyHeight);
+            groupLines.Add(view.Search.Length > 0
+                ? ChatTexts.NoSearchResults(language)
+                : ChatTexts.NoSessions(language));
         }
 
-        var selected = ordered[
-            Math.Clamp(state.HistorySelection, 0, ordered.Count - 1)];
-        var right = new List<string>
+        var available = Math.Max(0, height - header.Count);
+        if (groupLines.Count > available && selectedLine >= header.Count)
         {
-            ChatTexts.Selected(language),
-            $"{selected.Provider}/{selected.Model}",
-            ChatTexts.Messages(language, selected.MessageCount),
-            ChatTexts.Last(language, selected.LastMessage ?? string.Empty),
-            ChatTexts.Prompt(language, selected.Prompt ?? string.Empty)
-        };
+            var selectedRelative = selectedLine - header.Count;
+            var start = Math.Clamp(
+                selectedRelative - available + 1,
+                0,
+                Math.Max(0, groupLines.Count - available));
+            lines.AddRange(groupLines.Skip(start).Take(available));
+        }
+        else
+        {
+            lines.AddRange(groupLines.Take(available));
+        }
+        return PadBody(lines, height);
+    }
 
-        if (width < 80)
+    private static string FormatHistoryTaskRow(
+        HistoryTask task,
+        bool selected,
+        int width,
+        int statusWidth,
+        int timeWidth,
+        UiLanguage language,
+        DateTimeOffset now)
+    {
+        var marker = selected ? "› " : "  ";
+        var status = DisplayText.PadToWidth(
+            ChatTexts.HistoryStatus(language, task.Status),
+            statusWidth);
+        var time = PadLeftToWidth(
+            FormatHistoryTime(task.Session.UpdatedAt, language, now),
+            timeWidth);
+        var titleWidth = Math.Max(
+            1,
+            width - DisplayText.Width(marker) - statusWidth - timeWidth - 4);
+        var title = DisplayText.PadToWidth(
+            TaskTitle(task.Session, language),
+            titleWidth);
+        var row = DiffRender.Ansi.Fit(
+            marker + title + "  " + status + "  " + time,
+            width);
+        return selected
+            ? DiffRender.Ansi.Inverse + row + DiffRender.Ansi.Reset
+            : row;
+    }
+
+    private static List<string> RenderHistoryDetails(
+        HistoryTask? task,
+        int width,
+        UiLanguage language)
+    {
+        var lines = new List<string> { ChatTexts.TaskDetails(language) };
+        if (task is null)
         {
-            var stacked = new List<string>(left);
-            stacked.Add(string.Empty);
-            stacked.AddRange(right);
-            return PadBody(stacked.Take(bodyHeight).ToList(), bodyHeight);
+            lines.Add(ChatTexts.NoTaskSelected(language));
+            return lines;
         }
 
-        var leftWidth = Math.Max(30, width * 3 / 5);
-        var rightWidth = Math.Max(10, width - leftWidth - 1);
-        var lines = new List<string>(bodyHeight);
-        for (var row = 0; row < bodyHeight; row++)
+        var session = task.Session;
+        lines.AddRange(DisplayText.WrapToWidth(TaskTitle(session, language), width));
+        lines.AddRange(DisplayText.WrapToWidth(
+            ChatTexts.HistoryStatusLine(
+                language,
+                ChatTexts.HistoryStatus(language, task.Status)),
+            width));
+        var model = string.IsNullOrWhiteSpace(session.Provider)
+            && string.IsNullOrWhiteSpace(session.Model)
+                ? "—"
+                : $"{session.Provider}/{session.Model}".Trim('/');
+        lines.AddRange(DisplayText.WrapToWidth(
+            ChatTexts.HistoryModelLine(language, model),
+            width));
+        lines.AddRange(DisplayText.WrapToWidth(
+            ChatTexts.HistoryProjectLine(
+                language,
+                WorkspaceLabel(session.Workspace)),
+            width));
+        lines.AddRange(DisplayText.WrapToWidth(
+            ChatTexts.HistoryPromptLine(language, ValueOrDash(session.Prompt)),
+            width));
+        lines.AddRange(DisplayText.WrapToWidth(
+            ChatTexts.HistoryLastLine(language, ValueOrDash(session.LastMessage)),
+            width));
+        return lines;
+    }
+
+    private static List<string> ComposeHistoryColumns(
+        IReadOnlyList<string> left,
+        IReadOnlyList<string> right,
+        int leftWidth,
+        int rightWidth,
+        int height)
+    {
+        var lines = new List<string>(height);
+        for (var row = 0; row < height; row++)
         {
             var leftText = row < left.Count ? left[row] : string.Empty;
             var rightText = row < right.Count ? right[row] : string.Empty;
@@ -204,6 +389,131 @@ public static class ChatTuiRenderer
                 DiffRender.Ansi.Fit(rightText, rightWidth));
         }
         return lines;
+    }
+
+    private static string RenderHistorySearchLine(
+        ChatTuiState state,
+        int width,
+        UiLanguage language)
+    {
+        var prefix = ChatTexts.HistorySearch(language) + " › ";
+        var contentWidth = Math.Max(0, width - DisplayText.Width(prefix));
+        if (contentWidth == 0)
+        {
+            return prefix;
+        }
+
+        var query = state.HistorySearch;
+        if (!state.HistorySearching)
+        {
+            return prefix + DiffRender.Ansi.TruncateVisible(query, contentWidth);
+        }
+
+        var cursor = Math.Clamp(state.HistorySearchCursor, 0, query.Length);
+        if (DisplayText.Width(query) + 1 <= contentWidth)
+        {
+            return prefix + query.Insert(cursor, "|");
+        }
+
+        var available = Math.Max(0, contentWidth - 1);
+        var leftWidth = (available + 1) / 2;
+        var rightWidth = available - leftWidth;
+        var before = query[..cursor];
+        var after = query[cursor..];
+        return prefix +
+            TailToWidth(before, leftWidth) +
+            "|" +
+            DisplayText.TruncateToWidth(after, rightWidth);
+    }
+
+    private static string TailToWidth(string text, int width)
+    {
+        if (DisplayText.Width(text) <= width)
+        {
+            return text;
+        }
+        if (width <= 1)
+        {
+            return "…";
+        }
+
+        var budget = width - 1;
+        var used = 0;
+        var tail = new List<string>();
+        var enumerator = StringInfo.GetTextElementEnumerator(text);
+        var elements = new List<string>();
+        while (enumerator.MoveNext())
+        {
+            elements.Add((string)enumerator.Current);
+        }
+        for (var index = elements.Count - 1; index >= 0; index--)
+        {
+            var elementWidth = DisplayText.Width(elements[index]);
+            if (used + elementWidth > budget)
+            {
+                break;
+            }
+            tail.Add(elements[index]);
+            used += elementWidth;
+        }
+        tail.Reverse();
+        return "…" + string.Concat(tail);
+    }
+
+    private static string TaskTitle(HistorySession session, UiLanguage language) =>
+        string.IsNullOrWhiteSpace(session.Task)
+            ? ChatTexts.UntitledTask(language)
+            : session.Task.Trim();
+
+    private static string WorkspaceLabel(string workspace) =>
+        string.IsNullOrWhiteSpace(workspace) ? "—" : workspace;
+
+    private static string ValueOrDash(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "—" : value.Trim();
+
+    private static string PadLeftToWidth(string value, int width)
+    {
+        var fitted = DiffRender.Ansi.TruncateVisible(value, width);
+        var padding = Math.Max(0, width - DisplayText.Width(fitted));
+        return new string(' ', padding) + fitted;
+    }
+
+    private static string FormatHistoryTime(
+        string value,
+        UiLanguage language,
+        DateTimeOffset now)
+    {
+        if (!DateTimeOffset.TryParse(
+                value,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                out var parsed))
+        {
+            return string.IsNullOrWhiteSpace(value) ? "—" : value;
+        }
+
+        var elapsed = now - parsed;
+        if (elapsed < TimeSpan.Zero)
+        {
+            elapsed = TimeSpan.Zero;
+        }
+        if (elapsed.TotalSeconds < 60)
+        {
+            return ChatTexts.SecondsAgo(language, (int)elapsed.TotalSeconds);
+        }
+        if (elapsed.TotalMinutes < 60)
+        {
+            return ChatTexts.MinutesAgo(language, (int)elapsed.TotalMinutes);
+        }
+        if (elapsed.TotalHours < 24)
+        {
+            return ChatTexts.HoursAgo(language, (int)elapsed.TotalHours);
+        }
+        if (elapsed.TotalDays < 7)
+        {
+            return ChatTexts.DaysAgo(language, (int)elapsed.TotalDays);
+        }
+        return parsed.ToLocalTime().ToString("MM-dd", CultureInfo.InvariantCulture);
     }
 
     private static List<string> RenderShortcutsBody(
@@ -314,10 +624,6 @@ public static class ChatTuiRenderer
 
     private static string RenderInput(ChatTuiState state, int width)
     {
-        if (state.Screen == ChatScreen.History)
-        {
-            return "> " + ChatTexts.HistoryTitle(state.Language);
-        }
         if (state.Screen == ChatScreen.Shortcuts)
         {
             return "> " + ChatTexts.ShortcutsTitle(state.Language);
@@ -343,6 +649,11 @@ public static class ChatTuiRenderer
     private static string RenderFooter(ChatTuiState state, int width)
     {
         var language = state.Language;
+        if (state.Screen == ChatScreen.History)
+        {
+            return ChatTexts.HistoryFooter(language, state.HistorySearching);
+        }
+
         var provider = string.IsNullOrWhiteSpace(state.Provider)
             ? "provider/model"
             : $"{state.Provider}/{state.Model}";
@@ -554,10 +865,5 @@ public static class ChatTuiRenderer
         return lines.Take(bodyHeight).ToList();
     }
 
-    private static string FormatTime(string value)
-    {
-        return DateTimeOffset.TryParse(value, out var parsed)
-            ? parsed.ToLocalTime().ToString("MM-dd HH:mm", CultureInfo.InvariantCulture)
-            : value;
-    }
+
 }

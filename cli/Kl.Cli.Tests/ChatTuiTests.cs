@@ -175,12 +175,14 @@ public sealed class ChatTuiTests
 
         var render = ChatTuiRenderer.Render(100, 24, state);
 
-        Assert.Contains("Workspace: D:\\a", render);
-        Assert.Contains("> task two", render);
-        Assert.Contains("p2/m2", render);
-        Assert.Contains("messages: 4", render);
-        Assert.Contains("last: last two", render);
-        Assert.Contains("prompt: prompt two", render);
+        Assert.Contains("D:\\a  1", render);
+        Assert.Contains("› task two", render);
+        Assert.Contains("Task details", render);
+        Assert.Contains("Status: Ready", render);
+        Assert.Contains("Model: p2/m2", render);
+        Assert.Contains("Project: D:\\b", render);
+        Assert.Contains("Prompt: prompt two", render);
+        Assert.Contains("Last: last two", render);
         Assert.Contains("? shortcuts", render.Split('\n')[^1]);
     }
 
@@ -215,7 +217,28 @@ public sealed class ChatTuiTests
         Assert.Equal(ChatKeyAction.HistoryDown, ChatKeyMapper.Map(Key(ConsoleKey.DownArrow), state));
         Assert.Equal(ChatKeyAction.HistoryOpen, ChatKeyMapper.Map(Key(ConsoleKey.Enter), state));
         Assert.Equal(ChatKeyAction.HistoryNew, ChatKeyMapper.Map(Key(ConsoleKey.N, 'n'), state));
+        Assert.Equal(ChatKeyAction.HistoryNextFilter, ChatKeyMapper.Map(Key(ConsoleKey.Tab, '\t'), state));
+        Assert.Equal(
+            ChatKeyAction.HistoryPreviousFilter,
+            ChatKeyMapper.Map(Key(ConsoleKey.Tab, '\t', shift: true), state));
+        Assert.Equal(ChatKeyAction.HistorySearch, ChatKeyMapper.Map(Key(ConsoleKey.Oem2, '/'), state));
         Assert.Equal(ChatKeyAction.HistoryBack, ChatKeyMapper.Map(Key(ConsoleKey.Escape), state));
+    }
+
+    [Fact]
+    public void HistorySearchKeysEditAndCloseSearch()
+    {
+        var state = new ChatTuiState
+        {
+            Screen = ChatScreen.History,
+            HistorySearching = true
+        };
+
+        Assert.Equal(ChatKeyAction.Insert, ChatKeyMapper.Map(Key(ConsoleKey.N, 'n'), state));
+        Assert.Equal(ChatKeyAction.Insert, ChatKeyMapper.Map(Key(ConsoleKey.Oem2, '/'), state));
+        Assert.Equal(ChatKeyAction.Backspace, ChatKeyMapper.Map(Key(ConsoleKey.Backspace), state));
+        Assert.Equal(ChatKeyAction.HistorySearchAccept, ChatKeyMapper.Map(Key(ConsoleKey.Enter), state));
+        Assert.Equal(ChatKeyAction.HistorySearchClose, ChatKeyMapper.Map(Key(ConsoleKey.Escape), state));
     }
 
     [Fact]
