@@ -61,6 +61,35 @@ public sealed record HistorySession(
     string? Prompt,
     string? LastMessage);
 
+public sealed record HistoryMessage(
+    string Role,
+    string Text,
+    string Timestamp,
+    long? Seq,
+    string? ToolName,
+    bool? ToolOk,
+    string? ToolSummary)
+{
+    public string ToolDisplay()
+    {
+        var label = string.Join(
+            ": ",
+            new[] { ToolName, ToolSummary }
+                .Where(value => !string.IsNullOrWhiteSpace(value)));
+        if (string.IsNullOrEmpty(label))
+        {
+            return Text;
+        }
+        var marker = ToolOk switch
+        {
+            true => "[ok] ",
+            false => "[fail] ",
+            _ => string.Empty
+        };
+        return marker + label;
+    }
+}
+
 public sealed class ChatTuiState
 {
     public ChatTuiState(
@@ -150,6 +179,30 @@ public sealed class ChatTuiState
     public void AddError(string text) =>
         Transcript.Add(new TranscriptEntry(TranscriptKind.Error, text));
 
+    public void AddHistory(IEnumerable<HistoryMessage> messages)
+    {
+        foreach (var message in messages)
+        {
+            switch (message.Role)
+            {
+                case "user" when !string.IsNullOrWhiteSpace(message.Text):
+                    Transcript.Add(new TranscriptEntry(TranscriptKind.User, message.Text));
+                    break;
+                case "assistant" when !string.IsNullOrWhiteSpace(message.Text):
+                    Transcript.Add(new TranscriptEntry(TranscriptKind.Assistant, message.Text));
+                    break;
+                case "tool":
+                    var tool = message.ToolDisplay();
+                    if (!string.IsNullOrWhiteSpace(tool))
+                    {
+                        Transcript.Add(new TranscriptEntry(TranscriptKind.Tool, tool));
+                    }
+                    break;
+            }
+        }
+        TranscriptScroll = 0;
+    }
+
     public void Apply(SessionEvent sessionEvent)
     {
         switch (sessionEvent.Kind)
@@ -165,8 +218,8 @@ public sealed class ChatTuiState
                 {
                     break;
                 }
-                AssistantStarted = true;
-                if (Transcript.Count > 0
+                if (AssistantStarted
+                    && Transcript.Count > 0
                     && Transcript[^1].Kind == TranscriptKind.Assistant)
                 {
                     Transcript[^1] = Transcript[^1] with
@@ -180,6 +233,7 @@ public sealed class ChatTuiState
                         TranscriptKind.Assistant,
                         sessionEvent.Text));
                 }
+                AssistantStarted = true;
                 break;
             case SessionEventKind.ReasoningDelta:
                 if (string.IsNullOrEmpty(sessionEvent.Text))
@@ -319,6 +373,46 @@ public sealed class ChatTuiState
     {
         var maximum = ChatTuiRenderer.MaxTranscriptScroll(this, width, height);
         TranscriptScroll = Math.Clamp(TranscriptScroll + delta, 0, maximum);
+    }
+
+    public static List<HistoryMessage> ParseHistory(JsonElement result)
+    {
+        var messages = new List<HistoryMessage>();
+        if (!result.TryGetProperty("messages", out var values)
+            || values.ValueKind != JsonValueKind.Array)
+        {
+            return messages;
+        }
+
+        foreach (var value in values.EnumerateArray())
+        {
+            string? toolName = null;
+            bool? toolOk = null;
+            string? toolSummary = null;
+            if (value.TryGetProperty("tool", out var tool)
+                && tool.ValueKind == JsonValueKind.Object)
+            {
+                toolName = GetOptionalString(tool, "name");
+                toolOk = tool.TryGetProperty("ok", out var ok)
+                    && ok.ValueKind is JsonValueKind.True or JsonValueKind.False
+                    ? ok.GetBoolean()
+                    : null;
+                toolSummary = GetOptionalString(tool, "summary");
+            }
+
+            messages.Add(new HistoryMessage(
+                GetString(value, "role"),
+                GetString(value, "text"),
+                GetString(value, "timestamp"),
+                value.TryGetProperty("seq", out var seq)
+                    && seq.TryGetInt64(out var parsedSeq)
+                    ? parsedSeq
+                    : null,
+                toolName,
+                toolOk,
+                toolSummary));
+        }
+        return messages;
     }
 
     public static List<HistorySession> ParseSessions(JsonElement result)

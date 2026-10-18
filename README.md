@@ -117,6 +117,10 @@ diffs and errors in a scrollable transcript. Enter sends, Ctrl+C cancels the
 current turn (or exits when idle), Left on an empty input opens history, Up/Down
 scrolls, and `?` shows shortcuts. The history page groups sessions by workspace
 and supports Up/Down, Enter to resume, `n` for a new session and Esc to return.
+When a session is resumed, directly or from the history page, the chat page
+replays the most recent visible user, assistant and tool summaries before
+accepting input. Live turn events continue from the new turn and are not
+replayed twice.
 
 From the chat input, enter `/settings` or `/设置` to open the settings page.
 The page uses a two-column layout: Model, Agent, Plugins and Skills on the
@@ -435,12 +439,18 @@ tests and .NET contract tests. Every envelope carries `kl_protocol: 1`, and the
 handshake negotiates the supported version range.
 
 Core methods: `kl.handshake`, `kl.ping`, `kl.doctor`, `session.create`,
-`session.resume`, `session.list`, `turn.start`, `turn.cancel`,
-`tool.approval.respond`, `provider.list`, `provider.upsert`,
+`session.resume`, `session.history`, `session.list`, `turn.start`,
+`turn.cancel`, `tool.approval.respond`, `provider.list`, `provider.upsert`,
 `provider.set_api_key`, `provider.set_enabled`, `config.set_default_model`,
 `plugin.list`, `plugin.install`, `plugin.reload`, `plugin.enable`,
 `plugin.disable`, `audit.tail`, `review.run`, `config.get`. `turn.start`
 accepts an optional `quality` value (`fast`, `balanced`, `deep`).
+
+`session.history` takes `session_id` and an optional `limit` (default 20) and
+returns the last N visible entries in chronological order. Each entry has
+`role`, `text`, optional `timestamp`/`seq`, and an optional sanitized `tool`
+summary. Raw tool arguments, tool output/diff bodies, audit internals and
+provider credentials are not returned.
 
 Events: `session.created`, `turn.started`, `turn.delta`, `turn.reasoning`,
 `tool.started`, `tool.output`, `tool.approval.requested`,
