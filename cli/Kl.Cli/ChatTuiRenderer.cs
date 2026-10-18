@@ -16,7 +16,10 @@ public static class ChatTuiRenderer
 
         width = Math.Max(20, width);
         height = Math.Max(8, height);
-        var bodyHeight = Math.Max(1, height - 4);
+        var paletteLines = ChatCommandPalette.IsOpen(state)
+            ? RenderCommandPalette(state, CommandPaletteHeight(state, height))
+            : [];
+        var bodyHeight = Math.Max(1, height - 4 - paletteLines.Count);
 
         var lines = new List<string>
         {
@@ -36,6 +39,7 @@ public static class ChatTuiRenderer
             lines.Add(string.Empty);
         }
 
+        lines.AddRange(paletteLines);
         lines.Add(RenderInput(state, width));
         lines.Add(RenderFooter(state, width));
 
@@ -54,6 +58,9 @@ public static class ChatTuiRenderer
     public static int MaxTranscriptScroll(ChatTuiState state, int width, int height)
     {
         var bodyHeight = Math.Max(1, Math.Max(8, height) - 4);
+        bodyHeight = Math.Max(
+            1,
+            bodyHeight - CommandPaletteHeight(state, Math.Max(8, height)));
         return Math.Max(
             0,
             TranscriptLines(state, Math.Max(20, width)).Count - bodyHeight);
@@ -165,6 +172,51 @@ public static class ChatTuiRenderer
         return lines.Take(bodyHeight).ToList();
     }
 
+    private static List<string> RenderCommandPalette(
+        ChatTuiState state,
+        int maximumLines)
+    {
+        if (maximumLines <= 0)
+        {
+            return [];
+        }
+
+        var matches = ChatCommandPalette.Matches(state.Input);
+        if (matches.Count == 0)
+        {
+            return ["  No matching commands"];
+        }
+
+        var selected = Math.Clamp(
+            state.CommandPaletteSelection,
+            0,
+            matches.Count - 1);
+        var start = Math.Clamp(
+            selected - maximumLines + 1,
+            0,
+            Math.Max(0, matches.Count - maximumLines));
+        var count = Math.Min(maximumLines, matches.Count - start);
+        var lines = new List<string>(count);
+        for (var index = start; index < start + count; index++)
+        {
+            var command = matches[index];
+            var marker = index == selected ? ">" : " ";
+            lines.Add($"{marker} {command.Name}  {command.Description}");
+        }
+        return lines;
+    }
+
+    private static int CommandPaletteHeight(ChatTuiState state, int height)
+    {
+        if (!ChatCommandPalette.IsOpen(state))
+        {
+            return 0;
+        }
+
+        var available = Math.Max(0, height - 5);
+        return Math.Min(available, Math.Max(1, ChatCommandPalette.Matches(state.Input).Count));
+    }
+
     private static string RenderInput(ChatTuiState state, int width)
     {
         if (state.Screen == ChatScreen.History)
@@ -205,6 +257,8 @@ public static class ChatTuiRenderer
                 "Enter  n  Esc  ? shortcuts",
             ChatScreen.Shortcuts =>
                 $"{provider}  reasoning: default  Esc back  ? shortcuts",
+            _ when ChatCommandPalette.IsOpen(state) =>
+                $"{provider}  reasoning: default  ↑/↓ select  Enter run  Esc close",
             _ => $"{provider}  reasoning: default  ← history  ? shortcuts"
         };
 

@@ -15,17 +15,17 @@ public static class SettingsTuiRenderer
         width = Math.Max(20, width);
         height = Math.Max(8, height);
         var bodyHeight = Math.Max(1, height - 3);
+        var leftWidth = Math.Clamp(width / 4, 12, 22);
+        var rightWidth = Math.Max(1, width - leftWidth - 3);
         var left = RenderGroups(state);
-        var (right, selectedLine) = RenderContent(state, width);
-        var visible = Window(right, selectedLine, bodyHeight, state);
+        var (right, selectedLine) = RenderContent(state);
+        var visible = Window(right, selectedLine, bodyHeight, rightWidth, state);
 
         var lines = new List<string>
         {
             SettingsTexts.Title(state.Language),
             new string('-', width)
         };
-        var leftWidth = Math.Clamp(width / 4, 12, 22);
-        var rightWidth = Math.Max(1, width - leftWidth - 3);
         for (var row = 0; row < bodyHeight; row++)
         {
             var leftText = row < left.Count ? left[row] : string.Empty;
@@ -58,8 +58,7 @@ public static class SettingsTuiRenderer
     }
 
     private static (List<string> Lines, int SelectedLine) RenderContent(
-        SettingsTuiState state,
-        int width)
+        SettingsTuiState state)
     {
         if (state.Group == SettingsGroup.Plugins)
         {
@@ -453,14 +452,18 @@ public static class SettingsTuiRenderer
         List<string> lines,
         int selectedLine,
         int height,
+        int width,
         SettingsTuiState state)
     {
-        if (height <= 0 || lines.Count <= height)
+        var fitted = lines
+            .Select(line => DisplayText.TruncateToWidth(line, width))
+            .ToList();
+        if (height <= 0 || fitted.Count <= height)
         {
             state.RightScroll = 0;
-            return lines;
+            return fitted;
         }
-        var maximum = Math.Max(0, lines.Count - height);
+        var maximum = Math.Max(0, fitted.Count - height);
         var start = Math.Clamp(state.RightScroll, 0, maximum);
         if (selectedLine >= 0)
         {
@@ -474,7 +477,7 @@ public static class SettingsTuiRenderer
             }
         }
         state.RightScroll = Math.Clamp(start, 0, maximum);
-        return lines.Skip(state.RightScroll).Take(height).ToList();
+        return fitted.Skip(state.RightScroll).Take(height).ToList();
     }
 
     private static string OneLine(string value) =>
@@ -485,13 +488,6 @@ public static class SettingsTuiRenderer
                 .Select(part => part.Trim())
                 .Where(part => part.Length > 0));
 
-    private static string Fit(string text, int width)
-    {
-        text ??= string.Empty;
-        if (text.Length > width)
-        {
-            return text[..width];
-        }
-        return text.PadRight(width);
-    }
+    private static string Fit(string text, int width) =>
+        DisplayText.PadToWidth(text, width);
 }

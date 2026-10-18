@@ -33,6 +33,10 @@ public enum ChatKeyAction
     CursorHome,
     CursorEnd,
     Send,
+    CommandPaletteUp,
+    CommandPaletteDown,
+    CommandPaletteAccept,
+    CommandPaletteClose,
     CancelOrExit,
     OpenHistory,
     HistoryUp,
@@ -124,6 +128,8 @@ public sealed class ChatTuiState
     public bool AssistantStarted { get; set; }
     public List<HistorySession> History { get; set; } = [];
     public int HistorySelection { get; set; }
+    public int CommandPaletteSelection { get; set; }
+    public bool CommandPaletteDismissed { get; set; }
     public SettingsTuiState Settings { get; } = new();
 
     public bool HasPendingApproval => PendingApprovalId is not null;
@@ -132,6 +138,7 @@ public sealed class ChatTuiState
     {
         Input = Input.Insert(Math.Clamp(Cursor, 0, Input.Length), character.ToString());
         Cursor = Math.Clamp(Cursor + 1, 0, Input.Length);
+        ResetCommandPalette();
     }
 
     public void Backspace()
@@ -142,6 +149,7 @@ public sealed class ChatTuiState
         }
         Input = Input.Remove(Cursor - 1, 1);
         Cursor--;
+        ResetCommandPalette();
     }
 
     public void Delete()
@@ -151,6 +159,7 @@ public sealed class ChatTuiState
             return;
         }
         Input = Input.Remove(Cursor, 1);
+        ResetCommandPalette();
     }
 
     public void MoveCursorLeft() => Cursor = Math.Max(0, Cursor - 1);
@@ -161,16 +170,30 @@ public sealed class ChatTuiState
 
     public void MoveCursorEnd() => Cursor = Input.Length;
 
+    public void DismissCommandPalette() => CommandPaletteDismissed = true;
+
+    public void ClearInput()
+    {
+        Input = string.Empty;
+        Cursor = 0;
+        ResetCommandPalette();
+    }
+
     public void AddUserMessage(string text)
     {
         Transcript.Add(new TranscriptEntry(TranscriptKind.User, text));
         TranscriptScroll = 0;
-        Input = string.Empty;
-        Cursor = 0;
+        ClearInput();
         IsTurnActive = true;
         TurnStartedAt = DateTimeOffset.Now;
         AssistantStarted = false;
         StatusMessage = null;
+    }
+
+    private void ResetCommandPalette()
+    {
+        CommandPaletteSelection = 0;
+        CommandPaletteDismissed = false;
     }
 
     public void AddInfo(string text) =>
@@ -483,6 +506,21 @@ public static class ChatKeyMapper
                 'd' or 'D' or 'n' or 'N' => ChatKeyAction.ApprovalDeny,
                 _ => ChatKeyAction.None
             };
+        }
+
+        if (ChatCommandPalette.IsOpen(state))
+        {
+            switch (key.Key)
+            {
+                case ConsoleKey.UpArrow:
+                    return ChatKeyAction.CommandPaletteUp;
+                case ConsoleKey.DownArrow:
+                    return ChatKeyAction.CommandPaletteDown;
+                case ConsoleKey.Enter:
+                    return ChatKeyAction.CommandPaletteAccept;
+                case ConsoleKey.Escape:
+                    return ChatKeyAction.CommandPaletteClose;
+            }
         }
 
         if (state.Screen == ChatScreen.History)

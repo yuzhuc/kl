@@ -6,7 +6,7 @@ use kl_policy::{Effect, PolicyEngine, ToolAccess};
 use kl_protocol::{ApprovalDecision, CoreEvent};
 use kl_provider::{
     CancellationToken, ChatEvent, ChatMessage, ChatOutcome, ChatRequest, ModelMetadata, Provider,
-    ProviderError, ProviderErrorKind, ToolCall, Usage,
+    ProviderError, ProviderErrorKind, Role, ToolCall, ToolDefinition, Usage,
 };
 use kl_sandbox::SandboxManager;
 use kl_tools::{PolicyRequest, ToolContext, ToolError, ToolRegistry};
@@ -96,6 +96,8 @@ pub enum AgentError {
     MaxIterations,
     #[error("token budget exceeded")]
     TokenBudgetExceeded,
+    #[error("context window exceeded: {0}")]
+    ContextWindowExceeded(String),
 }
 
 enum ProviderMessage {
@@ -193,11 +195,7 @@ impl Agent {
                         return Err(AgentError::MaxIterations);
                     }
 
-                    let mut request =
-                        ChatRequest::new(self.metadata.model.clone(), history.clone());
-                    request.max_tokens = self.metadata.max_output_tokens;
-                    request.system = self.system_prompt.clone();
-                    request.tools = self.tools.definitions();
+                    let request = self.prepare_request(history)?;
 
                     let estimated_input = estimate_request_tokens(&request);
                     let outcome = match self.stream_provider(request, cancel.clone(), sink, turn_id)
@@ -379,6 +377,40 @@ impl Agent {
             }
         }
     }
+
+    fn request_for(&self, history: &[ChatMessage]) -> ChatRequest {
+        let mut request = ChatRequest::new(self.metadata.model.clone(), history.to_vec());
+        request.max_tokens = self.metadata.max_output_tokens;
+        request.system = self.system_prompt.clone();
+        request.tools = self.tools.definitions();
+        request
+    }
+
+    fn prepare_request(&self, history: &mut Vec<ChatMessage>) -> Result<ChatRequest, AgentError> {
+        let request = self.request_for(history);
+        let budget = effective_context_budget(&self.metadata);
+        let estimated = estimate_context_tokens(&request);
+        if estimated <= budget {
+            return Ok(request);
+        }
+
+        let compacted = compact_history(history, &self.system_prompt, &request.tools, budget)
+            .ok_or_else(|| {
+                AgentError::ContextWindowExceeded(format!(
+                    "estimated {estimated} input tokens exceed budget {budget}"
+                ))
+            })?;
+        let request = self.request_for(&compacted);
+        let compacted_estimated = estimate_context_tokens(&request);
+        if compacted_estimated >= budget {
+            return Err(AgentError::ContextWindowExceeded(format!(
+                "compacted request uses {compacted_estimated} input tokens, budget is {budget}"
+            )));
+        }
+        *history = compacted;
+        Ok(request)
+    }
+
     fn finish_cancelled(
         &self,
         turn_id: &str,
@@ -781,6 +813,83 @@ fn error_payload(message: &str) -> String {
         .unwrap_or_else(|_| "{\"ok\":false}".to_owned())
 }
 
+const MESSAGE_OVERHEAD_TOKENS: u64 = 8;
+const COMPACTION_MARKER_PREFIX: &str = "[KL context compacted: omitted ";
+const COMPACTION_MARKER_SUFFIX: &str = " older message(s)]";
+
+fn effective_context_budget(metadata: &ModelMetadata) -> u64 {
+    let window = u64::from(metadata.context_window);
+    let threshold = f64::from(metadata.compact_threshold).clamp(0.0, 1.0);
+    let threshold_budget = (window as f64 * threshold).floor() as u64;
+    let output_budget = window.saturating_sub(u64::from(metadata.max_output_tokens));
+    threshold_budget.min(output_budget).max(1)
+}
+
+fn compact_history(
+    history: &[ChatMessage],
+    system: &str,
+    tools: &[ToolDefinition],
+    budget: u64,
+) -> Option<Vec<ChatMessage>> {
+    let systems = history
+        .iter()
+        .filter(|message| message.role == Role::System)
+        .cloned()
+        .collect::<Vec<_>>();
+    let previously_omitted = history
+        .iter()
+        .filter_map(compaction_omitted)
+        .fold(0usize, usize::saturating_add);
+    let conversation = history
+        .iter()
+        .filter(|message| message.role != Role::System && compaction_omitted(message).is_none())
+        .cloned()
+        .collect::<Vec<_>>();
+    let round_starts = conversation
+        .iter()
+        .enumerate()
+        .filter_map(|(index, message)| (message.role == Role::User).then_some(index))
+        .collect::<Vec<_>>();
+    if round_starts.is_empty() {
+        return None;
+    }
+
+    for start in round_starts.into_iter().rev() {
+        let omitted = previously_omitted.saturating_add(start);
+        let mut candidate = Vec::with_capacity(systems.len() + 1 + conversation.len() - start);
+        candidate.extend(systems.iter().cloned());
+        if omitted > 0 {
+            candidate.push(compaction_marker(omitted));
+        }
+        candidate.extend(conversation[start..].iter().cloned());
+        if estimate_history_tokens(system, tools, &candidate) < budget {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn estimate_history_tokens(system: &str, tools: &[ToolDefinition], history: &[ChatMessage]) -> u64 {
+    let mut request = ChatRequest::new("", history.to_vec());
+    request.system = system.to_owned();
+    request.tools = tools.to_vec();
+    estimate_context_tokens(&request)
+}
+
+fn compaction_marker(omitted: usize) -> ChatMessage {
+    ChatMessage::user(format!(
+        "{COMPACTION_MARKER_PREFIX}{omitted}{COMPACTION_MARKER_SUFFIX}"
+    ))
+}
+
+fn compaction_omitted(message: &ChatMessage) -> Option<usize> {
+    let text = message.text();
+    let count = text
+        .strip_prefix(COMPACTION_MARKER_PREFIX)?
+        .strip_suffix(COMPACTION_MARKER_SUFFIX)?;
+    count.parse().ok()
+}
+
 fn estimate_tokens(text: &str) -> u64 {
     (text.chars().count() as u64).div_ceil(3)
 }
@@ -792,6 +901,31 @@ fn estimate_request_tokens(request: &ChatRequest) -> u64 {
     }
     if let Ok(tools) = serde_json::to_string(&request.tools) {
         total += estimate_tokens(&tools);
+    }
+    total
+}
+
+fn estimate_context_text_tokens(text: &str) -> u64 {
+    (text.len() as u64).div_ceil(3)
+}
+
+fn estimate_message_tokens(message: &ChatMessage) -> u64 {
+    let serialized = serde_json::to_string(message).unwrap_or_else(|_| message.text());
+    estimate_context_text_tokens(&serialized).saturating_add(MESSAGE_OVERHEAD_TOKENS)
+}
+
+fn estimate_context_tokens(request: &ChatRequest) -> u64 {
+    let mut total =
+        estimate_context_text_tokens(&request.system).saturating_add(MESSAGE_OVERHEAD_TOKENS);
+    for message in &request.messages {
+        total = total.saturating_add(estimate_message_tokens(message));
+    }
+    if !request.tools.is_empty() {
+        if let Ok(tools) = serde_json::to_string(&request.tools) {
+            total = total
+                .saturating_add(estimate_context_text_tokens(&tools))
+                .saturating_add(MESSAGE_OVERHEAD_TOKENS);
+        }
     }
     total
 }
@@ -883,6 +1017,76 @@ mod tests {
             0.75,
             1234,
         )
+    }
+
+    fn metadata_with_limit(
+        context_window: u32,
+        compact_threshold: f32,
+        max_output_tokens: u32,
+    ) -> ModelMetadata {
+        ModelMetadata::new(
+            "test",
+            "test-model",
+            Protocol::Scripted,
+            "offline://test",
+            context_window,
+            compact_threshold,
+            max_output_tokens,
+        )
+    }
+
+    fn test_agent(provider: Arc<dyn Provider>, metadata: ModelMetadata) -> Agent {
+        let tools = ToolRegistry::builtin();
+        for name in tools.names() {
+            tools.remove(&name);
+        }
+        let policy = Arc::new(
+            PolicyEngine::new(std::env::current_dir().unwrap(), PolicyConfig::default()).unwrap(),
+        );
+        Agent::new(
+            provider,
+            metadata,
+            Arc::new(tools),
+            policy,
+            Arc::new(SandboxManager::policy_only()),
+            Arc::new(MemoryAudit::default()),
+            AgentConfig::default(),
+        )
+    }
+
+    #[derive(Default)]
+    struct CapturingProvider {
+        requests: Mutex<Vec<ChatRequest>>,
+    }
+
+    impl Provider for CapturingProvider {
+        fn id(&self) -> &str {
+            "capturing"
+        }
+
+        fn kind(&self) -> &str {
+            "test"
+        }
+
+        fn models(&self) -> Vec<ModelInfo> {
+            Vec::new()
+        }
+
+        fn stream_chat(
+            &self,
+            request: &ChatRequest,
+            _cancel: &CancellationToken,
+            on_event: &mut dyn FnMut(ChatEvent),
+        ) -> Result<ChatOutcome, ProviderError> {
+            self.requests.lock().unwrap().push(request.clone());
+            on_event(ChatEvent::TextDelta("done".to_owned()));
+            Ok(ChatOutcome {
+                text: "done".to_owned(),
+                tool_calls: Vec::new(),
+                finish_reason: FinishReason::Stop,
+                usage: Usage::default(),
+            })
+        }
     }
 
     struct Gate(ApprovalDecision);
@@ -983,6 +1187,225 @@ mod tests {
             )
             .unwrap();
         assert_eq!(result.status, TurnStatus::Completed);
+    }
+
+    #[test]
+    fn context_budget_uses_threshold_and_output_reserve_without_zero() {
+        assert_eq!(
+            effective_context_budget(&metadata_with_limit(1_000, 0.8, 100)),
+            800
+        );
+        assert_eq!(
+            effective_context_budget(&metadata_with_limit(1_000, 0.9, 400)),
+            600
+        );
+        assert_eq!(
+            effective_context_budget(&metadata_with_limit(1_000, 0.8, 2_000)),
+            1
+        );
+        assert_eq!(
+            effective_context_budget(&metadata_with_limit(1_000, 0.0, 100)),
+            1
+        );
+        assert_eq!(
+            effective_context_budget(&metadata_with_limit(1, f32::NAN, 0)),
+            1
+        );
+    }
+
+    #[test]
+    fn token_estimate_includes_tool_calls_and_tool_results() {
+        let short = estimate_message_tokens(&ChatMessage::user("short"));
+        let long_user = estimate_message_tokens(&ChatMessage::user("u".repeat(600)));
+        let tool_call = estimate_message_tokens(&ChatMessage::assistant_with_text(
+            "",
+            vec![ToolCall {
+                id: "call-1".to_owned(),
+                name: "read_file".to_owned(),
+                arguments: format!("{{\"path\":\"{}\"}}", "a".repeat(600)),
+            }],
+        ));
+        let tool_result = estimate_message_tokens(&ChatMessage::tool("call-1", "r".repeat(600)));
+
+        assert!(long_user > short);
+        assert!(tool_call > short);
+        assert!(tool_result > short);
+    }
+
+    #[test]
+    fn compaction_preserves_system_latest_user_and_complete_tool_pairs() {
+        let old_call = ToolCall {
+            id: "old-call".to_owned(),
+            name: "read_file".to_owned(),
+            arguments: "{\"path\":\"old.txt\"}".to_owned(),
+        };
+        let current_call = ToolCall {
+            id: "current-call".to_owned(),
+            name: "read_file".to_owned(),
+            arguments: "{\"path\":\"current.txt\"}".to_owned(),
+        };
+        let system = ChatMessage::system("persistent system");
+        let latest_user = ChatMessage::user("latest request");
+        let current_assistant = ChatMessage::assistant_with_text("", vec![current_call]);
+        let current_tool = ChatMessage::tool("current-call", "current result");
+        let history = vec![
+            system.clone(),
+            ChatMessage::user("o".repeat(800)),
+            ChatMessage::assistant_with_text("", vec![old_call]),
+            ChatMessage::tool("old-call", "old result"),
+            ChatMessage::assistant_with_text("old answer", Vec::new()),
+            latest_user.clone(),
+            current_assistant.clone(),
+            current_tool.clone(),
+        ];
+        let minimum = vec![
+            system.clone(),
+            compaction_marker(4),
+            latest_user.clone(),
+            current_assistant.clone(),
+            current_tool.clone(),
+        ];
+        let budget = estimate_history_tokens("", &[], &minimum).saturating_add(1);
+
+        let compacted = compact_history(&history, "", &[], budget).unwrap();
+
+        assert_eq!(compacted[0], system);
+        assert_eq!(compaction_omitted(&compacted[1]), Some(4));
+        assert_eq!(compacted[2], latest_user);
+        assert!(
+            compacted
+                .iter()
+                .all(|message| !message.text().contains(&"o".repeat(100)))
+        );
+        assert!(estimate_history_tokens("", &[], &compacted) < budget);
+
+        let mut known_calls = Vec::new();
+        for message in &compacted {
+            if message.role == Role::Assistant {
+                known_calls.extend(message.tool_calls.iter().map(|call| call.id.as_str()));
+            }
+            if message.role == Role::Tool {
+                let call_id = message.tool_call_id.as_deref().unwrap();
+                assert!(known_calls.contains(&call_id));
+            }
+        }
+        assert_eq!(
+            compacted
+                .iter()
+                .filter(|message| message.role == Role::Tool)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn history_is_unchanged_when_request_is_within_budget() {
+        let provider = Arc::new(CapturingProvider::default());
+        let agent = test_agent(provider, metadata_with_limit(32_000, 0.75, 1_234));
+        let mut history = vec![
+            ChatMessage::system("persistent system"),
+            ChatMessage::user("old user"),
+            ChatMessage::assistant_with_text("old answer", Vec::new()),
+            ChatMessage::user("latest request"),
+        ];
+        let original = history.clone();
+
+        let request = agent.prepare_request(&mut history).unwrap();
+
+        assert_eq!(history, original);
+        assert_eq!(request.messages, original);
+        assert!(
+            history
+                .iter()
+                .all(|message| compaction_omitted(message).is_none())
+        );
+    }
+
+    #[test]
+    fn compacts_before_sending_provider_request() {
+        let provider = Arc::new(CapturingProvider::default());
+        let agent = test_agent(provider.clone(), metadata_with_limit(900, 0.5, 100));
+        let mut history = vec![ChatMessage::system("persistent system")];
+        for index in 0..8 {
+            history.push(ChatMessage::user(format!(
+                "old user {index} {}",
+                "u".repeat(200)
+            )));
+            history.push(ChatMessage::assistant_with_text(
+                format!("old answer {index} {}", "a".repeat(200)),
+                Vec::new(),
+            ));
+        }
+        let original_len = history.len();
+        let sink = RecordingSink::default();
+
+        agent
+            .run_turn(
+                "session",
+                "turn",
+                "latest request",
+                &mut history,
+                Arc::new(AtomicBool::new(false)),
+                &sink,
+                &Gate(ApprovalDecision::Allow),
+            )
+            .unwrap();
+
+        let requests = provider.requests.lock().unwrap();
+        let request = &requests[0];
+        assert_eq!(request.messages[0].text(), "persistent system");
+        assert_eq!(request.messages.last().unwrap().text(), "latest request");
+        assert!(
+            request
+                .messages
+                .iter()
+                .any(|message| { compaction_omitted(message).is_some_and(|count| count > 0) })
+        );
+        assert!(
+            estimate_context_tokens(request)
+                < effective_context_budget(&metadata_with_limit(900, 0.5, 100))
+        );
+        assert!(history.len() < original_len);
+    }
+
+    #[test]
+    fn repeated_turns_keep_history_bounded() {
+        let provider = Arc::new(CapturingProvider::default());
+        let agent = test_agent(provider, metadata_with_limit(1_000, 0.6, 100));
+        let mut history = vec![ChatMessage::system("persistent system")];
+
+        for index in 0..40 {
+            history.push(ChatMessage::user(format!(
+                "turn {index} {}",
+                "u".repeat(160)
+            )));
+            let request = agent.prepare_request(&mut history).unwrap();
+            assert!(
+                estimate_context_tokens(&request)
+                    <= effective_context_budget(&metadata_with_limit(1_000, 0.6, 100))
+            );
+            history.push(ChatMessage::assistant_with_text(
+                format!("answer {index} {}", "a".repeat(160)),
+                Vec::new(),
+            ));
+        }
+
+        assert!(
+            history.len() <= 10,
+            "history grew to {} messages",
+            history.len()
+        );
+    }
+
+    #[test]
+    fn tiny_context_returns_error_instead_of_panicking() {
+        let provider = Arc::new(CapturingProvider::default());
+        let agent = test_agent(provider, metadata_with_limit(1, 0.5, 100));
+        let mut history = vec![ChatMessage::user("small")];
+
+        let error = agent.prepare_request(&mut history).unwrap_err();
+
+        assert!(matches!(error, AgentError::ContextWindowExceeded(_)));
     }
 
     #[test]
