@@ -1,7 +1,8 @@
 # Plugin API
 
-Status: **sidecar and WASM tool plugin MVPs implemented**. WASM providers are
-not supported, and there is still no Rust dynamic-library ABI.
+Status: **sidecar and WASM tool plugin MVPs implemented, with optional Ed25519
+signatures and entrypoint integrity checks**. WASM providers are not supported,
+and there is still no Rust dynamic-library ABI.
 
 ## Runtime boundaries
 
@@ -44,9 +45,14 @@ JSON and TOML manifests are supported. The schema is
   "health_timeout_ms": 3000,
   "drain_timeout_ms": 2000,
   "call_timeout_ms": 30000,
-  "memory_limit_mb": 64
+  "memory_limit_mb": 64,
+  "integrity": { "sha256": "<64 hex characters>" },
+  "signature": { "algorithm": "ed25519", "value": "<base64 signature>" }
 }
 ```
+
+`integrity` and `signature` are optional for development plugins. Production
+hosts should set `require_signature`; see "Integrity and signatures" below.
 
 For provider plugins, use `"kind": "provider"` and declare `models`.
 
@@ -68,6 +74,48 @@ fixtures):
   "memory_limit_mb": 64
 }
 ```
+
+## Integrity and signatures
+
+The host checks the entrypoint file and, when present, its Ed25519 signature
+before starting or replacing a sidecar or WASM instance.
+
+- `integrity.sha256` is the SHA-256 of the entrypoint file bytes as 64 hex
+  characters (lowercase or uppercase). When the field is present, a mismatch
+  is always rejected.
+- `signature` is optional. When present, `algorithm` must be `ed25519` and
+  `value` is a standard-base64 Ed25519 signature.
+- The signature covers the compact JSON returned by
+  `PluginManifest::signing_payload()`: the manifest with the `signature`
+  field removed, defaults materialized, and fields in this order:
+  `id, version, api, kind, entrypoint, runtime, capabilities, permissions,
+  tool_name, tool_parameters, models, config_path, health_timeout_ms,
+  drain_timeout_ms, call_timeout_ms, memory_limit_mb, integrity`.
+  `tool_parameters` is serialized as a normal JSON object.
+- The public key is a standard-base64 encoded raw 32-byte Ed25519 public key.
+  The host reads it from `security.json` in the plugin host root (the
+  directory containing `installed/`) or from `KL_PLUGIN_PUBLIC_KEY`; the
+  config file wins. `security.json` looks like:
+
+```json
+{
+  "require_signature": true,
+  "public_key": "<base64 public key>"
+}
+```
+
+- With `require_signature: true`, both `integrity` and `signature` are
+  mandatory and a public key must be configured. With `false` (the default),
+  unsigned development plugins remain usable, but any hash or signature that
+  is present is still enforced.
+- A signature without `integrity` is rejected because it would not bind the
+  signature to the entrypoint bytes.
+- Verification runs in `PluginHost::start_instance`, so both runtimes and all
+  start paths (install, reload, enable, startup scan) share the same gate.
+  A failed check returns `PluginError::Integrity` before any process or WASM
+  instance is started. Install and reload keep the previously active version.
+- Private keys are never read, stored or logged by the host. Errors contain
+  only the failure category, never key material.
 
 ## Sidecar protocol
 
@@ -155,4 +203,13 @@ ship a compiled `.wasm` component.
   future file access needs a new, explicitly designed host capability.
 - `call_timeout_ms` interrupts executing guest code. It does not impose a
   separate CPU instruction budget for untrusted code.
-- Plugin signatures and a remote marketplace are not implemented yet.
+- Only the entrypoint file is hashed. Mutable files such as `config.json`
+  and ancillary resources are not covered by `integrity.sha256`.
+- Signature verification has no key rotation, revocation or trust-store
+  support yet. The signing payload is tied to the current manifest field set;
+  adding manifest fields later requires a new signing-payload version.
+- Signature checking is subject to a verify-then-execute race if an attacker
+  can write the installed plugin directory between verification and process
+  start. Installed plugin directories must be owned by the host user and not
+  writable by untrusted users.
+- Remote installation and a plugin marketplace remain out of scope.

@@ -13,6 +13,7 @@ members = [
     "crates/kl-agent",
     "crates/kl-review",
     "crates/kl-core",
+    "crates/kl-index",
 ]
 
 [workspace.package]

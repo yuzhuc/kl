@@ -83,6 +83,11 @@ public sealed class KlSessionClient : IAsyncDisposable
         }
     }
 
+    public Task<JsonElement> HistoryAsync(
+        int limit = 20,
+        CancellationToken cancellationToken = default) =>
+        _client.SessionHistoryAsync(SessionId, limit, cancellationToken);
+
     public Task<JsonElement> ListSessionsAsync(CancellationToken cancellationToken = default) =>
         _client.ListSessionsAsync(cancellationToken);
 

@@ -96,6 +96,96 @@ public sealed class SettingsCoreTests
     }
 
     [Fact]
+    public async Task PluginsLoadToggleReloadAndListFields()
+    {
+        var root = TempRoot();
+        try
+        {
+            var options = Options(root);
+            var source = Path.Combine(root, "plugin-source");
+            Directory.CreateDirectory(source);
+            File.Copy(
+                RepoFile(
+                    "crates",
+                    "kl-plugin-host",
+                    "tests",
+                    "fixtures",
+                    "wasm-tool",
+                    "valid.wat"),
+                Path.Combine(source, "tool.wat"));
+            await File.WriteAllTextAsync(
+                Path.Combine(source, "manifest.json"),
+                """
+                {
+                  "id": "settings-test",
+                  "version": "1",
+                  "api": 1,
+                  "kind": "tool",
+                  "entrypoint": "tool.wat",
+                  "runtime": "wasm",
+                  "capabilities": ["tool"],
+                  "permissions": {
+                    "network": [],
+                    "env": [],
+                    "fs_read": [],
+                    "fs_write": []
+                  },
+                  "tool_name": "settings_test",
+                  "tool_parameters": { "type": "object" },
+                  "health_timeout_ms": 1000,
+                  "drain_timeout_ms": 500,
+                  "call_timeout_ms": 1000,
+                  "memory_limit_mb": 64
+                }
+                """);
+
+            await using (var client = KlCoreClient.Start(options))
+            {
+                await client.HandshakeAsync();
+                await client.PluginInstallAsync(source);
+            }
+
+            var snapshot = await SettingsTuiRunner.LoadAsync(options);
+            var plugin = Assert.Single(snapshot.Plugins);
+            Assert.Equal("settings-test", plugin.Id);
+            Assert.Equal("1", plugin.Version);
+            Assert.Equal("tool", plugin.Kind);
+            Assert.True(plugin.Enabled);
+            Assert.True(plugin.Healthy);
+            Assert.Equal("settings_test", plugin.ToolName);
+
+            await SettingsTuiRunner.SetPluginEnabledAsync(
+                options,
+                plugin.Id,
+                enabled: false);
+            snapshot = await SettingsTuiRunner.LoadAsync(options);
+            plugin = Assert.Single(snapshot.Plugins);
+            Assert.False(plugin.Enabled);
+            Assert.False(plugin.Healthy);
+            Assert.Contains("disabled", plugin.Detail);
+
+            await SettingsTuiRunner.SetPluginEnabledAsync(
+                options,
+                plugin.Id,
+                enabled: true);
+            snapshot = await SettingsTuiRunner.LoadAsync(options);
+            plugin = Assert.Single(snapshot.Plugins);
+            Assert.True(plugin.Enabled);
+            Assert.True(plugin.Healthy);
+
+            await SettingsTuiRunner.ReloadPluginAsync(options, plugin.Id);
+            snapshot = await SettingsTuiRunner.LoadAsync(options);
+            plugin = Assert.Single(snapshot.Plugins);
+            Assert.True(plugin.Enabled);
+            Assert.True(plugin.Healthy);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task DefaultModelSelectionPersists()
     {
         var root = TempRoot();
@@ -136,6 +226,22 @@ public sealed class SettingsCoreTests
         ConfigPath = Path.Combine(root, "kl.toml"),
         HomePath = Path.Combine(root, "home")
     };
+
+    private static string RepoFile(params string[] parts)
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            var candidate = Path.Combine([directory.FullName, .. parts]);
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+            directory = directory.Parent;
+        }
+        throw new FileNotFoundException(
+            "repository file not found: " + Path.Combine(parts));
+    }
 
     private static string TempRoot()
     {

@@ -247,6 +247,49 @@
       },
       "additionalProperties": false
     },
+    "sessionHistoryParams": {
+      "type": "object",
+      "required": ["session_id"],
+      "properties": {
+        "session_id": { "type": "string" },
+        "limit": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "sessionHistoryToolSummary": {
+      "type": "object",
+      "required": ["name", "ok", "summary"],
+      "properties": {
+        "name": { "type": "string" },
+        "ok": { "type": "boolean" },
+        "summary": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "sessionHistoryEntry": {
+      "type": "object",
+      "required": ["role", "text"],
+      "properties": {
+        "role": { "enum": ["user", "assistant", "tool"] },
+        "text": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "seq": { "type": "integer", "minimum": 0 },
+        "tool": { "$ref": "#/$defs/sessionHistoryToolSummary" }
+      },
+      "additionalProperties": false
+    },
+    "sessionHistoryResult": {
+      "type": "object",
+      "required": ["session_id", "messages"],
+      "properties": {
+        "session_id": { "type": "string" },
+        "messages": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/sessionHistoryEntry" }
+        }
+      },
+      "additionalProperties": false
+    },
     "sessionInfo": {
       "type": "object",
       "required": [

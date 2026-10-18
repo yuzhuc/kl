@@ -105,4 +105,39 @@ public sealed class ProtocolContractTests
         using var document = Read("error_version_mismatch.json");
         Assert.Equal(-32001, document.RootElement.GetProperty("error").GetProperty("code").GetInt64());
     }
+
+    [Fact]
+    public void SessionHistoryMatchesSharedContract()
+    {
+        using var request = Read("session_history_request.json");
+        Assert.Equal(
+            Protocol.SessionHistory,
+            request.RootElement.GetProperty("method").GetString());
+        var parameters = request.RootElement.GetProperty("params");
+        Assert.Equal("session-1", parameters.GetProperty("session_id").GetString());
+        Assert.Equal(20, parameters.GetProperty("limit").GetInt32());
+
+        using var response = Read("session_history_result.json");
+        var result = response.RootElement.GetProperty("result");
+        Assert.Equal("session-1", result.GetProperty("session_id").GetString());
+        var messages = result.GetProperty("messages");
+        Assert.Equal(3, messages.GetArrayLength());
+        Assert.Equal("user", messages[0].GetProperty("role").GetString());
+        Assert.Equal("fix it", messages[0].GetProperty("text").GetString());
+        Assert.Equal(2, messages[0].GetProperty("seq").GetInt64());
+        Assert.True(messages[0].TryGetProperty("timestamp", out _));
+        var tool = messages[1].GetProperty("tool");
+        Assert.Equal("shell", tool.GetProperty("name").GetString());
+        Assert.True(tool.GetProperty("ok").GetBoolean());
+        Assert.Equal("exit 0 in 5 ms", tool.GetProperty("summary").GetString());
+        Assert.Equal("assistant", messages[2].GetProperty("role").GetString());
+        Assert.Equal("done", messages[2].GetProperty("text").GetString());
+
+        var raw = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "fixtures", "session_history_result.json"));
+        foreach (var forbidden in new[] { "\"args\"", "\"output\"", "\"diff\"", "\"api_key\"" })
+        {
+            Assert.DoesNotContain(forbidden, raw);
+        }
+    }
 }

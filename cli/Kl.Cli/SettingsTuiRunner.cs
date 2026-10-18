@@ -12,8 +12,10 @@ public static class SettingsTuiRunner
             .ConfigureAwait(false);
         var config = await client.GetConfigAsync(cancellationToken)
             .ConfigureAwait(false);
+        var plugins = await client.PluginListAsync(cancellationToken)
+            .ConfigureAwait(false);
         return WithCredentialState(
-            SettingsSnapshot.FromJson(providers, config),
+            SettingsSnapshot.FromJson(providers, config, plugins),
             options);
     }
 
@@ -105,6 +107,37 @@ public static class SettingsTuiRunner
         await using var client = KlCoreClient.Start(options);
         await client.HandshakeAsync(cancellationToken).ConfigureAwait(false);
         await client.SetDefaultModelAsync(provider, model, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public static async Task SetPluginEnabledAsync(
+        CliOptions options,
+        string plugin,
+        bool enabled,
+        CancellationToken cancellationToken = default)
+    {
+        await using var client = KlCoreClient.Start(options);
+        await client.HandshakeAsync(cancellationToken).ConfigureAwait(false);
+        if (enabled)
+        {
+            await client.PluginEnableAsync(plugin, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        else
+        {
+            await client.PluginDisableAsync(plugin, cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    public static async Task ReloadPluginAsync(
+        CliOptions options,
+        string plugin,
+        CancellationToken cancellationToken = default)
+    {
+        await using var client = KlCoreClient.Start(options);
+        await client.HandshakeAsync(cancellationToken).ConfigureAwait(false);
+        await client.PluginReloadAsync(plugin, cancellationToken)
             .ConfigureAwait(false);
     }
 }

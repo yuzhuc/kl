@@ -37,6 +37,8 @@ public enum SettingsCommandKind
     SaveProvider,
     SetDefaultModel,
     ToggleProvider,
+    SetPluginEnabled,
+    ReloadPlugin,
     Reload
 }
 
@@ -44,9 +46,17 @@ public sealed record SettingsCommand(
     SettingsCommandKind Kind,
     string? Provider = null,
     string? Model = null,
-    bool? Enabled = null)
+    bool? Enabled = null,
+    string? Plugin = null)
 {
     public static readonly SettingsCommand None = new(SettingsCommandKind.None);
+}
+
+public enum PluginAction
+{
+    Enable,
+    Disable,
+    Reload
 }
 
 public static class SettingsUrls
@@ -167,15 +177,30 @@ public sealed record SettingsProvider(
     string ResponsesUrl,
     IReadOnlyList<SettingsModel> Models);
 
+public sealed record SettingsPlugin(
+    string Id,
+    string Version,
+    string Kind,
+    bool Enabled,
+    bool Healthy,
+    string Detail,
+    string? ToolName,
+    IReadOnlyList<string> Models);
+
 public sealed record SettingsSnapshot(
     string ActiveProvider,
     string ActiveModel,
     IReadOnlyList<SettingsProvider> Providers,
-    IReadOnlyList<SettingsModel> Models)
+    IReadOnlyList<SettingsModel> Models,
+    IReadOnlyList<SettingsPlugin> Plugins)
 {
-    public static SettingsSnapshot Empty { get; } = new(string.Empty, string.Empty, [], []);
+    public static SettingsSnapshot Empty { get; } =
+        new(string.Empty, string.Empty, [], [], []);
 
-    public static SettingsSnapshot FromJson(JsonElement providerList, JsonElement config)
+    public static SettingsSnapshot FromJson(
+        JsonElement providerList,
+        JsonElement config,
+        JsonElement pluginList = default)
     {
         var configuredProviders = new Dictionary<string, bool>(StringComparer.Ordinal);
         if (config.ValueKind == JsonValueKind.Object
@@ -288,7 +313,38 @@ public sealed record SettingsSnapshot(
             providers.OrderBy(provider => provider.Id, StringComparer.Ordinal).ToList(),
             models.OrderBy(model => model.Provider, StringComparer.Ordinal)
                 .ThenBy(model => model.Id, StringComparer.Ordinal)
-                .ToList());
+                .ToList(),
+            ParsePlugins(pluginList));
+    }
+
+    private static IReadOnlyList<SettingsPlugin> ParsePlugins(JsonElement pluginList)
+    {
+        if (pluginList.ValueKind != JsonValueKind.Object
+            || !pluginList.TryGetProperty("plugins", out var plugins)
+            || plugins.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var result = new List<SettingsPlugin>();
+        foreach (var value in plugins.EnumerateArray())
+        {
+            var id = GetString(value, "id");
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                continue;
+            }
+            result.Add(new SettingsPlugin(
+                id,
+                GetString(value, "version"),
+                GetString(value, "kind"),
+                GetBool(value, "enabled"),
+                GetBool(value, "healthy"),
+                GetString(value, "detail"),
+                GetOptionalString(value, "tool_name"),
+                GetStringArray(value, "models")));
+        }
+        return result.OrderBy(plugin => plugin.Id, StringComparer.Ordinal).ToList();
     }
 
     private static (
@@ -384,6 +440,28 @@ public sealed record SettingsSnapshot(
             && value.ValueKind == JsonValueKind.String
             ? value.GetString() ?? string.Empty
             : string.Empty;
+
+    private static string? GetOptionalString(JsonElement element, string name) =>
+        element.ValueKind == JsonValueKind.Object
+            && element.TryGetProperty(name, out var value)
+            && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private static IReadOnlyList<string> GetStringArray(JsonElement element, string name)
+    {
+        if (element.ValueKind != JsonValueKind.Object
+            || !element.TryGetProperty(name, out var value)
+            || value.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+        return value.EnumerateArray()
+            .Where(item => item.ValueKind == JsonValueKind.String)
+            .Select(item => item.GetString() ?? string.Empty)
+            .Where(item => item.Length > 0)
+            .ToArray();
+    }
 
     private static int GetInt(JsonElement element, string name) =>
         element.ValueKind == JsonValueKind.Object
@@ -680,6 +758,9 @@ public sealed class SettingsTuiState
     public SettingsModelDraft? ModelDraft { get; private set; }
     public string? Status { get; set; }
     public string? Error { get; set; }
+    public bool IsLoading { get; private set; }
+    public PluginAction? PendingPluginAction { get; private set; }
+    public string? PendingPluginId { get; private set; }
 
     public ProviderEditorRow CurrentProviderRow =>
         ProviderEditorRows.Count == 0
@@ -722,6 +803,21 @@ public sealed class SettingsTuiState
         }
     }
 
+    public void BeginLoad()
+    {
+        IsLoading = true;
+        Status = "loading settings...";
+        Error = null;
+        ClearPluginPending();
+    }
+
+    public void FailLoad(string message)
+    {
+        IsLoading = false;
+        Status = null;
+        Error = message;
+    }
+
     public void Load(SettingsSnapshot snapshot, string? selectedProvider = null)
     {
         Snapshot = snapshot;
@@ -731,8 +827,10 @@ public sealed class SettingsTuiState
         ModelDraft = null;
         _modelEditIndex = -1;
         RightScroll = 0;
+        IsLoading = false;
         Status = null;
         Error = null;
+        ClearPluginPending();
         if (selectedProvider is null)
         {
             Pane = SettingsPane.Groups;
@@ -746,6 +844,30 @@ public sealed class SettingsTuiState
             .FirstOrDefault(item => item.provider.Id == selectedProvider)
             .providerIndex;
         ListRow = Math.Clamp(index, 0, Math.Max(0, snapshot.Providers.Count - 1));
+    }
+
+    public void LoadPlugins(SettingsSnapshot snapshot, string? selectedPlugin = null)
+    {
+        Snapshot = snapshot;
+        GroupIndex = Groups.ToList().IndexOf(SettingsGroup.Plugins);
+        View = SettingsView.Providers;
+        Pane = SettingsPane.Content;
+        Draft = null;
+        ModelDraft = null;
+        _modelEditIndex = -1;
+        RightScroll = 0;
+        IsLoading = false;
+        Status = null;
+        Error = null;
+        ClearPluginPending();
+
+        var index = string.IsNullOrWhiteSpace(selectedPlugin)
+            ? 0
+            : snapshot.Plugins
+                .Select((plugin, pluginIndex) => (plugin, pluginIndex))
+                .FirstOrDefault(item => item.plugin.Id == selectedPlugin)
+                .pluginIndex;
+        ListRow = Math.Clamp(index, 0, Math.Max(0, snapshot.Plugins.Count - 1));
     }
 
     public void OpenNewProvider()
@@ -830,6 +952,11 @@ public sealed class SettingsTuiState
         }
     }
 
+    public SettingsPlugin? SelectedPlugin =>
+        ListRow >= 0 && ListRow < Snapshot.Plugins.Count
+            ? Snapshot.Plugins[ListRow]
+            : null;
+
     public SettingsProvider? SelectedProvider
     {
         get
@@ -856,6 +983,27 @@ public sealed class SettingsTuiState
         if (control && key.Key == ConsoleKey.C)
         {
             return new SettingsCommand(SettingsCommandKind.Close);
+        }
+
+        if (Pane == SettingsPane.Content && Group == SettingsGroup.Plugins)
+        {
+            if (key.KeyChar is 'e' or 'E')
+            {
+                return RequestPluginAction(PluginAction.Enable);
+            }
+            if (key.KeyChar is 'd' or 'D')
+            {
+                return RequestPluginAction(PluginAction.Disable);
+            }
+            if (key.KeyChar is 'r' or 'R')
+            {
+                return RequestPluginAction(PluginAction.Reload);
+            }
+            if (key.KeyChar == ' ' && SelectedPlugin is { } plugin)
+            {
+                return RequestPluginAction(
+                    plugin.Enabled ? PluginAction.Disable : PluginAction.Enable);
+            }
         }
 
         if (Pane == SettingsPane.Content
@@ -990,6 +1138,15 @@ public sealed class SettingsTuiState
             return;
         }
 
+        if (Group == SettingsGroup.Plugins)
+        {
+            ListRow = Math.Clamp(
+                ListRow + delta,
+                0,
+                Math.Max(0, Snapshot.Plugins.Count - 1));
+            ClearPluginPending();
+            return;
+        }
         if (View == SettingsView.Providers)
         {
             var maximum = Snapshot.Providers.Count + Snapshot.Models.Count - 1;
@@ -1012,6 +1169,15 @@ public sealed class SettingsTuiState
         if (Pane == SettingsPane.Groups)
         {
             Pane = SettingsPane.Content;
+            return SettingsCommand.None;
+        }
+        if (Group == SettingsGroup.Plugins)
+        {
+            if (PendingPluginAction is { } action && SelectedPlugin is { } plugin)
+            {
+                return BuildPluginCommand(plugin, action);
+            }
+            Status = "select a plugin, then press e, d or r";
             return SettingsCommand.None;
         }
         if (Group != SettingsGroup.Model)
@@ -1098,6 +1264,12 @@ public sealed class SettingsTuiState
 
     private SettingsCommand Back()
     {
+        if (Group == SettingsGroup.Plugins && PendingPluginAction is not null)
+        {
+            ClearPluginPending();
+            Status = null;
+            return SettingsCommand.None;
+        }
         if (View == SettingsView.ModelEditor)
         {
             View = SettingsView.ProviderEditor;
@@ -1119,6 +1291,64 @@ public sealed class SettingsTuiState
             return SettingsCommand.None;
         }
         return new SettingsCommand(SettingsCommandKind.Close);
+    }
+
+    private SettingsCommand RequestPluginAction(PluginAction action)
+    {
+        if (SelectedPlugin is not { } plugin)
+        {
+            Status = "no plugin selected";
+            return SettingsCommand.None;
+        }
+        if (action == PluginAction.Enable && plugin.Enabled)
+        {
+            ClearPluginPending();
+            Status = "plugin is already enabled";
+            return SettingsCommand.None;
+        }
+        if (action == PluginAction.Disable && !plugin.Enabled)
+        {
+            ClearPluginPending();
+            Status = "plugin is already disabled";
+            return SettingsCommand.None;
+        }
+        if (PendingPluginAction == action && PendingPluginId == plugin.Id)
+        {
+            return BuildPluginCommand(plugin, action);
+        }
+
+        PendingPluginAction = action;
+        PendingPluginId = plugin.Id;
+        Error = null;
+        var key = action switch
+        {
+            PluginAction.Enable => "e",
+            PluginAction.Disable => "d",
+            _ => "r"
+        };
+        Status =
+            $"{action.ToString().ToLowerInvariant()} plugin {plugin.Id}? " +
+            $"Press {key} again or Enter to confirm; Esc cancels.";
+        return SettingsCommand.None;
+    }
+
+    private SettingsCommand BuildPluginCommand(SettingsPlugin plugin, PluginAction action)
+    {
+        ClearPluginPending();
+        Error = null;
+        Status = null;
+        return action == PluginAction.Reload
+            ? new SettingsCommand(SettingsCommandKind.ReloadPlugin, Plugin: plugin.Id)
+            : new SettingsCommand(
+                SettingsCommandKind.SetPluginEnabled,
+                Enabled: action == PluginAction.Enable,
+                Plugin: plugin.Id);
+    }
+
+    private void ClearPluginPending()
+    {
+        PendingPluginAction = null;
+        PendingPluginId = null;
     }
 
     private void SaveModelDraft()

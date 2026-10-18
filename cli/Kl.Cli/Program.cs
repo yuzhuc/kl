@@ -182,6 +182,10 @@ internal static class Program
         ui.Header($"KL session {session.SessionId}");
         ui.Line($"workspace: {session.Workspace}");
         ui.Line($"provider: {session.Provider}/{session.Model} ({session.MessageCount} messages)");
+        if (!string.IsNullOrWhiteSpace(options.Session))
+        {
+            await PrintHistoryAsync(session, ui).ConfigureAwait(false);
+        }
         ui.Line("Type /exit to quit, Ctrl+C to cancel the current turn.");
 
         ConsoleCancelEventHandler cancelHandler = (_, eventArgs) =>
@@ -226,6 +230,38 @@ internal static class Program
             Console.CancelKeyPress -= cancelHandler;
         }
         return 0;
+    }
+
+    private static async Task PrintHistoryAsync(KlSessionClient session, ConsoleUi ui)
+    {
+        try
+        {
+            var result = await session.HistoryAsync(20).ConfigureAwait(false);
+            foreach (var message in ChatTuiState.ParseHistory(result))
+            {
+                switch (message.Role)
+                {
+                    case "user" when !string.IsNullOrWhiteSpace(message.Text):
+                        ui.Line($"You: {message.Text}");
+                        break;
+                    case "assistant" when !string.IsNullOrWhiteSpace(message.Text):
+                        ui.Line($"KL: {message.Text}");
+                        break;
+                    case "tool":
+                        var tool = message.ToolDisplay();
+                        if (!string.IsNullOrWhiteSpace(tool))
+                        {
+                            ui.Line($"[tool] {tool}");
+                        }
+                        break;
+                }
+            }
+        }
+        catch (Exception error)
+            when (error is JsonRpcException or IOException or InvalidOperationException)
+        {
+            ui.Error($"history unavailable: {error.Message}");
+        }
     }
 
     private static async Task<int> ResumeAsync(CliOptions options, ConsoleUi ui)

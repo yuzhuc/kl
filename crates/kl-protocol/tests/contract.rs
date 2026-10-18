@@ -3,7 +3,8 @@
 
 use kl_protocol::{
     CoreEvent, EventNotification, HandshakeParams, HandshakeResult, IncomingMessage, PingParams,
-    PingResult, ProviderListResult, RequestId, ReviewResult, error_codes, methods,
+    PingResult, ProviderListResult, RequestId, ReviewResult, SessionHistoryParams,
+    SessionHistoryResult, error_codes, methods,
 };
 use serde_json::Value;
 use std::path::PathBuf;
@@ -115,4 +116,38 @@ fn version_mismatch_error_uses_stable_code() {
     let value = read("error_version_mismatch.json");
     assert_eq!(value["error"]["code"], error_codes::VERSION_MISMATCH);
     assert_eq!(value["jsonrpc"], "2.0");
+}
+
+#[test]
+fn session_history_messages_match_shared_contract() {
+    let request = read("session_history_request.json");
+    let message: IncomingMessage = serde_json::from_value(request).unwrap();
+    assert_eq!(message.method.as_deref(), Some(methods::SESSION_HISTORY));
+    let params: SessionHistoryParams = serde_json::from_value(message.params).unwrap();
+    assert_eq!(params.session_id, "session-1");
+    assert_eq!(params.limit, 20);
+
+    let response = read("session_history_result.json");
+    let result: SessionHistoryResult = serde_json::from_value(response["result"].clone()).unwrap();
+    assert_eq!(result.session_id, "session-1");
+    assert_eq!(result.messages.len(), 3);
+    assert_eq!(result.messages[0].role, "user");
+    assert_eq!(result.messages[0].text, "fix it");
+    assert_eq!(result.messages[0].seq, Some(2));
+    assert!(result.messages[0].timestamp.is_some());
+    assert_eq!(result.messages[1].role, "tool");
+    let tool = result.messages[1].tool.as_ref().unwrap();
+    assert_eq!(tool.name, "shell");
+    assert!(tool.ok);
+    assert_eq!(tool.summary, "exit 0 in 5 ms");
+    assert_eq!(result.messages[2].role, "assistant");
+    assert_eq!(result.messages[2].text, "done");
+
+    let serialized = serde_json::to_string(&response).unwrap();
+    for forbidden in ["args", "output", "diff", "api_key"] {
+        assert!(
+            !serialized.contains(&format!("\"{forbidden}\"")),
+            "history leaked {forbidden}: {serialized}"
+        );
+    }
 }

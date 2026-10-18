@@ -14,6 +14,7 @@ public static class Protocol
     public const string Doctor = "kl.doctor";
     public const string SessionCreate = "session.create";
     public const string SessionResume = "session.resume";
+    public const string SessionHistory = "session.history";
     public const string SessionList = "session.list";
     public const string TurnStart = "turn.start";
     public const string TurnCancel = "turn.cancel";

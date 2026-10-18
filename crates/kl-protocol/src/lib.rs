@@ -27,6 +27,7 @@ pub mod methods {
     pub const DOCTOR: &str = "kl.doctor";
     pub const SESSION_CREATE: &str = "session.create";
     pub const SESSION_RESUME: &str = "session.resume";
+    pub const SESSION_HISTORY: &str = "session.history";
     pub const SESSION_LIST: &str = "session.list";
     pub const TURN_START: &str = "turn.start";
     pub const TURN_CANCEL: &str = "turn.cancel";
@@ -384,6 +385,42 @@ pub struct SessionInfo {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SessionResumeParams {
     pub session_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SessionHistoryParams {
+    pub session_id: String,
+    #[serde(default = "default_history_limit")]
+    pub limit: usize,
+}
+
+fn default_history_limit() -> usize {
+    20
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SessionHistoryToolSummary {
+    pub name: String,
+    pub ok: bool,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SessionHistoryEntry {
+    pub role: String,
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seq: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool: Option<SessionHistoryToolSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SessionHistoryResult {
+    pub session_id: String,
+    pub messages: Vec<SessionHistoryEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

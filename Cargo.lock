@@ -777,6 +777,7 @@ dependencies = [
  "dunce",
  "kl-agent",
  "kl-audit",
+ "kl-index",
  "kl-plugin-host",
  "kl-policy",
  "kl-protocol",
@@ -802,17 +803,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "kl-index"
+version = "0.1.0"
+dependencies = [
+ "dunce",
+ "regex",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "kl-plugin-host"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "dunce",
  "kl-exec",
  "kl-policy",
  "kl-provider",
  "kl-sandbox",
  "kl-tools",
+ "ring",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "thiserror",
  "toml",

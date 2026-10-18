@@ -1,0 +1,10 @@
+{
+  "jsonrpc": "2.0",
+  "kl_protocol": 1,
+  "id": 5,
+  "method": "session.history",
+  "params": {
+    "session_id": "session-1",
+    "limit": 20
+  }
+}

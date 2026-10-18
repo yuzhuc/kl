@@ -10,6 +10,12 @@ The manifests use the Windows binary path
 `../../../target/debug/fake_plugin.exe`. On Unix, replace `.exe` with the
 platform binary name.
 
+The bundled manifests are unsigned development fixtures. A host using
+`require_signature: true` rejects them; sign a copy for production use and
+declare `integrity.sha256` over the entrypoint. See
+`docs/plugin-api/README.md` for the signing payload and the
+`security.json` format.
+
 ## Fake tool
 
 ```powershell

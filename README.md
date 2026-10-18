@@ -53,12 +53,19 @@ kl (C#/.NET)  -- JSON-RPC 2.0 over stdio -->  kl-core (Rust)
 
 - Rust 1.85+ (edition 2024; tested with 1.99)
 - .NET SDK 10
+- Node.js 22+ (for JS build scripts)
 - Git
 - No Python is required or used.
 
 ## Build and test
 
-PowerShell:
+Cross-platform JavaScript:
+
+```sh
+node scripts/build.mjs
+```
+
+PowerShell wrapper:
 
 ```powershell
 pwsh scripts/build.ps1
@@ -117,12 +124,16 @@ diffs and errors in a scrollable transcript. Enter sends, Ctrl+C cancels the
 current turn (or exits when idle), Left on an empty input opens history, Up/Down
 scrolls, and `?` shows shortcuts. The history page groups sessions by workspace
 and supports Up/Down, Enter to resume, `n` for a new session and Esc to return.
+When a session is resumed, directly or from the history page, the chat page
+replays the most recent visible user, assistant and tool summaries before
+accepting input. Live turn events continue from the new turn and are not
+replayed twice.
 
 From the chat input, enter `/settings` or `/设置` to open the settings page.
 The page uses a two-column layout: Model, Agent, Plugins and Skills on the
-left, and the selected group on the right. Model is implemented; the other
-three are placeholders. Use Up/Down to move, Tab/Shift+Tab to switch columns,
-Enter to edit or confirm, Esc to return, and Ctrl+S to save.
+left, and the selected group on the right. Model and Plugins are implemented;
+Agent and Skills are placeholders. Use Up/Down to move, Tab/Shift+Tab to switch
+columns, Enter to edit or confirm, Esc to return, and Ctrl+S to save.
 
 The Model group lists providers with enabled, key, model-count and protocol
 status, plus model metadata. It can add or edit providers, toggle a provider
@@ -134,6 +145,15 @@ TOML. Full mode writes the three complete URLs exactly as entered. API keys use
 masked input and `provider.set_api_key` to write
 `credentials/<id>.key`; they are never written to provider TOML or echoed.
 Disabled providers hide their models until they are enabled again.
+
+The Plugins group reads `plugin.list` and shows each plugin's id, version, kind,
+enabled state, health and detail. Selecting a plugin shows its basic metadata
+and the most recent host-provided error detail; raw manifest parameters and
+credentials are not rendered. Use `e` to enable, `d` to disable, `r` to reload,
+or Space to toggle, then press the same key again or Enter to confirm. Esc
+cancels a pending confirmation. The list is reloaded after every successful
+action, so a disabled plugin immediately shows its new state. Installation stays
+in the existing command: `kl plugin install <path>`.
 
 Redirected or non-interactive runs automatically fall back to the plain-text
 prompt. `/settings` in that mode prints a hint instead of being sent to the
@@ -435,12 +455,18 @@ tests and .NET contract tests. Every envelope carries `kl_protocol: 1`, and the
 handshake negotiates the supported version range.
 
 Core methods: `kl.handshake`, `kl.ping`, `kl.doctor`, `session.create`,
-`session.resume`, `session.list`, `turn.start`, `turn.cancel`,
-`tool.approval.respond`, `provider.list`, `provider.upsert`,
+`session.resume`, `session.history`, `session.list`, `turn.start`,
+`turn.cancel`, `tool.approval.respond`, `provider.list`, `provider.upsert`,
 `provider.set_api_key`, `provider.set_enabled`, `config.set_default_model`,
 `plugin.list`, `plugin.install`, `plugin.reload`, `plugin.enable`,
 `plugin.disable`, `audit.tail`, `review.run`, `config.get`. `turn.start`
 accepts an optional `quality` value (`fast`, `balanced`, `deep`).
+
+`session.history` takes `session_id` and an optional `limit` (default 20) and
+returns the last N visible entries in chronological order. Each entry has
+`role`, `text`, optional `timestamp`/`seq`, and an optional sanitized `tool`
+summary. Raw tool arguments, tool output/diff bodies, audit internals and
+provider credentials are not returned.
 
 Events: `session.created`, `turn.started`, `turn.delta`, `turn.reasoning`,
 `tool.started`, `tool.output`, `tool.approval.requested`,

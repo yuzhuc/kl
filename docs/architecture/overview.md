@@ -20,6 +20,7 @@ Rust trusted core (kl-core)
   ReviewPipeline (git diff, local/security rules, optional LLM review)
   QualityModes (fast/balanced; deep: explorer -> planner -> implementer ->
                 reviewer -> verifier)
+  RepoIndex (gitignore-aware files, shallow symbols, diff query, test selection)
 ```
 
 ## Request lifecycle
@@ -62,6 +63,25 @@ existing `PolicyEngine` denies edits, writes, shell writes, git writes and
 plugins before tool execution; verifier shell is restricted to a test/build/
 lint and read-only git allowlist. A workspace fingerprint taken before review
 is retained as a second defense against out-of-band changes.
+
+## Repository index
+
+deep mode builds a lightweight repository index before the explorer stage.
+kl-index discovers files through git ls-files --cached --others
+--exclude-standard, so ignored directories such as target and node_modules are
+excluded. It records repo-relative paths, canonical language names, line counts,
+modification times, and shallow symbols for Rust, C# and TypeScript; all other
+languages are file-level only. Queries support path, symbol, language, recent
+modification, and git-changed filters. Changed files are mapped to
+same-directory or same-module tests when possible; otherwise the selected
+project test command is reported as a fallback.
+
+The index is cached as versioned JSON under ~/.kl/cache/repo-index (or
+KL_INDEX_CACHE_DIR), never in the workspace. A path/size/modification-time
+manifest invalidates stale entries and rebuilds them. Cache failures do not
+block deep mode. Only explorer and planner prompts receive the bounded index
+summary; reviewer and verifier prompts and their read-only tool accesses are
+unchanged. The index is an orientation hint, not a semantic model or LSP.
 
 ## Automated review
 
