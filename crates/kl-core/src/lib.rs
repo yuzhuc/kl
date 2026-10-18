@@ -346,14 +346,20 @@ impl DeepStage {
         }
     }
 
-    fn prompt(self, task: &str) -> String {
+    fn prompt(self, task: &str, index_context: Option<&str>) -> String {
         match self {
-            Self::Explorer => format!(
-                "You are the explorer stage. Inspect the workspace and session history. Use read_file, grep, glob and git diff to find the files, symbols, tests and risks relevant to this task. Do not modify files. End with a concise exploration report.\n\nTask:\n{task}"
-            ),
-            Self::Planner => format!(
-                "You are the planner stage. Use the explorer report and session history to produce an ordered implementation plan with explicit acceptance checks. Do not modify files. End with PLAN and the verification commands.\n\nTask:\n{task}"
-            ),
+            Self::Explorer => {
+                let prompt = format!(
+                    "You are the explorer stage. Inspect the workspace and session history. Use read_file, grep, glob and git diff to find the files, symbols, tests and risks relevant to this task. Do not modify files. End with a concise exploration report.\n\nTask:\n{task}"
+                );
+                with_index_context(prompt, index_context)
+            }
+            Self::Planner => {
+                let prompt = format!(
+                    "You are the planner stage. Use the explorer report and session history to produce an ordered implementation plan with explicit acceptance checks. Do not modify files. End with PLAN and the verification commands.\n\nTask:\n{task}"
+                );
+                with_index_context(prompt, index_context)
+            }
             Self::Implementer => format!(
                 "You are the implementer stage. Implement the plan using the available tools. Make the smallest correct change, run focused verification, and do not expand scope. End with IMPLEMENTATION and the commands/results you ran.\n\nTask:\n{task}"
             ),
@@ -364,6 +370,15 @@ impl DeepStage {
                 "You are the verifier stage. Verify the implementation by running the relevant tests, build, and type/lint checks. Do not modify files or expand the change. Report commands, results, and residual risks with file:line evidence. End with VERIFY.\n\nTask:\n{task}"
             ),
         }
+    }
+}
+
+fn with_index_context(prompt: String, index_context: Option<&str>) -> String {
+    match index_context {
+        Some(context) => format!(
+            "{prompt}\n\nRepository index (hints only; verify with tools before relying on them):\n{context}"
+        ),
+        None => prompt,
     }
 }
 
@@ -497,6 +512,17 @@ impl DeepTurn {
         let mut outputs = Vec::new();
         let mut stable_workspace = None;
         let max_stages = self.settings.deep_max_stages.clamp(1, DEEP_STAGES.len());
+        let index = match kl_index::RepoIndex::load(&self.workspace) {
+            Ok(index) => Some(index),
+            Err(error) => {
+                self.emit_delta(&format!("[index] unavailable: {error}\n"))?;
+                None
+            }
+        };
+        let index_context = index.as_ref().map(|index| {
+            let changed = index.changed_files().unwrap_or_default();
+            index.prompt_context(&self.task, &changed)
+        });
         for stage in DEEP_STAGES.iter().take(max_stages).copied() {
             if self.cancel.load(Ordering::Relaxed) {
                 return self.stop_or_cancel(&timed_out, &budget_exceeded, usage);
@@ -559,7 +585,7 @@ impl DeepTurn {
                 self.audit.clone(),
                 agent_config,
             );
-            let prompt = stage.prompt(&self.task);
+            let prompt = stage.prompt(&self.task, index_context.as_deref());
             let result = agent.run_turn(
                 &self.session_id,
                 &stage_turn,
@@ -2729,6 +2755,20 @@ auto_approve_edits = true
             std::fs::read_to_string(temp.path().join("out.txt")).unwrap(),
             "done"
         );
+    }
+
+    #[test]
+    fn deep_prompts_include_index_context_only_for_explorer_and_planner() {
+        let context = "3 files, 4 symbols.";
+        let explorer = DeepStage::Explorer.prompt("task", Some(context));
+        assert!(explorer.contains(context));
+        assert!(explorer.contains("Repository index"));
+        let planner = DeepStage::Planner.prompt("task", Some(context));
+        assert!(planner.contains(context));
+        let reviewer = DeepStage::Reviewer.prompt("task", Some(context));
+        assert!(!reviewer.contains(context));
+        let verifier = DeepStage::Verifier.prompt("task", Some(context));
+        assert!(!verifier.contains(context));
     }
 
     struct SlowProvider;
