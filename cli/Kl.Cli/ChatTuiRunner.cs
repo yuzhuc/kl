@@ -235,19 +235,51 @@ public static class ChatTuiRunner
                         case ChatKeyAction.CursorEnd:
                             state.MoveCursorEnd();
                             break;
+                        case ChatKeyAction.CommandPaletteUp:
+                            ChatCommandPalette.MoveSelection(state, -1);
+                            break;
+                        case ChatKeyAction.CommandPaletteDown:
+                            ChatCommandPalette.MoveSelection(state, 1);
+                            break;
+                        case ChatKeyAction.CommandPaletteClose:
+                            state.DismissCommandPalette();
+                            break;
+                        case ChatKeyAction.CommandPaletteAccept:
+                            var selectedCommand = ChatCommandPalette.Selected(state);
+                            if (selectedCommand is null)
+                            {
+                                state.StatusMessage = "no matching command";
+                                break;
+                            }
+                            var paletteResult = await ExecuteCommandAsync(
+                                options,
+                                state,
+                                connection,
+                                selectedCommand.Kind,
+                                cancellationToken).ConfigureAwait(false);
+                            connection = paletteResult.Connection;
+                            state = paletteResult.State;
+                            exit = paletteResult.Exit;
+                            break;
                         case ChatKeyAction.Send:
                             var prompt = state.Input.Trim();
-                            if (ChatCommand.IsSettings(prompt))
+                            if (prompt.StartsWith('/'))
                             {
-                                state.Input = string.Empty;
-                                state.Cursor = 0;
-                                state.Screen = ChatScreen.Settings;
-                                state.Settings.BeginLoad();
-                                RenderFrame(width, height, state);
-                                await LoadSettingsAsync(
+                                var command = ChatCommandPalette.FindExact(prompt);
+                                if (command is null)
+                                {
+                                    state.StatusMessage = $"unknown command: {prompt}";
+                                    break;
+                                }
+                                var commandResult = await ExecuteCommandAsync(
                                     options,
                                     state,
+                                    connection,
+                                    command.Kind,
                                     cancellationToken).ConfigureAwait(false);
+                                connection = commandResult.Connection;
+                                state = commandResult.State;
+                                exit = commandResult.Exit;
                                 break;
                             }
                             if (connection is null)
@@ -424,6 +456,84 @@ public static class ChatTuiRunner
                 await connection.Session.DisposeAsync().ConfigureAwait(false);
             }
         }
+    }
+
+    private static async Task<CommandResult> ExecuteCommandAsync(
+        CliOptions options,
+        ChatTuiState state,
+        Connection? connection,
+        ChatCommandKind command,
+        CancellationToken cancellationToken)
+    {
+        switch (command)
+        {
+            case ChatCommandKind.Settings:
+                state.ClearInput();
+                state.Screen = ChatScreen.Settings;
+                state.Settings.BeginLoad();
+                await LoadSettingsAsync(options, state, cancellationToken)
+                    .ConfigureAwait(false);
+                break;
+            case ChatCommandKind.History:
+                state.ClearInput();
+                if (connection is null)
+                {
+                    state.StatusMessage = "history unavailable: no active session";
+                    break;
+                }
+                state.History = await LoadHistoryAsync(connection.Session, state)
+                    .ConfigureAwait(false);
+                state.HistorySelection = 0;
+                state.Screen = ChatScreen.History;
+                break;
+            case ChatCommandKind.New:
+                state.ClearInput();
+                if (connection is null)
+                {
+                    state.StatusMessage = "new session unavailable: configure provider first";
+                    break;
+                }
+                if (state.IsTurnActive)
+                {
+                    state.StatusMessage = "cannot start a new session while a turn is active";
+                    break;
+                }
+                await connection.Session.DisposeAsync().ConfigureAwait(false);
+                connection = null;
+                try
+                {
+                    connection = await OpenSessionAsync(
+                        options,
+                        null,
+                        cancellationToken).ConfigureAwait(false);
+                    state = NewState(connection.Session, options.Verbose);
+                    await LoadTranscriptAsync(
+                        connection.Session,
+                        state,
+                        cancellationToken).ConfigureAwait(false);
+                    state.History = await LoadHistoryAsync(
+                        connection.Session,
+                        state).ConfigureAwait(false);
+                    state.AddInfo($"New session {connection.Session.SessionId}");
+                }
+                catch (Exception error)
+                    when (error is JsonRpcException or IOException or InvalidOperationException)
+                {
+                    state = NewStateWithoutSession(options);
+                    state.AddError($"new session unavailable: {error.Message}");
+                    state.StatusMessage = "new session unavailable";
+                }
+                break;
+            case ChatCommandKind.Help:
+                state.ClearInput();
+                state.ShortcutReturnScreen = ChatScreen.Chat;
+                state.Screen = ChatScreen.Shortcuts;
+                break;
+            case ChatCommandKind.Exit:
+                return new CommandResult(connection, state, Exit: true);
+        }
+
+        return new CommandResult(connection, state, Exit: false);
     }
 
     private static ChatTuiState NewStateWithoutSession(CliOptions options) =>
@@ -771,6 +881,11 @@ public static class ChatTuiRunner
     private sealed record Connection(
         KlSessionClient Session,
         TuiSessionPresenter Presenter);
+
+    private sealed record CommandResult(
+        Connection? Connection,
+        ChatTuiState State,
+        bool Exit);
 
     private sealed class TerminalSession : IDisposable
     {
