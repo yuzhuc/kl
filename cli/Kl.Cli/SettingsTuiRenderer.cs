@@ -6,9 +6,9 @@ public static class SettingsTuiRenderer
 {
     public const string Title = "KL Settings";
     public const string FooterHints =
-        "↑/↓ move  Tab/Shift+Tab pane  Enter edit/confirm  Esc back  Ctrl+S save";
+        "↑/↓ move  Tab/Shift+Tab pane  Enter edit/confirm  Esc back  Ctrl+S save  F2 save & exit";
     public const string PluginFooterHints =
-        "↑/↓ move  Tab/Shift+Tab pane  e enable  d disable  r reload  Enter confirm  Esc back";
+        "↑/↓ move  Tab/Shift+Tab pane  e enable  d disable  r reload  Enter confirm  Esc back  F2 save & exit";
 
     public static string Render(int width, int height, SettingsTuiState state)
     {
@@ -21,7 +21,7 @@ public static class SettingsTuiRenderer
 
         var lines = new List<string>
         {
-            Title,
+            SettingsTexts.Title(state.Language),
             new string('-', width)
         };
         var leftWidth = Math.Clamp(width / 4, 12, 22);
@@ -32,13 +32,19 @@ public static class SettingsTuiRenderer
             var rightText = row < visible.Count ? visible[row] : string.Empty;
             lines.Add(Fit(leftText, leftWidth) + " | " + Fit(rightText, rightWidth));
         }
-        lines.Add(state.Group == SettingsGroup.Plugins ? PluginFooterHints : FooterHints);
+        lines.Add(state.Group == SettingsGroup.Plugins
+            ? SettingsTexts.PluginFooter(state.Language)
+            : SettingsTexts.Footer(state.Language));
         return string.Join('\n', lines.Take(height).Select(line => Fit(line, width)));
     }
 
     private static List<string> RenderGroups(SettingsTuiState state)
     {
-        var lines = new List<string> { "Groups", string.Empty };
+        var lines = new List<string>
+        {
+            SettingsTexts.Groups(state.Language),
+            string.Empty
+        };
         for (var index = 0; index < state.Groups.Count; index++)
         {
             var marker = state.Pane == SettingsPane.Groups && index == state.GroupIndex
@@ -46,7 +52,7 @@ public static class SettingsTuiRenderer
                 : index == state.GroupIndex
                     ? "* "
                     : "  ";
-            lines.Add(marker + state.Groups[index]);
+            lines.Add(marker + SettingsTexts.Group(state.Groups[index], state.Language));
         }
         return lines;
     }
@@ -59,12 +65,16 @@ public static class SettingsTuiRenderer
         {
             return RenderPluginList(state);
         }
+        if (state.Group == SettingsGroup.Config)
+        {
+            return RenderConfig(state);
+        }
         if (state.Group != SettingsGroup.Model)
         {
             return (
             [
-                state.Group.ToString(),
-                "Coming soon."
+                SettingsTexts.Group(state.Group, state.Language),
+                SettingsTexts.ComingSoon(state.Language)
             ], -1);
         }
 
@@ -89,12 +99,15 @@ public static class SettingsTuiRenderer
             lines.Add(state.Status);
         }
 
-        lines.Add("Model");
-        lines.Add("Providers");
+        lines.Add(SettingsTexts.T(state.Language, "Model", "模型"));
+        lines.Add(SettingsTexts.T(state.Language, "Providers", "供应商"));
         var selectedLine = -1;
         if (state.Snapshot.Providers.Count == 0)
         {
-            lines.Add("  No providers. Press n to add one.");
+            lines.Add(SettingsTexts.T(
+                state.Language,
+                "  No providers. Press n to add one.",
+                "  暂无供应商。按 n 新增。"));
         }
         for (var index = 0; index < state.Snapshot.Providers.Count; index++)
         {
@@ -113,14 +126,22 @@ public static class SettingsTuiRenderer
             };
             lines.Add(
                 $"{(selected ? ">" : " ")} {active} {provider.Id}  " +
-                $"{(provider.Enabled ? "enabled" : "disabled")}  key={key}  " +
-                $"{provider.ModelCount} models  [{provider.ProtocolSummary}]");
+                $"{(provider.Enabled
+                    ? SettingsTexts.T(state.Language, "enabled", "已启用")
+                    : SettingsTexts.T(state.Language, "disabled", "已禁用"))}  " +
+                $"key={key}  " +
+                $"{provider.ModelCount} " +
+                $"{SettingsTexts.T(state.Language, "models", "模型")}  " +
+                $"[{provider.ProtocolSummary}]");
         }
 
-        lines.Add("Models");
+        lines.Add(SettingsTexts.T(state.Language, "Models", "模型"));
         if (state.Snapshot.Models.Count == 0)
         {
-            lines.Add("  No visible models. Enable a provider or add one.");
+            lines.Add(SettingsTexts.T(
+                state.Language,
+                "  No visible models. Enable a provider or add one.",
+                "  暂无可见模型。启用或新增供应商。"));
         }
         for (var index = 0; index < state.Snapshot.Models.Count; index++)
         {
@@ -143,8 +164,38 @@ public static class SettingsTuiRenderer
         }
 
         lines.Add(string.Empty);
+        lines.Add(SettingsTexts.T(
+            state.Language,
+            "Enter edit / set default  n new  e edit  a add model  Space enable/disable",
+            "Enter 编辑/设为默认  n 新增  e 编辑  a 添加模型  空格 启用/禁用"));
+        return (lines, selectedLine);
+    }
+
+    private static (List<string> Lines, int SelectedLine) RenderConfig(
+        SettingsTuiState state)
+    {
+        var lines = new List<string>();
+        if (!string.IsNullOrWhiteSpace(state.Error))
+        {
+            lines.Add("[error] " + state.Error);
+        }
+        else if (!string.IsNullOrWhiteSpace(state.Status))
+        {
+            lines.Add(state.Status);
+        }
+
+        var language = SettingsTexts.T(state.Language, "Language", "语言");
+        lines.Add(SettingsTexts.T(state.Language, "Config", "配置"));
+        lines.Add(language);
+        var selectedLine = state.Pane == SettingsPane.Content ? lines.Count : -1;
         lines.Add(
-            "Enter edit / set default  n new  e edit  a add model  Space enable/disable");
+            $"{(state.Pane == SettingsPane.Content ? "> " : "  ")}" +
+            $"{language}: [English] [简体中文]");
+        lines.Add(string.Empty);
+        lines.Add(SettingsTexts.T(
+            state.Language,
+            "Enter/Space toggles language. F2 saves and exits.",
+            "Enter/空格 切换语言。F2 保存并退出。"));
         return (lines, selectedLine);
     }
 
@@ -154,7 +205,7 @@ public static class SettingsTuiRenderer
         var lines = new List<string>();
         if (state.IsLoading)
         {
-            lines.Add("Loading plugins...");
+            lines.Add(SettingsTexts.T(state.Language, "Loading plugins...", "正在加载插件..."));
             return (lines, -1);
         }
         if (!string.IsNullOrWhiteSpace(state.Error))
@@ -166,10 +217,13 @@ public static class SettingsTuiRenderer
             lines.Add(state.Status);
         }
 
-        lines.Add("Plugins");
+        lines.Add(SettingsTexts.T(state.Language, "Plugins", "插件"));
         if (state.Snapshot.Plugins.Count == 0)
         {
-            lines.Add("  No plugins installed. Use `kl plugin install <path>`.");
+            lines.Add(SettingsTexts.T(
+                state.Language,
+                "  No plugins installed. Use `kl plugin install <path>`.",
+                "  未安装插件。使用 `kl plugin install <path>`。"));
         }
 
         var selectedLine = -1;
@@ -185,8 +239,13 @@ public static class SettingsTuiRenderer
             var detail = OneLine(plugin.Detail);
             lines.Add(
                 $"{(selected ? ">" : " ")} {plugin.Id}  v{plugin.Version}  " +
-                $"{plugin.Kind}  {(plugin.Enabled ? "enabled" : "disabled")}  " +
-                $"{(plugin.Healthy ? "healthy" : "unhealthy")}  " +
+                $"{plugin.Kind}  " +
+                $"{(plugin.Enabled
+                    ? SettingsTexts.T(state.Language, "enabled", "已启用")
+                    : SettingsTexts.T(state.Language, "disabled", "已禁用"))}  " +
+                $"{(plugin.Healthy
+                    ? SettingsTexts.T(state.Language, "healthy", "健康")
+                    : SettingsTexts.T(state.Language, "unhealthy", "异常"))}  " +
                 $"{(detail.Length == 0 ? "-" : detail)}");
         }
 
@@ -194,20 +253,20 @@ public static class SettingsTuiRenderer
         {
             var detail = OneLine(selectedPlugin.Detail);
             lines.Add(string.Empty);
-            lines.Add("Selected plugin");
-            lines.Add("  Id: " + selectedPlugin.Id);
-            lines.Add("  Version: " + selectedPlugin.Version);
-            lines.Add("  Kind: " + selectedPlugin.Kind);
-            lines.Add("  Enabled: " + (selectedPlugin.Enabled ? "yes" : "no"));
-            lines.Add("  Healthy: " + (selectedPlugin.Healthy ? "yes" : "no"));
-            lines.Add("  Tool: " + (selectedPlugin.ToolName ?? "-"));
+            lines.Add(SettingsTexts.T(state.Language, "Selected plugin", "已选插件"));
+            lines.Add("  " + SettingsTexts.T(state.Language, "Id", "ID") + ": " + selectedPlugin.Id);
+            lines.Add("  " + SettingsTexts.T(state.Language, "Version", "版本") + ": " + selectedPlugin.Version);
+            lines.Add("  " + SettingsTexts.T(state.Language, "Kind", "类型") + ": " + selectedPlugin.Kind);
+            lines.Add("  " + SettingsTexts.T(state.Language, "Enabled", "启用") + ": " + (selectedPlugin.Enabled ? "yes" : "no"));
+            lines.Add("  " + SettingsTexts.T(state.Language, "Healthy", "健康") + ": " + (selectedPlugin.Healthy ? "yes" : "no"));
+            lines.Add("  " + SettingsTexts.T(state.Language, "Tool", "工具") + ": " + (selectedPlugin.ToolName ?? "-"));
             lines.Add(
-                "  Models: " + (selectedPlugin.Models.Count == 0
+                "  " + SettingsTexts.T(state.Language, "Models", "模型") + ": " + (selectedPlugin.Models.Count == 0
                     ? "-"
                     : string.Join(", ", selectedPlugin.Models)));
-            lines.Add("  Detail: " + (detail.Length == 0 ? "-" : detail));
+            lines.Add("  " + SettingsTexts.T(state.Language, "Detail", "详情") + ": " + (detail.Length == 0 ? "-" : detail));
             lines.Add(
-                "  Recent error: " + (selectedPlugin.Healthy
+                "  " + SettingsTexts.T(state.Language, "Recent error", "最近错误") + ": " + (selectedPlugin.Healthy
                     ? "none"
                     : detail.Length == 0
                         ? "plugin reported unhealthy"
@@ -215,8 +274,14 @@ public static class SettingsTuiRenderer
         }
 
         lines.Add(string.Empty);
-        lines.Add("e enable  d disable  r reload  Space toggle  Enter confirm");
-        lines.Add("Install remains: kl plugin install <path>");
+        lines.Add(SettingsTexts.T(
+            state.Language,
+            "e enable  d disable  r reload  Space toggle  Enter confirm",
+            "e 启用  d 禁用  r 重载  空格 切换  Enter 确认"));
+        lines.Add(SettingsTexts.T(
+            state.Language,
+            "Install remains: kl plugin install <path>",
+            "安装仍使用：kl plugin install <path>"));
         return (lines, selectedLine);
     }
 
@@ -226,7 +291,7 @@ public static class SettingsTuiRenderer
         var draft = state.Draft;
         if (draft is null)
         {
-            return (["No provider selected."], -1);
+            return ([SettingsTexts.T(state.Language, "No provider selected.", "未选择供应商。")], -1);
         }
 
         var lines = new List<string>();
@@ -238,7 +303,9 @@ public static class SettingsTuiRenderer
         {
             lines.Add(state.Status);
         }
-        lines.Add(draft.IsNew ? "Provider: new" : $"Provider: {draft.OriginalId} (editing)");
+        lines.Add(draft.IsNew
+            ? SettingsTexts.T(state.Language, "Provider: new", "供应商：新建")
+            : $"{SettingsTexts.T(state.Language, "Provider", "供应商")}: {draft.OriginalId} ({SettingsTexts.T(state.Language, "editing", "编辑中")})");
 
         var selectedLine = -1;
         var rows = state.ProviderEditorRows;
@@ -255,19 +322,32 @@ public static class SettingsTuiRenderer
             var text = row.Kind switch
             {
                 ProviderRowKind.Id => draft.IsNew
-                    ? "Id: " + Field(draft.Id, selected)
-                    : "Id: " + draft.OriginalId + " (fixed)",
-                ProviderRowKind.Enabled => "Enabled: [" + (draft.Enabled ? "yes" : "no") + "]",
-                ProviderRowKind.Mode => "Address mode: [" +
-                    (draft.AddressMode == SettingsAddressMode.Base ? "base" : "full") + "]",
-                ProviderRowKind.BaseUrl => "Base URL: " + Field(draft.BaseUrl, selected),
+                    ? SettingsTexts.T(state.Language, "Id", "ID") + ": " + Field(draft.Id, selected)
+                    : SettingsTexts.T(state.Language, "Id", "ID") + ": " + draft.OriginalId + " " + SettingsTexts.T(state.Language, "(fixed)", "（固定）"),
+                ProviderRowKind.Enabled =>
+                    SettingsTexts.T(state.Language, "Enabled", "启用") + ": [" +
+                    (draft.Enabled
+                        ? SettingsTexts.T(state.Language, "yes", "是")
+                        : SettingsTexts.T(state.Language, "no", "否")) + "]",
+                ProviderRowKind.Mode =>
+                    SettingsTexts.T(state.Language, "Address mode", "地址模式") + ": [" +
+                    (draft.AddressMode == SettingsAddressMode.Base
+                        ? SettingsTexts.T(state.Language, "base", "基础地址")
+                        : SettingsTexts.T(state.Language, "full", "完整地址")) + "]",
+                ProviderRowKind.BaseUrl =>
+                    SettingsTexts.T(state.Language, "Base URL", "基础地址") + ": " +
+                    Field(draft.BaseUrl, selected),
                 ProviderRowKind.ChatUrl => "openai-chat URL: " + Field(draft.ChatUrl, selected),
                 ProviderRowKind.AnthropicUrl => "anthropic URL: " + Field(draft.AnthropicUrl, selected),
                 ProviderRowKind.ResponsesUrl => "openai-responses URL: " + Field(draft.ResponsesUrl, selected),
-                ProviderRowKind.ApiKey => "API key: " + draft.MaskedKey(selected),
-                ProviderRowKind.ModelsHeader => $"Models ({draft.Models.Count})",
-                ProviderRowKind.Model => ModelText(draft.Models[row.ModelIndex]),
-                ProviderRowKind.AddModel => "+ Add model (a)",
+                ProviderRowKind.ApiKey =>
+                    SettingsTexts.T(state.Language, "API key", "API Key") + ": " +
+                    draft.MaskedKey(selected),
+                ProviderRowKind.ModelsHeader =>
+                    SettingsTexts.T(state.Language, "Models", "模型") + $" ({draft.Models.Count})",
+                ProviderRowKind.Model => ModelText(draft.Models[row.ModelIndex], state.Language),
+                ProviderRowKind.AddModel =>
+                    SettingsTexts.T(state.Language, "+ Add model (a)", "+ 添加模型 (a)"),
                 _ => string.Empty
             };
             lines.Add(marker + text);
@@ -283,7 +363,10 @@ public static class SettingsTuiRenderer
         }
 
         lines.Add(string.Empty);
-        lines.Add("Ctrl+S saves provider, models and any new API key.");
+        lines.Add(SettingsTexts.T(
+            state.Language,
+            "Ctrl+S saves provider, models and any new API key. F2 saves and exits.",
+            "Ctrl+S 保存供应商、模型和新的 API Key。F2 保存并退出。"));
         return (lines, selectedLine);
     }
 
@@ -293,7 +376,7 @@ public static class SettingsTuiRenderer
         var draft = state.ModelDraft;
         if (draft is null)
         {
-            return (["No model selected."], -1);
+            return ([SettingsTexts.T(state.Language, "No model selected.", "未选择模型。")], -1);
         }
 
         var lines = new List<string>();
@@ -305,26 +388,28 @@ public static class SettingsTuiRenderer
         {
             lines.Add(state.Status);
         }
-        lines.Add("Model: " + (string.IsNullOrWhiteSpace(draft.Id.Value)
-            ? "new"
-            : draft.Id.Value));
+        lines.Add(SettingsTexts.T(state.Language, "Model", "模型") + ": " +
+            (string.IsNullOrWhiteSpace(draft.Id.Value)
+                ? SettingsTexts.T(state.Language, "new", "新建")
+                : draft.Id.Value));
         var selectedLine = -1;
         var rows = new[]
         {
-            (ModelRowKind.Id, "Id: " + Field(
+            (ModelRowKind.Id, SettingsTexts.T(state.Language, "Id", "ID") + ": " + Field(
                 draft.Id,
                 state.Pane == SettingsPane.Content && state.ModelEditorRowIndex == 0)),
-            (ModelRowKind.Protocol, "Protocol: [" + draft.Protocol + "]"),
+            (ModelRowKind.Protocol,
+                SettingsTexts.T(state.Language, "Protocol", "协议") + ": [" + draft.Protocol + "]"),
             (ModelRowKind.ContextWindow,
-                "Context window: " + Field(
+                SettingsTexts.T(state.Language, "Context window", "上下文窗口") + ": " + Field(
                     draft.ContextWindow,
                     state.Pane == SettingsPane.Content && state.ModelEditorRowIndex == 2)),
             (ModelRowKind.CompactThreshold,
-                "Compact threshold: " + Field(
+                SettingsTexts.T(state.Language, "Compact threshold", "压缩阈值") + ": " + Field(
                     draft.CompactThreshold,
                     state.Pane == SettingsPane.Content && state.ModelEditorRowIndex == 3)),
             (ModelRowKind.MaxOutputTokens,
-                "Max output tokens: " + Field(
+                SettingsTexts.T(state.Language, "Max output tokens", "最大输出 token") + ": " + Field(
                     draft.MaxOutputTokens,
                     state.Pane == SettingsPane.Content && state.ModelEditorRowIndex == 4))
         };
@@ -340,13 +425,18 @@ public static class SettingsTuiRenderer
         }
 
         lines.Add(string.Empty);
-        lines.Add("Enter cycles protocol. Ctrl+S confirms this model.");
+        lines.Add(SettingsTexts.T(
+            state.Language,
+            "Enter cycles protocol. Ctrl+S saves this model and provider. F2 saves and exits.",
+            "Enter 切换协议。Ctrl+S 保存模型和供应商。F2 保存并退出。"));
         return (lines, selectedLine);
     }
 
-    private static string ModelText(SettingsModelDraft draft) =>
+    private static string ModelText(
+        SettingsModelDraft draft,
+        UiLanguage language) =>
         string.IsNullOrWhiteSpace(draft.Id.Value)
-            ? "(new model)"
+            ? SettingsTexts.T(language, "(new model)", "(新模型)")
             : $"{draft.Id.Value} [{draft.Protocol}]";
 
     private static string Field(SettingsText field, bool focused)
