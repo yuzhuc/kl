@@ -153,7 +153,11 @@ to the chat page.
 
 The Config group currently exposes the settings-page language. Enter or Space
 toggles between English and Simplified Chinese. The choice is stored in
-`~/.kl/ui.json` and reused on the next launch.
+`~/.kl/ui.json` and reused on the next launch; switching language redraws only
+the settings page, without restarting the core or reloading providers and
+plugins. The layout measures terminal display columns, so CJK characters and
+full-width punctuation take two columns and are truncated or padded instead of
+wrapping.
 
 The Plugins group reads `plugin.list` and shows each plugin's id, version, kind,
 enabled state, health and detail. Selecting a plugin shows its basic metadata
