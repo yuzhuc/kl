@@ -28,7 +28,11 @@ public enum SettingsView
 {
     Providers,
     ProviderEditor,
-    ModelEditor
+    ModelEditor,
+    ModelPicker,
+    AgentMenu,
+    Permissions,
+    Reasoning
 }
 
 public enum SettingsAddressMode
@@ -44,6 +48,9 @@ public enum SettingsCommandKind
     SaveProvider,
     SaveProviderAndClose,
     SetDefaultModel,
+    // These aliases reuse the existing ChatTuiRunner refresh path.
+    SavePermissions = SetDefaultModel,
+    SaveReasoning = SetDefaultModel,
     SetLanguage,
     ToggleProvider,
     SetPluginEnabled,
@@ -57,9 +64,84 @@ public sealed record SettingsCommand(
     string? Model = null,
     bool? Enabled = null,
     string? Plugin = null,
-    UiLanguage? Language = null)
+    UiLanguage? Language = null,
+    string? ApprovalMode = null,
+    string? Effort = null)
 {
     public static readonly SettingsCommand None = new(SettingsCommandKind.None);
+}
+
+public enum SettingsApprovalMode
+{
+    Ask,
+    Auto,
+    ReadOnly
+}
+
+public enum SettingsReasoningEffort
+{
+    Default,
+    Low,
+    Medium,
+    High
+}
+
+public static class SettingsAgentValues
+{
+    public static IReadOnlyList<SettingsApprovalMode> ApprovalModes { get; } =
+    [
+        SettingsApprovalMode.Ask,
+        SettingsApprovalMode.Auto,
+        SettingsApprovalMode.ReadOnly
+    ];
+
+    public static IReadOnlyList<SettingsReasoningEffort> ReasoningEfforts { get; } =
+    [
+        SettingsReasoningEffort.Default,
+        SettingsReasoningEffort.Low,
+        SettingsReasoningEffort.Medium,
+        SettingsReasoningEffort.High
+    ];
+
+    public static string Wire(SettingsApprovalMode mode) => mode switch
+    {
+        SettingsApprovalMode.Ask => "ask",
+        SettingsApprovalMode.Auto => "auto",
+        SettingsApprovalMode.ReadOnly => "read-only",
+        _ => "ask"
+    };
+
+    public static string Wire(SettingsReasoningEffort effort) => effort switch
+    {
+        SettingsReasoningEffort.Default => "default",
+        SettingsReasoningEffort.Low => "low",
+        SettingsReasoningEffort.Medium => "medium",
+        SettingsReasoningEffort.High => "high",
+        _ => "default"
+    };
+
+    public static SettingsApprovalMode ParseApprovalMode(string? value) => value switch
+    {
+        "auto" => SettingsApprovalMode.Auto,
+        "read-only" or "read_only" or "readonly" => SettingsApprovalMode.ReadOnly,
+        _ => SettingsApprovalMode.Ask
+    };
+
+    public static SettingsReasoningEffort ParseReasoningEffort(string? value) => value switch
+    {
+        "low" => SettingsReasoningEffort.Low,
+        "medium" => SettingsReasoningEffort.Medium,
+        "high" => SettingsReasoningEffort.High,
+        _ => SettingsReasoningEffort.Default
+    };
+}
+
+public static class SettingsAgentRoutes
+{
+    // Invalid provider ids; reused by the existing settings command dispatcher
+    // so the six-file boundary can still route agent settings through Core.
+    public const string Permissions = "@kl-permissions";
+    public const string Reasoning = "@kl-reasoning";
 }
 
 public enum PluginAction
@@ -197,6 +279,21 @@ public sealed record SettingsPlugin(
     string? ToolName,
     IReadOnlyList<string> Models);
 
+public sealed record SettingsAgentConfig(
+    string ApprovalMode = "ask",
+    string Effort = "default",
+    bool? ReasoningSupported = null,
+    string SandboxBackend = "",
+    bool? SandboxStrict = null,
+    string Provider = "",
+    string Model = "",
+    string? ReadError = null);
+
+public sealed record SettingsPaths(
+    string ConfigPath = "",
+    string UiPath = "",
+    string HomePath = "");
+
 public sealed record SettingsSnapshot(
     string ActiveProvider,
     string ActiveModel,
@@ -204,13 +301,18 @@ public sealed record SettingsSnapshot(
     IReadOnlyList<SettingsModel> Models,
     IReadOnlyList<SettingsPlugin> Plugins)
 {
+    public SettingsAgentConfig AgentConfig { get; init; } = new();
+    public SettingsPaths Paths { get; init; } = new();
+
     public static SettingsSnapshot Empty { get; } =
         new(string.Empty, string.Empty, [], [], []);
 
     public static SettingsSnapshot FromJson(
         JsonElement providerList,
         JsonElement config,
-        JsonElement pluginList = default)
+        JsonElement pluginList = default,
+        JsonElement doctor = default,
+        JsonElement agentConfig = default)
     {
         var configuredProviders = new Dictionary<string, bool>(StringComparer.Ordinal);
         if (config.ValueKind == JsonValueKind.Object
@@ -324,7 +426,15 @@ public sealed record SettingsSnapshot(
             models.OrderBy(model => model.Provider, StringComparer.Ordinal)
                 .ThenBy(model => model.Id, StringComparer.Ordinal)
                 .ToList(),
-            ParsePlugins(pluginList));
+            ParsePlugins(pluginList))
+        {
+            AgentConfig = ParseAgentConfig(
+                agentConfig,
+                doctor,
+                providerList,
+                config),
+            Paths = new SettingsPaths(GetString(config, "path"))
+        };
     }
 
     private static IReadOnlyList<SettingsPlugin> ParsePlugins(JsonElement pluginList)
@@ -355,6 +465,140 @@ public sealed record SettingsSnapshot(
                 GetStringArray(value, "models")));
         }
         return result.OrderBy(plugin => plugin.Id, StringComparer.Ordinal).ToList();
+    }
+
+    private static SettingsAgentConfig ParseAgentConfig(
+        JsonElement agentConfig,
+        JsonElement doctor,
+        JsonElement providerList,
+        JsonElement config)
+    {
+        var agentBody = ObjectOrSelf(agentConfig, "config");
+        var agent = ObjectOrSelf(agentBody, "agent");
+        var reasoning = ObjectOrSelf(agent, "reasoning");
+        var permissions = ObjectOrSelf(agentBody, "permissions");
+        var configBody = ObjectOrSelf(config, "config");
+        var policy = ObjectOrSelf(configBody, "policy");
+        var sandbox = ObjectOrSelf(configBody, "sandbox");
+
+        var effort = FirstString(agent, "effort");
+        if (effort.Length == 0)
+        {
+            effort = FirstString(reasoning, "effort");
+        }
+        effort = SettingsAgentValues.Wire(
+            SettingsAgentValues.ParseReasoningEffort(effort));
+
+        var approvalMode = FirstString(agent, "approval_mode");
+        if (approvalMode.Length == 0)
+        {
+            approvalMode = FirstString(permissions, "approval_mode");
+        }
+        if (approvalMode.Length == 0)
+        {
+            approvalMode = FirstString(agentBody, "approval_mode");
+        }
+        if (approvalMode.Length == 0)
+        {
+            var autoApprove = GetOptionalBool(policy, "auto_approve_edits") == true
+                && GetOptionalBool(policy, "auto_approve_shell") == true
+                && GetOptionalBool(policy, "auto_approve_plugins") == true;
+            approvalMode = autoApprove ? "auto" : "ask";
+        }
+        approvalMode = SettingsAgentValues.Wire(
+            SettingsAgentValues.ParseApprovalMode(approvalMode));
+
+        bool? reasoningSupported = GetOptionalBool(agent, "supported")
+            ?? GetOptionalBool(agent, "reasoning_supported")
+            ?? GetOptionalBool(agent, "supports_reasoning")
+            ?? GetOptionalBool(reasoning, "supported");
+        if (reasoningSupported is null)
+        {
+            var supportedEfforts = GetStringArray(agent, "supported_efforts");
+            if (supportedEfforts.Count > 0)
+            {
+                reasoningSupported = supportedEfforts.Contains(
+                    effort,
+                    StringComparer.Ordinal);
+            }
+        }
+
+        var backend = CheckDetail(doctor, "sandbox_backend");
+        var separator = backend.IndexOf(':');
+        if (separator > 0)
+        {
+            backend = backend[..separator].Trim();
+        }
+        if (backend.Length == 0)
+        {
+            backend = GetString(sandbox, "backend");
+        }
+
+        bool? strict = null;
+        var strictDetail = CheckDetail(doctor, "sandbox_strict");
+        if (strictDetail.StartsWith("strict mode", StringComparison.OrdinalIgnoreCase))
+        {
+            strict = true;
+        }
+        else if (strictDetail.StartsWith("non-strict", StringComparison.OrdinalIgnoreCase))
+        {
+            strict = false;
+        }
+        if (strict is null)
+        {
+            var mode = GetString(sandbox, "mode");
+            if (mode.Length > 0)
+            {
+                strict = mode == "strict";
+            }
+        }
+
+        return new SettingsAgentConfig(
+            approvalMode,
+            effort,
+            reasoningSupported,
+            backend,
+            strict,
+            FirstNonEmpty(
+                GetString(agent, "provider"),
+                GetString(providerList, "active_provider")),
+            FirstNonEmpty(
+                GetString(agent, "model"),
+                GetString(providerList, "active_model")));
+    }
+
+    private static JsonElement ObjectOrSelf(JsonElement element, string name) =>
+        element.ValueKind == JsonValueKind.Object
+            && element.TryGetProperty(name, out var value)
+            && value.ValueKind == JsonValueKind.Object
+            ? value
+            : element;
+
+    private static string FirstString(JsonElement element, string name)
+    {
+        var value = GetString(element, name).Trim();
+        return value.Length > 0 ? value : string.Empty;
+    }
+
+    private static string FirstNonEmpty(string first, string second) =>
+        string.IsNullOrWhiteSpace(first) ? second : first;
+
+    private static string CheckDetail(JsonElement doctor, string name)
+    {
+        if (doctor.ValueKind != JsonValueKind.Object
+            || !doctor.TryGetProperty("checks", out var checks)
+            || checks.ValueKind != JsonValueKind.Array)
+        {
+            return string.Empty;
+        }
+        foreach (var check in checks.EnumerateArray())
+        {
+            if (GetString(check, "name") == name)
+            {
+                return GetString(check, "detail");
+            }
+        }
+        return string.Empty;
     }
 
     private static (
@@ -491,6 +735,21 @@ public sealed record SettingsSnapshot(
         element.ValueKind == JsonValueKind.Object
             && element.TryGetProperty(name, out var value)
             && value.ValueKind == JsonValueKind.True;
+
+    private static bool? GetOptionalBool(JsonElement element, string name)
+    {
+        if (element.ValueKind != JsonValueKind.Object
+            || !element.TryGetProperty(name, out var value))
+        {
+            return null;
+        }
+        return value.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            _ => null
+        };
+    }
 }
 
 public sealed class SettingsModelDraft
@@ -743,6 +1002,13 @@ public enum ModelRowKind
     MaxOutputTokens
 }
 
+public enum SettingsNotice
+{
+    None,
+    PermissionsSaved,
+    ReasoningSaved
+}
+
 public sealed class SettingsTuiState
 {
     private int _modelEditIndex = -1;
@@ -773,6 +1039,27 @@ public sealed class SettingsTuiState
     public bool IsLoading { get; private set; }
     public PluginAction? PendingPluginAction { get; private set; }
     public string? PendingPluginId { get; private set; }
+    public SettingsApprovalMode? PendingApprovalMode { get; private set; }
+    public SettingsReasoningEffort? PendingReasoningEffort { get; private set; }
+    public SettingsModel? PendingDefaultModel { get; private set; }
+    public SettingsNotice Notice { get; private set; }
+
+    public IReadOnlyList<SettingsModel> QuickModels =>
+        Snapshot.Models
+            .Where(model => Snapshot.Providers.Any(provider =>
+                provider.Id == model.Provider && provider.Enabled))
+            .ToList();
+
+    public SettingsApprovalMode CurrentApprovalMode =>
+        SettingsAgentValues.ParseApprovalMode(Snapshot.AgentConfig.ApprovalMode);
+
+    public SettingsReasoningEffort CurrentReasoningEffort =>
+        SettingsAgentValues.ParseReasoningEffort(Snapshot.AgentConfig.Effort);
+
+    public SettingsModel? SelectedQuickModel =>
+        ListRow >= 0 && ListRow < QuickModels.Count
+            ? QuickModels[ListRow]
+            : null;
 
     public ProviderEditorRow CurrentProviderRow =>
         ProviderEditorRows.Count == 0
@@ -837,6 +1124,8 @@ public sealed class SettingsTuiState
         Status = "loading settings...";
         Error = null;
         ClearPluginPending();
+        ClearAgentPending();
+        Notice = SettingsNotice.None;
     }
 
     public void FailLoad(string message)
@@ -858,11 +1147,36 @@ public sealed class SettingsTuiState
         IsLoading = false;
         Status = null;
         Error = null;
+        Notice = SettingsNotice.None;
         ClearPluginPending();
+        ClearAgentPending();
         if (selectedProvider is null)
         {
             Pane = SettingsPane.Groups;
             ListRow = 0;
+            return;
+        }
+
+        if (selectedProvider == SettingsAgentRoutes.Permissions)
+        {
+            GroupIndex = Groups.ToList().IndexOf(SettingsGroup.Agent);
+            Pane = SettingsPane.Content;
+            View = SettingsView.Permissions;
+            ListRow = Math.Max(0, SettingsAgentValues.ApprovalModes
+                .ToList()
+                .IndexOf(CurrentApprovalMode));
+            Notice = SettingsNotice.PermissionsSaved;
+            return;
+        }
+        if (selectedProvider == SettingsAgentRoutes.Reasoning)
+        {
+            GroupIndex = Groups.ToList().IndexOf(SettingsGroup.Agent);
+            Pane = SettingsPane.Content;
+            View = SettingsView.Reasoning;
+            ListRow = Math.Max(0, SettingsAgentValues.ReasoningEfforts
+                .ToList()
+                .IndexOf(CurrentReasoningEffort));
+            Notice = SettingsNotice.ReasoningSaved;
             return;
         }
 
@@ -887,7 +1201,9 @@ public sealed class SettingsTuiState
         IsLoading = false;
         Status = null;
         Error = null;
+        Notice = SettingsNotice.None;
         ClearPluginPending();
+        ClearAgentPending();
 
         var index = string.IsNullOrWhiteSpace(selectedPlugin)
             ? 0
@@ -1073,6 +1389,11 @@ public sealed class SettingsTuiState
                 AddModelToSelectedProvider();
                 return SettingsCommand.None;
             }
+            if (key.KeyChar is 'q' or 'Q')
+            {
+                OpenModelPicker();
+                return SettingsCommand.None;
+            }
             if (key.KeyChar == ' ' && SelectedProvider is { } selected)
             {
                 return new SettingsCommand(
@@ -1184,16 +1505,25 @@ public sealed class SettingsTuiState
 
     private void TogglePane()
     {
-        Pane = Pane == SettingsPane.Groups
-            ? SettingsPane.Content
-            : SettingsPane.Groups;
+        if (Pane == SettingsPane.Groups)
+        {
+            Pane = SettingsPane.Content;
+            SetDefaultViewForGroup();
+            return;
+        }
+        Pane = SettingsPane.Groups;
     }
 
     private void Move(int delta)
     {
         if (Pane == SettingsPane.Groups)
         {
+            var previous = Group;
             GroupIndex = Math.Clamp(GroupIndex + delta, 0, Groups.Count - 1);
+            if (previous != Group)
+            {
+                SetDefaultViewForGroup();
+            }
             ListRow = 0;
             RightScroll = 0;
             return;
@@ -1208,8 +1538,29 @@ public sealed class SettingsTuiState
             ClearPluginPending();
             return;
         }
+        if (Group == SettingsGroup.Agent)
+        {
+            var maximum = View switch
+            {
+                SettingsView.Permissions => SettingsAgentValues.ApprovalModes.Count - 1,
+                SettingsView.Reasoning => SettingsAgentValues.ReasoningEfforts.Count - 1,
+                _ => 1
+            };
+            ListRow = Math.Clamp(ListRow + delta, 0, maximum);
+            ClearAgentPending();
+            return;
+        }
         if (Group == SettingsGroup.Config)
         {
+            return;
+        }
+        if (View == SettingsView.ModelPicker)
+        {
+            ListRow = Math.Clamp(
+                ListRow + delta,
+                0,
+                Math.Max(0, QuickModels.Count - 1));
+            PendingDefaultModel = null;
             return;
         }
         if (View == SettingsView.Providers)
@@ -1229,12 +1580,32 @@ public sealed class SettingsTuiState
         ModelEditorRowIndex = Math.Clamp(ModelEditorRowIndex + delta, 0, 4);
     }
 
+    private void SetDefaultViewForGroup()
+    {
+        View = Group switch
+        {
+            SettingsGroup.Agent => SettingsView.AgentMenu,
+            _ => SettingsView.Providers
+        };
+        ListRow = 0;
+        ClearAgentPending();
+        PendingDefaultModel = null;
+    }
+
     private SettingsCommand Confirm()
     {
         if (Pane == SettingsPane.Groups)
         {
             Pane = SettingsPane.Content;
             return SettingsCommand.None;
+        }
+        if (Group == SettingsGroup.Agent)
+        {
+            return ConfirmAgent();
+        }
+        if (Group == SettingsGroup.Model && View == SettingsView.ModelPicker)
+        {
+            return ConfirmModelPicker();
         }
         if (Group == SettingsGroup.Plugins)
         {
@@ -1327,8 +1698,145 @@ public sealed class SettingsTuiState
         return SettingsCommand.None;
     }
 
+    private SettingsCommand ConfirmAgent()
+    {
+        if (View == SettingsView.AgentMenu)
+        {
+            View = ListRow == 0
+                ? SettingsView.Permissions
+                : SettingsView.Reasoning;
+            ListRow = View == SettingsView.Permissions
+                ? Math.Max(0, SettingsAgentValues.ApprovalModes
+                    .ToList()
+                    .IndexOf(CurrentApprovalMode))
+                : Math.Max(0, SettingsAgentValues.ReasoningEfforts
+                    .ToList()
+                    .IndexOf(CurrentReasoningEffort));
+            Status = null;
+            Error = null;
+            Notice = SettingsNotice.None;
+            RightScroll = 0;
+            return SettingsCommand.None;
+        }
+
+        if (View == SettingsView.Permissions)
+        {
+            var selected = SettingsAgentValues.ApprovalModes[
+                Math.Clamp(ListRow, 0, SettingsAgentValues.ApprovalModes.Count - 1)];
+            var wire = SettingsAgentValues.Wire(selected);
+            if (PendingApprovalMode == selected)
+            {
+                ClearAgentPending();
+                Status = null;
+                Error = null;
+                RightScroll = 0;
+                return new SettingsCommand(
+                    SettingsCommandKind.SavePermissions,
+                    SettingsAgentRoutes.Permissions,
+                    wire,
+                    ApprovalMode: wire);
+            }
+            if (selected == CurrentApprovalMode)
+            {
+                ClearAgentPending();
+                Status = Text(
+                    $"approval mode is already {wire}",
+                    $"批准模式已经是 {wire}");
+                return SettingsCommand.None;
+            }
+
+            PendingApprovalMode = selected;
+            Error = null;
+            Status = Text(
+                $"set approval mode to {wire}? Press Enter to confirm; Esc cancels.",
+                $"将批准模式设为 {wire}？按 Enter 确认；Esc 取消。");
+            return SettingsCommand.None;
+        }
+
+        var effort = SettingsAgentValues.ReasoningEfforts[
+            Math.Clamp(ListRow, 0, SettingsAgentValues.ReasoningEfforts.Count - 1)];
+        var effortWire = SettingsAgentValues.Wire(effort);
+        if (PendingReasoningEffort == effort)
+        {
+            ClearAgentPending();
+            Status = null;
+            Error = null;
+            RightScroll = 0;
+            return new SettingsCommand(
+                SettingsCommandKind.SaveReasoning,
+                SettingsAgentRoutes.Reasoning,
+                effortWire,
+                Effort: effortWire);
+        }
+        if (effort == CurrentReasoningEffort)
+        {
+            ClearAgentPending();
+            Status = Text(
+                $"reasoning effort is already {effortWire}",
+                $"推理强度已经是 {effortWire}");
+            return SettingsCommand.None;
+        }
+
+        PendingReasoningEffort = effort;
+        Error = null;
+        Status = Text(
+            $"set reasoning effort to {effortWire}? Press Enter to confirm; Esc cancels.",
+            $"将推理强度设为 {effortWire}？按 Enter 确认；Esc 取消。");
+        return SettingsCommand.None;
+    }
+
+    private SettingsCommand ConfirmModelPicker()
+    {
+        if (SelectedQuickModel is not { } model)
+        {
+            Status = Text("no enabled model available", "没有可用模型");
+            return SettingsCommand.None;
+        }
+        if (PendingDefaultModel is { } pending
+            && pending.Provider == model.Provider
+            && pending.Id == model.Id)
+        {
+            PendingDefaultModel = null;
+            Error = null;
+            Status = Text(
+                "setting default model...",
+                "正在设置默认模型...");
+            return new SettingsCommand(
+                SettingsCommandKind.SetDefaultModel,
+                model.Provider,
+                model.Id);
+        }
+        if (model.Provider == Snapshot.ActiveProvider
+            && model.Id == Snapshot.ActiveModel)
+        {
+            PendingDefaultModel = null;
+            Status = Text("this model is already the default", "该模型已是默认模型");
+            return SettingsCommand.None;
+        }
+
+        PendingDefaultModel = model;
+        Error = null;
+        Status = Text(
+            $"set {model.Provider}/{model.Id} as the default? Press Enter to confirm; Esc cancels.",
+            $"将 {model.Provider}/{model.Id} 设为默认？按 Enter 确认；Esc 取消。");
+        return SettingsCommand.None;
+    }
+
+    private string Text(string english, string chinese) =>
+        SettingsTexts.T(Language, english, chinese);
+
     private SettingsCommand Back()
     {
+        if (PendingApprovalMode is not null
+            || PendingReasoningEffort is not null
+            || PendingDefaultModel is not null)
+        {
+            ClearAgentPending();
+            Status = null;
+            Error = null;
+            Notice = SettingsNotice.None;
+            return SettingsCommand.None;
+        }
         if (Group == SettingsGroup.Plugins && PendingPluginAction is not null)
         {
             ClearPluginPending();
@@ -1348,6 +1856,23 @@ public sealed class SettingsTuiState
             View = SettingsView.Providers;
             Draft = null;
             Error = null;
+            return SettingsCommand.None;
+        }
+        if (View == SettingsView.ModelPicker)
+        {
+            View = SettingsView.Providers;
+            Status = null;
+            Error = null;
+            Notice = SettingsNotice.None;
+            return SettingsCommand.None;
+        }
+        if (View is SettingsView.Permissions or SettingsView.Reasoning)
+        {
+            View = SettingsView.AgentMenu;
+            ListRow = 0;
+            Status = null;
+            Error = null;
+            Notice = SettingsNotice.None;
             return SettingsCommand.None;
         }
         if (Pane == SettingsPane.Content)
@@ -1416,6 +1941,13 @@ public sealed class SettingsTuiState
         PendingPluginId = null;
     }
 
+    private void ClearAgentPending()
+    {
+        PendingApprovalMode = null;
+        PendingReasoningEffort = null;
+        PendingDefaultModel = null;
+    }
+
     private bool SaveModelDraft()
     {
         if (Draft is null || ModelDraft is null)
@@ -1466,6 +1998,22 @@ public sealed class SettingsTuiState
                 break;
             }
         }
+    }
+
+    private void OpenModelPicker()
+    {
+        View = SettingsView.ModelPicker;
+        Pane = SettingsPane.Content;
+        var index = QuickModels
+            .Select((model, modelIndex) => (model, modelIndex))
+            .FirstOrDefault(item => item.model.Provider == Snapshot.ActiveProvider
+                && item.model.Id == Snapshot.ActiveModel)
+            .modelIndex;
+        ListRow = Math.Clamp(index, 0, Math.Max(0, QuickModels.Count - 1));
+        PendingDefaultModel = null;
+        Status = null;
+        Error = null;
+        Notice = SettingsNotice.None;
     }
 
     private void AddModelToSelectedProvider()
