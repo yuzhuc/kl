@@ -20,6 +20,23 @@ public static class SettingsTuiRunner
             .ConfigureAwait(false);
         var plugins = await client.PluginListAsync(cancellationToken)
             .ConfigureAwait(false);
+        var skillList = default(JsonElement);
+        string? skillsError = null;
+        try
+        {
+            skillList = await client.RequestAsync(
+                    Protocol.SkillList,
+                    new Dictionary<string, object?>
+                    {
+                        ["workspace"] = options.Workspace ?? Directory.GetCurrentDirectory()
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception error) when (IsSettingsError(error))
+        {
+            skillsError = "skill.list failed: " + error.Message;
+        }
         var doctor = default(JsonElement);
         var agentConfig = default(JsonElement);
         string? readError = null;
@@ -50,10 +67,12 @@ public static class SettingsTuiRunner
             config,
             plugins,
             doctor,
-            agentConfig);
+            agentConfig,
+            skillList);
         snapshot = snapshot with
         {
             AgentConfig = snapshot.AgentConfig with { ReadError = readError },
+            SkillsError = skillsError,
             Paths = new SettingsPaths(
                 snapshot.Paths.ConfigPath,
                 UiSettingsPath(options),

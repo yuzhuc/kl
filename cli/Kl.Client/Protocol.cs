@@ -30,6 +30,7 @@ public static class Protocol
     public const string AuditTail = "audit.tail";
     public const string ReviewRun = "review.run";
     public const string ConfigGet = "config.get";
+    public const string SkillList = "skill.list";
     public const string PluginList = "plugin.list";
     public const string PluginInstall = "plugin.install";
     public const string PluginReload = "plugin.reload";

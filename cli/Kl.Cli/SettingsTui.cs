@@ -279,6 +279,8 @@ public sealed record SettingsPlugin(
     string? ToolName,
     IReadOnlyList<string> Models);
 
+public sealed record SettingsSkill(string Name, string Description);
+
 public sealed record SettingsAgentConfig(
     string ApprovalMode = "ask",
     string Effort = "default",
@@ -303,6 +305,8 @@ public sealed record SettingsSnapshot(
 {
     public SettingsAgentConfig AgentConfig { get; init; } = new();
     public SettingsPaths Paths { get; init; } = new();
+    public IReadOnlyList<SettingsSkill> Skills { get; init; } = [];
+    public string? SkillsError { get; init; }
 
     public static SettingsSnapshot Empty { get; } =
         new(string.Empty, string.Empty, [], [], []);
@@ -312,7 +316,8 @@ public sealed record SettingsSnapshot(
         JsonElement config,
         JsonElement pluginList = default,
         JsonElement doctor = default,
-        JsonElement agentConfig = default)
+        JsonElement agentConfig = default,
+        JsonElement skillList = default)
     {
         var configuredProviders = new Dictionary<string, bool>(StringComparer.Ordinal);
         if (config.ValueKind == JsonValueKind.Object
@@ -433,8 +438,31 @@ public sealed record SettingsSnapshot(
                 doctor,
                 providerList,
                 config),
-            Paths = new SettingsPaths(GetString(config, "path"))
+            Paths = new SettingsPaths(GetString(config, "path")),
+            Skills = ParseSkills(skillList)
         };
+    }
+
+    private static IReadOnlyList<SettingsSkill> ParseSkills(JsonElement skillList)
+    {
+        if (skillList.ValueKind != JsonValueKind.Object
+            || !skillList.TryGetProperty("skills", out var skills)
+            || skills.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var result = new List<SettingsSkill>();
+        foreach (var value in skills.EnumerateArray())
+        {
+            var name = GetString(value, "name");
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                continue;
+            }
+            result.Add(new SettingsSkill(name, GetString(value, "description")));
+        }
+        return result.OrderBy(skill => skill.Name, StringComparer.Ordinal).ToList();
     }
 
     private static IReadOnlyList<SettingsPlugin> ParsePlugins(JsonElement pluginList)

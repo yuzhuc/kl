@@ -118,6 +118,35 @@ public sealed class SettingsTextLayoutTests
         AssertRenderFits(width, modelEditor);
     }
 
+    [Theory]
+    [InlineData(40)]
+    [InlineData(60)]
+    [InlineData(80)]
+    public void SkillsListFitsTerminalWidth(int width)
+    {
+        var state = new SettingsTuiState();
+        state.Load(Snapshot() with
+        {
+            Skills =
+            [
+                new SettingsSkill(
+                    "skill-with-a-very-long-name",
+                    "description long enough to need truncation in narrow terminals"),
+                new SettingsSkill("b", "another description")
+            ],
+            SkillsError = "skill.list failed: connection closed unexpectedly"
+        });
+        state.SetLanguage(UiLanguage.ChineseSimplified);
+        for (var index = 0; index < 3; index++)
+        {
+            state.HandleKey(Key(ConsoleKey.DownArrow));
+        }
+        state.HandleKey(Key(ConsoleKey.Tab, '\t'));
+
+        Assert.Equal(SettingsGroup.Skills, state.Group);
+        AssertRenderFits(width, state);
+    }
+
     [Fact]
     public async Task RepeatedLanguageToggleKeepsStateAndDoesNotStartCore()
     {

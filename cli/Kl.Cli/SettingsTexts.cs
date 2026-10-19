@@ -94,6 +94,18 @@ public static class SettingsTexts
     public static string ReadOnly(UiLanguage language) =>
         T(language, "read-only", "只读");
 
+    public static string SkillsTitle(UiLanguage language) =>
+        T(language, "Skills", "Skills");
+
+    public static string SkillsEmpty(UiLanguage language) =>
+        T(
+            language,
+            "  No skills found. Add SKILL.md under .kl/skills or ~/.kl/skills.",
+            "  暂无 Skills。请在 .kl/skills 或 ~/.kl/skills 下添加 SKILL.md。");
+
+    public static string SkillsError(UiLanguage language, string message) =>
+        T(language, "Skills unavailable: " + message, "Skills 不可用：" + message);
+
     public static string Footer(UiLanguage language) =>
         T(
             language,
