@@ -950,12 +950,35 @@ public static class ChatTuiRenderer
         }
 
         lines.Add(string.Empty);
-        lines.Add(
+        var settingsLine =
             DiffRender.Ansi.Accent + "/settings" + DiffRender.Ansi.Reset +
             DiffRender.Ansi.Secondary + " " +
             ChatTexts.T(language, "customize", "自定义") +
-            DiffRender.Ansi.Reset);
-        return PadBody(lines.Take(bodyHeight).ToList(), bodyHeight);
+            DiffRender.Ansi.Reset;
+        lines.Add(settingsLine);
+        if (lines.Count > bodyHeight)
+        {
+            var title = DiffRender.Ansi.Bold + ChatTexts.ShortcutsTitle(language) +
+                DiffRender.Ansi.Reset;
+            var titleIndex = lines.IndexOf(title);
+            if (titleIndex > 0 && lines[titleIndex - 1].Length == 0)
+            {
+                lines.RemoveAt(titleIndex - 1);
+                titleIndex--;
+            }
+            if (titleIndex >= 0
+                && titleIndex + 1 < lines.Count
+                && lines[titleIndex + 1].Length == 0)
+            {
+                lines.RemoveAt(titleIndex + 1);
+            }
+        }
+        if (lines.Count > bodyHeight)
+        {
+            lines = lines.Take(Math.Max(0, bodyHeight - 1)).ToList();
+            lines.Add(settingsLine);
+        }
+        return PadBody(lines, bodyHeight);
     }
 
     private static List<string> RenderHistoryShortcutsBody(

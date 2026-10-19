@@ -174,7 +174,12 @@ public sealed class ChatTuiTests
         Assert.Contains("/settings customize", plain);
         Assert.Contains("openai/gpt-5 high · D:\\kl", plain);
         Assert.EndsWith("? / esc close", plain.Split('\n')[^1].TrimEnd());
+
+        var compact = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state));
+        Assert.Contains("/settings customize", compact);
+        Assert.EndsWith("? / esc close", compact.Split('\n')[^1].TrimEnd());
     }
+
     [Fact]
     public void ComposerUsesCodexPromptAndPlaceholderColors()
     {
