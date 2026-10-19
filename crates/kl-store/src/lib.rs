@@ -19,6 +19,10 @@ pub struct SessionMeta {
     pub workspace: String,
     pub provider: String,
     pub model: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     #[serde(default)]
@@ -49,6 +53,8 @@ pub enum StoreError {
     Io(#[from] std::io::Error),
     #[error("serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
+    #[error("invalid session name")]
+    InvalidName,
 }
 
 #[derive(Debug, Clone)]
@@ -72,6 +78,7 @@ impl SessionStore {
         workspace: &str,
         provider: &str,
         model: &str,
+        reasoning_effort: &str,
     ) -> Result<SessionData, StoreError> {
         let now = now();
         let data = SessionData {
@@ -80,6 +87,8 @@ impl SessionStore {
                 workspace: workspace.to_owned(),
                 provider: provider.to_owned(),
                 model: model.to_owned(),
+                reasoning_effort: Some(reasoning_effort.to_owned()),
+                name: None,
                 created_at: now.clone(),
                 updated_at: now,
                 message_count: 0,
@@ -139,6 +148,27 @@ impl SessionStore {
         Ok(sessions)
     }
 
+    pub fn delete(&self, id: &str) -> Result<(), StoreError> {
+        let id = uuid::Uuid::parse_str(id).map_err(|_| StoreError::NotFound(id.to_owned()))?;
+        let directory = self.root.join(id.to_string());
+        if !directory.join("session.json").exists() {
+            return Err(StoreError::NotFound(id.to_string()));
+        }
+        fs::remove_dir_all(directory)?;
+        Ok(())
+    }
+
+    pub fn rename(&self, id: &str, name: &str) -> Result<SessionMeta, StoreError> {
+        let name = name.trim();
+        if name.is_empty() || name.chars().count() > 160 {
+            return Err(StoreError::InvalidName);
+        }
+        let mut data = self.load(id)?;
+        data.meta.name = Some(name.to_owned());
+        self.save(&data)?;
+        Ok(self.load(id)?.meta)
+    }
+
     pub fn save(&self, data: &SessionData) -> Result<(), StoreError> {
         let directory = self.session_dir(&data.meta.id);
         fs::create_dir_all(&directory)?;
@@ -146,7 +176,7 @@ impl SessionStore {
         meta.message_count = data.messages.len();
         meta.updated_at = now();
         let (task, prompt, last_message) = summarize_messages(&data.messages);
-        meta.task = task;
+        meta.task = meta.name.clone().or(task);
         meta.prompt = prompt;
         meta.last_message = last_message;
         write_atomic(
@@ -303,7 +333,9 @@ mod tests {
     fn create_save_load_round_trip() {
         let temp = tempfile::tempdir().unwrap();
         let store = SessionStore::new(temp.path()).unwrap();
-        let mut data = store.create("D:\\work", "openai", "gpt-test").unwrap();
+        let mut data = store
+            .create("D:\\work", "openai", "gpt-test", "high")
+            .unwrap();
         assert_eq!(data.meta.status.as_deref(), Some("ready"));
         assert_eq!(data.meta.turn_state, TURN_STATE_IDLE);
         data.messages.push(serde_json::json!({
@@ -320,6 +352,7 @@ mod tests {
         let loaded = store.load(&data.meta.id).unwrap();
         assert_eq!(loaded.messages.len(), 2);
         assert_eq!(loaded.meta.workspace, "D:\\work");
+        assert_eq!(loaded.meta.reasoning_effort.as_deref(), Some("high"));
         assert_eq!(loaded.meta.status.as_deref(), Some("completed"));
         assert_eq!(loaded.meta.task.as_deref(), Some("fix it"));
         assert_eq!(loaded.meta.prompt.as_deref(), Some("fix it"));
@@ -332,7 +365,9 @@ mod tests {
     fn turn_state_persists_and_updates_updated_at() {
         let temp = tempfile::tempdir().unwrap();
         let store = SessionStore::new(temp.path()).unwrap();
-        let data = store.create("D:\\work", "openai", "gpt-test").unwrap();
+        let data = store
+            .create("D:\\work", "openai", "gpt-test", "high")
+            .unwrap();
         std::thread::sleep(std::time::Duration::from_millis(5));
 
         let meta = store
@@ -354,7 +389,9 @@ mod tests {
     fn missing_turn_state_defaults_to_idle() {
         let temp = tempfile::tempdir().unwrap();
         let store = SessionStore::new(temp.path()).unwrap();
-        let data = store.create("D:\\work", "openai", "gpt-test").unwrap();
+        let data = store
+            .create("D:\\work", "openai", "gpt-test", "high")
+            .unwrap();
         let path = temp.path().join(&data.meta.id).join("session.json");
         let mut value: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         value.as_object_mut().unwrap().remove("turn_state");
@@ -370,7 +407,9 @@ mod tests {
     fn appends_events_and_counts_them() {
         let temp = tempfile::tempdir().unwrap();
         let store = SessionStore::new(temp.path()).unwrap();
-        let data = store.create("D:\\work", "openai", "gpt-test").unwrap();
+        let data = store
+            .create("D:\\work", "openai", "gpt-test", "high")
+            .unwrap();
         let event = CoreEvent::TurnStarted {
             turn_id: "t".to_owned(),
         };
@@ -387,5 +426,58 @@ mod tests {
             store.load("missing"),
             Err(StoreError::NotFound(_))
         ));
+    }
+
+    #[test]
+    fn delete_removes_only_the_selected_session() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(temp.path()).unwrap();
+        let first = store
+            .create("D:\\one", "openai", "gpt-test", "high")
+            .unwrap();
+        let second = store
+            .create("D:\\two", "openai", "gpt-test", "high")
+            .unwrap();
+
+        store.delete(&first.meta.id).unwrap();
+
+        assert!(matches!(
+            store.load(&first.meta.id),
+            Err(StoreError::NotFound(_))
+        ));
+        assert_eq!(store.list().unwrap()[0].id, second.meta.id);
+        assert!(matches!(
+            store.delete("..\\.."),
+            Err(StoreError::NotFound(_))
+        ));
+    }
+
+    #[test]
+    fn rename_overrides_derived_task_and_survives_save() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(temp.path()).unwrap();
+        let mut data = store
+            .create("D:\\work", "openai", "gpt-test", "high")
+            .unwrap();
+        data.messages.push(serde_json::json!({
+            "role": "user",
+            "content": [{"type": "text", "data": "original prompt"}]
+        }));
+        store.save(&data).unwrap();
+
+        let meta = store.rename(&data.meta.id, "  Renamed task  ").unwrap();
+        assert_eq!(meta.name.as_deref(), Some("Renamed task"));
+        assert_eq!(meta.task.as_deref(), Some("Renamed task"));
+
+        let mut data = store.load(&data.meta.id).unwrap();
+        data.messages.push(serde_json::json!({
+            "role": "assistant",
+            "content": [{"type": "text", "data": "done"}]
+        }));
+        store.save(&data).unwrap();
+        assert_eq!(
+            store.load(&data.meta.id).unwrap().meta.task.as_deref(),
+            Some("Renamed task")
+        );
     }
 }

@@ -4,7 +4,25 @@ namespace Kl.Cli;
 
 public static class ChatTuiRenderer
 {
-    public const string HeaderText = ">_ KL (v0.1.0)";
+    public static string HeaderText => KlBrand.TitleLine;
+
+    private static readonly string[] TaskTitleColors =
+    [
+        "\u001b[38;5;255m",
+        "\u001b[38;5;224m",
+        "\u001b[38;5;225m",
+        "\u001b[38;5;183m",
+        "\u001b[38;5;211m",
+        "\u001b[38;5;217m",
+        "\u001b[38;5;216m",
+        "\u001b[38;5;223m",
+        "\u001b[38;5;151m",
+        "\u001b[38;5;159m",
+        "\u001b[38;5;117m",
+        "\u001b[38;5;111m",
+        "\u001b[38;5;75m",
+        "\u001b[38;5;147m"
+    ];
 
     public static string Render(int width, int height, ChatTuiState state)
     {
@@ -15,8 +33,15 @@ public static class ChatTuiRenderer
 
         width = Math.Max(20, width);
         height = Math.Max(8, height);
-        var showInput = state.Screen != ChatScreen.History;
-        var bodyHeight = Math.Max(1, height - (showInput ? 4 : 3));
+        var showHeader = state.Screen != ChatScreen.History;
+        var showSeparator = showHeader && !IsHome(state);
+        var showInput = state.Screen == ChatScreen.Chat;
+        var showModelLine = state.Screen == ChatScreen.Chat;
+        var topMargin = state.Screen == ChatScreen.Chat ? 1 : 0;
+        var bodyHeight = Math.Max(
+            1,
+            height - topMargin - (showHeader ? (showSeparator ? 2 : 1) : 0) -
+            (showInput ? 1 : 0) - (showModelLine ? 1 : 0) - 1);
 
         var body = state.Screen switch
         {
@@ -27,15 +52,27 @@ public static class ChatTuiRenderer
 
         ApplyOverlay(state, width, bodyHeight, body);
 
-        var lines = new List<string>
+        var lines = new List<string>();
+        if (topMargin > 0)
         {
-            HeaderText,
-            new string('-', width)
-        };
+            lines.Add(string.Empty);
+        }
+        if (showHeader)
+        {
+            lines.Add("  " + HeaderText);
+            if (showSeparator)
+            {
+                lines.Add(new string('-', width));
+            }
+        }
         lines.AddRange(body);
         if (showInput)
         {
             lines.Add(RenderInput(state, width));
+        }
+        if (showModelLine)
+        {
+            lines.Add(RenderModelLine(state, width));
         }
         lines.Add(RenderFooter(state, width));
 
@@ -136,16 +173,26 @@ public static class ChatTuiRenderer
 
     private static List<string> RenderHome(ChatTuiState state, int width)
     {
-        var language = state.Language;
-        var lines = new List<string>();
+        var lines = new List<string> { string.Empty };
         foreach (var line in ChatTexts.Home(
-            language,
+            state.Language,
             !string.IsNullOrWhiteSpace(state.Provider)))
         {
-            lines.AddRange(DisplayText.WrapToWidth(line, width));
+            foreach (var wrapped in DisplayText.WrapToWidth(line, width))
+            {
+                lines.Add(wrapped.Length == 0
+                    ? string.Empty
+                    : DiffRender.Ansi.Dim + "  " + wrapped + DiffRender.Ansi.Reset);
+            }
         }
         return lines;
     }
+
+    private static bool IsHome(ChatTuiState state) =>
+        state.Screen == ChatScreen.Chat
+        && state.Transcript.Count == 0
+        && !state.IsTurnActive
+        && !state.HasPendingApproval;
 
     private static List<string> RenderHistoryBody(
         ChatTuiState state,
@@ -160,36 +207,57 @@ public static class ChatTuiRenderer
         var selected = view.Selected(selection);
         var now = DateTimeOffset.UtcNow;
         var header = RenderHistoryHeader(state, view, width, language);
+        var contentHeight = Math.Max(1, bodyHeight - header.Count);
+        List<string> body;
 
         if (width >= 90)
         {
-            var detailWidth = Math.Clamp(width / 3, 30, 44);
-            var leftWidth = width - detailWidth - 1;
+            const int detailWidth = 38;
+            const int gapWidth = 3;
+            var leftWidth = width - detailWidth - gapWidth;
             var left = BuildHistoryList(
-                header,
                 view,
                 selection,
                 leftWidth,
-                bodyHeight,
+                contentHeight,
                 language,
                 now);
             var right = RenderHistoryDetails(selected, detailWidth, language);
-            return ComposeHistoryColumns(left, right, leftWidth, detailWidth, bodyHeight);
+            body = ComposeHistoryColumns(
+                left,
+                right,
+                leftWidth,
+                detailWidth,
+                contentHeight);
+        }
+        else
+        {
+            var details = RenderHistoryDetails(selected, width, language);
+            var detailBudget = Math.Max(0, contentHeight - 2);
+            if (details.Count > detailBudget)
+            {
+                details = details.Take(detailBudget).ToList();
+            }
+            var listHeight = Math.Max(
+                1,
+                contentHeight - details.Count - (details.Count > 0 ? 1 : 0));
+            body = BuildHistoryList(
+                view,
+                selection,
+                width,
+                listHeight,
+                language,
+                now);
+            if (details.Count > 0)
+            {
+                body.Add(string.Empty);
+                body.AddRange(details);
+            }
+            body = PadBody(body, contentHeight);
         }
 
-        var details = RenderHistoryDetails(selected, width, language);
-        var listHeight = Math.Max(1, bodyHeight - details.Count - 1);
-        var stacked = BuildHistoryList(
-            header,
-            view,
-            selection,
-            width,
-            listHeight,
-            language,
-            now);
-        stacked.Add(string.Empty);
-        stacked.AddRange(details);
-        return PadBody(stacked, bodyHeight);
+        header.AddRange(body);
+        return PadBody(header, bodyHeight);
     }
 
     private static List<string> RenderHistoryHeader(
@@ -198,23 +266,48 @@ public static class ChatTuiRenderer
         int width,
         UiLanguage language)
     {
-        var lines = new List<string>
+        var lines = new List<string>();
+        if (state.HistoryRenaming)
         {
-            state.HistorySearching || state.HistorySearch.Length > 0
-                ? RenderHistorySearchLine(state, width, language)
-                : ChatTexts.HistoryTitle(language) + "  " +
-                    ChatTexts.HistoryGroupBy(language)
-        };
+            lines.Add(RenderHistoryRenameLine(state, width, language));
+        }
+        else if (state.HistorySearching || state.HistorySearch.Length > 0)
+        {
+            lines.Add(RenderHistorySearchLine(state, width, language));
+        }
+        else
+        {
+            lines.Add(
+                DiffRender.Ansi.Bold +
+                ChatTexts.HistoryTitle(language) +
+                DiffRender.Ansi.Reset + "  " +
+                DiffRender.Ansi.Dim +
+                ChatTexts.HistoryGroupBy(language, state.HistoryGrouping) +
+                "  g" +
+                DiffRender.Ansi.Reset);
+        }
 
+        var filterHint = width >= 80
+            ? RenderHintLine(
+                [("Tab/Shift+Tab", ChatTexts.T(language, "switch", "切换"))])
+            : string.Empty;
+        var filterHintWidth = DiffRender.Ansi.VisibleWidth(filterHint);
+        var tabWidth = filterHintWidth > 0
+            ? Math.Max(20, width - filterHintWidth - 2)
+            : width;
+        var tabLines = new List<string>();
         var tabLine = string.Empty;
         foreach (var filter in Enum.GetValues<HistoryFilter>())
         {
-            var tab = ChatTexts.HistoryFilterLabel(language, filter) + " " +
+            var label = ChatTexts.HistoryFilterLabel(language, filter) + " " +
                 view.Count(filter);
-            var candidate = tabLine.Length == 0 ? tab : tabLine + "   " + tab;
-            if (tabLine.Length > 0 && DisplayText.Width(candidate) > width)
+            var tab = filter == state.HistoryFilter
+                ? DiffRender.Ansi.ActiveTab + " " + label + " " + DiffRender.Ansi.Reset
+                : DiffRender.Ansi.Dim + " " + label + " " + DiffRender.Ansi.Reset;
+            var candidate = tabLine.Length == 0 ? tab : tabLine + " " + tab;
+            if (tabLine.Length > 0 && DiffRender.Ansi.VisibleWidth(candidate) > tabWidth)
             {
-                lines.Add(tabLine);
+                tabLines.Add(tabLine);
                 tabLine = tab;
             }
             else
@@ -224,15 +317,26 @@ public static class ChatTuiRenderer
         }
         if (tabLine.Length > 0)
         {
-            lines.Add(tabLine);
+            tabLines.Add(tabLine);
         }
+        if (filterHintWidth > 0 && tabLines.Count > 0)
+        {
+            var last = tabLines[^1];
+            var padding = Math.Max(
+                1,
+                width - DiffRender.Ansi.VisibleWidth(last) - filterHintWidth);
+            tabLines[^1] = last + new string(' ', padding) + filterHint;
+        }
+        lines.AddRange(tabLines);
 
-        lines.Add(new string('─', Math.Max(1, width)));
+        lines.Add(
+            DiffRender.Ansi.Dim +
+            new string('─', Math.Max(1, width)) +
+            DiffRender.Ansi.Reset);
         return lines;
     }
 
     private static List<string> BuildHistoryList(
-        IReadOnlyList<string> header,
         HistoryView view,
         int selection,
         int width,
@@ -240,31 +344,42 @@ public static class ChatTuiRenderer
         UiLanguage language,
         DateTimeOffset now)
     {
-        var lines = new List<string>(header);
+        var lines = new List<string>();
         var groupLines = new List<string>();
         var selectedLine = -1;
         var taskIndex = 0;
-        var statusWidth = Enum.GetValues<HistoryTaskStatus>()
-            .Max(status => DisplayText.Width(ChatTexts.HistoryStatus(language, status)));
-        var timeWidth = Math.Max(
-            6,
-            view.Tasks.Count == 0
-                ? 0
-                : view.Tasks.Max(task => DisplayText.Width(
-                    FormatHistoryTime(task.Session.UpdatedAt, language, now))));
+        var (statusWidth, timeWidth) = HistoryColumnWidths(
+            view,
+            language,
+            now);
+        if (height >= 3 && width >= 56)
+        {
+            lines.Add(RenderHistoryTableHeader(
+                width,
+                statusWidth,
+                timeWidth,
+                language));
+        }
 
+        var firstGroup = true;
         foreach (var group in view.Groups)
         {
+            if (!firstGroup)
+            {
+                groupLines.Add(string.Empty);
+            }
+            firstGroup = false;
             groupLines.Add(
+                DiffRender.Ansi.Dim +
                 DiffRender.Ansi.Fit(
-                    WorkspaceLabel(group.Workspace) + "  " + group.Tasks.Count,
-                    width));
-            groupLines.Add(new string('─', Math.Max(1, width)));
+                    HistoryGroupLabel(view, group, language) + "  " + group.Tasks.Count,
+                    width) +
+                DiffRender.Ansi.Reset);
             foreach (var task in group.Tasks)
             {
                 if (taskIndex == selection)
                 {
-                    selectedLine = header.Count + groupLines.Count;
+                    selectedLine = lines.Count + groupLines.Count;
                 }
                 groupLines.Add(FormatHistoryTaskRow(
                     task,
@@ -285,10 +400,10 @@ public static class ChatTuiRenderer
                 : ChatTexts.NoSessions(language));
         }
 
-        var available = Math.Max(0, height - header.Count);
-        if (groupLines.Count > available && selectedLine >= header.Count)
+        var available = Math.Max(0, height - lines.Count);
+        if (groupLines.Count > available && selectedLine >= lines.Count)
         {
-            var selectedRelative = selectedLine - header.Count;
+            var selectedRelative = selectedLine - lines.Count;
             var start = Math.Clamp(
                 selectedRelative - available + 1,
                 0,
@@ -312,6 +427,10 @@ public static class ChatTuiRenderer
         DateTimeOffset now)
     {
         var marker = selected ? "› " : "  ";
+        var (dot, dotColor) = HistoryStatusVisual(task.Status);
+        var dotText = selected
+            ? dot + " "
+            : dotColor + dot + DiffRender.Ansi.Reset + " ";
         var status = DisplayText.PadToWidth(
             ChatTexts.HistoryStatus(language, task.Status),
             statusWidth);
@@ -320,55 +439,123 @@ public static class ChatTuiRenderer
             timeWidth);
         var titleWidth = Math.Max(
             1,
-            width - DisplayText.Width(marker) - statusWidth - timeWidth - 4);
+            width - DisplayText.Width(marker) - DiffRender.Ansi.VisibleWidth(dotText) -
+            statusWidth - timeWidth - 4);
         var title = DisplayText.PadToWidth(
             TaskTitle(task.Session, language),
             titleWidth);
+        var titleText = selected
+            ? title
+            : TaskTitleColor(task.Session.SessionId) + title + DiffRender.Ansi.Reset;
+        var timeText = selected
+            ? time
+            : DiffRender.Ansi.Dim + time + DiffRender.Ansi.Reset;
         var row = DiffRender.Ansi.Fit(
-            marker + title + "  " + status + "  " + time,
+            marker + dotText + titleText + "  " + status + "  " + timeText,
             width);
         return selected
-            ? DiffRender.Ansi.Inverse + row + DiffRender.Ansi.Reset
+            ? DiffRender.Ansi.Selection + row + DiffRender.Ansi.Reset
             : row;
     }
+
+    private static (int Status, int Time) HistoryColumnWidths(
+        HistoryView view,
+        UiLanguage language,
+        DateTimeOffset now)
+    {
+        var statusWidth = Enum.GetValues<HistoryTaskStatus>()
+            .Max(status => DisplayText.Width(ChatTexts.HistoryStatus(language, status)));
+        var timeWidth = Math.Max(
+            6,
+            view.Tasks.Count == 0
+                ? 0
+                : view.Tasks.Max(task => DisplayText.Width(
+                    FormatHistoryTime(task.Session.UpdatedAt, language, now))));
+        return (statusWidth, timeWidth);
+    }
+
+    private static string RenderHistoryTableHeader(
+        int width,
+        int statusWidth,
+        int timeWidth,
+        UiLanguage language)
+    {
+        var titleWidth = Math.Max(1, width - statusWidth - timeWidth - 8);
+        var header = DiffRender.Ansi.Fit(
+            "    " +
+            DisplayText.PadToWidth(ChatTexts.TasksColumn(language), titleWidth) +
+            "  " +
+            DisplayText.PadToWidth(ChatTexts.StatusColumn(language), statusWidth) +
+            "  " +
+            PadLeftToWidth(ChatTexts.UpdatedColumn(language), timeWidth),
+            width);
+        return DiffRender.Ansi.Dim + header + DiffRender.Ansi.Reset;
+    }
+
+    private static (string Symbol, string Color) HistoryStatusVisual(
+        HistoryTaskStatus status) =>
+        status switch
+        {
+            HistoryTaskStatus.NeedsYou => ("●", DiffRender.Ansi.Red),
+            HistoryTaskStatus.Working => ("●", DiffRender.Ansi.Green),
+            HistoryTaskStatus.Ready => ("○", DiffRender.Ansi.Cyan),
+            _ => ("○", DiffRender.Ansi.Dim)
+        };
 
     private static List<string> RenderHistoryDetails(
         HistoryTask? task,
         int width,
         UiLanguage language)
     {
-        var lines = new List<string> { ChatTexts.TaskDetails(language) };
+        var lines = new List<string>
+        {
+            DiffRender.Ansi.Bold + ChatTexts.TaskDetails(language) + DiffRender.Ansi.Reset
+        };
         if (task is null)
         {
+            lines.Add(string.Empty);
             lines.Add(ChatTexts.NoTaskSelected(language));
             return lines;
         }
 
         var session = task.Session;
-        lines.AddRange(DisplayText.WrapToWidth(TaskTitle(session, language), width));
-        lines.AddRange(DisplayText.WrapToWidth(
-            ChatTexts.HistoryStatusLine(
-                language,
-                ChatTexts.HistoryStatus(language, task.Status)),
-            width));
+        lines.Add(string.Empty);
+        AddWrappedStyled(
+            lines,
+            TaskTitle(session, language),
+            width,
+            DiffRender.Ansi.Bold + TaskTitleColor(session.SessionId));
+        var (symbol, color) = HistoryStatusVisual(task.Status);
+        lines.Add(
+            color + symbol + DiffRender.Ansi.Reset + " " +
+            ChatTexts.HistoryStatus(language, task.Status));
+        lines.Add(string.Empty);
         var model = string.IsNullOrWhiteSpace(session.Provider)
             && string.IsNullOrWhiteSpace(session.Model)
                 ? "—"
                 : $"{session.Provider}/{session.Model}".Trim('/');
-        lines.AddRange(DisplayText.WrapToWidth(
-            ChatTexts.HistoryModelLine(language, model),
-            width));
-        lines.AddRange(DisplayText.WrapToWidth(
-            ChatTexts.HistoryProjectLine(
-                language,
-                WorkspaceLabel(session.Workspace)),
-            width));
-        lines.AddRange(DisplayText.WrapToWidth(
-            ChatTexts.HistoryPromptLine(language, ValueOrDash(session.Prompt)),
-            width));
-        lines.AddRange(DisplayText.WrapToWidth(
-            ChatTexts.HistoryLastLine(language, ValueOrDash(session.LastMessage)),
-            width));
+        AddDetailField(lines, ChatTexts.ModelLabel(language), model, width, language);
+        AddDetailField(
+            lines,
+            ChatTexts.ReasoningLabel(language),
+            ValueOrDash(session.ReasoningEffort),
+            width,
+            language);
+        lines.Add(string.Empty);
+        lines.Add(DiffRender.Ansi.Dim + ChatTexts.ProjectLabel(language) + DiffRender.Ansi.Reset);
+        AddWrapped(lines, WorkspaceLabel(session.Workspace), width);
+        lines.Add(string.Empty);
+        lines.Add(DiffRender.Ansi.Dim + ChatTexts.PromptLabel(language) + DiffRender.Ansi.Reset);
+        AddWrapped(lines, ValueOrDash(session.Prompt), width);
+        if (!string.IsNullOrWhiteSpace(session.LastMessage))
+        {
+            lines.Add(string.Empty);
+            lines.Add(
+                DiffRender.Ansi.Dim +
+                ChatTexts.LastMessageLabel(language) +
+                DiffRender.Ansi.Reset);
+            AddWrapped(lines, session.LastMessage.Trim(), width);
+        }
         return lines;
     }
 
@@ -380,12 +567,14 @@ public static class ChatTuiRenderer
         int height)
     {
         var lines = new List<string>(height);
+        var separator = DiffRender.Ansi.Dim + "│" + DiffRender.Ansi.Reset;
         for (var row = 0; row < height; row++)
         {
             var leftText = row < left.Count ? left[row] : string.Empty;
             var rightText = row < right.Count ? right[row] : string.Empty;
             lines.Add(
                 DiffRender.Ansi.Fit(leftText, leftWidth) + " " +
+                separator + " " +
                 DiffRender.Ansi.Fit(rightText, rightWidth));
         }
         return lines;
@@ -394,36 +583,67 @@ public static class ChatTuiRenderer
     private static string RenderHistorySearchLine(
         ChatTuiState state,
         int width,
-        UiLanguage language)
+        UiLanguage language) =>
+        RenderHistoryEditorLine(
+            ChatTexts.HistorySearch(language) + " › ",
+            state.HistorySearch,
+            state.HistorySearchCursor,
+            state.HistorySearching,
+            width);
+
+    private static string RenderHistoryRenameLine(
+        ChatTuiState state,
+        int width,
+        UiLanguage language) =>
+        RenderHistoryEditorLine(
+            ChatTexts.HistoryRename(language) + " › ",
+            state.HistoryRenameInput,
+            state.HistoryRenameCursor,
+            editing: true,
+            width);
+
+    private static string RenderHistoryEditorLine(
+        string prefix,
+        string query,
+        int cursorValue,
+        bool editing,
+        int width)
     {
-        var prefix = ChatTexts.HistorySearch(language) + " › ";
         var contentWidth = Math.Max(0, width - DisplayText.Width(prefix));
+        string content;
         if (contentWidth == 0)
         {
-            return prefix;
+            content = string.Empty;
         }
-
-        var query = state.HistorySearch;
-        if (!state.HistorySearching)
+        else if (!editing)
         {
-            return prefix + DiffRender.Ansi.TruncateVisible(query, contentWidth);
+            content = DiffRender.Ansi.TruncateVisible(query, contentWidth);
         }
-
-        var cursor = Math.Clamp(state.HistorySearchCursor, 0, query.Length);
-        if (DisplayText.Width(query) + 1 <= contentWidth)
+        else
         {
-            return prefix + query.Insert(cursor, "|");
+            var cursor = Math.Clamp(cursorValue, 0, query.Length);
+            if (DisplayText.Width(query) + 1 <= contentWidth)
+            {
+                content = query.Insert(cursor, "|");
+            }
+            else
+            {
+                var available = Math.Max(0, contentWidth - 1);
+                var leftWidth = (available + 1) / 2;
+                var rightWidth = available - leftWidth;
+                var before = query[..cursor];
+                var after = query[cursor..];
+                content = TailToWidth(before, leftWidth) +
+                    "|" +
+                    DisplayText.TruncateToWidth(after, rightWidth);
+            }
         }
 
-        var available = Math.Max(0, contentWidth - 1);
-        var leftWidth = (available + 1) / 2;
-        var rightWidth = available - leftWidth;
-        var before = query[..cursor];
-        var after = query[cursor..];
-        return prefix +
-            TailToWidth(before, leftWidth) +
-            "|" +
-            DisplayText.TruncateToWidth(after, rightWidth);
+        return DiffRender.Ansi.ActiveTab +
+            DiffRender.Ansi.Fit(
+                DiffRender.Ansi.BoldAccent + prefix + DiffRender.Ansi.Reset + content,
+                width) +
+            DiffRender.Ansi.Reset;
     }
 
     private static string TailToWidth(string text, int width)
@@ -465,8 +685,26 @@ public static class ChatTuiRenderer
             ? ChatTexts.UntitledTask(language)
             : session.Task.Trim();
 
+    private static string TaskTitleColor(string sessionId)
+    {
+        var hash = 14695981039346656037UL;
+        foreach (var character in sessionId)
+        {
+            hash = (hash ^ (byte)character) * 1099511628211UL;
+        }
+        return TaskTitleColors[(int)(hash % (ulong)TaskTitleColors.Length)];
+    }
+
     private static string WorkspaceLabel(string workspace) =>
         string.IsNullOrWhiteSpace(workspace) ? "—" : workspace;
+
+    private static string HistoryGroupLabel(
+        HistoryView view,
+        HistoryGroup group,
+        UiLanguage language) =>
+        view.Grouping == HistoryGrouping.Status && group.Tasks.Count > 0
+            ? ChatTexts.HistoryStatus(language, group.Tasks[0].Status)
+            : WorkspaceLabel(group.Label);
 
     private static string ValueOrDash(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "—" : value.Trim();
@@ -521,6 +759,11 @@ public static class ChatTuiRenderer
         int width,
         int bodyHeight)
     {
+        if (state.ShortcutReturnScreen == ChatScreen.History)
+        {
+            return RenderHistoryShortcutsBody(state.Language, width, bodyHeight);
+        }
+
         var language = state.Language;
         var lines = new List<string>
         {
@@ -534,6 +777,79 @@ public static class ChatTuiRenderer
             wrapped.AddRange(DisplayText.WrapToWidth(line, width));
         }
         return PadBody(wrapped.Take(bodyHeight).ToList(), bodyHeight);
+    }
+
+    private static List<string> RenderHistoryShortcutsBody(
+        UiLanguage language,
+        int width,
+        int bodyHeight)
+    {
+        var groups = new (string Title, IReadOnlyList<(string Key, string Label)> Entries)[]
+        {
+            (ChatTexts.T(language, "Navigate", "导航"),
+                ChatTexts.HistoryNavigateShortcuts(language)),
+            (ChatTexts.T(language, "Tasks", "任务"),
+                ChatTexts.HistoryTaskShortcuts(language)),
+            (ChatTexts.T(language, "View", "视图"),
+                ChatTexts.HistoryViewShortcuts(language))
+        };
+        var lines = new List<string>
+        {
+            DiffRender.Ansi.Bold + ChatTexts.HistoryShortcutsTitle(language) + DiffRender.Ansi.Reset,
+            string.Empty
+        };
+
+        if (width >= 70)
+        {
+            var columnWidth = Math.Max(18, (width - 4) / groups.Length);
+            var keyWidths = groups
+                .Select(group => group.Entries.Max(entry => DisplayText.Width(entry.Key)))
+                .ToArray();
+            lines.Add(DiffRender.Ansi.Fit(
+                string.Join(
+                    "  ",
+                    groups.Select(group =>
+                        DiffRender.Ansi.Fit(
+                            DiffRender.Ansi.Bold + group.Title + DiffRender.Ansi.Reset,
+                            columnWidth))),
+                width));
+            var rows = groups.Max(group => group.Entries.Count);
+            for (var row = 0; row < rows; row++)
+            {
+                var columns = new List<string>(groups.Length);
+                for (var column = 0; column < groups.Length; column++)
+                {
+                    var entries = groups[column].Entries;
+                    if (row >= entries.Count)
+                    {
+                        columns.Add(DiffRender.Ansi.Fit(string.Empty, columnWidth));
+                        continue;
+                    }
+                    var entry = entries[row];
+                    var padding = keyWidths[column] - DisplayText.Width(entry.Key) + 2;
+                    columns.Add(DiffRender.Ansi.Fit(
+                        DiffRender.Ansi.BoldAccent + entry.Key + DiffRender.Ansi.Reset +
+                        new string(' ', padding) + entry.Label,
+                        columnWidth));
+                }
+                lines.Add(DiffRender.Ansi.Fit(string.Join("  ", columns), width));
+            }
+        }
+        else
+        {
+            foreach (var group in groups)
+            {
+                lines.Add(DiffRender.Ansi.Bold + group.Title + DiffRender.Ansi.Reset);
+                foreach (var entry in group.Entries)
+                {
+                    lines.Add(
+                        DiffRender.Ansi.BoldAccent + entry.Key + DiffRender.Ansi.Reset +
+                        "  " + entry.Label);
+                }
+                lines.Add(string.Empty);
+            }
+        }
+        return PadBody(lines.Take(bodyHeight).ToList(), bodyHeight);
     }
 
     private static void ApplyOverlay(
@@ -624,26 +940,41 @@ public static class ChatTuiRenderer
 
     private static string RenderInput(ChatTuiState state, int width)
     {
-        if (state.Screen == ChatScreen.Shortcuts)
-        {
-            return "> " + ChatTexts.ShortcutsTitle(state.Language);
-        }
-
+        string content;
         if (state.Input.Length == 0)
         {
-            return "> " + ChatTexts.InputPlaceholder(state.Language);
+            content = "  › " + ChatTexts.InputPlaceholder(state.Language);
         }
+        else
+        {
+            var available = Math.Max(1, width - 5);
+            var cursor = Math.Clamp(state.Cursor, 0, state.Input.Length);
+            var start = Math.Clamp(
+                cursor - available / 2,
+                0,
+                Math.Max(0, state.Input.Length - available));
+            var length = Math.Min(available, state.Input.Length - start);
+            var visible = state.Input.Substring(start, length);
+            var relative = Math.Clamp(cursor - start, 0, visible.Length);
+            content = "  › " + visible.Insert(relative, "|");
+        }
+        return DiffRender.Ansi.Composer +
+            DiffRender.Ansi.Fit(content, width) +
+            DiffRender.Ansi.Reset;
+    }
 
-        var available = Math.Max(1, width - 3);
-        var cursor = Math.Clamp(state.Cursor, 0, state.Input.Length);
-        var start = Math.Clamp(
-            cursor - available / 2,
-            0,
-            Math.Max(0, state.Input.Length - available));
-        var length = Math.Min(available, state.Input.Length - start);
-        var visible = state.Input.Substring(start, length);
-        var relative = Math.Clamp(cursor - start, 0, visible.Length);
-        return "> " + visible.Insert(relative, "|");
+    private static string RenderModelLine(ChatTuiState state, int width)
+    {
+        var model = string.IsNullOrWhiteSpace(state.Provider)
+            ? ChatTexts.T(state.Language, "no provider configured", "未配置 Provider")
+            : $"{state.Provider}/{state.Model}";
+        if (!string.IsNullOrWhiteSpace(state.ReasoningEffort))
+        {
+            model += "  " + state.ReasoningEffort;
+        }
+        return DiffRender.Ansi.Fit(
+            "  " + DiffRender.Ansi.Dim + model + DiffRender.Ansi.Reset,
+            width);
     }
 
     private static string RenderFooter(ChatTuiState state, int width)
@@ -651,41 +982,110 @@ public static class ChatTuiRenderer
         var language = state.Language;
         if (state.Screen == ChatScreen.History)
         {
-            return ChatTexts.HistoryFooter(language, state.HistorySearching);
+            return RenderHistoryFooter(state, width);
         }
 
-        var provider = string.IsNullOrWhiteSpace(state.Provider)
-            ? "provider/model"
-            : $"{state.Provider}/{state.Model}";
-        var parts = new List<string> { provider };
-        if (!string.IsNullOrWhiteSpace(state.StatusMessage))
+        if (state.Screen == ChatScreen.Shortcuts
+            && state.ShortcutReturnScreen == ChatScreen.History)
         {
-            parts.Add(state.StatusMessage);
+            return RenderHintLine(
+                [("Esc", ChatTexts.T(state.Language, "back", "返回"))]);
         }
 
+        string hints;
         if (state.ModelPicker.IsOpen)
         {
-            parts.Add(ChatTexts.ModelPickerFooter(language));
+            hints = ChatTexts.ModelPickerFooter(language);
         }
         else if (ChatCommandPalette.IsOpen(state))
         {
-            parts.Add(ChatTexts.PaletteFooter(language));
+            hints = ChatTexts.PaletteFooter(language);
         }
         else if (state.HasPendingApproval)
         {
-            parts.Add(ChatTexts.ApprovalFooter(language));
+            hints = ChatTexts.ApprovalFooter(language);
         }
         else if (state.IsTurnActive)
         {
-            parts.Add(ChatTexts.WorkingFooter(language));
+            hints = ChatTexts.WorkingFooter(language);
+        }
+        else if (IsHome(state))
+        {
+            hints = "  " + RenderHintLine(
+                [("?", ChatTexts.T(language, "for shortcuts", "快捷键"))]);
         }
         else
         {
-            parts.Add(ChatTexts.IdleFooter(language));
+            hints = ChatTexts.IdleFooter(language);
         }
 
-        return string.Join("  ", parts);
+        var right = new List<string>();
+        if (!string.IsNullOrWhiteSpace(state.StatusMessage))
+        {
+            right.Add(DiffRender.Ansi.Dim + state.StatusMessage + DiffRender.Ansi.Reset);
+        }
+        if (state.WarningCount > 0)
+        {
+            right.Add(
+                DiffRender.Ansi.Warning +
+                $"⚠ {state.WarningCount} " +
+                ChatTexts.T(language, "warning", "个警告") +
+                DiffRender.Ansi.Reset);
+        }
+        if (right.Count == 0)
+        {
+            return hints;
+        }
+
+        var rightText = string.Join("  ", right);
+        var gap = width - DiffRender.Ansi.VisibleWidth(hints) -
+            DiffRender.Ansi.VisibleWidth(rightText);
+        return gap > 0
+            ? hints + new string(' ', gap) + rightText
+            : hints + "  " + rightText;
     }
+
+    private static string RenderHistoryFooter(ChatTuiState state, int width)
+    {
+        if (state.HistoryRenaming)
+        {
+            return RenderHintLine(
+                [
+                    ("Enter", ChatTexts.T(state.Language, "save", "保存")),
+                    ("Esc", ChatTexts.T(state.Language, "cancel", "取消"))
+                ]);
+        }
+
+        if (state.PendingHistoryDeleteSessionId is not null)
+        {
+            return RenderHintLine(
+                [
+                    ("delete", ChatTexts.HistoryDeleteConfirm(state.Language)),
+                    ("Esc", ChatTexts.HistoryDeleteCancel(state.Language))
+                ]);
+        }
+
+        var line = RenderHintLine(
+            ChatTexts.HistoryFooterHints(state.Language, state.HistorySearching));
+        if (string.IsNullOrWhiteSpace(state.StatusMessage))
+        {
+            return line;
+        }
+        var status = DiffRender.Ansi.Dim + state.StatusMessage + DiffRender.Ansi.Reset;
+        var gap = width - DiffRender.Ansi.VisibleWidth(line) -
+            DiffRender.Ansi.VisibleWidth(status);
+        return gap > 0
+            ? line + new string(' ', gap) + status
+            : line + "  " + status;
+    }
+
+    private static string RenderHintLine(
+        IEnumerable<(string Key, string Label)> hints) =>
+        string.Join(
+            "  ",
+            hints.Select(hint =>
+                DiffRender.Ansi.Bold + hint.Key + DiffRender.Ansi.Reset + " " +
+                DiffRender.Ansi.Dim + hint.Label + DiffRender.Ansi.Reset));
 
     private static IEnumerable<string> RenderEntry(
         TranscriptEntry entry,
@@ -837,6 +1237,47 @@ public static class ChatTuiRenderer
         return text;
     }
 
+    private static void AddWrapped(List<string> lines, string text, int width)
+    {
+        foreach (var line in DisplayText.WrapToWidth(text, Math.Max(1, width)))
+        {
+            lines.Add(line);
+        }
+    }
+
+    private static void AddWrappedStyled(
+        List<string> lines,
+        string text,
+        int width,
+        string style)
+    {
+        foreach (var line in DisplayText.WrapToWidth(text, Math.Max(1, width)))
+        {
+            lines.Add(style + line + DiffRender.Ansi.Reset);
+        }
+    }
+
+    private static void AddDetailField(
+        List<string> lines,
+        string label,
+        string value,
+        int width,
+        UiLanguage language)
+    {
+        var separator = language == UiLanguage.ChineseSimplified ? "：" : ": ";
+        var prefix = label + separator;
+        var prefixWidth = DisplayText.Width(prefix);
+        var available = Math.Max(1, width - prefixWidth);
+        var wrapped = DisplayText.WrapToWidth(value, available);
+        lines.Add(
+            DiffRender.Ansi.Dim + prefix + DiffRender.Ansi.Reset +
+            (wrapped.Count == 0 ? "—" : wrapped[0]));
+        for (var index = 1; index < wrapped.Count; index++)
+        {
+            lines.Add(new string(' ', prefixWidth) + wrapped[index]);
+        }
+    }
+
     private static List<string> WrapPlain(string? text, int width)
     {
         var normalized = (text ?? string.Empty)
@@ -864,6 +1305,5 @@ public static class ChatTuiRenderer
         }
         return lines.Take(bodyHeight).ToList();
     }
-
 
 }

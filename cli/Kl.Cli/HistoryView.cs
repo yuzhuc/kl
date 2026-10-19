@@ -17,9 +17,16 @@ public enum HistoryTaskStatus
     Inactive
 }
 
+public enum HistoryGrouping
+{
+    Workspace,
+    Status,
+    Model
+}
+
 public sealed record HistoryTask(HistorySession Session, HistoryTaskStatus Status);
 
-public sealed record HistoryGroup(string Workspace, IReadOnlyList<HistoryTask> Tasks);
+public sealed record HistoryGroup(string Label, IReadOnlyList<HistoryTask> Tasks);
 
 public sealed class HistoryView
 {
@@ -32,15 +39,24 @@ public sealed class HistoryView
         HistoryFilter.Inactive
     ];
 
+    private static readonly HistoryGrouping[] GroupingOrder =
+    [
+        HistoryGrouping.Workspace,
+        HistoryGrouping.Status,
+        HistoryGrouping.Model
+    ];
+
     private readonly Dictionary<HistoryFilter, int> _counts;
 
     private HistoryView(
         HistoryFilter filter,
+        HistoryGrouping grouping,
         string search,
         IReadOnlyList<HistoryGroup> groups,
         Dictionary<HistoryFilter, int> counts)
     {
         Filter = filter;
+        Grouping = grouping;
         Search = search;
         Groups = groups;
         Tasks = groups.SelectMany(group => group.Tasks).ToList();
@@ -48,6 +64,8 @@ public sealed class HistoryView
     }
 
     public HistoryFilter Filter { get; }
+
+    public HistoryGrouping Grouping { get; }
 
     public string Search { get; }
 
@@ -68,7 +86,8 @@ public sealed class HistoryView
         string? search,
         string currentSessionId,
         bool hasPendingApproval,
-        bool isTurnActive)
+        bool isTurnActive,
+        HistoryGrouping grouping = HistoryGrouping.Workspace)
     {
         var tasks = sessions
             .Select(session => new HistoryTask(
@@ -87,14 +106,27 @@ public sealed class HistoryView
                 : tasks.Count(task => task.Status == ToStatus(item)));
 
         var query = search?.Trim() ?? string.Empty;
-        var groups = tasks
+        var visible = tasks
             .Where(task => filter == HistoryFilter.All || task.Status == ToStatus(filter))
             .Where(task => Matches(task.Session, query))
-            .GroupBy(task => task.Session.Workspace)
-            .Select(group => new HistoryGroup(group.Key, group.ToList()))
             .ToList();
+        var groups = grouping switch
+        {
+            HistoryGrouping.Status => visible
+                .GroupBy(task => task.Status)
+                .OrderBy(group => group.Key)
+                .Select(group => new HistoryGroup(group.Key.ToString(), group.ToList())),
+            HistoryGrouping.Model => visible
+                .GroupBy(task => ModelName(task.Session))
+                .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(group => new HistoryGroup(group.Key, group.ToList())),
+            _ => visible
+                .GroupBy(task => task.Session.Workspace)
+                .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(group => new HistoryGroup(group.Key, group.ToList()))
+        };
 
-        return new HistoryView(filter, query, groups, counts);
+        return new HistoryView(filter, grouping, query, groups.ToList(), counts);
     }
 
     public static HistoryFilter MoveFilter(HistoryFilter filter, int delta)
@@ -102,6 +134,13 @@ public sealed class HistoryView
         var index = Array.IndexOf(FilterOrder, filter);
         var next = (index + delta + FilterOrder.Length) % FilterOrder.Length;
         return FilterOrder[next];
+    }
+
+    public static HistoryGrouping MoveGrouping(HistoryGrouping grouping, int delta)
+    {
+        var index = Array.IndexOf(GroupingOrder, grouping);
+        var next = (index + delta + GroupingOrder.Length) % GroupingOrder.Length;
+        return GroupingOrder[next];
     }
 
     public static int MoveSelection(int selection, int delta, int count) =>
@@ -143,6 +182,11 @@ public sealed class HistoryView
             HistoryFilter.Inactive => HistoryTaskStatus.Inactive,
             _ => HistoryTaskStatus.Ready
         };
+
+    private static string ModelName(HistorySession session) =>
+        string.IsNullOrWhiteSpace(session.Provider) && string.IsNullOrWhiteSpace(session.Model)
+            ? "Unknown"
+            : $"{session.Provider}/{session.Model}".Trim('/');
 
     private static bool Matches(HistorySession session, string query)
     {

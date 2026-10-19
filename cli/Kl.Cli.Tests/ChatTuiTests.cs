@@ -6,58 +6,32 @@ namespace Kl.Cli.Tests;
 public sealed class ChatTuiTests
 {
     [Fact]
-    public void HomeEnglishSnapshot()
+    public void HomeShowsCodexStyleEmptyState()
     {
         var state = new ChatTuiState();
         var render = ChatTuiRenderer.Render(100, 24, state);
+        var plain = DiffRender.Ansi.Strip(render);
 
         Assert.Contains(
-            "To get started, describe a task or try one of these commands:",
-            render);
-        Assert.Contains(
-            "  /init          create an AGENTS.md file with instructions for KL",
-            render);
-        Assert.Contains(
-            "  /status        show current session configuration",
-            render);
-        Assert.Contains(
-            "  /permissions   choose what KL is allowed to do",
-            render);
-        Assert.Contains(
-            "  /model         choose what model and reasoning effort to use",
-            render);
-        Assert.Contains(
-            "  /review        review changes and find issues",
-            render);
-        Assert.Contains(
-            "  /settings      configure a provider and model",
-            render);
+            plain.Split('\n'),
+            line => line.Trim() == KlBrand.TitleLine);
+        Assert.Contains("/init - create an AGENTS.md file", plain);
+        Assert.Contains("/model - choose what model and reasoning effort to use", plain);
+        Assert.Contains("› Ask KL to do anything", plain);
+        Assert.Contains("? for shortcuts", plain);
+        Assert.DoesNotContain("██╗  ██╗██╗", plain);
     }
 
     [Fact]
-    public void HomeChineseSnapshot()
+    public void HomeChineseUsesLocalizedPromptAndShortcutHint()
     {
         var state = new ChatTuiState();
         state.Settings.SetLanguage(UiLanguage.ChineseSimplified);
         var render = ChatTuiRenderer.Render(100, 24, state);
+        var plain = DiffRender.Ansi.Strip(render);
 
-        Assert.Contains("开始使用：描述一个任务，或尝试以下命令：", render);
-        Assert.Contains("  /init          创建 AGENTS.md 并写入 KL 指令", render);
-        Assert.Contains("  /status        查看当前会话配置", render);
-        Assert.Contains("  /permissions   选择 KL 的权限与审批方式", render);
-        Assert.Contains("  /model         选择模型和推理强度", render);
-        Assert.Contains("  /review        审查当前改动并发现问题", render);
-        Assert.Contains("  /settings      配置 Provider 和模型", render);
-    }
-
-    [Fact]
-    public void HomeHidesSettingsHintWhenProviderIsConfigured()
-    {
-        var state = new ChatTuiState("D:\\work", "openai", "gpt-5", "session-1");
-        var render = ChatTuiRenderer.Render(100, 24, state);
-
-        Assert.Contains("To get started", render);
-        Assert.DoesNotContain("configure a provider and model", render);
+        Assert.Contains("让 KL 做点什么", plain);
+        Assert.Contains("? 快捷键", plain);
     }
 
     [Fact]
@@ -68,11 +42,37 @@ public sealed class ChatTuiTests
         var lines = render.Split('\n');
 
         Assert.Equal(24, lines.Length);
-        Assert.Equal(">_ KL (v0.1.0)", lines[0].TrimEnd());
-        Assert.Contains("> Ask KL to do anything", render);
-        Assert.Contains("openai/gpt-5", render.Split('\n')[^1]);
-        Assert.Contains("Ctrl+R reasoning", render.Split('\n')[^1]);
-        Assert.Contains("? shortcuts", render.Split('\n')[^1]);
+        Assert.Equal(">_ KL (v0.1.0)", lines[1].Trim());
+        Assert.Contains("› Ask KL to do anything", render);
+        Assert.Contains("? for shortcuts", DiffRender.Ansi.Strip(render.Split('\n')[^1]));
+    }
+
+    [Fact]
+    public void ChatFooterReturnsAfterTranscriptStarts()
+    {
+        var state = new ChatTuiState("D:\\work", "openai", "gpt-5", "session-1");
+        state.Transcript.Add(new TranscriptEntry(TranscriptKind.Info, "session started"));
+
+        var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(100, 24, state));
+        var footer = plain.Split('\n')[^1];
+        Assert.Contains("openai/gpt-5", plain);
+        Assert.Contains("Ctrl+R reasoning", footer);
+    }
+
+    [Fact]
+    public void HomeShowsModelEffortAndRightAlignedWarning()
+    {
+        var state = new ChatTuiState("D:\\work", "deepseek", "deepseek-flash", "session-1")
+        {
+            ReasoningEffort = "high",
+            WarningCount = 1
+        };
+
+        var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(100, 24, state));
+        var lines = plain.Split('\n');
+        Assert.Contains("deepseek/deepseek-flash  high", plain);
+        Assert.StartsWith("? for shortcuts", lines[^1].TrimStart());
+        Assert.EndsWith("⚠ 1 warning", lines[^1].TrimEnd());
     }
 
     [Fact]
@@ -174,16 +174,22 @@ public sealed class ChatTuiTests
         };
 
         var render = ChatTuiRenderer.Render(100, 24, state);
+        var plain = DiffRender.Ansi.Strip(render);
 
-        Assert.Contains("D:\\a  1", render);
-        Assert.Contains("› task two", render);
-        Assert.Contains("Task details", render);
-        Assert.Contains("Status: Ready", render);
-        Assert.Contains("Model: p2/m2", render);
-        Assert.Contains("Project: D:\\b", render);
-        Assert.Contains("Prompt: prompt two", render);
-        Assert.Contains("Last: last two", render);
-        Assert.Contains("? shortcuts", render.Split('\n')[^1]);
+        Assert.Contains("D:\\a  1", plain);
+        Assert.Contains("› ○ task two", plain);
+        Assert.Contains("Task details", plain);
+        Assert.Contains("○ Ready", plain);
+        Assert.Contains("Model: p2/m2", plain);
+        Assert.Contains("Project", plain);
+        Assert.Contains("D:\\b", plain);
+        Assert.Contains("Prompt", plain);
+        Assert.Contains("prompt two", plain);
+        Assert.Contains("Last message", plain);
+        Assert.Contains("last two", plain);
+        Assert.Contains(
+            "↑/↓ select",
+            DiffRender.Ansi.Strip(render.Split('\n')[^1]));
     }
 
     [Fact]
@@ -215,14 +221,65 @@ public sealed class ChatTuiTests
 
         Assert.Equal(ChatKeyAction.HistoryUp, ChatKeyMapper.Map(Key(ConsoleKey.UpArrow), state));
         Assert.Equal(ChatKeyAction.HistoryDown, ChatKeyMapper.Map(Key(ConsoleKey.DownArrow), state));
+        Assert.Equal(ChatKeyAction.HistoryDown, ChatKeyMapper.Map(Key(ConsoleKey.J, 'j'), state));
+        Assert.Equal(ChatKeyAction.HistoryUp, ChatKeyMapper.Map(Key(ConsoleKey.K, 'k'), state));
+        Assert.Equal(ChatKeyAction.HistoryPageDown, ChatKeyMapper.Map(Key(ConsoleKey.PageDown), state));
+        Assert.Equal(ChatKeyAction.HistoryPageUp, ChatKeyMapper.Map(Key(ConsoleKey.PageUp), state));
+        Assert.Equal(ChatKeyAction.HistoryHome, ChatKeyMapper.Map(Key(ConsoleKey.Home), state));
+        Assert.Equal(ChatKeyAction.HistoryEnd, ChatKeyMapper.Map(Key(ConsoleKey.End), state));
         Assert.Equal(ChatKeyAction.HistoryOpen, ChatKeyMapper.Map(Key(ConsoleKey.Enter), state));
+        Assert.Equal(ChatKeyAction.HistoryOpen, ChatKeyMapper.Map(Key(ConsoleKey.O, 'o'), state));
         Assert.Equal(ChatKeyAction.HistoryNew, ChatKeyMapper.Map(Key(ConsoleKey.N, 'n'), state));
+        Assert.Equal(
+            ChatKeyAction.HistoryNextGrouping,
+            ChatKeyMapper.Map(Key(ConsoleKey.G, 'g'), state));
+        Assert.Equal(
+            ChatKeyAction.HistoryRename,
+            ChatKeyMapper.Map(Key(ConsoleKey.R, 'r'), state));
+        Assert.Equal(
+            ChatKeyAction.HistoryStop,
+            ChatKeyMapper.Map(Key(ConsoleKey.X, 'x'), state));
+        Assert.Equal(
+            ChatKeyAction.ToggleShortcuts,
+            ChatKeyMapper.Map(Key(ConsoleKey.Oem2, '?'), state));
+        Assert.Equal(
+            ChatKeyAction.HistoryDelete,
+            ChatKeyMapper.Map(Key(ConsoleKey.Delete), state));
+        Assert.Equal(
+            ChatKeyAction.HistoryDelete,
+            ChatKeyMapper.Map(Key(ConsoleKey.Backspace), state));
         Assert.Equal(ChatKeyAction.HistoryNextFilter, ChatKeyMapper.Map(Key(ConsoleKey.Tab, '\t'), state));
         Assert.Equal(
             ChatKeyAction.HistoryPreviousFilter,
             ChatKeyMapper.Map(Key(ConsoleKey.Tab, '\t', shift: true), state));
         Assert.Equal(ChatKeyAction.HistorySearch, ChatKeyMapper.Map(Key(ConsoleKey.Oem2, '/'), state));
+        Assert.Equal(ChatKeyAction.HistorySearch, ChatKeyMapper.Map(Key(ConsoleKey.F3), state));
         Assert.Equal(ChatKeyAction.HistoryBack, ChatKeyMapper.Map(Key(ConsoleKey.Escape), state));
+    }
+
+    [Fact]
+    public void HistoryRenameExposesEditorKeys()
+    {
+        var rename = new ChatTuiState
+        {
+            Screen = ChatScreen.History,
+            HistoryRenaming = true,
+            HistoryRenameInput = "name",
+            HistoryRenameCursor = 4
+        };
+        Assert.Equal(
+            ChatKeyAction.HistoryRenameAccept,
+            ChatKeyMapper.Map(Key(ConsoleKey.Enter), rename));
+        Assert.Equal(
+            ChatKeyAction.HistoryRenameCancel,
+            ChatKeyMapper.Map(Key(ConsoleKey.Escape), rename));
+        Assert.Equal(
+            ChatKeyAction.Insert,
+            ChatKeyMapper.Map(Key(ConsoleKey.X, 'x'), rename));
+        Assert.Equal(
+            ChatKeyAction.Backspace,
+            ChatKeyMapper.Map(Key(ConsoleKey.Backspace), rename));
+
     }
 
     [Fact]

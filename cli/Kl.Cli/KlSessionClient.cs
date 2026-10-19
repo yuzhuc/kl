@@ -36,6 +36,9 @@ public sealed class KlSessionClient : IAsyncDisposable
         Workspace = session.GetProperty("workspace").GetString() ?? string.Empty;
         Provider = session.GetProperty("provider").GetString() ?? string.Empty;
         Model = session.GetProperty("model").GetString() ?? string.Empty;
+        ReasoningEffort = session.TryGetProperty("reasoning_effort", out var effort)
+            ? effort.GetString() ?? string.Empty
+            : string.Empty;
         MessageCount = session.TryGetProperty("message_count", out var count)
             ? count.GetInt32()
             : 0;
@@ -46,17 +49,21 @@ public sealed class KlSessionClient : IAsyncDisposable
     public string Workspace { get; }
     public string Provider { get; }
     public string Model { get; }
+    public string ReasoningEffort { get; }
     public int MessageCount { get; }
 
     public static async Task<KlSessionClient> StartAsync(
         CliOptions options,
         ISessionPresenter presenter,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Action<string>? progress = null)
     {
         var client = KlCoreClient.Start(options);
         try
         {
+            progress?.Invoke("handshaking");
             await client.HandshakeAsync(cancellationToken).ConfigureAwait(false);
+            progress?.Invoke("opening-session");
             JsonElement session;
             if (!string.IsNullOrWhiteSpace(options.Session))
             {
@@ -74,7 +81,9 @@ public sealed class KlSessionClient : IAsyncDisposable
                     cancellationToken).ConfigureAwait(false);
             }
 
-            return new KlSessionClient(client, options, presenter, session);
+            var result = new KlSessionClient(client, options, presenter, session);
+            progress?.Invoke("session-ready");
+            return result;
         }
         catch
         {
@@ -90,6 +99,17 @@ public sealed class KlSessionClient : IAsyncDisposable
 
     public Task<JsonElement> ListSessionsAsync(CancellationToken cancellationToken = default) =>
         _client.ListSessionsAsync(cancellationToken);
+
+    public Task<JsonElement> RenameSessionAsync(
+        string sessionId,
+        string name,
+        CancellationToken cancellationToken = default) =>
+        _client.RenameSessionAsync(sessionId, name, cancellationToken);
+
+    public Task<JsonElement> DeleteSessionAsync(
+        string sessionId,
+        CancellationToken cancellationToken = default) =>
+        _client.DeleteSessionAsync(sessionId, cancellationToken);
 
     public async Task<TurnOutcome> RunTurnAsync(
         string prompt,

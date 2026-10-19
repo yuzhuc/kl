@@ -30,12 +30,13 @@ use kl_protocol::{
     ProviderKeyResult, ProviderListResult, ProviderModelSummary, ProviderSetApiKeyParams,
     ProviderSetEnabledParams, ProviderUpsertParams, ProviderUpsertResult, RequestId, ReviewFinding,
     ReviewResult, ReviewRunParams, RpcError, SandboxCapabilitiesSummary, SandboxSummary,
-    SessionCompactParams, SessionCompactResult, SessionCreateParams, SessionHistoryEntry,
-    SessionHistoryParams, SessionHistoryResult, SessionHistoryToolSummary, SessionInfo,
-    SessionListResult, SessionResumeParams, SessionStatusParams, SessionStatusResult,
-    SetDefaultModelParams, TurnCancelParams, TurnCancelResult, TurnStartParams, TurnStartResult,
-    WorkspaceInitParams, WorkspaceInitResult, error_codes, failure, failure_with_data, methods,
-    negotiate, success, validate_envelope,
+    SessionCompactParams, SessionCompactResult, SessionCreateParams, SessionDeleteParams,
+    SessionDeleteResult, SessionHistoryEntry, SessionHistoryParams, SessionHistoryResult,
+    SessionHistoryToolSummary, SessionInfo, SessionListResult, SessionRenameParams,
+    SessionResumeParams, SessionStatusParams, SessionStatusResult, SetDefaultModelParams,
+    TurnCancelParams, TurnCancelResult, TurnStartParams, TurnStartResult, WorkspaceInitParams,
+    WorkspaceInitResult, error_codes, failure, failure_with_data, methods, negotiate, success,
+    validate_envelope,
 };
 use kl_provider::{
     AnthropicAdapter, BoundProvider, CancellationToken, ChatEvent, ChatMessage, ChatOutcome,
@@ -985,6 +986,8 @@ impl Core {
             methods::SESSION_RESUME => self.session_resume(params),
             methods::SESSION_HISTORY => self.session_history(params),
             methods::SESSION_LIST => self.session_list(),
+            methods::SESSION_RENAME => self.session_rename(params),
+            methods::SESSION_DELETE => self.session_delete(params),
             methods::SESSION_STATUS => self.session_status(params),
             methods::SESSION_COMPACT => self.session_compact(params),
             methods::TURN_START => self.turn_start(params),
@@ -1242,6 +1245,7 @@ impl Core {
                 &workspace.to_string_lossy(),
                 &metadata.provider,
                 &metadata.model,
+                self.config.agent.reasoning_effort.as_str(),
             )
             .map_err(store_error)?;
         let session_id = data.meta.id.clone();
@@ -1267,7 +1271,11 @@ impl Core {
                 session_id: session_id.clone(),
             },
         );
-        to_value(session_info(&data.meta, 0))
+        to_value(session_info(
+            &data.meta,
+            0,
+            self.config.agent.reasoning_effort.as_str(),
+        ))
     }
 
     fn session_resume(&mut self, params: Value) -> Result<Value, RpcError> {
@@ -1279,7 +1287,11 @@ impl Core {
                 .unwrap_or_else(|error| error.into_inner());
             if let Some(state) = sessions.get(&params.session_id) {
                 self.current_session = Some(params.session_id.clone());
-                return to_value(session_info(&state.meta, state.messages.len()));
+                return to_value(session_info(
+                    &state.meta,
+                    state.messages.len(),
+                    self.config.agent.reasoning_effort.as_str(),
+                ));
             }
         }
 
@@ -1298,7 +1310,11 @@ impl Core {
             .event_count(&params.session_id)
             .map_err(store_error)?;
         self.hub.register(&params.session_id, seq);
-        let info = session_info(&data.meta, messages.len());
+        let info = session_info(
+            &data.meta,
+            messages.len(),
+            self.config.agent.reasoning_effort.as_str(),
+        );
         let session_id = params.session_id;
         let mut sessions = self
             .sessions
@@ -1338,12 +1354,63 @@ impl Core {
 
     fn session_list(&self) -> Result<Value, RpcError> {
         let sessions = self.store.list().map_err(store_error)?;
+        let reasoning = self.config.agent.reasoning_effort.as_str();
         to_value(SessionListResult {
             sessions: sessions
                 .iter()
-                .map(|meta| session_info(meta, meta.message_count))
+                .map(|meta| session_info(meta, meta.message_count, reasoning))
                 .collect(),
         })
+    }
+
+    fn session_delete(&mut self, params: Value) -> Result<Value, RpcError> {
+        let params: SessionDeleteParams = parse_params(params, methods::SESSION_DELETE)?;
+        if self.current_session.as_deref() == Some(params.session_id.as_str()) {
+            return Err(rpc_error(
+                error_codes::INTERNAL_ERROR,
+                "cannot delete the active session",
+            ));
+        }
+        self.store.delete(&params.session_id).map_err(store_error)?;
+        self.sessions
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .remove(&params.session_id);
+        to_value(SessionDeleteResult { deleted: true })
+    }
+
+    fn session_rename(&mut self, params: Value) -> Result<Value, RpcError> {
+        let params: SessionRenameParams = parse_params(params, methods::SESSION_RENAME)?;
+        let busy = self
+            .sessions
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .get(&params.session_id)
+            .is_some_and(|state| state.active_turn.is_some());
+        if busy {
+            return Err(rpc_error(
+                error_codes::TURN_IN_PROGRESS,
+                "cannot rename a running session",
+            ));
+        }
+        let meta = self
+            .store
+            .rename(&params.session_id, &params.name)
+            .map_err(store_error)?;
+        let info = session_info(
+            &meta,
+            meta.message_count,
+            self.config.agent.reasoning_effort.as_str(),
+        );
+        if let Some(state) = self
+            .sessions
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .get_mut(&params.session_id)
+        {
+            state.meta = meta;
+        }
+        to_value(info)
     }
 
     fn session_status(&mut self, params: Value) -> Result<Value, RpcError> {
@@ -2295,12 +2362,16 @@ fn build_routes(
     Ok(routes)
 }
 
-fn session_info(meta: &SessionMeta, message_count: usize) -> SessionInfo {
+fn session_info(meta: &SessionMeta, message_count: usize, fallback_reasoning: &str) -> SessionInfo {
     SessionInfo {
         session_id: meta.id.clone(),
         workspace: meta.workspace.clone(),
         provider: meta.provider.clone(),
         model: meta.model.clone(),
+        reasoning_effort: meta
+            .reasoning_effort
+            .clone()
+            .unwrap_or_else(|| fallback_reasoning.to_owned()),
         created_at: meta.created_at.clone(),
         updated_at: meta.updated_at.clone(),
         message_count,
@@ -2635,6 +2706,10 @@ fn store_error(error: StoreError) -> RpcError {
         StoreError::NotFound(id) => rpc_error(
             error_codes::SESSION_NOT_FOUND,
             format!("session not found: {id}"),
+        ),
+        StoreError::InvalidName => rpc_error(
+            error_codes::INVALID_PARAMS,
+            "session name must be 1-160 characters",
         ),
         other => rpc_error(error_codes::INTERNAL_ERROR, other.to_string()),
     }

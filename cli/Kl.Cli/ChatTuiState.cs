@@ -45,6 +45,16 @@ public enum ChatKeyAction
     HistoryDown,
     HistoryOpen,
     HistoryNew,
+    HistoryDelete,
+    HistoryNextGrouping,
+    HistoryPageUp,
+    HistoryPageDown,
+    HistoryHome,
+    HistoryEnd,
+    HistoryRename,
+    HistoryRenameAccept,
+    HistoryRenameCancel,
+    HistoryStop,
     HistoryNextFilter,
     HistoryPreviousFilter,
     HistorySearch,
@@ -80,7 +90,8 @@ public sealed record HistorySession(
     string? Status,
     string? Task,
     string? Prompt,
-    string? LastMessage);
+    string? LastMessage,
+    string? ReasoningEffort = null);
 
 public sealed record HistoryMessage(
     string Role,
@@ -134,6 +145,8 @@ public sealed class ChatTuiState
     public string Workspace { get; init; }
     public string Provider { get; set; }
     public string Model { get; set; }
+    public string ReasoningEffort { get; set; } = string.Empty;
+    public int WarningCount { get; set; }
     public string SessionId { get; set; }
     public bool Verbose { get; init; }
     public string Input { get; set; } = string.Empty;
@@ -148,9 +161,15 @@ public sealed class ChatTuiState
     public List<HistorySession> History { get; set; } = [];
     public int HistorySelection { get; set; }
     public HistoryFilter HistoryFilter { get; set; } = Kl.Cli.HistoryFilter.All;
+    public HistoryGrouping HistoryGrouping { get; set; } = HistoryGrouping.Workspace;
     public string HistorySearch { get; set; } = string.Empty;
     public int HistorySearchCursor { get; set; }
     public bool HistorySearching { get; set; }
+    public string? PendingHistoryDeleteSessionId { get; set; }
+    public bool HistoryRenaming { get; set; }
+    public string HistoryRenameSessionId { get; set; } = string.Empty;
+    public string HistoryRenameInput { get; set; } = string.Empty;
+    public int HistoryRenameCursor { get; set; }
     public int CommandPaletteSelection { get; set; }
     public bool CommandPaletteDismissed { get; set; }
     public bool ReasoningVisible { get; set; } = true;
@@ -221,7 +240,8 @@ public sealed class ChatTuiState
             HistorySearch,
             SessionId,
             HasPendingApproval,
-            IsTurnActive);
+            IsTurnActive,
+            HistoryGrouping);
 
     public void ResetHistoryView()
     {
@@ -230,11 +250,18 @@ public sealed class ChatTuiState
         HistorySearchCursor = 0;
         HistorySearching = false;
         HistorySelection = 0;
+        CancelHistoryRename();
     }
 
     public void SetHistoryFilter(HistoryFilter filter)
     {
         HistoryFilter = filter;
+        HistorySelection = 0;
+    }
+
+    public void SetHistoryGrouping(HistoryGrouping grouping)
+    {
+        HistoryGrouping = grouping;
         HistorySelection = 0;
     }
 
@@ -254,6 +281,67 @@ public sealed class ChatTuiState
         }
         HistorySearching = false;
     }
+
+    public void StartHistoryRename(HistorySession session)
+    {
+        HistoryRenaming = true;
+        HistoryRenameSessionId = session.SessionId;
+        HistoryRenameInput = session.Task ?? string.Empty;
+        HistoryRenameCursor = HistoryRenameInput.Length;
+        HistorySearching = false;
+    }
+
+    public void CancelHistoryRename()
+    {
+        HistoryRenaming = false;
+        HistoryRenameSessionId = string.Empty;
+        HistoryRenameInput = string.Empty;
+        HistoryRenameCursor = 0;
+    }
+
+    public void InsertHistoryRename(char character)
+    {
+        if (HistoryRenameInput.Length >= 160)
+        {
+            return;
+        }
+        HistoryRenameInput = HistoryRenameInput.Insert(
+            Math.Clamp(HistoryRenameCursor, 0, HistoryRenameInput.Length),
+            character.ToString());
+        HistoryRenameCursor = Math.Clamp(
+            HistoryRenameCursor + 1,
+            0,
+            HistoryRenameInput.Length);
+    }
+
+    public void BackspaceHistoryRename()
+    {
+        if (HistoryRenameCursor <= 0)
+        {
+            return;
+        }
+        HistoryRenameInput = HistoryRenameInput.Remove(HistoryRenameCursor - 1, 1);
+        HistoryRenameCursor--;
+    }
+
+    public void DeleteHistoryRename()
+    {
+        if (HistoryRenameCursor >= HistoryRenameInput.Length)
+        {
+            return;
+        }
+        HistoryRenameInput = HistoryRenameInput.Remove(HistoryRenameCursor, 1);
+    }
+
+    public void MoveHistoryRenameLeft() =>
+        HistoryRenameCursor = Math.Max(0, HistoryRenameCursor - 1);
+
+    public void MoveHistoryRenameRight() =>
+        HistoryRenameCursor = Math.Min(HistoryRenameInput.Length, HistoryRenameCursor + 1);
+
+    public void MoveHistoryRenameHome() => HistoryRenameCursor = 0;
+
+    public void MoveHistoryRenameEnd() => HistoryRenameCursor = HistoryRenameInput.Length;
 
     public void InsertHistorySearch(char character)
     {
@@ -648,7 +736,8 @@ public sealed class ChatTuiState
                 GetOptionalString(value, "status"),
                 GetOptionalString(value, "task"),
                 GetOptionalString(value, "prompt"),
-                GetOptionalString(value, "last_message")));
+                GetOptionalString(value, "last_message"),
+                GetOptionalString(value, "reasoning_effort")));
         }
         return sessions;
     }
@@ -733,6 +822,27 @@ public static class ChatKeyMapper
 
         if (state.Screen == ChatScreen.History)
         {
+            if (state.HistoryRenaming)
+            {
+                return key.Key switch
+                {
+                    ConsoleKey.Enter => ChatKeyAction.HistoryRenameAccept,
+                    ConsoleKey.Escape => ChatKeyAction.HistoryRenameCancel,
+                    ConsoleKey.Backspace => ChatKeyAction.Backspace,
+                    ConsoleKey.Delete => ChatKeyAction.Delete,
+                    ConsoleKey.LeftArrow => ChatKeyAction.CursorLeft,
+                    ConsoleKey.RightArrow => ChatKeyAction.CursorRight,
+                    ConsoleKey.Home => ChatKeyAction.CursorHome,
+                    ConsoleKey.End => ChatKeyAction.CursorEnd,
+                    _ when key.KeyChar >= ' '
+                        && key.KeyChar != '\u007f'
+                        && !control
+                        && (key.Modifiers & ConsoleModifiers.Alt) == 0 =>
+                        ChatKeyAction.Insert,
+                    _ => ChatKeyAction.None
+                };
+            }
+
             if (state.HistorySearching)
             {
                 return key.Key switch
@@ -766,9 +876,22 @@ public static class ChatKeyMapper
                 ConsoleKey.Tab => ChatKeyAction.HistoryNextFilter,
                 ConsoleKey.Enter => ChatKeyAction.HistoryOpen,
                 ConsoleKey.Escape => ChatKeyAction.HistoryBack,
+                ConsoleKey.PageUp => ChatKeyAction.HistoryPageUp,
+                ConsoleKey.PageDown => ChatKeyAction.HistoryPageDown,
+                ConsoleKey.Home => ChatKeyAction.HistoryHome,
+                ConsoleKey.End => ChatKeyAction.HistoryEnd,
+                ConsoleKey.Delete => ChatKeyAction.HistoryDelete,
+                ConsoleKey.Backspace => ChatKeyAction.HistoryDelete,
+                ConsoleKey.F3 => ChatKeyAction.HistorySearch,
+                _ when key.KeyChar is 'g' or 'G' => ChatKeyAction.HistoryNextGrouping,
+                _ when key.KeyChar is 'j' or 'J' => ChatKeyAction.HistoryDown,
+                _ when key.KeyChar is 'k' or 'K' => ChatKeyAction.HistoryUp,
+                _ when key.KeyChar is 'o' or 'O' => ChatKeyAction.HistoryOpen,
+                _ when key.KeyChar is 'r' or 'R' => ChatKeyAction.HistoryRename,
+                _ when key.KeyChar is 'x' or 'X' => ChatKeyAction.HistoryStop,
                 _ when key.KeyChar == '/' => ChatKeyAction.HistorySearch,
                 _ when key.KeyChar is 'n' or 'N' => ChatKeyAction.HistoryNew,
-                _ when key.KeyChar == '?' => ChatKeyAction.ToggleShortcuts,
+                _ when key.KeyChar is '?' or '？' => ChatKeyAction.ToggleShortcuts,
                 _ => ChatKeyAction.None
             };
         }

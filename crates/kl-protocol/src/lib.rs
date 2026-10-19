@@ -29,6 +29,8 @@ pub mod methods {
     pub const SESSION_RESUME: &str = "session.resume";
     pub const SESSION_HISTORY: &str = "session.history";
     pub const SESSION_LIST: &str = "session.list";
+    pub const SESSION_RENAME: &str = "session.rename";
+    pub const SESSION_DELETE: &str = "session.delete";
     pub const SESSION_STATUS: &str = "session.status";
     pub const SESSION_COMPACT: &str = "session.compact";
     pub const TURN_START: &str = "turn.start";
@@ -516,6 +518,8 @@ pub struct SessionInfo {
     pub prompt: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_message: Option<String>,
+    #[serde(default)]
+    pub reasoning_effort: String,
 }
 
 fn default_session_turn_state() -> String {
@@ -525,6 +529,12 @@ fn default_session_turn_state() -> String {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SessionResumeParams {
     pub session_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SessionRenameParams {
+    pub session_id: String,
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -566,6 +576,16 @@ pub struct SessionHistoryResult {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SessionListResult {
     pub sessions: Vec<SessionInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SessionDeleteParams {
+    pub session_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SessionDeleteResult {
+    pub deleted: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

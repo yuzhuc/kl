@@ -7,7 +7,7 @@ public static class ChatTexts
         language == UiLanguage.ChineseSimplified ? chinese : english;
 
     public static string InputPlaceholder(UiLanguage language) =>
-        T(language, "Ask KL to do anything", "描述一个任务，或输入 / 查看命令");
+        T(language, KlBrand.InputPlaceholder, "让 KL 做点什么，或输入 / 查看命令");
 
     public static string UserLabel(UiLanguage language) =>
         T(language, "You: ", "你：");
@@ -77,6 +77,20 @@ public static class ChatTexts
             language,
             "No provider configured. Use /settings to configure one.",
             "未配置 Provider。使用 /settings 配置。");
+
+    public static string StartupStage(UiLanguage language, string stage) =>
+        stage switch
+        {
+            "starting-core" => T(language, "Starting KL core", "正在启动 KL core"),
+            "handshaking" => T(language, "Connecting to core", "正在连接 core"),
+            "opening-session" => T(language, "Opening session", "正在打开会话"),
+            "session-ready" => T(language, "Session ready", "会话已就绪"),
+            "loading-transcript" => T(language, "Loading conversation", "正在加载对话"),
+            "loading-history" => T(language, "Loading history", "正在加载历史"),
+            "checking-environment" => T(language, "Checking environment", "正在检查环境"),
+            "ready" => T(language, "Ready", "就绪"),
+            _ => stage
+        };
 
     public static string NoProviderHomeHint(UiLanguage language) =>
         T(language, "/settings", "/settings");
@@ -198,8 +212,19 @@ public static class ChatTexts
     public static string HistoryTitle(UiLanguage language) =>
         T(language, "History", "历史");
 
-    public static string HistoryGroupBy(UiLanguage language) =>
-        T(language, "Group: Workspace", "分组：工作区");
+    public static string HistoryGroupBy(UiLanguage language, HistoryGrouping grouping) =>
+        T(
+            language,
+            $"Group: {HistoryGroupingLabel(language, grouping)}",
+            $"分组：{HistoryGroupingLabel(language, grouping)}");
+
+    public static string HistoryGroupingLabel(UiLanguage language, HistoryGrouping grouping) =>
+        grouping switch
+        {
+            HistoryGrouping.Status => T(language, "Status", "状态"),
+            HistoryGrouping.Model => T(language, "Model", "模型"),
+            _ => T(language, "Workspace", "工作区")
+        };
 
     public static string Workspace(UiLanguage language, string workspace) =>
         T(language, $"Workspace: {workspace}", $"工作区：{workspace}");
@@ -244,20 +269,26 @@ public static class ChatTexts
     public static string NoTaskSelected(UiLanguage language) =>
         T(language, "No task selected.", "未选择任务。");
 
-    public static string HistoryStatusLine(UiLanguage language, string value) =>
-        T(language, $"Status: {value}", $"状态：{value}");
+    public static string TasksColumn(UiLanguage language) =>
+        T(language, "Tasks", "任务");
 
-    public static string HistoryModelLine(UiLanguage language, string value) =>
-        T(language, $"Model: {value}", $"模型：{value}");
+    public static string StatusColumn(UiLanguage language) =>
+        T(language, "Status", "状态");
 
-    public static string HistoryProjectLine(UiLanguage language, string value) =>
-        T(language, $"Project: {value}", $"项目：{value}");
+    public static string UpdatedColumn(UiLanguage language) =>
+        T(language, "Updated", "更新");
 
-    public static string HistoryPromptLine(UiLanguage language, string value) =>
-        T(language, $"Prompt: {value}", $"提示：{value}");
+    public static string ProjectLabel(UiLanguage language) =>
+        T(language, "Project", "项目");
 
-    public static string HistoryLastLine(UiLanguage language, string value) =>
-        T(language, $"Last: {value}", $"最后：{value}");
+    public static string PromptLabel(UiLanguage language) =>
+        T(language, "Prompt", "提示");
+
+    public static string LastMessageLabel(UiLanguage language) =>
+        T(language, "Last message", "最后消息");
+
+    public static string ReasoningLabel(UiLanguage language) =>
+        T(language, "Reasoning", "模型等级");
 
     public static string UntitledTask(UiLanguage language) =>
         T(language, "Untitled task", "未命名任务");
@@ -274,16 +305,98 @@ public static class ChatTexts
             "No tasks match this search.",
             "没有匹配的任务。");
 
-    public static string HistoryFooter(UiLanguage language, bool searching) =>
+    public static IReadOnlyList<(string Key, string Label)> HistoryFooterHints(
+        UiLanguage language,
+        bool searching) =>
         searching
-            ? T(
-                language,
-                "↑/↓ select  Tab filter  Enter keep  Esc clear",
-                "↑/↓ 选择  Tab 筛选  Enter 保留  Esc 清空")
-            : T(
-                language,
-                "↑/↓ select  Tab filter  Enter resume  n new  / search  ? shortcuts",
-                "↑/↓ 选择  Tab 筛选  Enter 恢复  n 新建  / 搜索  ? 快捷键");
+            ? language == UiLanguage.ChineseSimplified
+                ? [("↑/↓", "选择"), ("Enter", "保留"), ("Esc", "清空")]
+                : [("↑/↓", "select"), ("Enter", "keep"), ("Esc", "clear")]
+            : language == UiLanguage.ChineseSimplified
+                ? [
+                    ("r", "重命名"), ("↑/↓", "选择"), ("Enter", "恢复"), ("n", "新建"),
+                    ("delete", "删除"), ("/", "搜索")
+                ]
+                : [
+                    ("r", "rename"), ("↑/↓", "select"), ("Enter", "resume"), ("n", "new"),
+                    ("delete", "delete"), ("/", "search")
+                ];
+
+    public static string HistoryDeleteConfirm(UiLanguage language) =>
+        T(language, "again to delete", "再次确认删除");
+
+    public static string HistoryDeleteCancel(UiLanguage language) =>
+        T(language, "cancel", "取消");
+
+    public static string CannotDeleteCurrentSession(UiLanguage language) =>
+        T(
+            language,
+            "Cannot delete the active session.",
+            "不能删除当前正在使用的会话。");
+
+    public static string HistoryDeleted(UiLanguage language) =>
+        T(language, "Task deleted", "任务已删除");
+
+    public static string HistoryDeleteFailed(UiLanguage language, string error) =>
+        T(language, $"delete failed: {error}", $"删除失败：{error}");
+
+    public static string HistoryRename(UiLanguage language) =>
+        T(language, "Rename", "重命名");
+
+    public static string HistoryRenameEmpty(UiLanguage language) =>
+        T(language, "Task name cannot be empty", "任务名称不能为空");
+
+    public static string HistoryRenamed(UiLanguage language) =>
+        T(language, "Task renamed", "任务已重命名");
+
+    public static string HistoryRenameFailed(UiLanguage language, string error) =>
+        T(language, $"rename failed: {error}", $"重命名失败：{error}");
+
+    public static string NoRunningTask(UiLanguage language) =>
+        T(language, "No running task to stop", "没有可停止的运行中任务");
+
+    public static string HistoryShortcutsTitle(UiLanguage language) =>
+        T(language, "History shortcuts", "历史页快捷键");
+
+    public static IReadOnlyList<(string Key, string Label)> HistoryNavigateShortcuts(
+        UiLanguage language) =>
+        language == UiLanguage.ChineseSimplified
+            ? [
+                ("↑/↓, j/k", "选择任务"), ("PageUp/PageDown", "翻页"),
+                ("Home/End", "第一项/最后一项"), ("Enter, o", "恢复任务"),
+                ("Ctrl+C", "退出")
+            ]
+            : [
+                ("↑/↓, j/k", "select task"), ("PageUp/PageDown", "page"),
+                ("Home/End", "first/last"), ("Enter, o", "resume task"),
+                ("Ctrl+C", "quit")
+            ];
+
+    public static IReadOnlyList<(string Key, string Label)> HistoryTaskShortcuts(
+        UiLanguage language) =>
+        language == UiLanguage.ChineseSimplified
+            ? [
+                ("n", "新建任务"), ("r", "重命名任务"),
+                ("x", "停止任务"), ("Backspace/Delete", "删除任务"),
+                ("Tab/Shift+Tab", "切换筛选")
+            ]
+            : [
+                ("n", "new task"), ("r", "rename task"),
+                ("x", "stop running task"), ("Backspace/Delete", "delete task"),
+                ("Tab/Shift+Tab", "cycle filters")
+            ];
+
+    public static IReadOnlyList<(string Key, string Label)> HistoryViewShortcuts(
+        UiLanguage language) =>
+        language == UiLanguage.ChineseSimplified
+            ? [
+                ("/, F3", "搜索"), ("g", "切换分组"),
+                ("?", "快捷键"), ("Esc", "返回")
+            ]
+            : [
+                ("/, F3", "search"), ("g", "cycle grouping"),
+                ("?", "shortcuts"), ("Esc", "back")
+            ];
 
     public static string SecondsAgo(UiLanguage language, int value) =>
         T(language, $"{value}s ago", $"{value}秒前");
@@ -338,30 +451,31 @@ public static class ChatTexts
         {
             lines.Add("开始使用：描述一个任务，或尝试以下命令：");
             lines.Add(string.Empty);
-            lines.Add("  /init          创建 AGENTS.md 并写入 KL 指令");
-            lines.Add("  /status        查看当前会话配置");
-            lines.Add("  /permissions   选择 KL 的权限与审批方式");
-            lines.Add("  /model         选择模型和推理强度");
-            lines.Add("  /review        审查当前改动并发现问题");
+            lines.Add("/init - 创建 AGENTS.md 并写入 KL 指令");
+            lines.Add("/status - 查看当前会话配置");
+            lines.Add("/permissions - 选择 KL 的权限与审批方式");
+            lines.Add("/model - 选择模型和推理强度");
+            lines.Add("/review - 审查当前改动并发现问题");
         }
         else
         {
             lines.Add("To get started, describe a task or try one of these commands:");
             lines.Add(string.Empty);
-            lines.Add("  /init          create an AGENTS.md file with instructions for KL");
-            lines.Add("  /status        show current session configuration");
-            lines.Add("  /permissions   choose what KL is allowed to do");
-            lines.Add("  /model         choose what model and reasoning effort to use");
-            lines.Add("  /review        review changes and find issues");
+            lines.Add("/init - create an AGENTS.md file with instructions for KL");
+            lines.Add("/status - show current session configuration");
+            lines.Add("/permissions - choose what KL is allowed to do");
+            lines.Add("/model - choose what model and reasoning effort to use");
+            lines.Add("/review - review changes and find issues");
         }
 
         if (!hasProvider)
         {
             lines.Add(string.Empty);
             lines.Add(language == UiLanguage.ChineseSimplified
-                ? "  /settings      配置 Provider 和模型"
-                : "  /settings      configure a provider and model");
+                ? "/settings - 配置 Provider 和模型"
+                : "/settings - configure a provider and model");
         }
         return lines;
     }
+
 }

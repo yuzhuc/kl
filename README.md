@@ -123,7 +123,10 @@ interactive. The page keeps user/assistant messages, tool calls, approvals,
 diffs and errors in a scrollable transcript. Enter sends, Ctrl+C cancels the
 current turn (or exits when idle), Left on an empty input opens history, Up/Down
 scrolls, and `?` shows shortcuts. The history page groups sessions by workspace
-and supports Up/Down, Enter to resume, `n` for a new session and Esc to return.
+by default and supports `g` grouping cycles, `j`/`k` or Up/Down, PageUp/PageDown,
+Home/End, `o` or Enter to resume, `n` for a new session, `r` rename, `x` stop
+the running task, Backspace/Delete (confirmed twice) to remove a session, Tab
+filters, `/` or F3 search, `?` for the in-page help popup and Esc to return.
 When a session is resumed, directly or from the history page, the chat page
 replays the most recent visible user, assistant and tool summaries before
 accepting input. Live turn events continue from the new turn and are not

@@ -20,9 +20,9 @@ public sealed class HistoryViewTests
             isTurnActive: false);
 
         Assert.Equal(2, view.Groups.Count);
-        Assert.Equal("D:\\a", view.Groups[0].Workspace);
+        Assert.Equal("D:\\a", view.Groups[0].Label);
         Assert.Equal(2, view.Groups[0].Tasks.Count);
-        Assert.Equal("D:\\b", view.Groups[1].Workspace);
+        Assert.Equal("D:\\b", view.Groups[1].Label);
         Assert.Single(view.Groups[1].Tasks);
         Assert.Equal(3, view.Count(HistoryFilter.All));
     }
@@ -156,6 +156,45 @@ public sealed class HistoryViewTests
     }
 
     [Fact]
+    public void GroupingCyclesAndRegroupsTasks()
+    {
+        var state = new ChatTuiState
+        {
+            HistorySelection = 2
+        };
+        Assert.Equal(
+            HistoryGrouping.Status,
+            HistoryView.MoveGrouping(HistoryGrouping.Workspace, 1));
+        Assert.Equal(
+            HistoryGrouping.Model,
+            HistoryView.MoveGrouping(HistoryGrouping.Status, 1));
+        Assert.Equal(
+            HistoryGrouping.Workspace,
+            HistoryView.MoveGrouping(HistoryGrouping.Model, 1));
+
+        state.SetHistoryGrouping(HistoryGrouping.Model);
+        Assert.Equal(HistoryGrouping.Model, state.HistoryGrouping);
+        Assert.Equal(0, state.HistorySelection);
+
+        var view = HistoryView.Build(
+            [
+                Session("s1", "D:\\a", "ready", "one", model: "m1"),
+                Session("s2", "D:\\b", "completed", "two", model: "m2"),
+                Session("s3", "D:\\c", "ready", "three", model: "m1")
+            ],
+            HistoryFilter.All,
+            string.Empty,
+            string.Empty,
+            hasPendingApproval: false,
+            isTurnActive: false,
+            grouping: HistoryGrouping.Model);
+        Assert.Equal(2, view.Groups.Count);
+        Assert.Equal("local/m1", view.Groups[0].Label);
+        Assert.Equal(2, view.Groups[0].Tasks.Count);
+        Assert.Equal("local/m2", view.Groups[1].Label);
+    }
+
+    [Fact]
     public void SearchEditingFiltersInRealTimeAndClearsOnEscape()
     {
         var state = new ChatTuiState
@@ -242,16 +281,21 @@ public sealed class HistoryViewTests
         var state = new ChatTuiState
         {
             Screen = ChatScreen.History,
-            History = [Session("s1", "D:\\kl", "ready", "task one")]
+            HistorySelection = 1,
+            History =
+            [
+                Session("s1", "D:\\kl", "ready", "task one"),
+                Session("s2", "D:\\kl", "ready", "task two")
+            ]
         };
 
         var wide = ChatTuiRenderer.Render(120, 24, state);
-        Assert.Contains(
-            wide.Split('\n'),
-            line => line.Contains("History") && line.Contains("Task details"));
+        var widePlain = DiffRender.Ansi.Strip(wide);
+        Assert.Contains("History", widePlain);
+        Assert.Contains("Task details", widePlain);
 
         var narrow = ChatTuiRenderer.Render(80, 24, state);
-        var narrowLines = narrow.Split('\n');
+        var narrowLines = DiffRender.Ansi.Strip(narrow).Split('\n');
         var taskLine = Array.FindIndex(narrowLines, line => line.Contains("task one"));
         var detailLine = Array.FindIndex(narrowLines, line => line.Contains("Task details"));
         Assert.True(taskLine >= 0);
@@ -269,12 +313,83 @@ public sealed class HistoryViewTests
         state.Settings.SetLanguage(UiLanguage.ChineseSimplified);
 
         var render = ChatTuiRenderer.Render(120, 24, state);
+        var plain = DiffRender.Ansi.Strip(render);
 
-        Assert.Contains("历史  分组：工作区", render);
-        Assert.Contains("全部 1", render);
-        Assert.Contains("未命名任务", render);
-        Assert.Contains("任务详情", render);
-        Assert.Contains("状态：就绪", render);
+        Assert.Contains("历史  分组：工作区", plain);
+        Assert.Contains("全部 1", plain);
+        Assert.Contains("未命名任务", plain);
+        Assert.Contains("任务详情", plain);
+        Assert.Contains("○ 就绪", plain);
+        Assert.Contains("模型等级：high", plain);
+        Assert.Contains("Tab/Shift+Tab 切换", plain);
+        Assert.DoesNotContain(">_ KL (v0.1.0)", plain);
+        var plainLines = plain.Split('\n');
+        Assert.Contains("分组：工作区  g", plainLines[0].TrimEnd());
+        Assert.EndsWith(
+            "Tab/Shift+Tab 切换",
+            plainLines.First(line => line.Contains("全部 1")).TrimEnd());
+        Assert.Contains(
+            "delete 删除",
+            DiffRender.Ansi.Strip(render.Split('\n')[^1]));
+        Assert.DoesNotContain(
+            "Tab",
+            DiffRender.Ansi.Strip(render.Split('\n')[^1]));
+    }
+
+    [Fact]
+    public void HistoryUsesCodexSelectionAndActiveTabColors()
+    {
+        var state = new ChatTuiState
+        {
+            Screen = ChatScreen.History,
+            History = [Session("s1", "D:\\kl", "ready", "task one")]
+        };
+
+        var render = ChatTuiRenderer.Render(120, 24, state);
+
+        Assert.Contains(DiffRender.Ansi.Selection, render);
+        Assert.Contains(DiffRender.Ansi.ActiveTab, render);
+        Assert.Contains("\u001b[38;5;", render);
+        Assert.DoesNotContain(">_ KL (v0.1.0)", render);
+    }
+
+    [Fact]
+    public void HistoryRenameShortcutsPageAndFooterOrder()
+    {
+        var state = new ChatTuiState
+        {
+            Screen = ChatScreen.History,
+            History = [Session("s1", "D:\\kl", "ready", "task one")],
+            HistoryRenaming = true,
+            HistoryRenameSessionId = "s1",
+            HistoryRenameInput = "new name",
+            HistoryRenameCursor = 3
+        };
+        state.Settings.SetLanguage(UiLanguage.ChineseSimplified);
+
+        var rename = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(100, 24, state));
+        Assert.Contains("重命名 › new| name", rename);
+        Assert.Contains("Enter 保存", rename.Split('\n')[^1]);
+
+        state.HistoryRenaming = false;
+        state.Screen = ChatScreen.Shortcuts;
+        state.ShortcutReturnScreen = ChatScreen.History;
+        var shortcuts = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(100, 24, state));
+        Assert.Contains("历史页快捷键", shortcuts);
+        Assert.Contains("导航", shortcuts);
+        Assert.Contains("任务", shortcuts);
+        Assert.Contains("视图", shortcuts);
+        Assert.Contains("重命名任务", shortcuts);
+        Assert.Contains("停止任务", shortcuts);
+        Assert.DoesNotContain("┌", shortcuts);
+        Assert.EndsWith("Esc 返回", shortcuts.Split('\n')[^1].TrimEnd());
+
+        state.Screen = ChatScreen.History;
+        state.StatusMessage = "任务已删除";
+        var footer = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(100, 24, state).Split('\n')[^1]);
+        Assert.StartsWith("r 重命名", footer.TrimStart());
+        Assert.True(footer.IndexOf("r 重命名") < footer.IndexOf("任务已删除"));
+        Assert.EndsWith("任务已删除", footer.TrimEnd());
     }
 
     private static HistorySession Session(
@@ -296,5 +411,6 @@ public sealed class HistoryViewTests
             status,
             task,
             prompt,
-            last ?? "done");
+            last ?? "done",
+            "high");
 }

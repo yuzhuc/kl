@@ -1,31 +1,56 @@
 namespace Kl.Cli;
 
-/// <summary>Two-frame startup splash shown after the TUI enters the alternate screen.</summary>
+/// <summary>Codex-style startup screen updated while the session opens.</summary>
 public static class SplashScreen
 {
-    public const int MinimumWidth = 32;
-    public static readonly TimeSpan FrameDuration = TimeSpan.FromMilliseconds(120);
+    public const int MinimumWidth = 64;
 
-    private const string DarkColor = "\u001b[38;5;244m";
-    private const string BrightColor = "\u001b[1;97m";
+    private const string DimColor = "\u001b[38;5;244m";
 
-    private static readonly string[] LogoLines =
-    [
-        "██╗  ██╗██╗",
-        "██║ ██╔╝██║",
-        "█████╔╝ ██║",
-        "██╔═██╗ ██║",
-        "██║  ██║███████╗",
-        "╚═╝  ╚═╝╚══════╝"
-    ];
+    private static readonly IReadOnlyList<string> LogoLines = KlBrand.LogoLines;
+    private static bool _started;
+    private static int _lastWidth;
+    private static int _lastHeight;
+    private static string? _lastStatus;
 
-    public static string VersionLine
+    public static string VersionText
     {
         get
         {
-            var version = typeof(SplashScreen).Assembly.GetName().Version;
-            return version is null ? "kl 0.1.0" : $"kl {version.ToString(3)}";
+            var version = typeof(KlBrand).Assembly.GetName().Version;
+            return version is null ? "v0.1.0" : $"v{version.ToString(3)}";
         }
+    }
+
+    public static void Start(bool canUseTui, string status)
+    {
+        if (!canUseTui)
+        {
+            return;
+        }
+        WriteFullFrame(status);
+    }
+
+    public static void Update(bool canUseTui, string status)
+    {
+        if (!canUseTui || status == _lastStatus)
+        {
+            return;
+        }
+
+        var width = Math.Max(1, Console.WindowWidth);
+        var height = Math.Max(1, Console.WindowHeight);
+        if (!_started || width != _lastWidth || height != _lastHeight)
+        {
+            WriteFullFrame(status);
+            return;
+        }
+
+        Console.Out.Write(
+            $"\u001b[{Math.Max(1, height - 2)};1H\u001b[2K" +
+            RenderStatusLine(width, status));
+        Console.Out.Flush();
+        _lastStatus = status;
     }
 
     public static Task ShowAsync(
@@ -35,132 +60,78 @@ public static class SplashScreen
             canUseTui,
             () => Console.WindowWidth,
             () => Console.WindowHeight,
-            TryConsumeKey,
             text =>
             {
                 Console.Out.Write(text);
                 Console.Out.Flush();
             },
-            (delay, token) => Task.Delay(delay, token),
             cancellationToken);
 
-    public static async Task ShowAsync(
+    public static Task ShowAsync(
         bool canUseTui,
         Func<int> getWidth,
         Func<int> getHeight,
-        Func<bool> keyPressed,
         Action<string> write,
-        Func<TimeSpan, CancellationToken, Task> delay,
         CancellationToken cancellationToken = default)
     {
         if (!canUseTui)
         {
-            return;
+            return Task.CompletedTask;
         }
 
-        try
-        {
-            var width = getWidth();
-            var height = getHeight();
-            write(RenderFrame(width, height, bright: false));
-            if (await WaitFrameAsync(keyPressed, delay, cancellationToken).ConfigureAwait(false))
-            {
-                return;
-            }
-
-            write(RenderFrame(width, height, bright: true));
-            await WaitFrameAsync(keyPressed, delay, cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            write(DiffRender.Ansi.Reset);
-        }
+        cancellationToken.ThrowIfCancellationRequested();
+        write(RenderFrame(getWidth(), getHeight(), "loading"));
+        return Task.CompletedTask;
     }
 
-    public static string RenderFrame(int width, int height, bool bright)
+    public static string RenderFrame(int width, int height) =>
+        RenderFrame(width, height, "loading");
+
+    public static string RenderFrame(int width, int height, string status) =>
+        "\u001b[2J\u001b[H" + RenderLayout(width, height, status) + DiffRender.Ansi.Reset;
+
+    private static void WriteFullFrame(string status)
     {
-        var body = RenderLayout(width, height);
-        var color = bright ? BrightColor : DarkColor;
-        return "\u001b[2J\u001b[H" + color + body + DiffRender.Ansi.Reset;
+        _lastWidth = Math.Max(1, Console.WindowWidth);
+        _lastHeight = Math.Max(1, Console.WindowHeight);
+        _lastStatus = status;
+        Console.Out.Write(RenderFrame(_lastWidth, _lastHeight, status));
+        Console.Out.Flush();
+        _started = true;
     }
 
-    private static async Task<bool> WaitFrameAsync(
-        Func<bool> keyPressed,
-        Func<TimeSpan, CancellationToken, Task> delay,
-        CancellationToken cancellationToken)
-    {
-        if (keyPressed())
-        {
-            return true;
-        }
-
-        await delay(FrameDuration, cancellationToken).ConfigureAwait(false);
-        return keyPressed();
-    }
-
-    private static string RenderLayout(int width, int height)
+    private static string RenderLayout(int width, int height, string status)
     {
         width = Math.Max(1, width);
         height = Math.Max(1, height);
+        var lines = Enumerable.Repeat(string.Empty, height).ToArray();
 
-        var lines = new List<string>();
-        if (width >= MinimumWidth)
+        var logo = width >= MinimumWidth ? LogoLines : new[] { "KL" };
+        var logoWidth = logo.Max(DisplayText.Width);
+        var left = Math.Max(0, (width - logoWidth) / 2);
+        var top = Math.Max(0, (height - logo.Count - 2) / 2);
+        for (var index = 0; index < logo.Count && top + index < height - 3; index++)
         {
-            var logoWidth = LogoLines.Max(DisplayText.Width);
-            var left = Math.Max(0, (width - logoWidth) / 2);
-            foreach (var logoLine in LogoLines)
-            {
-                var padding = new string(' ', logoWidth - DisplayText.Width(logoLine));
-                lines.Add(new string(' ', left) + logoLine + padding);
-            }
-            lines.Add(string.Empty);
-        }
-        else
-        {
-            lines.Add(Center(">_ KL", width));
+            var line = logo[index];
+            var padding = new string(' ', Math.Max(0, logoWidth - DisplayText.Width(line)));
+            lines[top + index] = new string(' ', left) +
+                DimColor + line + padding + DiffRender.Ansi.Reset;
         }
 
-        lines.Add(Center(VersionLine, width));
+        var logRow = Math.Max(0, height - 3);
+        lines[logRow] = RenderStatusLine(width, status);
+        if (height > 1)
+        {
+            var versionLeft = Math.Max(0, width - DisplayText.Width(VersionText) - 2);
+            lines[height - 1] = new string(' ', versionLeft) +
+                DimColor + VersionText + DiffRender.Ansi.Reset;
+        }
 
-        var top = Math.Max(0, (height - lines.Count) / 2);
-        var output = new List<string>(height);
-        output.AddRange(Enumerable.Repeat(string.Empty, Math.Min(top, height)));
-        foreach (var line in lines)
-        {
-            if (output.Count >= height)
-            {
-                break;
-            }
-            output.Add(line);
-        }
-        while (output.Count < height)
-        {
-            output.Add(string.Empty);
-        }
-        return string.Join('\n', output);
+        return string.Join('\n', lines.Select(line => DiffRender.Ansi.Fit(line, width)));
     }
 
-    private static string Center(string text, int width)
-    {
-        var left = Math.Max(0, (width - DisplayText.Width(text)) / 2);
-        return new string(' ', left) + text;
-    }
-
-    private static bool TryConsumeKey()
-    {
-        try
-        {
-            if (!Console.KeyAvailable)
-            {
-                return false;
-            }
-            Console.ReadKey(intercept: true);
-            return true;
-        }
-        catch (Exception error)
-            when (error is IOException or InvalidOperationException)
-        {
-            return false;
-        }
-    }
+    private static string RenderStatusLine(int width, string status) =>
+        DiffRender.Ansi.Fit(
+            "  " + DimColor + "› " + status + DiffRender.Ansi.Reset,
+            width);
 }
