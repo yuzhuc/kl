@@ -11,7 +11,12 @@ Rust trusted core (kl-core)
   ProviderRouter (per-model: OpenAI Chat, Anthropic, OpenAI Responses;
                    scripted and sidecar plugins for offline/plugin routes)
   Agent loop (provider-neutral)
-  ToolRegistry (built-ins + sidecar tools)
+  AgentPreset (build/plan/explore/review/verify/deep)
+  SkillCatalog + SkillTool
+  McpClient + MCP tools
+  HookRunner + HookedTool
+  SubagentTool (read-only, sequential)
+  ToolRegistry (built-ins + sidecar/WASM + MCP + worktree)
   PolicyEngine (path/command/git/network/env/plugin/approval)
   SandboxManager (policy/AppContainer backends, strict probing, MXC status)
   PluginHost (manifest v1, sidecar supervisor, health, drain, hot swap)
@@ -49,6 +54,45 @@ Rust trusted core (kl-core)
     denies/sandbox violations into findings, then applies the selected
     confidence threshold.
 
+## Agent presets
+
+`turn.start` accepts an optional `agent` value. `build`, `plan`, `explore`,
+`review`, `verify` and `deep` map to preset tool access. `plan`, `explore` and
+`review` are read-only; `verify` is verify-only; `deep` keeps the five-stage
+quality pipeline. A global read-only/verify-only policy cannot be escalated by
+a preset.
+
+## Skills
+
+Skills are discovered from `~/.kl/skills/<name>/SKILL.md` and
+`<workspace>/.kl/skills/<name>/SKILL.md`. Only name and description enter the
+prompt; the `skill` tool loads the body on demand. Skill bodies are untrusted
+context and never execute commands automatically. Home skills remain subject
+to the outside-workspace read policy.
+
+## MCP
+
+`~/.kl/mcp.toml` configures stdio MCP servers. KL performs `initialize`,
+`tools/list` and `tools/call`, registers discovered tools as
+`mcp__<server>__<tool>`, and routes them through Policy, Approval, Audit and
+the ToolPipeline. Startup failures are isolated per server.
+
+## Hooks
+
+`~/.kl/hooks.toml` contains trusted local shell hooks for `pre_tool` and
+`post_tool`. Hooks can deny or fail a call but cannot grant permissions.
+Hook output is bounded and timed out; hooks are trusted configuration, not a
+sandbox boundary.
+
+## Subagent and worktree
+
+The read-only `subagent` tool runs a sequential child agent with a copied tool
+set that excludes `subagent`, preventing recursion. It uses the default
+provider/model and records child tool calls in the shared audit log.
+
+The `worktree` tool creates, lists and removes detached Git worktrees under
+`.kl/worktrees/<name>`. It uses GitRead/GitWrite policy actions and the
+sandboxed command runner.
 ## Quality modes
 
 `turn.start` accepts an optional `quality` value. `fast` and `balanced` are one
@@ -161,13 +205,17 @@ See `schemas/protocol/v1/`, `schemas/plugin/manifest-v1.schema.json` and
 - Windows has AppContainer filesystem and child-process isolation. Network
   isolation is not verified; the policy allowlist remains active. Linux and
   macOS report an unimplemented OS backend and strict mode fails closed.
-- WASM plugin runtime is not implemented; sidecar is the current runtime.
+- WASM tool plugins are implemented; WASM providers are not.
+- PTY and background job management are not implemented.
 - Deep mode is five ordinary agent turns, not a separate agent runtime.
   Repository symbol indexing is not implemented.
 - Reviewer/verifier edits are denied at the tool-policy boundary; a workspace
   fingerprint remains as a second defense. Policy approvals remain the hard
   boundary for `Full` stages.
 - No UDS/Named Pipe transport; the transport boundary is ready for one.
-- Live Provider smoke remains pending until API keys are supplied.
+- Live Provider and real MCP server smoke remain pending until credentials or
+  local servers are supplied.
+- The graphical desktop client is not in this repository; `cli/Kl.Client` is
+  the reusable C# client boundary for it.
 - `kl review` can run without a provider; in that case local findings remain
   and a `llm-review-unavailable` low-confidence finding is emitted.

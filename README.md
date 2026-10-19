@@ -3,11 +3,11 @@
 KL is a provider-neutral coding agent with a Rust trusted core and a C#/.NET
 terminal client. It does not use a Python runtime or Python build scripts.
 
-Status: **stage 0, stage 1 MVP, stage 1.5 hardening, stage 2 sidecar
-plugin-host MVP, provider routing, terminal chat page, provider configuration
-commands, stage 2.5 Windows AppContainer sandbox + provider cancellation
-cleanup, and stage 3 automated review + quality modes complete**. Live
-external Provider smoke is pending until API keys are supplied; see
+Status: **stage 0-3.5, Codex-style terminal UI, built-in agent presets,
+workspace skills, MCP stdio tools, trusted hooks, sequential subagent,
+worktree tool, shared C# client library and benchmark harness implemented**.
+Desktop GUI is future work. Live external Provider and MCP smoke are pending
+until credentials or local servers are supplied; see
 `tests/fixtures/providers/live-smoke.status.json`.
 
 ## Architecture
@@ -25,12 +25,12 @@ kl (C#/.NET)  -- JSON-RPC 2.0 over stdio -->  kl-core (Rust)
 - `crates/kl-protocol` — wire envelopes, version negotiation, events, stable
   error codes.
 - `crates/kl-core` — stdio server, config, sessions, approvals, provider
-  assembly.
+  assembly, agent presets, workspace skills, MCP, hooks and subagent.
 - `crates/kl-agent` — provider-neutral agent loop.
 - `crates/kl-provider` — OpenAI Chat Completions, Anthropic Messages, OpenAI
   Responses and a deterministic scripted provider for offline tests/demos.
 - `crates/kl-tools` — `read_file`, `write_file`, `edit_file`, `grep`, `glob`,
-  `shell`, `git`.
+  `shell`, `git`, `skill`, `worktree`.
 - `crates/kl-review` — deterministic diff context, local/security rules,
   secret and dependency scans, runtime-audit findings, optional LLM review,
   deduplication and confidence thresholds.
@@ -47,7 +47,28 @@ kl (C#/.NET)  -- JSON-RPC 2.0 over stdio -->  kl-core (Rust)
   output.
 - `cli/Kl.Cli` — command parsing, process lifecycle, streaming UI, diff and
   approval prompts.
+- `cli/Kl.Client` — reusable protocol DTOs, JSON-RPC client, session client and
+  core locator for future desktop clients.
 - `schemas/protocol/v1` and `tests/fixtures/protocol` — shared contract.
+- `benchmarks/` and `scripts/benchmark.mjs` — 20-task acceptance harness.
+
+## Agent workflows and extensions
+
+```powershell
+kl run "inspect the failing test" --agent plan
+kl run "fix the failing test" --agent verify
+```
+
+- Built-in agents: `build`, `plan`, `explore`, `review`, `verify`, `deep`.
+- Skills: `~/.kl/skills/<name>/SKILL.md` or `.kl/skills/<name>/SKILL.md`; only
+  the name and description enter the prompt, the body loads through `skill`.
+- MCP: `~/.kl/mcp.toml` with `[servers.<id>] command`, `args`, `enabled`.
+- Hooks: `~/.kl/hooks.toml` with trusted local `pre_tool` / `post_tool` shell
+  commands. Hooks can deny or fail a call; they never grant permissions.
+- Worktrees: the `worktree` tool creates isolated trees under
+  `.kl/worktrees/<name>`.
+- Subagent: the read-only `subagent` tool runs a focused child agent without
+  recursive subagent calls.
 
 ## Prerequisites
 
