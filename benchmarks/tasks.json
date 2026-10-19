@@ -1,0 +1,142 @@
+[
+  {
+    "id": "fix-null-boundary",
+    "prompt": "修复解析空输入时触发的空指针异常，并保持现有行为不变。",
+    "workspace": "${BENCH_WORKSPACE}/fix-null-boundary",
+    "verify": "cargo test --all-targets",
+    "timeout_secs": 600
+  },
+  {
+    "id": "add-regression-test",
+    "prompt": "为已经修复的分页边界问题补充回归测试，只改测试。",
+    "workspace": "${BENCH_WORKSPACE}/add-regression-test",
+    "verify": "cargo test pagination",
+    "timeout_secs": 600
+  },
+  {
+    "id": "extract-parser",
+    "prompt": "把重复的解析逻辑提取为一个私有函数，不改公开行为。",
+    "workspace": "${BENCH_WORKSPACE}/extract-parser",
+    "verify": "cargo test",
+    "timeout_secs": 900
+  },
+  {
+    "id": "rename-symbol",
+    "prompt": "将跨文件使用的旧配置项名称统一重命名，并更新所有调用点。",
+    "workspace": "${BENCH_WORKSPACE}/rename-symbol",
+    "verify": "cargo test",
+    "timeout_secs": 900
+  },
+  {
+    "id": "answer-from-docs",
+    "prompt": "阅读仓库文档，回答重试策略的最大次数和退避规则，并写入 answer.md。",
+    "workspace": "${BENCH_WORKSPACE}/answer-from-docs",
+    "verify": "manual: answer.md cites the relevant docs",
+    "timeout_secs": 300
+  },
+  {
+    "id": "diagnose-failing-test",
+    "prompt": "运行失败的测试，定位根因并修复。",
+    "workspace": "${BENCH_WORKSPACE}/diagnose-failing-test",
+    "verify": "cargo test",
+    "timeout_secs": 900
+  },
+  {
+    "id": "upgrade-dependency",
+    "prompt": "升级指定的补丁版本依赖，处理编译错误并运行测试。",
+    "workspace": "${BENCH_WORKSPACE}/upgrade-dependency",
+    "verify": "cargo test --all-targets",
+    "timeout_secs": 1200
+  },
+  {
+    "id": "add-config-flag",
+    "prompt": "增加一个默认关闭的配置开关，接入现有配置解析和调用路径。",
+    "workspace": "${BENCH_WORKSPACE}/add-config-flag",
+    "verify": "cargo test",
+    "timeout_secs": 900
+  },
+  {
+    "id": "strict-review",
+    "prompt": "审查当前 diff，按严重级别列出真实缺陷，不要修改代码。",
+    "workspace": "${BENCH_WORKSPACE}/strict-review",
+    "verify": "manual: review report names actionable findings",
+    "timeout_secs": 300
+  },
+  {
+    "id": "secure-path-traversal",
+    "prompt": "修复文件下载接口中的路径穿越漏洞，并补充安全回归测试。",
+    "workspace": "${BENCH_WORKSPACE}/secure-path-traversal",
+    "verify": "cargo test path_traversal",
+    "timeout_secs": 900
+  },
+  {
+    "id": "fix-race-condition",
+    "prompt": "修复并发缓存写入时的竞态条件，避免数据丢失。",
+    "workspace": "${BENCH_WORKSPACE}/fix-race-condition",
+    "verify": "cargo test --release concurrency",
+    "timeout_secs": 1200
+  },
+  {
+    "id": "change-api-contract",
+    "prompt": "调整内部 API 返回类型并更新所有调用方和测试。",
+    "workspace": "${BENCH_WORKSPACE}/change-api-contract",
+    "verify": "cargo test --workspace",
+    "timeout_secs": 1200
+  },
+  {
+    "id": "improve-error-handling",
+    "prompt": "把会静默失败的配置读取改成带上下文的错误返回。",
+    "workspace": "${BENCH_WORKSPACE}/improve-error-handling",
+    "verify": "cargo test error_context",
+    "timeout_secs": 600
+  },
+  {
+    "id": "optimize-slow-query",
+    "prompt": "优化缓慢的查询路径，保持公开行为并证明复杂度改善。",
+    "workspace": "${BENCH_WORKSPACE}/optimize-slow-query",
+    "verify": "cargo test --release benchmark_query",
+    "timeout_secs": 1200
+  },
+  {
+    "id": "add-cli-help",
+    "prompt": "为现有命令补充帮助文本和对应测试。",
+    "workspace": "${BENCH_WORKSPACE}/add-cli-help",
+    "verify": "cargo test cli_help",
+    "timeout_secs": 600
+  },
+  {
+    "id": "migrate-serialization",
+    "prompt": "迁移配置序列化格式，同时兼容读取旧格式。",
+    "workspace": "${BENCH_WORKSPACE}/migrate-serialization",
+    "verify": "cargo test serialization_compat",
+    "timeout_secs": 900
+  },
+  {
+    "id": "fix-flaky-test",
+    "prompt": "定位并修复不稳定测试，避免通过增加超时掩盖问题。",
+    "workspace": "${BENCH_WORKSPACE}/fix-flaky-test",
+    "verify": "cargo test -- --test-threads=1",
+    "timeout_secs": 1200
+  },
+  {
+    "id": "document-public-api",
+    "prompt": "为公开 API 补充简明文档和可运行示例，不改变行为。",
+    "workspace": "${BENCH_WORKSPACE}/document-public-api",
+    "verify": "cargo test --doc",
+    "timeout_secs": 600
+  },
+  {
+    "id": "handle-partial-write",
+    "prompt": "修复文件写入中途失败后留下半截文件的处理逻辑。",
+    "workspace": "${BENCH_WORKSPACE}/handle-partial-write",
+    "verify": "cargo test atomic_write",
+    "timeout_secs": 900
+  },
+  {
+    "id": "remove-unreachable-branch",
+    "prompt": "删除已确认不可达的分支及其孤立测试，保持其余行为不变。",
+    "workspace": "${BENCH_WORKSPACE}/remove-unreachable-branch",
+    "verify": "cargo clippy --all-targets -- -D warnings",
+    "timeout_secs": 900
+  }
+]
