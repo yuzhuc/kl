@@ -1533,6 +1533,26 @@ public sealed class ChatTuiTests
     }
 
     [Fact]
+    public void ExtensionListsParseNamesAndDescriptions()
+    {
+        using var document = JsonDocument.Parse(
+            """
+            {
+              "skills": [
+                {"name": "review", "description": "Review code"},
+                {"name": "", "description": "skip"}
+              ]
+            }
+            """);
+
+        var item = Assert.Single(
+            ChatTuiRunner.ParseExtensionItems(document.RootElement, "skills"));
+        Assert.Equal("review", item.Name);
+        Assert.Equal("Review code", item.Description);
+        Assert.Empty(ChatTuiRunner.ParseExtensionItems(document.RootElement, "tools"));
+    }
+
+    [Fact]
     public void ToolOutputStartsOnANewLine()
     {
         var state = new ChatTuiState();

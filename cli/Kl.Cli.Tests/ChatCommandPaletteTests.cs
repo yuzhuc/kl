@@ -12,7 +12,7 @@ public sealed class ChatCommandPaletteTests
         state.Insert('/');
 
         Assert.True(ChatCommandPalette.IsOpen(state));
-        Assert.Equal(13, ChatCommandPalette.Matches(state.Input).Count);
+        Assert.Equal(15, ChatCommandPalette.Matches(state.Input).Count);
         Assert.Equal("/init", ChatCommandPalette.Selected(state)?.Name);
 
         var lines = ChatTuiRenderer.CommandPaletteLines(state, 100);
@@ -98,6 +98,20 @@ public sealed class ChatCommandPaletteTests
         Assert.True(ChatCommandPalette.IsValidAgentPreset("deep"));
         Assert.False(ChatCommandPalette.IsValidAgentPreset("nope"));
         Assert.False(ChatCommandPalette.IsValidAgentPreset(null));
+    }
+
+    [Fact]
+    public void SkillsAndMcpCommandsAreRegistered()
+    {
+        var skills = ChatCommandPalette.FindExact("/skills");
+        var mcp = ChatCommandPalette.FindExact("/mcp");
+
+        Assert.NotNull(skills);
+        Assert.Equal(ChatCommandKind.Skills, skills!.Kind);
+        Assert.Equal("list available skills", skills.EnglishDescription);
+        Assert.NotNull(mcp);
+        Assert.Equal(ChatCommandKind.Mcp, mcp!.Kind);
+        Assert.Equal("list MCP tools", mcp.EnglishDescription);
     }
 
     [Theory]
@@ -279,7 +293,7 @@ public sealed class ChatCommandPaletteTests
 
         ChatCommandPalette.MoveSelection(state, -1);
         Assert.Equal(
-            "/agent",
+            "/mcp",
             ChatCommandPalette.Selected(state)?.Name);
 
         ChatCommandPalette.MoveSelection(state, 1);
