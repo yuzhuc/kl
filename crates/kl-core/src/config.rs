@@ -1,4 +1,4 @@
-use kl_policy::PolicyConfig;
+use kl_policy::{PolicyConfig, ToolAccess};
 use kl_protocol::{
     ApprovalMode, DefaultModelResult, ProviderEnabledResult, ProviderKeyResult,
     ProviderSetApiKeyParams, ProviderSetEnabledParams, ProviderUpsertParams, ProviderUpsertResult,
@@ -73,6 +73,70 @@ impl QualityMode {
             Self::Fast => "fast",
             Self::Balanced => "balanced",
             Self::Deep => "deep",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum AgentPreset {
+    #[default]
+    Build,
+    Plan,
+    Explore,
+    Review,
+    Verify,
+    Deep,
+}
+
+impl AgentPreset {
+    pub fn parse(value: &str) -> Option<Self> {
+        let value = value.to_ascii_lowercase();
+        [
+            Self::Build,
+            Self::Plan,
+            Self::Explore,
+            Self::Review,
+            Self::Verify,
+            Self::Deep,
+        ]
+        .into_iter()
+        .find(|preset| preset.as_str() == value)
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Build => "build",
+            Self::Plan => "plan",
+            Self::Explore => "explore",
+            Self::Review => "review",
+            Self::Verify => "verify",
+            Self::Deep => "deep",
+        }
+    }
+
+    pub fn tool_access(self) -> ToolAccess {
+        match self {
+            Self::Build | Self::Deep => ToolAccess::Full,
+            Self::Plan | Self::Explore | Self::Review => ToolAccess::ReadOnly,
+            Self::Verify => ToolAccess::VerifyOnly,
+        }
+    }
+
+    pub fn prompt_prefix(self) -> &'static str {
+        match self {
+            Self::Build | Self::Deep => "",
+            Self::Plan => {
+                "You are in plan mode. Inspect and reason without modifying files. Produce a concrete plan.\n\n"
+            }
+            Self::Explore => {
+                "You are in explore mode. Inspect the workspace without modifying files and report findings.\n\n"
+            }
+            Self::Review => {
+                "You are in review mode. Inspect without modifying files and report concrete issues with evidence.\n\n"
+            }
+            Self::Verify => {
+                "You are in verify mode. Run non-mutating checks and report results without editing files.\n\n"
+            }
         }
     }
 }
@@ -1465,6 +1529,37 @@ note = "keep-model"
             std::env::remove_var(&env_name);
         }
     }
+    #[test]
+    fn agent_presets_parse_and_map_tool_access() {
+        assert_eq!(AgentPreset::parse("build"), Some(AgentPreset::Build));
+        assert_eq!(AgentPreset::parse("PLAN"), Some(AgentPreset::Plan));
+        assert_eq!(AgentPreset::parse("explore"), Some(AgentPreset::Explore));
+        assert_eq!(AgentPreset::parse("review"), Some(AgentPreset::Review));
+        assert_eq!(AgentPreset::parse("verify"), Some(AgentPreset::Verify));
+        assert_eq!(AgentPreset::parse("deep"), Some(AgentPreset::Deep));
+        assert_eq!(AgentPreset::parse("unknown"), None);
+        assert_eq!(AgentPreset::Build.tool_access(), ToolAccess::Full);
+        assert_eq!(AgentPreset::Plan.tool_access(), ToolAccess::ReadOnly);
+        assert_eq!(AgentPreset::Explore.tool_access(), ToolAccess::ReadOnly);
+        assert_eq!(AgentPreset::Review.tool_access(), ToolAccess::ReadOnly);
+        assert_eq!(AgentPreset::Verify.tool_access(), ToolAccess::VerifyOnly);
+        assert_eq!(AgentPreset::Deep.tool_access(), ToolAccess::Full);
+        assert!(AgentPreset::Build.prompt_prefix().is_empty());
+        assert!(AgentPreset::Deep.prompt_prefix().is_empty());
+        assert!(!AgentPreset::Plan.prompt_prefix().is_empty());
+        assert!(!AgentPreset::Verify.prompt_prefix().is_empty());
+        for preset in [
+            AgentPreset::Build,
+            AgentPreset::Plan,
+            AgentPreset::Explore,
+            AgentPreset::Review,
+            AgentPreset::Verify,
+            AgentPreset::Deep,
+        ] {
+            assert_eq!(AgentPreset::parse(preset.as_str()), Some(preset));
+        }
+    }
+
     fn upsert_params(id: &str, enabled: bool) -> ProviderUpsertParams {
         ProviderUpsertParams {
             id: id.to_owned(),

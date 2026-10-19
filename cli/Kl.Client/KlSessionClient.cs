@@ -132,6 +132,7 @@ public sealed class KlSessionClient : IAsyncDisposable
                 _sessionOptions.Provider,
                 _sessionOptions.Model,
                 _sessionOptions.Quality,
+                _sessionOptions.Agent,
                 cancellationToken).ConfigureAwait(false);
             _currentTurnId = start.GetProperty("turn_id").GetString();
             if (_cancelRequested)
