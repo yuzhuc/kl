@@ -250,14 +250,7 @@ public static class ChatTuiRenderer
         {
             return false;
         }
-        if (toggle.Kind == TranscriptToggleKind.Reasoning)
-        {
-            state.ToggleReasoning();
-        }
-        else
-        {
-            state.ToggleTranscriptItem(toggle.Key);
-        }
+        state.ToggleTranscriptItem(toggle.Key);
         return true;
     }
     public static List<string> TranscriptLines(ChatTuiState state, int width) =>
@@ -311,8 +304,10 @@ public static class ChatTuiRenderer
                 var title = entry.IsComplete
                     ? ChatTexts.T(language, "Done thinking", "完成思考")
                     : ChatTexts.T(language, "Thinking…", "思考中…");
-                var marker = state.ReasoningVisible ? "▾" : "▸";
-                var suffix = state.ReasoningVisible
+                var key = ChatTuiState.ReasoningItemKey(entryIndex);
+                var expanded = state.IsTranscriptItemExpanded(key);
+                var marker = expanded ? "▾" : "▸";
+                var suffix = expanded
                     ? string.Empty
                     : ChatTexts.T(language, " (Ctrl+R to show)", "（Ctrl+R 显示）");
                 var header = ColorLines(
@@ -323,10 +318,10 @@ public static class ChatTuiRenderer
                     Add(new TranscriptLine(
                         header[index],
                         index == 0
-                            ? new TranscriptToggle("reasoning", TranscriptToggleKind.Reasoning)
+                            ? new TranscriptToggle(key, TranscriptToggleKind.Reasoning)
                             : null));
                 }
-                if (!state.ReasoningVisible)
+                if (!expanded)
                 {
                     continue;
                 }

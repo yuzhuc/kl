@@ -1017,6 +1017,43 @@ public sealed class ChatTuiTests
     }
 
     [Fact]
+    public void ClickingOneReasoningBlockExpandsOnlyThatBlock()
+    {
+        var state = new ChatTuiState();
+        state.Transcript.Add(new TranscriptEntry(
+            TranscriptKind.Reasoning,
+            "first secret"));
+        state.Transcript.Add(new TranscriptEntry(TranscriptKind.Info, "separator"));
+        state.Transcript.Add(new TranscriptEntry(
+            TranscriptKind.Reasoning,
+            "second secret"));
+
+        var hidden = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state));
+        Assert.Equal(
+            2,
+            hidden.Split('\n').Count(line =>
+                line.Contains("▸ Thinking…", StringComparison.Ordinal)));
+
+        Assert.True(ChatTuiRenderer.ToggleTranscriptItemAt(state, 80, 24, 0));
+        var firstExpanded = DiffRender.Ansi.Strip(
+            ChatTuiRenderer.Render(80, 24, state));
+        Assert.Contains("first secret", firstExpanded);
+        Assert.DoesNotContain("second secret", firstExpanded);
+        Assert.Contains("▸ Thinking…", firstExpanded);
+
+        state.ToggleReasoning();
+        var allExpanded = DiffRender.Ansi.Strip(
+            ChatTuiRenderer.Render(80, 24, state));
+        Assert.Contains("first secret", allExpanded);
+        Assert.Contains("second secret", allExpanded);
+
+        state.ToggleReasoning();
+        var allCollapsed = DiffRender.Ansi.Strip(
+            ChatTuiRenderer.Render(80, 24, state));
+        Assert.DoesNotContain("first secret", allCollapsed);
+        Assert.DoesNotContain("second secret", allCollapsed);
+    }
+    [Fact]
     public void AssistantDeltaCompletesChineseReasoning()
     {
         var state = new ChatTuiState();

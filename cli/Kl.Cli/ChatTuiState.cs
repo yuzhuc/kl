@@ -182,7 +182,7 @@ public sealed class ChatTuiState
     public int CommandPaletteSelection { get; set; }
     public int CommandPaletteScroll { get; set; }
     public bool CommandPaletteDismissed { get; set; }
-    public bool ReasoningVisible { get; set; }
+
     public HashSet<string> ExpandedTranscriptItems { get; } = [];
     public ChatModelPickerState ModelPicker { get; } = new();
     public MentionPickerState MentionPicker { get; } = new();
@@ -276,7 +276,33 @@ public sealed class ChatTuiState
             }
         }
     }
-    public void ToggleReasoning() => ReasoningVisible = !ReasoningVisible;
+    public static string ReasoningItemKey(int index) => $"reasoning:{index}";
+
+    public void ToggleReasoning()
+    {
+        var keys = Transcript
+            .Select((entry, index) => (entry, index))
+            .Where(item => item.entry.Kind == TranscriptKind.Reasoning)
+            .Select(item => ReasoningItemKey(item.index))
+            .ToList();
+        if (keys.Count == 0)
+        {
+            return;
+        }
+
+        var expand = keys.Any(key => !ExpandedTranscriptItems.Contains(key));
+        foreach (var key in keys)
+        {
+            if (expand)
+            {
+                ExpandedTranscriptItems.Add(key);
+            }
+            else
+            {
+                ExpandedTranscriptItems.Remove(key);
+            }
+        }
+    }
 
     public bool IsTranscriptItemExpanded(string key) =>
         ExpandedTranscriptItems.Contains(key);
