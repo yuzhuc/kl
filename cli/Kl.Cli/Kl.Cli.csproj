@@ -10,4 +10,8 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Kl.Client\Kl.Client.csproj" />
+  </ItemGroup>
 </Project>

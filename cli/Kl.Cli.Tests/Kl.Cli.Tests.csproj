@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Kl.Cli\Kl.Cli.csproj" />
+    <ProjectReference Include="..\Kl.Client\Kl.Client.csproj" />
   </ItemGroup>
 
   <ItemGroup>

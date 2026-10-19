@@ -36,7 +36,8 @@ public sealed class ResumeHistoryTests
         {
             string sessionId;
             await using (var session = await KlSessionClient.StartAsync(
-                options,
+                options.ToClientOptions(),
+                options.ToSessionOptions(),
                 new SilentPresenter()))
             {
                 sessionId = session.SessionId;
@@ -46,7 +47,8 @@ public sealed class ResumeHistoryTests
 
             options.Session = sessionId;
             await using var resumed = await KlSessionClient.StartAsync(
-                options,
+                options.ToClientOptions(),
+                options.ToSessionOptions(),
                 new SilentPresenter());
             var history = await resumed.HistoryAsync(20);
             var messages = ChatTuiState.ParseHistory(history);
