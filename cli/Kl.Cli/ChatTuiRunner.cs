@@ -1435,6 +1435,16 @@ public static class ChatTuiRunner
                     state.ClearSelection();
                     break;
                 }
+                if (ChatTuiRenderer.TranscriptViewport(state, width, height) is { } headerViewport
+                    && headerViewport.TryGetHeaderTarget(mouse.Row, out var headerLine))
+                {
+                    ChatTuiRenderer.ScrollToTranscriptLine(
+                        state,
+                        width,
+                        height,
+                        headerLine);
+                    break;
+                }
                 if (ChatTuiRenderer.ToggleTranscriptItemAt(
                         state,
                         width,

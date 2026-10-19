@@ -177,6 +177,23 @@ public static class ChatTuiRenderer
             column);
         return true;
     }
+    public static void ScrollToTranscriptLine(
+        ChatTuiState state,
+        int width,
+        int height,
+        int targetLine)
+    {
+        width = Math.Max(20, width);
+        height = Math.Max(8, height);
+        var bodyHeight = Math.Max(1, height - 2 - ComposerHeight(state, width, height));
+        var total = TranscriptLines(state, width).Count;
+        var maximum = Math.Max(0, total - bodyHeight);
+        state.TranscriptScroll = Math.Clamp(
+            total - bodyHeight - targetLine,
+            0,
+            maximum);
+        state.ClearSelection();
+    }
     public static int ComposerHeight(ChatTuiState state, int width, int height)
     {
         var (lines, _) = BuildComposerDisplay(state, width);
@@ -213,7 +230,8 @@ public static class ChatTuiRenderer
         return new TranscriptViewport(
             window.Header is null ? 0 : 1,
             window.Start,
-            window.Visible);
+            window.Visible,
+            window.HeaderLine);
     }
 
     public static bool ToggleTranscriptItemAt(
@@ -459,14 +477,15 @@ public static class ChatTuiRenderer
         var maximum = Math.Max(0, lines.Count - bodyHeight);
         var scroll = Math.Clamp(state.TranscriptScroll, 0, maximum);
         var start = Math.Max(0, lines.Count - bodyHeight - scroll);
-        UserPromptSpan? prompt = state.HasReplayedHistory || lines.Count > bodyHeight
-            ? layout.Prompts.LastOrDefault()
-            : null;
+        UserPromptSpan? prompt = layout.Prompts.LastOrDefault(
+            candidate => candidate.Start < start);
         var contentHeight = bodyHeight;
         if (prompt is not null && bodyHeight > 1)
         {
             contentHeight = bodyHeight - 1;
             start = Math.Max(0, lines.Count - contentHeight - scroll);
+            prompt = layout.Prompts.LastOrDefault(
+                candidate => candidate.Start < start) ?? prompt;
         }
         var visible = lines
             .Skip(start)
@@ -481,7 +500,8 @@ public static class ChatTuiRenderer
             start,
             contentHeight,
             visible,
-            toggles);
+            toggles,
+            prompt?.Start);
     }
 
     private static string RenderStickyPrompt(string text, int width)
@@ -530,7 +550,8 @@ public static class ChatTuiRenderer
         int Start,
         int VisibleHeight,
         List<string> Visible,
-        List<TranscriptToggle?> Toggles);
+        List<TranscriptToggle?> Toggles,
+        int? HeaderLine);
 
     private static List<string> RenderHome(ChatTuiState state, int width)
     {

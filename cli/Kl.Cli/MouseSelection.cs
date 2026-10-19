@@ -119,11 +119,16 @@ public sealed class MouseSelection
 /// <summary>Visible transcript rows and their absolute indices in the rendered transcript.</summary>
 public sealed class TranscriptViewport
 {
-    public TranscriptViewport(int top, int startLine, IReadOnlyList<string> lines)
+    public TranscriptViewport(
+        int top,
+        int startLine,
+        IReadOnlyList<string> lines,
+        int? headerLine = null)
     {
         Top = top;
         StartLine = startLine;
         Lines = lines;
+        HeaderLine = headerLine;
     }
 
     public int Top { get; }
@@ -131,6 +136,19 @@ public sealed class TranscriptViewport
     public int StartLine { get; }
 
     public IReadOnlyList<string> Lines { get; }
+
+    public int? HeaderLine { get; }
+
+    public bool TryGetHeaderTarget(int screenRow, out int line)
+    {
+        if (HeaderLine is { } target && screenRow == Top - 1)
+        {
+            line = target;
+            return true;
+        }
+        line = 0;
+        return false;
+    }
 
     public bool TryMap(int screenColumn, int screenRow, out SelectionPoint point)
     {

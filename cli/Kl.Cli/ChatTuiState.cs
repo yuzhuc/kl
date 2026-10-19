@@ -179,7 +179,6 @@ public sealed class ChatTuiState
     public string HistoryRenameInput { get; set; } = string.Empty;
     public int HistoryRenameCursor { get; set; }
     public bool CursorVisible { get; set; } = true;
-    public bool HasReplayedHistory { get; private set; }
     public int CommandPaletteSelection { get; set; }
     public int CommandPaletteScroll { get; set; }
     public bool CommandPaletteDismissed { get; set; }
@@ -551,7 +550,6 @@ public sealed class ChatTuiState
     public void ClearTranscript()
     {
         Transcript.Clear();
-        HasReplayedHistory = false;
         TranscriptScroll = 0;
         ExpandedTranscriptItems.Clear();
         PendingApprovalId = null;
@@ -592,7 +590,6 @@ public sealed class ChatTuiState
 
     public void AddHistory(IEnumerable<HistoryMessage> messages)
     {
-        var before = Transcript.Count;
         foreach (var message in messages)
         {
             switch (message.Role)
@@ -612,7 +609,6 @@ public sealed class ChatTuiState
                     break;
             }
         }
-        HasReplayedHistory |= Transcript.Count > before;
         TranscriptScroll = 0;
     }
 
