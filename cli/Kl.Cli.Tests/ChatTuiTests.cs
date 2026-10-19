@@ -338,6 +338,24 @@ public sealed class ChatTuiTests
     }
 
     [Fact]
+    public void ActiveTurnShowsWorkingStatusAtFooterRight()
+    {
+        var state = new ChatTuiState(
+            "D:\\kl",
+            "deepseek",
+            "deepseek-flash",
+            "session-1")
+        {
+            IsTurnActive = true
+        };
+
+        var footer = DiffRender.Ansi.Strip(
+            ChatTuiRenderer.Render(80, 24, state).Split('\n')[^1]).TrimEnd();
+
+        Assert.Contains("Ctrl+C cancel", footer);
+        Assert.EndsWith("Working…", footer);
+    }
+    [Fact]
     public void ModelLineGivesUnusedPathSpaceToTheTitle()
     {
         var state = new ChatTuiState(

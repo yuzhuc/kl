@@ -1895,6 +1895,13 @@ public static class ChatTuiRenderer
         {
             right.Add(DiffRender.Ansi.Dim + state.StatusMessage + DiffRender.Ansi.Reset);
         }
+        if (state.IsTurnActive)
+        {
+            right.Add(
+                DiffRender.Ansi.Green +
+                ChatTexts.T(language, "Working…", "运行中…") +
+                DiffRender.Ansi.Reset);
+        }
         if (state.WarningCount > 0)
         {
             right.Add(
