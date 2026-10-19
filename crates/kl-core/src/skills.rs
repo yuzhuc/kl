@@ -1,4 +1,4 @@
-use kl_policy::Action;
+use kl_policy::{Action, PolicyEngine};
 use kl_tools::{PolicyRequest, Tool, ToolContext, ToolError, ToolOutcome};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -42,6 +42,37 @@ pub fn summary_prompt(skills: &[SkillSummary]) -> String {
         break;
     }
     prompt
+}
+
+pub(crate) fn load_body(
+    home: &Path,
+    workspace: &Path,
+    policy: &PolicyEngine,
+    name: &str,
+    allow_ask: bool,
+) -> Result<String, ToolError> {
+    validate_skill_name(name)?;
+    let skill = discover(home, workspace)
+        .into_iter()
+        .find(|skill| skill.name == name)
+        .ok_or_else(|| ToolError::NotFound(format!("unknown skill: {name}")))?;
+    let resource = skill.path.to_string_lossy().into_owned();
+    // shortcut: home skills still follow outside-workspace policy, add trusted skill roots when global skills become default.
+    let evaluation = policy.evaluate(Action::Read, &resource);
+    if evaluation.effect == kl_policy::Effect::Deny
+        || (!allow_ask && evaluation.effect == kl_policy::Effect::Ask)
+    {
+        return Err(ToolError::Policy(evaluation.reason));
+    }
+    let resolved = evaluation
+        .resolved
+        .ok_or_else(|| ToolError::Io("skill path was not resolved".to_owned()))?;
+    let bytes = fs::read(&resolved)
+        .map_err(|error| ToolError::Io(format!("cannot read {}: {error}", resolved.display())))?;
+    let text = String::from_utf8_lossy(&bytes);
+    let (_, body) = split_frontmatter(&text)
+        .ok_or_else(|| ToolError::Io(format!("{name} has no frontmatter")))?;
+    Ok(body.to_owned())
 }
 
 pub(crate) struct SkillTool {
@@ -102,22 +133,13 @@ impl Tool for SkillTool {
 
     fn execute(&self, context: &ToolContext<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
         let name = skill_name(args)?;
-        let skill = self.find(context.policy.workspace(), name)?;
-        let resource = skill.path.to_string_lossy().into_owned();
-        // shortcut: home skills still follow outside-workspace policy, add trusted skill roots when global skills become default.
-        let evaluation = context.policy.evaluate(Action::Read, &resource);
-        if evaluation.effect == kl_policy::Effect::Deny {
-            return Err(ToolError::Policy(evaluation.reason));
-        }
-        let resolved = evaluation
-            .resolved
-            .ok_or_else(|| ToolError::Io("skill path was not resolved".to_owned()))?;
-        let bytes = fs::read(&resolved).map_err(|error| {
-            ToolError::Io(format!("cannot read {}: {error}", resolved.display()))
-        })?;
-        let text = String::from_utf8_lossy(&bytes);
-        let (_, body) = split_frontmatter(&text)
-            .ok_or_else(|| ToolError::Io(format!("{name} has no frontmatter")))?;
+        let body = load_body(
+            &self.home,
+            context.policy.workspace(),
+            context.policy,
+            name,
+            true,
+        )?;
         Ok(ToolOutcome::ok(
             format!("loaded skill {name}"),
             format!("<skill_content name=\"{name}\">\n{body}\n</skill_content>"),
@@ -222,12 +244,17 @@ fn skill_name(args: &Value) -> Result<&str, ToolError> {
         .get("name")
         .and_then(Value::as_str)
         .ok_or_else(|| ToolError::InvalidArgs("`name` must be a string".to_owned()))?;
+    validate_skill_name(name)?;
+    Ok(name)
+}
+
+fn validate_skill_name(name: &str) -> Result<(), ToolError> {
     if !valid_name(name) {
         return Err(ToolError::InvalidArgs(format!(
             "invalid skill name: {name}"
         )));
     }
-    Ok(name)
+    Ok(())
 }
 
 fn valid_name(name: &str) -> bool {
@@ -360,6 +387,26 @@ mod tests {
         assert!(outcome.output.starts_with("<skill_content name=\"alpha\">"));
         assert!(outcome.output.contains("Run the checks."));
         assert!(!outcome.output.contains("description: Alpha description"));
+    }
+
+    #[test]
+    fn load_body_rejects_approval_required_reads_without_approval() {
+        let home = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let workspace = root.path().join(".git/workspace");
+        write_skill(
+            &workspace.join(".kl/skills"),
+            "alpha",
+            &skill_content("alpha", "Alpha description", "BODY"),
+        );
+        let policy = PolicyEngine::new(&workspace, PolicyConfig::default()).unwrap();
+
+        let error = load_body(home.path(), &workspace, &policy, "alpha", false).unwrap_err();
+        assert!(matches!(
+            error,
+            ToolError::Policy(message) if message.contains("requires approval")
+        ));
+        assert!(load_body(home.path(), &workspace, &policy, "alpha", true).is_ok());
     }
 
     #[test]

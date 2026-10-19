@@ -14,6 +14,7 @@ public enum ChatCommandKind
     New,
     Help,
     Exit,
+    Agent,
     Copy
 }
 
@@ -28,6 +29,9 @@ public sealed record ChatCommandDefinition(
 public static class ChatCommandPalette
 {
     public const int MaxVisible = 8;
+
+    public static IReadOnlyList<string> AgentPresets { get; } =
+        ["build", "plan", "explore", "review", "verify", "deep"];
 
     private static readonly IReadOnlyList<ChatCommandDefinition> All =
     [
@@ -104,6 +108,12 @@ public static class ChatCommandPalette
             "退出 KL",
             ["/exit"]),
         new(
+            "/agent",
+            ChatCommandKind.Agent,
+            "view or switch the agent preset",
+            "查看或切换 Agent preset",
+            ["/agent"]),
+        new(
             "/copy",
             ChatCommandKind.Copy,
             "copy the last assistant message",
@@ -118,6 +128,9 @@ public static class ChatCommandPalette
         language == UiLanguage.ChineseSimplified
             ? definition.ChineseDescription
             : definition.EnglishDescription;
+
+    public static bool IsValidAgentPreset(string? preset) =>
+        preset is not null && AgentPresets.Contains(preset);
 
     /// <summary>
     /// A palette query is a slash followed only by ASCII letters, digits or

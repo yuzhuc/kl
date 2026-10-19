@@ -29,18 +29,19 @@ use kl_protocol::{
     AgentConfigResult, AgentConfigSetParams, ApprovalDecision, ApprovalMode, ApprovalRespondParams,
     AuditTailParams, CORE_NAME, CORE_VERSION, CoreEvent, DefaultModelResult, DoctorCheck,
     DoctorResult, EventNotification, HandshakeParams, HandshakeResult, IncomingMessage,
-    MIN_PROTOCOL_VERSION, PROTOCOL_VERSION, PermissionsResult, PermissionsSetParams, PingParams,
-    PingResult, PluginIdParams, PluginInstallParams, PluginListResult, ProviderEnabledResult,
-    ProviderKeyResult, ProviderListResult, ProviderModelSummary, ProviderSetApiKeyParams,
-    ProviderSetEnabledParams, ProviderUpsertParams, ProviderUpsertResult, RequestId, ReviewFinding,
-    ReviewResult, ReviewRunParams, RpcError, SandboxCapabilitiesSummary, SandboxSummary,
-    SessionCompactParams, SessionCompactResult, SessionCreateParams, SessionDeleteParams,
-    SessionDeleteResult, SessionHistoryEntry, SessionHistoryParams, SessionHistoryResult,
-    SessionHistoryToolSummary, SessionInfo, SessionListResult, SessionRenameParams,
-    SessionResumeParams, SessionStatusParams, SessionStatusResult, SetDefaultModelParams,
-    TurnCancelParams, TurnCancelResult, TurnStartParams, TurnStartResult, WorkspaceInitParams,
-    WorkspaceInitResult, error_codes, failure, failure_with_data, methods, negotiate, success,
-    validate_envelope,
+    MIN_PROTOCOL_VERSION, McpListResult, McpToolInfo, PROTOCOL_VERSION, PermissionsResult,
+    PermissionsSetParams, PingParams, PingResult, PluginIdParams, PluginInstallParams,
+    PluginListResult, ProviderEnabledResult, ProviderKeyResult, ProviderListResult,
+    ProviderModelSummary, ProviderSetApiKeyParams, ProviderSetEnabledParams, ProviderUpsertParams,
+    ProviderUpsertResult, RequestId, ReviewFinding, ReviewResult, ReviewRunParams, RpcError,
+    SandboxCapabilitiesSummary, SandboxSummary, SessionCompactParams, SessionCompactResult,
+    SessionCreateParams, SessionDeleteParams, SessionDeleteResult, SessionHistoryEntry,
+    SessionHistoryParams, SessionHistoryResult, SessionHistoryToolSummary, SessionInfo,
+    SessionListResult, SessionRenameParams, SessionResumeParams, SessionStatusParams,
+    SessionStatusResult, SetDefaultModelParams, SkillGetParams, SkillGetResult, SkillInfo,
+    SkillListParams, SkillListResult, TurnCancelParams, TurnCancelResult, TurnStartParams,
+    TurnStartResult, WorkspaceInitParams, WorkspaceInitResult, error_codes, failure,
+    failure_with_data, methods, negotiate, success, validate_envelope,
 };
 use kl_provider::{
     AnthropicAdapter, BoundProvider, CancellationToken, ChatEvent, ChatMessage, ChatOutcome,
@@ -56,7 +57,7 @@ use kl_store::{
     SessionData, SessionMeta, SessionStore, StoreError, TURN_STATE_IDLE,
     TURN_STATE_WAITING_APPROVAL, TURN_STATE_WORKING,
 };
-use kl_tools::ToolRegistry;
+use kl_tools::{ToolError, ToolRegistry, ToolSource};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -1045,6 +1046,9 @@ impl Core {
             methods::WORKSPACE_INIT => self.workspace_init(params),
             methods::AGENT_CONFIG_GET => self.agent_config_get(),
             methods::AGENT_CONFIG_SET => self.agent_config_set(params),
+            methods::SKILL_LIST => self.skill_list(params),
+            methods::SKILL_GET => self.skill_get(params),
+            methods::MCP_LIST => self.mcp_list(),
             methods::PLUGIN_LIST => self.plugin_list(),
             methods::PLUGIN_INSTALL => self.plugin_install(params),
             methods::PLUGIN_RELOAD => self.plugin_reload(params),
@@ -1635,6 +1639,21 @@ impl Core {
             .map(|_| ())
     }
 
+    fn session_workspace(&mut self, session_id: &str) -> Result<PathBuf, RpcError> {
+        self.ensure_session_loaded(session_id)?;
+        self.sessions
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .get(session_id)
+            .map(|state| PathBuf::from(&state.meta.workspace))
+            .ok_or_else(|| {
+                rpc_error(
+                    error_codes::SESSION_NOT_FOUND,
+                    format!("session not found: {session_id}"),
+                )
+            })
+    }
+
     fn turn_start(&mut self, params: Value) -> Result<Value, RpcError> {
         let params: TurnStartParams = parse_params(params, "turn.start")?;
         let mut quality = match params.quality.as_deref() {
@@ -2198,6 +2217,48 @@ impl Core {
             .map_err(config_write_error)?;
         self.config.agent.reasoning_effort = params.reasoning_effort;
         self.agent_config_get()
+    }
+
+    fn skill_list(&mut self, params: Value) -> Result<Value, RpcError> {
+        let params: SkillListParams = parse_params(params, methods::SKILL_LIST)?;
+        let workspace = self.session_workspace(&params.session_id)?;
+        let skills = skills::discover(&self.context.home, &workspace)
+            .into_iter()
+            .map(|skill| SkillInfo {
+                name: skill.name,
+                description: skill.description,
+            })
+            .collect();
+        to_value(SkillListResult { skills })
+    }
+
+    fn skill_get(&mut self, params: Value) -> Result<Value, RpcError> {
+        let params: SkillGetParams = parse_params(params, methods::SKILL_GET)?;
+        let workspace = self.session_workspace(&params.session_id)?;
+        let policy = PolicyEngine::new(&workspace, self.effective_policy_config())
+            .map_err(|error| rpc_error(error_codes::INVALID_PARAMS, error.to_string()))?;
+        let content =
+            skills::load_body(&self.context.home, &workspace, &policy, &params.name, false)
+                .map_err(skill_error)?;
+        to_value(SkillGetResult {
+            name: params.name,
+            content,
+        })
+    }
+
+    fn mcp_list(&self) -> Result<Value, RpcError> {
+        let tools = self
+            .tools
+            .snapshot()
+            .into_iter()
+            .filter(|tool| tool.source() == ToolSource::Mcp)
+            .map(|tool| McpToolInfo {
+                name: tool.name().to_owned(),
+                description: tool.description().to_owned(),
+                source: "mcp".to_owned(),
+            })
+            .collect();
+        to_value(McpListResult { tools })
     }
 
     fn workspace_init(&self, params: Value) -> Result<Value, RpcError> {
@@ -2794,6 +2855,15 @@ fn review_result(report: ReviewReport) -> ReviewResult {
             })
             .collect(),
     }
+}
+
+fn skill_error(error: ToolError) -> RpcError {
+    let code = match &error {
+        ToolError::Policy(_) => error_codes::POLICY_DENIED,
+        ToolError::InvalidArgs(_) | ToolError::NotFound(_) => error_codes::INVALID_PARAMS,
+        _ => error_codes::INTERNAL_ERROR,
+    };
+    rpc_error(code, error.to_string())
 }
 
 fn store_error(error: StoreError) -> RpcError {
@@ -3987,6 +4057,87 @@ max_iterations = 2
         assert!(first.ends_with("hello"));
         assert_eq!(first.matches("Alpha description").count(), 1);
         assert!(!first.contains("SECRET BODY"));
+    }
+
+    #[test]
+    fn skill_rpc_lists_summaries_and_loads_body() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = temp.path().join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let skill = workspace.join(".kl/skills/alpha");
+        std::fs::create_dir_all(&skill).unwrap();
+        std::fs::write(
+            skill.join("SKILL.md"),
+            "---\nname: alpha\ndescription: Alpha description\n---\nSECRET BODY\n",
+        )
+        .unwrap();
+        let config = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let (mut core, _) = new_test_core(config, home.path());
+        core.handshaken = true;
+        let created = core
+            .session_create(json!({"workspace": workspace.to_string_lossy()}))
+            .unwrap();
+        let session_id = created["session_id"].as_str().unwrap().to_owned();
+
+        let list = core.skill_list(json!({"session_id": session_id})).unwrap();
+        assert_eq!(list["skills"][0]["name"], "alpha");
+        assert_eq!(list["skills"][0]["description"], "Alpha description");
+        assert!(!list.to_string().contains("SECRET BODY"));
+        assert!(!list.to_string().contains("SKILL.md"));
+
+        let loaded = core
+            .skill_get(json!({"session_id": session_id, "name": "alpha"}))
+            .unwrap();
+        assert_eq!(loaded["name"], "alpha");
+        assert_eq!(loaded["content"], "SECRET BODY\n");
+
+        let missing = core
+            .skill_get(json!({"session_id": session_id, "name": "missing"}))
+            .unwrap_err();
+        assert_eq!(missing.code, error_codes::INVALID_PARAMS);
+        assert!(missing.message.contains("unknown skill: missing"));
+    }
+
+    #[test]
+    fn skill_rpc_does_not_bypass_outside_workspace_policy() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = temp.path().join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let config = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let skill = home.path().join("skills/global");
+        std::fs::create_dir_all(&skill).unwrap();
+        std::fs::write(
+            skill.join("SKILL.md"),
+            "---\nname: global\ndescription: Global skill\n---\nGLOBAL BODY\n",
+        )
+        .unwrap();
+        let (mut core, _) = new_test_core(config, home.path());
+        core.handshaken = true;
+        let created = core
+            .session_create(json!({"workspace": workspace.to_string_lossy()}))
+            .unwrap();
+        let session_id = created["session_id"].as_str().unwrap().to_owned();
+
+        let list = core.skill_list(json!({"session_id": session_id})).unwrap();
+        assert_eq!(list["skills"][0]["name"], "global");
+
+        let denied = core
+            .skill_get(json!({"session_id": session_id, "name": "global"}))
+            .unwrap_err();
+        assert_eq!(denied.code, error_codes::POLICY_DENIED);
+        assert!(denied.message.contains("outside the workspace"));
+    }
+
+    #[test]
+    fn mcp_list_is_empty_without_mcp_tools() {
+        let temp = tempfile::tempdir().unwrap();
+        let config = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let (core, _) = new_test_core(config, home.path());
+        let result = core.mcp_list().unwrap();
+        assert_eq!(result["tools"], json!([]));
     }
 
     #[test]

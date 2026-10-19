@@ -221,7 +221,7 @@ pub(crate) fn apply_env_policy(policy: &kl_policy::PolicyEngine, spec: &mut Comm
     }
 }
 
-fn resolve_cwd(context: &ToolContext<'_>, raw: &str) -> Result<PathBuf, ToolError> {
+pub(crate) fn resolve_cwd(context: &ToolContext<'_>, raw: &str) -> Result<PathBuf, ToolError> {
     let evaluation = context.policy.evaluate(Action::Read, raw);
     if evaluation.effect == Effect::Deny {
         return Err(ToolError::Policy(evaluation.reason));

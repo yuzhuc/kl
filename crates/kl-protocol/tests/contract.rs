@@ -83,6 +83,22 @@ fn event_notification_matches_shared_contract() {
 }
 
 #[test]
+fn user_message_event_matches_shared_contract() {
+    let value = read("event_user_message.json");
+    let notification: EventNotification = serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(notification.method, methods::EVENT);
+    assert_eq!(notification.kl_protocol, 1);
+    assert_eq!(
+        notification.params.event,
+        CoreEvent::UserMessage {
+            turn_id: "turn-1".to_owned(),
+            text: "fix it".to_owned(),
+        }
+    );
+    assert_eq!(serde_json::to_value(notification).unwrap(), value);
+}
+
+#[test]
 fn provider_list_result_matches_shared_contract() {
     let value = read("provider_list_result.json");
     let result: ProviderListResult = serde_json::from_value(value["result"].clone()).unwrap();

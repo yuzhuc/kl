@@ -65,6 +65,20 @@ public sealed class ProtocolContractTests
     }
 
     [Fact]
+    public void UserMessageEventMatchesSharedContract()
+    {
+        using var document = Read("event_user_message.json");
+        var root = document.RootElement;
+        Assert.Equal(Protocol.Version, root.GetProperty("kl_protocol").GetInt32());
+        Assert.Equal(Protocol.Event, root.GetProperty("method").GetString());
+        var eventElement = root.GetProperty("params").GetProperty("event");
+        Assert.Equal("user.message", eventElement.GetProperty("type").GetString());
+        var data = eventElement.GetProperty("data");
+        Assert.Equal("turn-1", data.GetProperty("turn_id").GetString());
+        Assert.Equal("fix it", data.GetProperty("text").GetString());
+    }
+
+    [Fact]
     public void ProviderListResultMatchesSharedContract()
     {
         using var document = Read("provider_list_result.json");

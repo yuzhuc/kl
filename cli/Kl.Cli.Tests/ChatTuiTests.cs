@@ -6,6 +6,19 @@ namespace Kl.Cli.Tests;
 public sealed class ChatTuiTests
 {
     [Fact]
+    public void AgentPresetDefaultsToBuildAndCanBeConfigured()
+    {
+        var state = new ChatTuiState();
+        Assert.Equal("build", state.Agent);
+
+        state.Agent = "plan";
+        Assert.Equal("plan", state.Agent);
+
+        var configured = new ChatTuiState(agent: "deep");
+        Assert.Equal("deep", configured.Agent);
+    }
+
+    [Fact]
     public void HomeShowsCodexStyleEmptyState()
     {
         var state = new ChatTuiState();

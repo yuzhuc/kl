@@ -125,12 +125,15 @@ impl SessionStore {
         }
         let meta: SessionMeta = serde_json::from_slice(&fs::read(&meta_path)?)?;
         let state_path = directory.join("state.json");
-        let messages = if state_path.exists() {
+        let mut messages = if state_path.exists() {
             let state: StateFile = serde_json::from_slice(&fs::read(&state_path)?)?;
             state.messages
         } else {
             Vec::new()
         };
+        if messages.is_empty() {
+            messages = project_messages(&self.read_events(id)?);
+        }
         Ok(SessionData { meta, messages })
     }
 
@@ -689,6 +692,47 @@ mod tests {
                 serde_json::json!({"role": "assistant", "content": "done"}),
             ]
         );
+    }
+
+    #[test]
+    fn load_falls_back_to_event_projection_when_state_is_missing_or_empty() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(temp.path()).unwrap();
+        let data = store
+            .create("D:\\work", "openai", "gpt-test", "high")
+            .unwrap();
+        store
+            .append_event(
+                &data.meta.id,
+                1,
+                &CoreEvent::UserMessage {
+                    turn_id: "turn-1".to_owned(),
+                    text: "fix it".to_owned(),
+                },
+            )
+            .unwrap();
+        store
+            .append_event(
+                &data.meta.id,
+                2,
+                &CoreEvent::TurnCompleted {
+                    turn_id: "turn-1".to_owned(),
+                    status: "completed".to_owned(),
+                    text: "done".to_owned(),
+                },
+            )
+            .unwrap();
+        let expected = vec![
+            serde_json::json!({"role": "user", "content": "fix it"}),
+            serde_json::json!({"role": "assistant", "content": "done"}),
+        ];
+        let state_path = temp.path().join(&data.meta.id).join("state.json");
+
+        std::fs::remove_file(&state_path).unwrap();
+        assert_eq!(store.load(&data.meta.id).unwrap().messages, expected);
+
+        std::fs::write(&state_path, r#"{"messages":[]}"#).unwrap();
+        assert_eq!(store.load(&data.meta.id).unwrap().messages, expected);
     }
 
     #[test]

@@ -3,11 +3,13 @@
 
 mod diff;
 mod files;
+mod jobs;
 mod search;
 mod shell;
 mod worktree;
 
 pub use files::{EditFileTool, ReadFileTool, WriteFileTool};
+pub use jobs::JobTool;
 pub use search::{GlobTool, GrepTool};
 pub use shell::{GitTool, ShellTool};
 pub use worktree::WorktreeTool;
@@ -162,6 +164,7 @@ impl ToolRegistry {
             Arc::new(ShellTool),
             Arc::new(GitTool),
             Arc::new(WorktreeTool),
+            Arc::new(JobTool::new()),
         ];
         Self {
             tools: RwLock::new(
@@ -278,7 +281,11 @@ mod tests {
             assert_eq!(tool.source(), ToolSource::Builtin);
         }
 
-        for name in ["write_file", "edit_file", "shell", "git", "worktree"] {
+        let job = registry.get("job").unwrap();
+        assert!(job.read_only(&json!({"action": "status", "job_id": "job-1"})));
+        assert!(job.read_only(&json!({"action": "list"})));
+
+        for name in ["write_file", "edit_file", "shell", "git", "worktree", "job"] {
             let tool = registry.get(name).unwrap();
             assert!(tool.destructive(&json!({})), "{name}");
             assert!(!tool.read_only(&json!({})), "{name}");

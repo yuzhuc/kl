@@ -22,6 +22,27 @@ public static class ChatTuiRunner
         !string.IsNullOrWhiteSpace(input)
         && !input.TrimStart().StartsWith('/');
 
+    public static bool TryParseAgentCommand(string? input, out string? preset)
+    {
+        preset = null;
+        var text = input?.Trim();
+        if (text is null)
+        {
+            return false;
+        }
+        var separator = text.IndexOfAny([' ', '\t']);
+        var command = separator < 0 ? text : text[..separator];
+        if (!command.Equals("/agent", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+        if (separator >= 0)
+        {
+            preset = text[(separator + 1)..].Trim();
+        }
+        return true;
+    }
+
     public static CtrlCAction ResolveCtrlC(ChatTuiState state, bool hasConnection) =>
         state.HasSelection
             ? CtrlCAction.CopySelection
@@ -58,7 +79,7 @@ public static class ChatTuiRunner
                     stage => SplashScreen.Update(
                         CanUseTui,
                         ChatTexts.StartupStage(language, stage))).ConfigureAwait(false);
-                state = NewState(connection.Session, options.Verbose, language);
+                state = NewState(connection.Session, options.Verbose, language, options.Agent ?? "build");
                 SplashScreen.Update(
                     CanUseTui,
                     ChatTexts.StartupStage(language, "loading-transcript"));
@@ -77,7 +98,7 @@ public static class ChatTuiRunner
             }
             catch (JsonRpcException error) when (error.Code == -32005)
             {
-                state = NewStateWithoutSession(options, language);
+                state = NewStateWithoutSession(options, language, options.Agent ?? "build");
             }
 
             state.Settings.SetLanguage(language);
@@ -454,6 +475,26 @@ public static class ChatTuiRunner
                             break;
                         case ChatKeyAction.Send:
                             var prompt = state.Input.Trim();
+                            if (TryParseAgentCommand(prompt, out var agentPreset))
+                            {
+                                if (agentPreset is null)
+                                {
+                                    ShowAgentPresets(state);
+                                }
+                                else if (!ChatCommandPalette.IsValidAgentPreset(agentPreset))
+                                {
+                                    state.AddError(ChatTexts.UnknownAgent(
+                                        state.Language,
+                                        agentPreset,
+                                        string.Join(", ", ChatCommandPalette.AgentPresets)));
+                                    state.ClearInput();
+                                }
+                                else
+                                {
+                                    ApplyAgentPreset(options, state, connection, agentPreset);
+                                }
+                                break;
+                            }
                             if (!IsPrompt(prompt))
                             {
                                 var command = ChatCommandPalette.FindExact(prompt);
@@ -671,7 +712,8 @@ public static class ChatTuiRunner
                                 state = NewState(
                                     connection.Session,
                                     options.Verbose,
-                                    currentLanguage);
+                                    currentLanguage,
+                                    state.Agent);
                                 await LoadTranscriptAsync(
                                     connection.Session,
                                     options,
@@ -707,7 +749,8 @@ public static class ChatTuiRunner
                                 state = NewState(
                                     connection.Session,
                                     options.Verbose,
-                                    newSessionLanguage);
+                                    newSessionLanguage,
+                                    state.Agent);
                                 await LoadTranscriptAsync(
                                     connection.Session,
                                     options,
@@ -930,6 +973,9 @@ public static class ChatTuiRunner
                     connection,
                     cancellationToken).ConfigureAwait(false);
                 break;
+            case ChatCommandKind.Agent:
+                ShowAgentPresets(state);
+                break;
             case ChatCommandKind.Review:
                 await RunReviewAsync(
                     options,
@@ -985,6 +1031,28 @@ public static class ChatTuiRunner
         }
 
         return new CommandResult(connection, state, Exit: false);
+    }
+
+    private static void ShowAgentPresets(ChatTuiState state)
+    {
+        state.AddInfo(ChatTexts.AgentCurrent(state.Language, state.Agent));
+        state.AddInfo(ChatTexts.AgentAvailable(
+            state.Language,
+            string.Join(", ", ChatCommandPalette.AgentPresets)));
+        state.ClearInput();
+    }
+
+    private static void ApplyAgentPreset(
+        CliOptions options,
+        ChatTuiState state,
+        Connection? connection,
+        string preset)
+    {
+        state.Agent = preset;
+        options.Agent = preset;
+        connection?.Session.SetAgent(preset);
+        state.AddInfo(ChatTexts.AgentSet(state.Language, preset));
+        state.ClearInput();
     }
 
     private static async Task RunInitAsync(
@@ -1301,7 +1369,7 @@ public static class ChatTuiRunner
                 options,
                 null,
                 cancellationToken).ConfigureAwait(false);
-            state = NewState(connection.Session, options.Verbose, language);
+            state = NewState(connection.Session, options.Verbose, language, state.Agent);
             await LoadTranscriptAsync(
                 connection.Session,
                 options,
@@ -1353,7 +1421,7 @@ public static class ChatTuiRunner
                 options,
                 null,
                 cancellationToken).ConfigureAwait(false);
-            state = NewState(connection.Session, options.Verbose, language);
+            state = NewState(connection.Session, options.Verbose, language, state.Agent);
             await LoadTranscriptAsync(
                 connection.Session,
                 options,
@@ -1367,7 +1435,7 @@ public static class ChatTuiRunner
         }
         catch (Exception error) when (IsCommandError(error))
         {
-            state = NewStateWithoutSession(options, language);
+            state = NewStateWithoutSession(options, language, state.Agent);
             state.AddError(ChatTexts.NewSessionUnavailable(
                 language,
                 error.Message));
@@ -1551,14 +1619,16 @@ public static class ChatTuiRunner
     private static ChatTuiState NewState(
         KlSessionClient session,
         bool verbose,
-        UiLanguage language)
+        UiLanguage language,
+        string agent)
     {
         var state = new ChatTuiState(
             session.Workspace,
             session.Provider,
             session.Model,
             session.SessionId,
-            verbose);
+            verbose,
+            agent);
         state.ReasoningEffort = session.ReasoningEffort;
         state.Settings.SetLanguage(language);
         return state;
@@ -1566,14 +1636,16 @@ public static class ChatTuiRunner
 
     private static ChatTuiState NewStateWithoutSession(
         CliOptions options,
-        UiLanguage language)
+        UiLanguage language,
+        string agent)
     {
         var state = new ChatTuiState(
             Path.GetFullPath(options.Workspace ?? Directory.GetCurrentDirectory()),
             string.Empty,
             string.Empty,
             string.Empty,
-            options.Verbose);
+            options.Verbose,
+            agent);
         state.Settings.SetLanguage(language);
         state.WarningCount = 1;
         return state;
@@ -2113,6 +2185,8 @@ public static class ChatTuiRunner
             Workspace = source.Workspace,
             Provider = source.Provider,
             Model = source.Model,
+            Quality = source.Quality,
+            Agent = source.Agent,
             Session = sessionId,
             AutoApprove = source.AutoApprove,
             Verbose = source.Verbose,

@@ -1,0 +1,16 @@
+{
+  "jsonrpc": "2.0",
+  "kl_protocol": 1,
+  "method": "event",
+  "params": {
+    "session_id": "session-1",
+    "seq": 1,
+    "event": {
+      "type": "user.message",
+      "data": {
+        "turn_id": "turn-1",
+        "text": "fix it"
+      }
+    }
+  }
+}
