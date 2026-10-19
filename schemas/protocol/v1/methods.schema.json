@@ -627,6 +627,7 @@
                 "type": {
                   "enum": [
                     "session.created",
+                    "user.message",
                     "turn.started",
                     "turn.delta",
                     "turn.reasoning",
