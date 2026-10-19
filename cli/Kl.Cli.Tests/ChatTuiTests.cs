@@ -408,6 +408,48 @@ public sealed class ChatTuiTests
     }
 
     [Fact]
+    public void ScrolledChatPinsTruncatedUserPrompt()
+    {
+        var state = new ChatTuiState("D:\\kl", "openai", "gpt-5", "s1");
+        state.Transcript.Add(new TranscriptEntry(
+            TranscriptKind.User,
+            "Please explain a very long question that should be truncated at the top"));
+        state.Transcript.Add(new TranscriptEntry(
+            TranscriptKind.Assistant,
+            string.Join('\n', Enumerable.Range(1, 40).Select(index => $"answer line {index}"))));
+        state.TranscriptScroll = 8;
+
+        var render = ChatTuiRenderer.Render(60, 24, state);
+        var lines = DiffRender.Ansi.Strip(render).Split('\n');
+
+        Assert.StartsWith("› ", lines[0]);
+        Assert.Contains("Please explain a very long", lines[0]);
+        Assert.EndsWith("…", lines[0].TrimEnd());
+        Assert.StartsWith(DiffRender.Ansi.UserMessage, render.Split('\n')[0]);
+    }
+
+    [Fact]
+    public void UserPromptsHaveSpacingBeforeAndAfter()
+    {
+        var state = new ChatTuiState();
+        state.Transcript.Add(new TranscriptEntry(TranscriptKind.User, "first"));
+        state.Transcript.Add(new TranscriptEntry(TranscriptKind.Assistant, "reply"));
+        state.Transcript.Add(new TranscriptEntry(TranscriptKind.User, "second"));
+        state.Transcript.Add(new TranscriptEntry(TranscriptKind.Assistant, "reply two"));
+
+        var lines = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state))
+            .Split('\n')
+            .Select(line => line.TrimEnd())
+            .ToList();
+        var first = lines.FindIndex(line => line == "> first");
+        var second = lines.FindIndex(line => line == "> second");
+
+        Assert.True(first >= 0);
+        Assert.True(second > first);
+        Assert.Equal(string.Empty, lines[first + 1]);
+        Assert.Equal(string.Empty, lines[second - 1]);
+    }
+    [Fact]
     public void HistoryShowsSelectionAndSelectedDetails()
     {
         var state = new ChatTuiState("D:\\b", "p2", "m2", "s2")

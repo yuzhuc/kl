@@ -145,31 +145,42 @@ public static class ChatTuiRenderer
         width = Math.Max(20, width);
         height = Math.Max(8, height);
         var bodyHeight = Math.Max(1, height - 2 - ComposerHeight(state, width, height));
-        var lines = TranscriptLines(state, width);
-        if (lines.Count == 0)
+        var layout = BuildTranscriptLayout(state, width);
+        if (layout.Lines.Count == 0)
         {
             return null;
         }
 
-        var maximum = Math.Max(0, lines.Count - bodyHeight);
-        var scroll = Math.Clamp(state.TranscriptScroll, 0, maximum);
-        var start = Math.Max(0, lines.Count - bodyHeight - scroll);
-        var visible = lines.Skip(start).Take(bodyHeight).ToList();
-        return new TranscriptViewport(0, start, visible);
+        var window = BuildChatTranscriptWindow(
+            state,
+            width,
+            bodyHeight,
+            layout);
+        return new TranscriptViewport(
+            window.Header is null ? 0 : 1,
+            window.Start,
+            window.Visible);
     }
 
-    public static List<string> TranscriptLines(ChatTuiState state, int width)
+    public static List<string> TranscriptLines(ChatTuiState state, int width) =>
+        BuildTranscriptLayout(state, width).Lines;
+
+    private static TranscriptLayout BuildTranscriptLayout(ChatTuiState state, int width)
     {
         width = Math.Max(1, width);
         var language = state.Language;
         var lines = new List<string>();
+        var prompts = new List<UserPromptSpan>();
         var hiddenReasoningShown = false;
         for (var entryIndex = 0; entryIndex < state.Transcript.Count; entryIndex++)
         {
             var entry = state.Transcript[entryIndex];
-            if (entryIndex > 0
-                && state.Transcript[entryIndex - 1].Kind == TranscriptKind.User
-                && entry.Kind != TranscriptKind.User)
+            var previousKind = entryIndex > 0
+                ? state.Transcript[entryIndex - 1].Kind
+                : (TranscriptKind?)null;
+            if (previousKind is { } previous
+                && ((entry.Kind == TranscriptKind.User && previous != TranscriptKind.User)
+                    || (entry.Kind != TranscriptKind.User && previous == TranscriptKind.User)))
             {
                 lines.Add(string.Empty);
             }
@@ -194,28 +205,32 @@ public static class ChatTuiRenderer
                 continue;
             }
 
+            if (entry.Kind == TranscriptKind.User)
+            {
+                prompts.Add(new UserPromptSpan(lines.Count, entry.Text));
+            }
             lines.AddRange(RenderEntry(entry, width, language));
         }
-        return lines;
+        return new TranscriptLayout(lines, prompts);
     }
-
     private static List<string> RenderChatBody(
         ChatTuiState state,
         int width,
         int bodyHeight)
     {
-        var lines = TranscriptLines(state, width);
-        if (lines.Count == 0 && !state.IsTurnActive)
+        var layout = BuildTranscriptLayout(state, width);
+        if (layout.Lines.Count == 0 && !state.IsTurnActive)
         {
-            lines = RenderHome(state, width);
+            layout = new TranscriptLayout(RenderHome(state, width), []);
         }
 
-        var maximum = Math.Max(0, lines.Count - bodyHeight);
-        var scroll = Math.Clamp(state.TranscriptScroll, 0, maximum);
-        var start = Math.Max(0, lines.Count - bodyHeight - scroll);
-        var visible = PadBody(
-            lines.Skip(start).Take(bodyHeight).ToList(),
-            bodyHeight);
+        var window = BuildChatTranscriptWindow(
+            state,
+            width,
+            bodyHeight,
+            layout);
+        var start = window.Start;
+        var visible = PadBody(window.Visible.ToList(), window.VisibleHeight);
 
         if (state.SelectionAnchor is { } anchor
             && state.SelectionCursor is { } cursor)
@@ -227,7 +242,7 @@ public static class ChatTuiRenderer
                 var absolute = start + index;
                 if (absolute >= selectionStart
                     && absolute <= selectionEnd
-                    && absolute < lines.Count)
+                    && absolute < layout.Lines.Count)
                 {
                     visible[index] = DiffRender.Ansi.ApplySelection(
                         visible[index],
@@ -252,8 +267,72 @@ public static class ChatTuiRenderer
                 }
             }
         }
+        if (window.Header is not null)
+        {
+            visible.Insert(0, window.Header);
+        }
         return visible;
     }
+
+    private static ChatTranscriptWindow BuildChatTranscriptWindow(
+        ChatTuiState state,
+        int width,
+        int bodyHeight,
+        TranscriptLayout layout)
+    {
+        var lines = layout.Lines;
+        var maximum = Math.Max(0, lines.Count - bodyHeight);
+        var scroll = Math.Clamp(state.TranscriptScroll, 0, maximum);
+        var start = Math.Max(0, lines.Count - bodyHeight - scroll);
+        UserPromptSpan? prompt = scroll > 0
+            ? layout.Prompts.LastOrDefault(candidate => candidate.Start <= start)
+            : null;
+        var contentHeight = bodyHeight;
+        if (prompt is not null && bodyHeight > 1)
+        {
+            contentHeight = bodyHeight - 1;
+            start = Math.Max(0, lines.Count - contentHeight - scroll);
+            prompt = layout.Prompts.LastOrDefault(candidate => candidate.Start <= start) ?? prompt;
+        }
+        var visible = lines
+            .Skip(start)
+            .Take(contentHeight)
+            .ToList();
+        return new ChatTranscriptWindow(
+            prompt is null ? null : RenderStickyPrompt(prompt.Text, width),
+            start,
+            contentHeight,
+            visible);
+    }
+
+    private static string RenderStickyPrompt(string text, int width)
+    {
+        var bounded = text.Length > 512 ? text[..512] : text;
+        var normalized = bounded
+            .Replace("\r\n", " ", StringComparison.Ordinal)
+            .Replace('\r', ' ')
+            .Replace('\n', ' ')
+            .Trim();
+        var compact = string.Join(
+            ' ',
+            normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        var line = "› " + (compact.Length == 0 ? "…" : compact);
+        return DiffRender.Ansi.UserMessage +
+            DisplayText.PadToWidth(DisplayText.Ellipsize(line, width), width) +
+            DiffRender.Ansi.Reset;
+    }
+
+    private sealed record UserPromptSpan(int Start, string Text);
+
+    private sealed record TranscriptLayout(
+        List<string> Lines,
+        List<UserPromptSpan> Prompts);
+
+    private sealed record ChatTranscriptWindow(
+        string? Header,
+        int Start,
+        int VisibleHeight,
+        List<string> Visible);
 
     private static List<string> RenderHome(ChatTuiState state, int width)
     {
