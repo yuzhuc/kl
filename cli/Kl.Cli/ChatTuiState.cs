@@ -183,11 +183,13 @@ public sealed class ChatTuiState
 
     public int? SelectionAnchor { get; private set; }
     public int? SelectionCursor { get; private set; }
+    public MouseSelection MouseSelection { get; } = new();
 
     public bool HasPendingApproval => PendingApprovalId is not null;
 
     public bool HasSelection =>
-        SelectionAnchor is not null && SelectionCursor is not null;
+        MouseSelection.HasSelection
+        || (SelectionAnchor is not null && SelectionCursor is not null);
 
     public UiLanguage Language => Settings.Language;
 
@@ -415,10 +417,25 @@ public sealed class ChatTuiState
     {
         SelectionAnchor = null;
         SelectionCursor = null;
+        MouseSelection.Clear();
     }
+
+    public void BeginMouseSelection(int row, int column)
+    {
+        SelectionAnchor = null;
+        SelectionCursor = null;
+        MouseSelection.Begin(row, column);
+    }
+
+    public void ExtendMouseSelection(int row, int column) =>
+        MouseSelection.Extend(row, column);
+
+    public void EndMouseSelection(int row, int column) =>
+        MouseSelection.End(row, column);
 
     public void ExtendSelection(int delta, int totalLines)
     {
+        MouseSelection.Clear();
         if (totalLines <= 0)
         {
             ClearSelection();
@@ -437,12 +454,17 @@ public sealed class ChatTuiState
 
     public string? SelectedText(int width)
     {
+        var lines = ChatTuiRenderer.TranscriptLines(this, width);
+        if (MouseSelection.HasSelection)
+        {
+            var selected = MouseSelection.Text(lines);
+            return selected.Length == 0 ? null : selected;
+        }
+
         if (SelectionAnchor is not { } anchor || SelectionCursor is not { } cursor)
         {
             return null;
         }
-
-        var lines = ChatTuiRenderer.TranscriptLines(this, width);
         if (lines.Count == 0)
         {
             return null;
@@ -693,6 +715,7 @@ public sealed class ChatTuiState
 
     public void ScrollTranscript(int delta, int width, int height)
     {
+        ClearSelection();
         var maximum = ChatTuiRenderer.MaxTranscriptScroll(this, width, height);
         TranscriptScroll = Math.Clamp(TranscriptScroll + delta, 0, maximum);
     }

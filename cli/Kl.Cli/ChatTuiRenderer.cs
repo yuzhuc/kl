@@ -59,7 +59,9 @@ public static class ChatTuiRenderer
         }
         if (showHeader)
         {
-            lines.Add("  " + HeaderText);
+            lines.Add(
+                "  " + DiffRender.Ansi.BoldAccent + ">_" + DiffRender.Ansi.Reset +
+                HeaderText[2..]);
             if (showSeparator)
             {
                 lines.Add(new string('-', width));
@@ -95,6 +97,37 @@ public static class ChatTuiRenderer
         return Math.Max(
             0,
             TranscriptLines(state, Math.Max(20, width)).Count - bodyHeight);
+    }
+
+    public static TranscriptViewport? TranscriptViewport(
+        ChatTuiState state,
+        int width,
+        int height)
+    {
+        if (state.Screen != ChatScreen.Chat
+            || state.ModelPicker.IsOpen
+            || MentionPicker.IsOpen(state)
+            || ChatCommandPalette.IsOpen(state)
+            || IsHome(state))
+        {
+            return null;
+        }
+
+        width = Math.Max(20, width);
+        height = Math.Max(8, height);
+        var bodyHeight = Math.Max(1, height - 1 - 2 - 1 - 1 - 1);
+        var lines = TranscriptLines(state, width);
+        if (lines.Count == 0)
+        {
+            return null;
+        }
+
+        var maximum = Math.Max(0, lines.Count - bodyHeight);
+        var scroll = Math.Clamp(state.TranscriptScroll, 0, maximum);
+        var start = Math.Max(0, lines.Count - bodyHeight - scroll);
+        var visible = lines.Skip(start).Take(bodyHeight).ToList();
+        // Blank row + title + separator above the transcript.
+        return new TranscriptViewport(3, start, visible);
     }
 
     public static List<string> TranscriptLines(ChatTuiState state, int width)
@@ -161,10 +194,26 @@ public static class ChatTuiRenderer
                     && absolute <= selectionEnd
                     && absolute < lines.Count)
                 {
-                    visible[index] =
-                        DiffRender.Ansi.Inverse
-                        + visible[index]
-                        + DiffRender.Ansi.Reset;
+                    visible[index] = DiffRender.Ansi.ApplySelection(
+                        visible[index],
+                        0,
+                        width);
+                }
+            }
+        }
+        else
+        {
+            for (var index = 0; index < visible.Count; index++)
+            {
+                if (state.MouseSelection.TryGetColumns(
+                        start + index,
+                        out var selectionStart,
+                        out var selectionEnd))
+                {
+                    visible[index] = DiffRender.Ansi.ApplySelection(
+                        visible[index],
+                        selectionStart,
+                        selectionEnd);
                 }
             }
         }
@@ -440,7 +489,7 @@ public static class ChatTuiRenderer
             width - DisplayText.Width(marker) - DiffRender.Ansi.VisibleWidth(dotText) -
             statusWidth - timeWidth - 4);
         var title = DisplayText.PadToWidth(
-            TaskTitle(task.Session, language),
+            DisplayText.Ellipsize(TaskTitle(task.Session, language), titleWidth),
             titleWidth);
         var titleText = selected
             ? title
@@ -979,10 +1028,12 @@ public static class ChatTuiRenderer
     }
     private static string RenderInput(ChatTuiState state, int width)
     {
+        var prompt = "  " + DiffRender.Ansi.BoldAccent + "›" +
+            DiffRender.Ansi.Reset + DiffRender.Ansi.Composer + " ";
         string content;
         if (state.Input.Length == 0)
         {
-            content = "  › " + ChatTexts.InputPlaceholder(state.Language);
+            content = prompt + ChatTexts.InputPlaceholder(state.Language);
         }
         else
         {
@@ -995,7 +1046,7 @@ public static class ChatTuiRenderer
             var length = Math.Min(available, state.Input.Length - start);
             var visible = state.Input.Substring(start, length);
             var relative = Math.Clamp(cursor - start, 0, visible.Length);
-            content = "  › " + visible.Insert(relative, "|");
+            content = prompt + visible.Insert(relative, "|");
         }
         return DiffRender.Ansi.Composer +
             DiffRender.Ansi.Fit(content, width) +
@@ -1138,9 +1189,9 @@ public static class ChatTuiRenderer
         switch (entry.Kind)
         {
             case TranscriptKind.User:
-                return WrapPlain(
-                    ChatTexts.UserLabel(language) + entry.Text,
-                    width);
+                return ColorLines(
+                    WrapPlain(ChatTexts.UserLabel(language) + entry.Text, width),
+                    DiffRender.Ansi.UserMessage);
             case TranscriptKind.Assistant:
                 return WrapPlain(
                     ChatTexts.AssistantLabel(language) + entry.Text,
@@ -1194,7 +1245,7 @@ public static class ChatTuiRenderer
         {
             return ColorLines(rendered, DiffRender.Ansi.Red);
         }
-        return rendered;
+        return ColorLines(rendered, DiffRender.Ansi.Cyan);
     }
 
     private static IEnumerable<string> RenderApproval(
@@ -1223,7 +1274,9 @@ public static class ChatTuiRenderer
         }
 
         var lines = new List<string>();
-        lines.AddRange(WrapPlain(ChatTexts.ApprovalTitle(language), width));
+        lines.AddRange(ColorLines(
+            WrapPlain(ChatTexts.ApprovalTitle(language), width),
+            DiffRender.Ansi.Yellow));
         lines.AddRange(WrapPlain(
             "  " + ChatTexts.ApprovalTool(language) + ": " + name,
             width));
@@ -1249,7 +1302,10 @@ public static class ChatTuiRenderer
         int width,
         UiLanguage language)
     {
-        var lines = new List<string> { ChatTexts.DiffTitle(language) };
+        var lines = new List<string>
+        {
+            DiffRender.Ansi.BoldCyan + ChatTexts.DiffTitle(language) + DiffRender.Ansi.Reset
+        };
         var normalized = text
             .Replace("\r\n", "\n", StringComparison.Ordinal)
             .Replace('\r', '\n');

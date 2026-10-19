@@ -46,6 +46,48 @@ public static class DisplayText
         return builder.ToString();
     }
 
+    public static string Ellipsize(string? text, int maxWidth)
+    {
+        if (string.IsNullOrEmpty(text) || maxWidth <= 0)
+        {
+            return string.Empty;
+        }
+        if (Width(text) <= maxWidth)
+        {
+            return text;
+        }
+        if (maxWidth == 1)
+        {
+            return "…";
+        }
+        return TruncateToWidth(text, maxWidth - 1) + "…";
+    }
+
+    public static string SliceToWidth(string? text, int start, int end)
+    {
+        if (string.IsNullOrEmpty(text) || end <= start)
+        {
+            return string.Empty;
+        }
+
+        var builder = new StringBuilder(text.Length);
+        var column = 0;
+        foreach (var element in Elements(text))
+        {
+            var width = ElementWidth(element);
+            if (column >= start && column < end)
+            {
+                builder.Append(element);
+            }
+            column += width;
+            if (column >= end)
+            {
+                break;
+            }
+        }
+        return builder.ToString();
+    }
+
     public static string PadToWidth(string? text, int width)
     {
         if (width <= 0)

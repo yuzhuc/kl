@@ -1,5 +1,4 @@
 using System.Reflection;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
@@ -24,10 +23,10 @@ public static class ChatTuiRunner
         && !input.TrimStart().StartsWith('/');
 
     public static CtrlCAction ResolveCtrlC(ChatTuiState state, bool hasConnection) =>
-        hasConnection && (state.IsTurnActive || state.HasPendingApproval)
-            ? CtrlCAction.Cancel
-            : state.HasSelection
-                ? CtrlCAction.CopySelection
+        state.HasSelection
+            ? CtrlCAction.CopySelection
+            : hasConnection && (state.IsTurnActive || state.HasPendingApproval)
+                ? CtrlCAction.Cancel
                 : CtrlCAction.Exit;
 
     public static async Task<int> RunAsync(
@@ -84,23 +83,9 @@ public static class ChatTuiRunner
             state.Settings.SetLanguage(language);
             SplashScreen.Update(CanUseTui, ChatTexts.StartupStage(language, "ready"));
 
-            var keys = Channel.CreateUnbounded<ConsoleKeyInfo>(
+            var inputs = Channel.CreateUnbounded<ConsoleInputEvent>(
                 new UnboundedChannelOptions { SingleReader = true });
-            _ = Task.Run(() =>
-            {
-                while (true)
-                {
-                    try
-                    {
-                        keys.Writer.TryWrite(Console.ReadKey(intercept: true));
-                    }
-                    catch (Exception error)
-                        when (error is IOException or InvalidOperationException)
-                    {
-                        break;
-                    }
-                }
-            });
+            _ = Task.Run(() => ConsoleMouseInput.ReadLoop(inputs.Writer));
 
             var exit = false;
             var dirty = true;
@@ -121,6 +106,10 @@ public static class ChatTuiRunner
 
                 var width = Math.Max(20, Console.WindowWidth);
                 var height = Math.Max(8, Console.WindowHeight);
+                if (lastWidth != 0 && (width != lastWidth || height != lastHeight))
+                {
+                    state.ClearSelection();
+                }
                 if (forceClear)
                 {
                     Console.Out.Write("\u001b[0m\u001b[2J\u001b[H");
@@ -141,8 +130,18 @@ public static class ChatTuiRunner
                     lastHeight = height;
                 }
 
-                while (keys.Reader.TryRead(out var key))
+                while (inputs.Reader.TryRead(out var input))
                 {
+                    if (input.Mouse is { } mouse)
+                    {
+                        HandleMouse(state, mouse, width, height);
+                        dirty = true;
+                        continue;
+                    }
+                    if (input.Key is not { } key)
+                    {
+                        continue;
+                    }
                     if (state.Screen == ChatScreen.Settings)
                     {
                         var control = (key.Modifiers & ConsoleModifiers.Control) != 0;
@@ -1322,6 +1321,82 @@ public static class ChatTuiRunner
         return (connection, state);
     }
 
+    private static void HandleMouse(
+        ChatTuiState state,
+        MouseInputEvent mouse,
+        int width,
+        int height)
+    {
+        if (state.Screen != ChatScreen.Chat)
+        {
+            if (mouse.Kind == MouseInputKind.LeftDown)
+            {
+                state.ClearSelection();
+            }
+            return;
+        }
+
+        if (mouse.Kind is MouseInputKind.WheelUp or MouseInputKind.WheelDown)
+        {
+            var interactive = !state.ModelPicker.IsOpen
+                && !MentionPicker.IsOpen(state)
+                && !ChatCommandPalette.IsOpen(state);
+            state.ClearSelection();
+            if (interactive)
+            {
+                state.ScrollTranscript(
+                    mouse.Kind == MouseInputKind.WheelUp ? 1 : -1,
+                    width,
+                    height);
+            }
+            return;
+        }
+
+        switch (mouse.Kind)
+        {
+            case MouseInputKind.LeftDown:
+                state.ClearSelection();
+                if (ChatTuiRenderer.TranscriptViewport(state, width, height) is { } viewport
+                    && viewport.TryMap(mouse.Column, mouse.Row, out var point))
+                {
+                    state.BeginMouseSelection(point.Row, point.Column);
+                }
+                break;
+            case MouseInputKind.Drag:
+                if (!state.MouseSelection.IsDragging)
+                {
+                    break;
+                }
+                if (ChatTuiRenderer.TranscriptViewport(state, width, height) is { } dragViewport
+                    && dragViewport.TryMapClamped(mouse.Column, mouse.Row, out var dragPoint))
+                {
+                    state.ExtendMouseSelection(dragPoint.Row, dragPoint.Column);
+                }
+                break;
+            case MouseInputKind.LeftUp:
+                if (!state.MouseSelection.IsDragging)
+                {
+                    break;
+                }
+                if (ChatTuiRenderer.TranscriptViewport(state, width, height) is { } upViewport
+                    && upViewport.TryMapClamped(mouse.Column, mouse.Row, out var upPoint))
+                {
+                    state.EndMouseSelection(upPoint.Row, upPoint.Column);
+                }
+                else
+                {
+                    state.ClearSelection();
+                }
+                break;
+            case MouseInputKind.RightDown:
+                if (state.HasSelection)
+                {
+                    CopySelection(state, width);
+                }
+                break;
+        }
+    }
+
     private static void CopyLastAssistant(ChatTuiState state)
     {
         var text = state.LastAssistantText();
@@ -1336,7 +1411,7 @@ public static class ChatTuiRunner
     private static void CopySelection(ChatTuiState state, int width)
     {
         var text = state.SelectedText(width);
-        if (string.IsNullOrWhiteSpace(text))
+        if (string.IsNullOrEmpty(text))
         {
             state.StatusMessage = ChatTexts.NoSelectionToCopy(state.Language);
         }
@@ -1349,6 +1424,7 @@ public static class ChatTuiRunner
 
     private static void CopyText(ChatTuiState state, string text)
     {
+        text = DiffRender.RedactSensitive(text);
         var lines = text
             .Replace("\r\n", "\n", StringComparison.Ordinal)
             .Replace('\r', '\n')
@@ -1869,13 +1945,7 @@ public static class ChatTuiRunner
 
     private sealed class TerminalSession : IDisposable
     {
-        private const int StdInputHandle = -10;
-        private const uint EnableExtendedFlags = 0x0080;
-        private const uint EnableQuickEditMode = 0x0040;
-
         private readonly bool _previousTreatControlCAsInput;
-        private readonly bool _quickEditDisabled;
-        private readonly uint _previousConsoleMode;
 
         public TerminalSession()
         {
@@ -1901,25 +1971,14 @@ public static class ChatTuiRunner
                 _previousTreatControlCAsInput = false;
             }
 
-            if (OperatingSystem.IsWindows())
-            {
-                var input = GetStdHandle(StdInputHandle);
-                if (input != IntPtr.Zero
-                    && input != new IntPtr(-1)
-                    && GetConsoleMode(input, out var mode))
-                {
-                    _previousConsoleMode = mode;
-                    var requested = (mode | EnableExtendedFlags) & ~EnableQuickEditMode;
-                    _quickEditDisabled = requested != mode && SetConsoleMode(input, requested);
-                }
-            }
-
+            ConsoleMouseInput.Enable();
             Console.Out.Write("\u001b[?1049h\u001b[?25l\u001b[2J\u001b[H");
             Console.Out.Flush();
         }
 
         public void Dispose()
         {
+            ConsoleMouseInput.Disable();
             try
             {
                 Console.Out.Write("\u001b[?25h\u001b[?1049l");
@@ -1939,24 +1998,7 @@ public static class ChatTuiRunner
                 // Best effort during shutdown.
             }
 
-            var input = GetStdHandle(StdInputHandle);
-            if (_quickEditDisabled
-                && input != IntPtr.Zero
-                && input != new IntPtr(-1))
-            {
-                SetConsoleMode(input, _previousConsoleMode);
-            }
-
             Console.ResetColor();
         }
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern IntPtr GetStdHandle(int handle);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern bool GetConsoleMode(IntPtr handle, out uint mode);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern bool SetConsoleMode(IntPtr handle, uint mode);
     }
 }

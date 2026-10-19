@@ -35,6 +35,86 @@ public sealed class ChatTuiTests
     }
 
     [Fact]
+    public void ChatEnglishSnapshot()
+    {
+        var state = new ChatTuiState();
+        var lines = new List<string>
+        {
+            string.Empty,
+            "  >_ KL (v0.1.0)",
+            string.Empty,
+            "  To get started, describe a task or try one of these commands:",
+            string.Empty,
+            "  /init - create an AGENTS.md file with instructions for KL",
+            "  /status - show current session configuration",
+            "  /permissions - choose what KL is allowed to do",
+            "  /model - choose what model and reasoning effort to use",
+            "  /review - review changes and find issues"
+        };
+        lines.AddRange(Enumerable.Repeat(string.Empty, 11));
+        lines.Add("  › Ask KL to do anything");
+        lines.Add("  no provider configured");
+        lines.Add("  ? for shortcuts");
+
+        Assert.Equal(string.Join('\n', lines), Snapshot(ChatTuiRenderer.Render(80, 24, state)));
+    }
+
+    [Fact]
+    public void ChatChineseSnapshot()
+    {
+        var state = new ChatTuiState();
+        state.Settings.SetLanguage(UiLanguage.ChineseSimplified);
+        var lines = new List<string>
+        {
+            string.Empty,
+            "  >_ KL (v0.1.0)",
+            string.Empty,
+            "  开始使用：描述一个任务，或尝试以下命令：",
+            string.Empty,
+            "  /init - 创建 AGENTS.md 并写入 KL 指令",
+            "  /status - 查看当前会话配置",
+            "  /permissions - 选择 KL 的权限与审批方式",
+            "  /model - 选择模型和推理强度",
+            "  /review - 审查当前改动并发现问题"
+        };
+        lines.AddRange(Enumerable.Repeat(string.Empty, 11));
+        lines.Add("  › 让 KL 做点什么，或输入 / 查看命令");
+        lines.Add("  未配置 Provider");
+        lines.Add("  ? 快捷键");
+
+        Assert.Equal(string.Join('\n', lines), Snapshot(ChatTuiRenderer.Render(80, 24, state)));
+    }
+
+    [Fact]
+    public void UserMessageUsesBlockFillAndSecondaryTextIsNotDim()
+    {
+        var state = new ChatTuiState();
+        state.Transcript.Add(new TranscriptEntry(TranscriptKind.User, "fix it"));
+
+        var render = ChatTuiRenderer.Render(80, 24, state);
+
+        Assert.Contains(DiffRender.Ansi.UserMessage, render);
+        Assert.Contains(DiffRender.Ansi.BoldAccent, render);
+        Assert.Contains(DiffRender.Ansi.Secondary, render);
+        Assert.DoesNotContain("\u001b[2m", render);
+    }
+
+    [Fact]
+    public void MouseSelectionRendersBlueAndCopiesPlainText()
+    {
+        var state = new ChatTuiState();
+        state.AddInfo("one");
+        state.BeginMouseSelection(0, 0);
+        state.ExtendMouseSelection(0, 2);
+        state.EndMouseSelection(0, 2);
+
+        var render = ChatTuiRenderer.Render(80, 24, state);
+
+        Assert.Contains(DiffRender.Ansi.Selection, render);
+        Assert.Equal("one", state.SelectedText(80));
+    }
+
+    [Fact]
     public void RenderShowsHeaderInputAndFooter()
     {
         var state = new ChatTuiState("D:\\work", "openai", "gpt-5", "session-1");
@@ -42,8 +122,8 @@ public sealed class ChatTuiTests
         var lines = render.Split('\n');
 
         Assert.Equal(24, lines.Length);
-        Assert.Equal(">_ KL (v0.1.0)", lines[1].Trim());
-        Assert.Contains("› Ask KL to do anything", render);
+        Assert.Equal(">_ KL (v0.1.0)", DiffRender.Ansi.Strip(lines[1]).Trim());
+        Assert.Contains("› Ask KL to do anything", DiffRender.Ansi.Strip(render));
         Assert.Contains("? for shortcuts", DiffRender.Ansi.Strip(render.Split('\n')[^1]));
     }
 
@@ -315,6 +395,13 @@ public sealed class ChatTuiTests
         var active = new ChatTuiState { IsTurnActive = true };
         Assert.Equal(CtrlCAction.Cancel, ChatTuiRunner.ResolveCtrlC(active, hasConnection: true));
 
+        active.ExtendSelection(-1, 4);
+        Assert.True(active.HasSelection);
+        Assert.Equal(
+            CtrlCAction.CopySelection,
+            ChatTuiRunner.ResolveCtrlC(active, hasConnection: true));
+
+        active.ClearSelection();
         active.IsTurnActive = false;
         active.ExtendSelection(-1, 4);
         Assert.True(active.HasSelection);
@@ -656,6 +743,35 @@ public sealed class ChatTuiTests
 
     [Theory]
     [InlineData(40)]
+    [InlineData(60)]
+    [InlineData(80)]
+    [InlineData(120)]
+    public void ChatAnsiDoesNotAffectLayoutWidth(int width)
+    {
+        var state = new ChatTuiState("D:\\kl", "openai", "gpt-5", "s1")
+        {
+            ReasoningEffort = "high"
+        };
+        state.Settings.SetLanguage(UiLanguage.ChineseSimplified);
+        state.Transcript.Add(new TranscriptEntry(
+            TranscriptKind.User,
+            "请修复一个很长的中文任务，确保消息块在窄终端中正确换行。"));
+        state.Transcript.Add(new TranscriptEntry(TranscriptKind.Assistant, "完成。"));
+        state.Transcript.Add(new TranscriptEntry(TranscriptKind.Tool, "[ok] shell: exit 0"));
+        state.Transcript.Add(new TranscriptEntry(TranscriptKind.Diff, "-old\n+new"));
+        state.Transcript.Add(new TranscriptEntry(TranscriptKind.Error, "示例错误"));
+
+        var render = ChatTuiRenderer.Render(width, 24, state);
+
+        Assert.Contains("\u001b[", render);
+        Assert.Equal(24, render.Split('\n').Length);
+        Assert.All(render.Split('\n'), line =>
+            Assert.True(DiffRender.Ansi.VisibleWidth(line) <= width));
+    }
+
+    [Theory]
+    [InlineData(40)]
+    [InlineData(60)]
     [InlineData(80)]
     [InlineData(120)]
     public void HomeFitsWidth(int width)
@@ -669,6 +785,15 @@ public sealed class ChatTuiTests
         Assert.All(render.Split('\n'), line =>
             Assert.True(DiffRender.Ansi.VisibleWidth(line) <= width));
     }
+
+    private static string Snapshot(string render) =>
+        string.Join(
+            '\n',
+            DiffRender.Ansi.Strip(render)
+                .Replace("\r", string.Empty, StringComparison.Ordinal)
+                .Split('\n')
+                .Select(line => line.TrimEnd()));
+
     private static ConsoleKeyInfo Key(
         ConsoleKey key,
         char character = '\0',

@@ -74,9 +74,12 @@ public static class DiffRender
     public static class Ansi
     {
         public const string Reset = "\u001b[0m";
-        public const string Dim = "\u001b[2m";
+        // Codex secondary text: 60% foreground/background blend instead of terminal dim.
+        public const string Secondary = "\u001b[38;5;244m";
+        public const string Dim = Secondary;
         public const string Green = "\u001b[32m";
         public const string Red = "\u001b[31m";
+        public const string Yellow = "\u001b[33m";
         public const string BoldGreen = "\u001b[1;32m";
         public const string BoldRed = "\u001b[1;31m";
         public const string BoldCyan = "\u001b[1;36m";
@@ -87,7 +90,8 @@ public static class DiffRender
         public const string Accent = "\u001b[38;2;99;168;248m";
         public const string BoldAccent = "\u001b[1;38;2;99;168;248m";
         public const string ActiveTab = "\u001b[1;100m\u001b[97m";
-        public const string Selection = "\u001b[1;104m\u001b[97m";
+        public const string Selection = "\u001b[1;48;2;99;168;248m\u001b[38;2;0;0;46m";
+        public const string UserMessage = "\u001b[48;5;236m";
         public const string Composer = "\u001b[48;5;236m\u001b[38;5;252m";
         public const string Warning = "\u001b[38;5;179m";
 
@@ -169,6 +173,72 @@ public static class DiffRender
                 return text ?? string.Empty;
             }
             return color + text + Reset;
+        }
+
+        public static string ApplySelection(string text, int start, int end)
+        {
+            if (string.IsNullOrEmpty(text) || end <= start)
+            {
+                return text;
+            }
+
+            var builder = new StringBuilder(text.Length + 32);
+            var activeStyle = new StringBuilder();
+            var column = 0;
+            var inSelection = false;
+            for (var index = 0; index < text.Length;)
+            {
+                if (text[index] == '\u001b'
+                    && index + 1 < text.Length
+                    && text[index + 1] == '[')
+                {
+                    var sequenceEnd = index + 2;
+                    while (sequenceEnd < text.Length
+                        && (text[sequenceEnd] < '@' || text[sequenceEnd] > '~'))
+                    {
+                        sequenceEnd++;
+                    }
+                    if (sequenceEnd < text.Length)
+                    {
+                        sequenceEnd++;
+                        var sequence = text.Substring(index, sequenceEnd - index);
+                        if (sequence is Reset or "\u001b[m")
+                        {
+                            activeStyle.Clear();
+                        }
+                        else if (sequence[^1] == 'm')
+                        {
+                            activeStyle.Append(sequence);
+                        }
+                        index = sequenceEnd;
+                        continue;
+                    }
+                }
+
+                var element = StringInfo.GetNextTextElement(text, index);
+                var width = DisplayText.Width(element);
+                var selected = width == 0
+                    ? column >= start && column < end
+                    : column < end && column + width > start;
+                if (selected && !inSelection)
+                {
+                    builder.Append(Reset).Append(Selection);
+                    inSelection = true;
+                }
+                else if (!selected && inSelection)
+                {
+                    builder.Append(Reset);
+                    inSelection = false;
+                }
+                if (!selected)
+                {
+                    builder.Append(activeStyle);
+                }
+                builder.Append(element);
+                column += width;
+                index += element.Length;
+            }
+            return builder.Append(Reset).ToString();
         }
 
         private static string TruncateExact(string text, int maxWidth)
