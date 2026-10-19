@@ -5,6 +5,7 @@
 //! approval responses.
 
 mod config;
+mod hooks;
 mod mcp;
 mod skills;
 
@@ -178,6 +179,8 @@ pub enum CoreError {
     Policy(#[from] PolicyError),
     #[error("plugin error: {0}")]
     Plugin(#[from] PluginError),
+    #[error("hook error: {0}")]
+    Hook(String),
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 }
@@ -872,6 +875,8 @@ impl Core {
     fn new(context: ServerContext, emitter: Emitter) -> Result<Self, CoreError> {
         std::fs::create_dir_all(&context.home)?;
         let config = Config::load(&context.config_path)?;
+        let hook_config =
+            hooks::HookConfig::load(&context.home.join("hooks.toml")).map_err(CoreError::Hook)?;
         let sandbox = Arc::new(SandboxManager::probe(&config.sandbox));
         let plugin_host = Arc::new(PluginHost::with_sandbox(
             context.home.join("plugins"),
@@ -899,6 +904,14 @@ impl Core {
             &tools,
             Duration::from_secs(config.agent.command_timeout_secs.clamp(1, 10)),
         );
+        if !hook_config.is_empty() {
+            let runner = Arc::new(hooks::HookRunner::new(hook_config));
+            for name in tools.names() {
+                if let Some(tool) = tools.get(&name) {
+                    tools.register(Arc::new(hooks::HookedTool::new(tool, runner.clone())));
+                }
+            }
+        }
         let store = Arc::new(SessionStore::new(context.home.join("sessions"))?);
         let audit = Arc::new(AuditLog::open(
             context.home.join("audit"),
