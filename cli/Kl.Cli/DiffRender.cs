@@ -91,6 +91,7 @@ public static class DiffRender
         public const string BoldAccent = "\u001b[1;38;2;99;168;248m";
         public const string ActiveTab = "\u001b[1;100m\u001b[97m";
         public const string Selection = "\u001b[1;48;2;99;168;248m\u001b[38;2;0;0;46m";
+        public const string Path = "\u001b[38;5;109m";
         public const string UserMessage = "\u001b[48;5;236m";
         public const string Composer = "\u001b[48;5;236m\u001b[38;5;252m";
         public const string Warning = "\u001b[38;5;179m";

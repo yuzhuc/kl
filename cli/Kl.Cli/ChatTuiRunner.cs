@@ -396,6 +396,12 @@ public static class ChatTuiRunner
                         case ChatKeyAction.MentionPickerDown:
                             MentionPicker.MoveSelection(state, 1);
                             break;
+                        case ChatKeyAction.MentionPickerPreviousFilter:
+                            MentionPicker.MoveFilter(state, -1);
+                            break;
+                        case ChatKeyAction.MentionPickerNextFilter:
+                            MentionPicker.MoveFilter(state, 1);
+                            break;
                         case ChatKeyAction.MentionPickerAccept:
                             MentionPicker.Accept(state);
                             break;

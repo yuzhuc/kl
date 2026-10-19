@@ -102,7 +102,7 @@ public sealed class MentionPickerTests
     }
 
     [Fact]
-    public void RendererShowsAtMostEightRowsAndFitsWidth()
+    public void RendererShowsMentionsPanelAndFitsWidth()
     {
         using var workspace = new TempWorkspace();
         for (var index = 0; index < 12; index++)
@@ -115,9 +115,23 @@ public sealed class MentionPickerTests
         state.Cursor = 1;
         MentionPicker.Update(state);
 
-        var lines = ChatTuiRenderer.MentionPickerLines(state, 40);
-        Assert.Equal(8, lines.Count);
-        Assert.All(lines, line => Assert.True(DiffRender.Ansi.VisibleWidth(line) <= 40));
+        var lines = ChatTuiRenderer.MentionPickerLines(state, 80);
+        var plain = string.Join('\n', lines.Select(DiffRender.Ansi.Strip));
+        var narrow = ChatTuiRenderer.MentionPickerLines(state, 40);
+
+        Assert.Equal(17, lines.Count);
+        Assert.Contains("Mentions", plain);
+        Assert.Contains("Files and directories", plain);
+        Assert.Contains("All Results", plain);
+        Assert.Contains("Filesystem Only", plain);
+        Assert.Contains("Type to search mentions", plain);
+        Assert.Contains("enter/tab insert · esc close · ↑/↓ select · ←/→ filter", plain);
+        var rendered = string.Join('\n', lines);
+        Assert.Contains(DiffRender.Ansi.Selection, rendered);
+        Assert.Contains(DiffRender.Ansi.ActiveTab, rendered);
+        Assert.Contains(DiffRender.Ansi.Cyan, rendered);
+        Assert.All(lines, line => Assert.True(DiffRender.Ansi.VisibleWidth(line) <= 80));
+        Assert.All(narrow, line => Assert.True(DiffRender.Ansi.VisibleWidth(line) <= 40));
     }
 
     [Fact]
@@ -148,6 +162,10 @@ public sealed class MentionPickerTests
             ChatKeyMapper.Map(Key(ConsoleKey.UpArrow), state));
         Assert.Equal(ChatKeyAction.MentionPickerDown,
             ChatKeyMapper.Map(Key(ConsoleKey.DownArrow), state));
+        Assert.Equal(ChatKeyAction.MentionPickerPreviousFilter,
+            ChatKeyMapper.Map(Key(ConsoleKey.LeftArrow), state));
+        Assert.Equal(ChatKeyAction.MentionPickerNextFilter,
+            ChatKeyMapper.Map(Key(ConsoleKey.RightArrow), state));
         Assert.Equal(ChatKeyAction.MentionPickerAccept,
             ChatKeyMapper.Map(Key(ConsoleKey.Enter), state));
         Assert.Equal(ChatKeyAction.MentionPickerAccept,
@@ -172,6 +190,23 @@ public sealed class MentionPickerTests
         Assert.Equal(1, state.TranscriptScroll);
     }
 
+    [Fact]
+    public void FiltersCycleAndResetSelection()
+    {
+        using var workspace = new TempWorkspace();
+        workspace.File("a.txt", "a");
+        workspace.File("b.txt", "b");
+        var state = new ChatTuiState(workspace.Path);
+        state.Insert('@');
+        MentionPicker.MoveSelection(state, 1);
+
+        MentionPicker.MoveFilter(state, 1);
+        Assert.Equal(MentionFilter.FilesystemOnly, state.MentionPicker.Filter);
+        Assert.Equal(0, state.MentionPicker.Selection);
+
+        MentionPicker.MoveFilter(state, 1);
+        Assert.Equal(MentionFilter.AllResults, state.MentionPicker.Filter);
+    }
     private static ConsoleKeyInfo Key(ConsoleKey key) =>
         new('\0', key, shift: false, alt: false, control: false);
     private sealed class TempWorkspace : IDisposable

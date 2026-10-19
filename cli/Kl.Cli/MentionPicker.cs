@@ -1,5 +1,10 @@
 namespace Kl.Cli;
 
+public enum MentionFilter
+{
+    AllResults,
+    FilesystemOnly
+}
 public sealed class MentionPickerState
 {
     public bool Open { get; set; }
@@ -8,6 +13,7 @@ public sealed class MentionPickerState
     public int Start { get; set; }
     public string Query { get; set; } = string.Empty;
     public int Selection { get; set; }
+    public MentionFilter Filter { get; set; } = MentionFilter.AllResults;
     public bool Loaded { get; set; }
     public List<string> Files { get; set; } = [];
     public List<string> Matches { get; set; } = [];
@@ -104,6 +110,18 @@ public static class MentionPicker
         picker.Selection = (picker.Selection + delta + count) % count;
     }
 
+    public static void MoveFilter(ChatTuiState state, int delta)
+    {
+        if (!IsOpen(state))
+        {
+            return;
+        }
+
+        var values = Enum.GetValues<MentionFilter>();
+        var index = Array.IndexOf(values, state.MentionPicker.Filter);
+        state.MentionPicker.Filter = values[(index + delta + values.Length) % values.Length];
+        state.MentionPicker.Selection = 0;
+    }
     public static string? Selected(ChatTuiState state)
     {
         var picker = state.MentionPicker;

@@ -416,38 +416,39 @@ public static class ChatTexts
         T(language, $"{value}d ago", $"{value}天前");
 
     public static string ShortcutsTitle(UiLanguage language) =>
-        T(language, "Shortcuts", "快捷键");
+        T(language, "Keyboard shortcuts", "键盘快捷键");
 
-    public static IReadOnlyList<string> Shortcuts(UiLanguage language) =>
+    public static IReadOnlyList<(string Title, IReadOnlyList<(string Key, string Label)> Entries)>
+        ChatShortcutGroups(UiLanguage language) =>
         language == UiLanguage.ChineseSimplified
-            ? new[]
-            {
-                "Enter            发送消息",
-                "Ctrl+C           取消当前 turn；有选择时复制；空闲时退出",
-                "Shift+↑/↓        扩展聊天记录选择",
-                "Ctrl+Shift+C     复制最后一条助手消息",
-                "/copy            复制最后一条助手消息",
-                "Ctrl+L           清屏并重绘",
-                "Ctrl+D           退出",
-                "Ctrl+R           显示/隐藏 reasoning",
-                "↑ / ↓            滚动聊天记录",
-                "?                显示或关闭此页",
-                "Esc              返回"
-            }
-            : new[]
-            {
-                "Enter            send message",
-                "Ctrl+C           cancel turn, copy selection, or exit when idle",
-                "Shift+↑/↓        extend transcript selection",
-                "Ctrl+Shift+C     copy the last assistant message",
-                "/copy            copy the last assistant message",
-                "Ctrl+L           clear the screen and redraw",
-                "Ctrl+D           exit",
-                "Ctrl+R           show or hide reasoning",
-                "↑ / ↓            scroll transcript",
-                "?                show or close this shortcut page",
-                "Esc              back"
-            };
+            ? [
+                ("编辑", [
+                    ("/", "命令"), ("@", "提及文件"), ("Enter", "发送消息"),
+                    ("Ctrl+Shift+C", "复制最后消息"), ("/copy", "复制最后消息")
+                ]),
+                ("会话", [
+                    ("Ctrl+C", "取消 / 复制 / 退出"), ("Ctrl+R", "显示或隐藏推理"),
+                    ("Ctrl+L", "清屏"), ("Ctrl+D", "退出")
+                ]),
+                ("聊天记录（先打开）", [
+                    ("↑/↓", "滚动"), ("Shift+↑/↓", "选择"), ("Ctrl+C", "复制选择"),
+                    ("Esc", "返回")
+                ])
+            ]
+            : [
+                ("Compose", [
+                    ("/", "Commands"), ("@", "Mention files"), ("Enter", "Send message"),
+                    ("Ctrl+Shift+C", "Copy last message"), ("/copy", "Copy last message")
+                ]),
+                ("Session", [
+                    ("Ctrl+C", "Cancel / copy / exit"), ("Ctrl+R", "Show or hide reasoning"),
+                    ("Ctrl+L", "Clear screen"), ("Ctrl+D", "Exit")
+                ]),
+                ("Transcript (open first)", [
+                    ("↑/↓", "Scroll"), ("Shift+↑/↓", "Select"), ("Ctrl+C", "Copy selection"),
+                    ("Esc", "Back")
+                ])
+            ];
 
     public static IReadOnlyList<string> Home(UiLanguage language)
     {
@@ -477,8 +478,23 @@ public static class ChatTexts
         ];
     }
 
-    public static string MentionFooter(UiLanguage language) =>
-        T(language, "↑/↓ select  Enter/Tab insert  Esc close", "↑/↓ 选择  Enter/Tab 插入  Esc 关闭");
+    public static string MentionTitle(UiLanguage language) =>
+        T(language, "Mentions", "提及");
+
+    public static string MentionDescription(UiLanguage language) =>
+        T(language, "Files and directories", "文件与目录");
+
+    public static string MentionSearchPrompt(UiLanguage language) =>
+        T(language, "Type to search mentions", "输入以搜索提及");
+
+
+    public static string MentionFilterLabel(UiLanguage language, MentionFilter filter) =>
+        filter == MentionFilter.FilesystemOnly
+            ? T(language, "Filesystem Only", "仅文件系统")
+            : T(language, "All Results", "全部结果");
+
+    public static string MentionFileType(UiLanguage language) =>
+        T(language, "File", "文件");
 
     public static string NoFilesFound(UiLanguage language) =>
         T(language, "No files found", "未找到文件");

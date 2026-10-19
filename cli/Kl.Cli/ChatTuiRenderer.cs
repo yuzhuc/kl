@@ -33,11 +33,14 @@ public static class ChatTuiRenderer
 
         width = Math.Max(20, width);
         height = Math.Max(8, height);
+        var chatLike = state.Screen == ChatScreen.Chat
+            || (state.Screen == ChatScreen.Shortcuts
+                && state.ShortcutReturnScreen == ChatScreen.Chat);
         var showHeader = state.Screen != ChatScreen.History;
-        var showSeparator = showHeader && !IsHome(state);
-        var showInput = state.Screen == ChatScreen.Chat;
-        var showModelLine = state.Screen == ChatScreen.Chat;
-        var topMargin = state.Screen == ChatScreen.Chat ? 1 : 0;
+        var showSeparator = state.Screen == ChatScreen.Chat && !IsHome(state);
+        var showInput = chatLike;
+        var showModelLine = chatLike;
+        var topMargin = chatLike ? 1 : 0;
         var bodyHeight = Math.Max(
             1,
             height - topMargin - (showHeader ? 2 : 0) - (showSeparator ? 1 : 0) -
@@ -271,7 +274,7 @@ public static class ChatTuiRenderer
         var path = DisplayWorkspacePath(state);
         var available = Math.Max(1, width - 5);
         return DiffRender.Ansi.Fit(
-            "     " + DiffRender.Ansi.Secondary +
+            "     " + DiffRender.Ansi.Path +
             DisplayText.Ellipsize(path, available) + DiffRender.Ansi.Reset,
             width);
     }
@@ -878,18 +881,74 @@ public static class ChatTuiRenderer
         }
 
         var language = state.Language;
+        var groups = ChatTexts.ChatShortcutGroups(language);
         var lines = new List<string>
         {
-            ChatTexts.ShortcutsTitle(language),
+            DiffRender.Ansi.Bold + ChatTexts.ShortcutsTitle(language) + DiffRender.Ansi.Reset,
             string.Empty
         };
-        lines.AddRange(ChatTexts.Shortcuts(language));
-        var wrapped = new List<string>();
-        foreach (var line in lines)
+
+        if (width >= 70)
         {
-            wrapped.AddRange(DisplayText.WrapToWidth(line, width));
+            var columnWidth = Math.Max(18, (width - 4) / groups.Count);
+            var keyWidths = groups
+                .Select(group => group.Entries.Max(entry => DisplayText.Width(entry.Key)))
+                .ToArray();
+            lines.Add(DiffRender.Ansi.Fit(
+                string.Join(
+                    "  ",
+                    groups.Select(group =>
+                        DiffRender.Ansi.Fit(
+                            DiffRender.Ansi.Bold + group.Title + DiffRender.Ansi.Reset,
+                            columnWidth))),
+                width));
+            var rows = groups.Max(group => group.Entries.Count);
+            for (var row = 0; row < rows; row++)
+            {
+                var columns = new List<string>(groups.Count);
+                for (var column = 0; column < groups.Count; column++)
+                {
+                    var entries = groups[column].Entries;
+                    if (row >= entries.Count)
+                    {
+                        columns.Add(DiffRender.Ansi.Fit(string.Empty, columnWidth));
+                        continue;
+                    }
+                    var entry = entries[row];
+                    var padding = keyWidths[column] - DisplayText.Width(entry.Key) + 2;
+                    columns.Add(DiffRender.Ansi.Fit(
+                        DiffRender.Ansi.BoldAccent + entry.Key + DiffRender.Ansi.Reset +
+                        new string(' ', padding) + entry.Label,
+                        columnWidth));
+                }
+                lines.Add(DiffRender.Ansi.Fit(string.Join("  ", columns), width));
+            }
         }
-        return PadBody(wrapped.Take(bodyHeight).ToList(), bodyHeight);
+        else
+        {
+            foreach (var group in groups)
+            {
+                lines.Add(DiffRender.Ansi.Bold + group.Title + DiffRender.Ansi.Reset);
+                var keyWidth = group.Entries.Max(entry => DisplayText.Width(entry.Key));
+                foreach (var entry in group.Entries)
+                {
+                    var padding = keyWidth - DisplayText.Width(entry.Key) + 2;
+                    lines.Add(DiffRender.Ansi.Fit(
+                        DiffRender.Ansi.BoldAccent + entry.Key + DiffRender.Ansi.Reset +
+                        new string(' ', padding) + entry.Label,
+                        width));
+                }
+                lines.Add(string.Empty);
+            }
+        }
+
+        lines.Add(string.Empty);
+        lines.Add(
+            DiffRender.Ansi.Accent + "/settings" + DiffRender.Ansi.Reset +
+            DiffRender.Ansi.Secondary + " " +
+            ChatTexts.T(language, "customize", "自定义") +
+            DiffRender.Ansi.Reset);
+        return PadBody(lines.Take(bodyHeight).ToList(), bodyHeight);
     }
 
     private static List<string> RenderHistoryShortcutsBody(
@@ -1068,29 +1127,140 @@ public static class ChatTuiRenderer
             return [];
         }
 
+        var language = state.Language;
         var matches = state.MentionPicker.Matches;
+        var query = state.MentionPicker.Query;
+        var lines = new List<string>
+        {
+            DiffRender.Ansi.Bold + ChatTexts.MentionTitle(language) + DiffRender.Ansi.Reset,
+            DiffRender.Ansi.Secondary + ChatTexts.MentionDescription(language) + DiffRender.Ansi.Reset,
+            string.Empty,
+            RenderMentionTabs(state, width, language),
+            string.Empty,
+            DiffRender.Ansi.Secondary +
+                (query.Length == 0 ? ChatTexts.MentionSearchPrompt(language) : query) +
+                DiffRender.Ansi.Reset,
+            string.Empty
+        };
+
+        const int panelChrome = 9;
+        var availableRows = Math.Min(
+            MentionPicker.MaxVisible,
+            Math.Max(0, maximumLines - panelChrome));
+        var selected = matches.Count == 0
+            ? 0
+            : Math.Clamp(state.MentionPicker.Selection, 0, matches.Count - 1);
+        var start = matches.Count == 0
+            ? 0
+            : Math.Clamp(
+                selected - availableRows + 1,
+                0,
+                Math.Max(0, matches.Count - availableRows));
+        var count = Math.Min(availableRows, Math.Max(0, matches.Count - start));
         if (matches.Count == 0)
         {
-            return [DiffRender.Ansi.Dim + ChatTexts.NoFilesFound(state.Language) + DiffRender.Ansi.Reset];
+            lines.Add(
+                "  " + DiffRender.Ansi.Secondary +
+                ChatTexts.NoFilesFound(language) + DiffRender.Ansi.Reset);
+        }
+        else
+        {
+            var maxNameWidth = matches
+                .Select(MentionName)
+                .Max(name => DisplayText.Width(name));
+            for (var index = start; index < start + count; index++)
+            {
+                lines.Add(RenderMentionRow(
+                    matches[index],
+                    index == selected,
+                    width,
+                    maxNameWidth,
+                    language));
+            }
         }
 
-        var visible = Math.Min(MentionPicker.MaxVisible, maximumLines);
-        var selected = Math.Clamp(state.MentionPicker.Selection, 0, matches.Count - 1);
-        var start = Math.Clamp(
-            selected - visible + 1,
-            0,
-            Math.Max(0, matches.Count - visible));
-        var count = Math.Min(visible, matches.Count - start);
-        var lines = new List<string>(count);
-        for (var index = start; index < start + count; index++)
+        lines.Add(string.Empty);
+        lines.Add(DiffRender.Ansi.Fit(
+            RenderInlineHint(
+                [
+                    ("enter/tab", ChatTexts.T(language, "insert", "插入")),
+                    ("esc", ChatTexts.T(language, "close", "关闭")),
+                    ("↑/↓", ChatTexts.T(language, "select", "选择")),
+                    ("←/→", ChatTexts.T(language, "filter", "过滤"))
+                ]),
+            width));
+        return lines.Take(Math.Max(1, maximumLines)).ToList();
+    }
+
+    private static string RenderMentionTabs(
+        ChatTuiState state,
+        int width,
+        UiLanguage language)
+    {
+        var filters = Enum.GetValues<MentionFilter>();
+        var tabs = filters.Select(filter =>
         {
-            var row = (index == selected ? "› " : "  ") + matches[index];
-            var fitted = DiffRender.Ansi.Fit(row, width);
-            lines.Add(index == selected
-                ? DiffRender.Ansi.Inverse + fitted + DiffRender.Ansi.Reset
-                : fitted);
+            var label = ChatTexts.MentionFilterLabel(language, filter);
+            return filter == state.MentionPicker.Filter
+                ? DiffRender.Ansi.ActiveTab + " " + label + " " + DiffRender.Ansi.Reset
+                : DiffRender.Ansi.Secondary + "  " + label + "  " + DiffRender.Ansi.Reset;
+        });
+        return DiffRender.Ansi.Fit(string.Join(" ", tabs), width);
+    }
+
+    private static string RenderMentionRow(
+        string path,
+        bool selected,
+        int width,
+        int maxNameWidth,
+        UiLanguage language)
+    {
+        var name = MentionName(path);
+        var parent = MentionParent(path);
+        var type = ChatTexts.MentionFileType(language);
+        var typeWidth = Math.Max(4, DisplayText.Width(type));
+        var contentWidth = Math.Max(1, width - 2 - typeWidth - 2);
+        var nameWidth = Math.Min(
+            Math.Max(4, contentWidth / 2),
+            Math.Max(4, maxNameWidth));
+        var pathWidth = Math.Max(0, contentWidth - nameWidth - 2);
+        var nameCell = DisplayText.PadToWidth(
+            DisplayText.Ellipsize(name, nameWidth),
+            nameWidth);
+        var pathCell = pathWidth > 0
+            ? DisplayText.PadToWidth(DisplayText.Ellipsize(parent, pathWidth), pathWidth)
+            : string.Empty;
+        var typeCell = PadLeftToWidth(type, typeWidth);
+        var marker = selected ? "› " : "  ";
+        if (selected)
+        {
+            var plain = marker + nameCell +
+                (pathWidth > 0 ? "  " + pathCell : string.Empty) +
+                "  " + typeCell;
+            return DiffRender.Ansi.Selection +
+                DiffRender.Ansi.Fit(plain, width) +
+                DiffRender.Ansi.Reset;
         }
-        return lines;
+
+        return DiffRender.Ansi.Fit(
+            marker + DiffRender.Ansi.Cyan + nameCell + DiffRender.Ansi.Reset +
+            (pathWidth > 0
+                ? "  " + DiffRender.Ansi.Secondary + pathCell + DiffRender.Ansi.Reset
+                : string.Empty) +
+            "  " + typeCell,
+            width);
+    }
+
+    private static string MentionName(string path)
+    {
+        var name = Path.GetFileName(path);
+        return name.Length == 0 ? path : name;
+    }
+
+    private static string MentionParent(string path)
+    {
+        var parent = Path.GetDirectoryName(path)?.Replace('\\', '/');
+        return string.IsNullOrEmpty(parent) ? "./" : parent.Replace('\\', '/') + "/";
     }
     private static string RenderInput(ChatTuiState state, int width)
     {
@@ -1142,7 +1312,7 @@ public static class ChatTuiRenderer
             : string.Empty;
         if (pathText.Length > 0)
         {
-            baseLine += DiffRender.Ansi.Secondary + pathText + DiffRender.Ansi.Reset;
+            baseLine += DiffRender.Ansi.Path + pathText + DiffRender.Ansi.Reset;
         }
         return DiffRender.Ansi.Fit(baseLine, width);
     }
@@ -1155,6 +1325,11 @@ public static class ChatTuiRenderer
             return RenderHistoryFooter(state, width);
         }
 
+        if (MentionPicker.IsOpen(state))
+        {
+            return string.Empty;
+        }
+
         if (state.Screen == ChatScreen.Shortcuts
             && state.ShortcutReturnScreen == ChatScreen.History)
         {
@@ -1162,15 +1337,20 @@ public static class ChatTuiRenderer
                 [("Esc", ChatTexts.T(state.Language, "back", "返回"))]);
         }
 
+        if (state.Screen == ChatScreen.Shortcuts)
+        {
+            return "  " + DiffRender.Ansi.Bold + "?" + DiffRender.Ansi.Reset +
+                DiffRender.Ansi.Secondary + " / " + DiffRender.Ansi.Reset +
+                DiffRender.Ansi.Bold + "esc" + DiffRender.Ansi.Reset +
+                DiffRender.Ansi.Secondary + " close" + DiffRender.Ansi.Reset;
+        }
+
         string hints;
         if (state.ModelPicker.IsOpen)
         {
             hints = ChatTexts.ModelPickerFooter(language);
         }
-        else if (MentionPicker.IsOpen(state))
-        {
-            hints = ChatTexts.MentionFooter(language);
-        }
+
         else if (ChatCommandPalette.IsOpen(state))
         {
             hints = ChatTexts.PaletteFooter(language);

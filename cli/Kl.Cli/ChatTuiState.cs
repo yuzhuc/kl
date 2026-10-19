@@ -41,6 +41,8 @@ public enum ChatKeyAction
     CommandPaletteClose,
     MentionPickerUp,
     MentionPickerDown,
+    MentionPickerPreviousFilter,
+    MentionPickerNextFilter,
     MentionPickerAccept,
     MentionPickerClose,
     CancelOrExit,
@@ -962,6 +964,10 @@ public static class ChatKeyMapper
                     return ChatKeyAction.MentionPickerUp;
                 case ConsoleKey.DownArrow:
                     return ChatKeyAction.MentionPickerDown;
+                case ConsoleKey.LeftArrow:
+                    return ChatKeyAction.MentionPickerPreviousFilter;
+                case ConsoleKey.RightArrow:
+                    return ChatKeyAction.MentionPickerNextFilter;
                 case ConsoleKey.Enter:
                 case ConsoleKey.Tab:
                     return ChatKeyAction.MentionPickerAccept;

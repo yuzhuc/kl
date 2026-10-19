@@ -103,7 +103,7 @@ public sealed class ChatTuiTests
             DiffRender.Ansi.Secondary + " (v0.1.0)" + DiffRender.Ansi.Reset,
             render);
         Assert.Contains(
-            "     " + DiffRender.Ansi.Secondary + "D:\\kl" + DiffRender.Ansi.Reset,
+            "     " + DiffRender.Ansi.Path + "D:\\kl" + DiffRender.Ansi.Reset,
             render);
         Assert.Contains(
             DiffRender.Ansi.Bold + "/init" + DiffRender.Ansi.Reset +
@@ -115,7 +115,7 @@ public sealed class ChatTuiTests
             "  " + DiffRender.Ansi.BoldAccent + "openai/gpt-5" +
             DiffRender.Ansi.Reset + " " + DiffRender.Ansi.Bold + "high" +
             DiffRender.Ansi.Reset + DiffRender.Ansi.Secondary + " · " +
-            DiffRender.Ansi.Reset + DiffRender.Ansi.Secondary + "D:\\kl" +
+            DiffRender.Ansi.Reset + DiffRender.Ansi.Path + "D:\\kl" +
             DiffRender.Ansi.Reset,
             render);
     }
@@ -147,6 +147,26 @@ public sealed class ChatTuiTests
 
         Assert.Contains("openai/gpt-5 · D:\\kl", plain);
         Assert.DoesNotContain("openai/gpt-5 default", plain);
+    }
+    [Fact]
+    public void ShortcutsPageUsesCodexGroupsAndFooter()
+    {
+        var state = new ChatTuiState("D:\\kl", "openai", "gpt-5", "s1")
+        {
+            Screen = ChatScreen.Shortcuts,
+            ShortcutReturnScreen = ChatScreen.Chat,
+            ReasoningEffort = "high"
+        };
+
+        var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(110, 30, state));
+
+        Assert.Contains("Keyboard shortcuts", plain);
+        Assert.Contains("Compose", plain);
+        Assert.Contains("Session", plain);
+        Assert.Contains("Transcript (open first)", plain);
+        Assert.Contains("/settings customize", plain);
+        Assert.Contains("openai/gpt-5 high · D:\\kl", plain);
+        Assert.EndsWith("? / esc close", plain.Split('\n')[^1].TrimEnd());
     }
     [Fact]
     public void UserMessageUsesBlockFillAndSecondaryTextIsNotDim()
@@ -832,6 +852,24 @@ public sealed class ChatTuiTests
             Assert.True(DiffRender.Ansi.VisibleWidth(line) <= width));
     }
 
+    [Theory]
+    [InlineData(40)]
+    [InlineData(60)]
+    [InlineData(80)]
+    [InlineData(120)]
+    public void ShortcutsPageFitsWidth(int width)
+    {
+        var state = new ChatTuiState("D:\\kl", "openai", "gpt-5", "s1")
+        {
+            Screen = ChatScreen.Shortcuts,
+            ShortcutReturnScreen = ChatScreen.Chat
+        };
+
+        var render = ChatTuiRenderer.Render(width, 24, state);
+
+        Assert.All(render.Split('\n'), line =>
+            Assert.True(DiffRender.Ansi.VisibleWidth(line) <= width));
+    }
     [Theory]
     [InlineData(40)]
     [InlineData(60)]
