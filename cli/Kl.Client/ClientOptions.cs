@@ -14,6 +14,6 @@ public sealed class KlSessionOptions
     public string? Provider { get; init; }
     public string? Model { get; init; }
     public string? Quality { get; init; }
-    public string? Agent { get; init; }
+    public string? Agent { get; set; }
     public bool Verbose { get; init; }
 }
