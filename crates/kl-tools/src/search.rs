@@ -16,6 +16,10 @@ impl Tool for GrepTool {
         "grep"
     }
 
+    fn read_only(&self, _args: &Value) -> bool {
+        true
+    }
+
     fn description(&self) -> &'static str {
         "Search workspace text files with a regular expression."
     }
@@ -122,6 +126,10 @@ pub struct GlobTool;
 impl Tool for GlobTool {
     fn name(&self) -> &'static str {
         "glob"
+    }
+
+    fn read_only(&self, _args: &Value) -> bool {
+        true
     }
 
     fn description(&self) -> &'static str {

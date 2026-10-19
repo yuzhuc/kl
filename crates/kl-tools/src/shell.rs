@@ -16,6 +16,10 @@ impl Tool for ShellTool {
         "shell"
     }
 
+    fn destructive(&self, _args: &Value) -> bool {
+        true
+    }
+
     fn description(&self) -> &'static str {
         "Run a shell command in the workspace. Use for builds, tests and other CLI tools."
     }
@@ -77,6 +81,10 @@ pub struct GitTool;
 impl Tool for GitTool {
     fn name(&self) -> &'static str {
         "git"
+    }
+
+    fn destructive(&self, _args: &Value) -> bool {
+        true
     }
 
     fn description(&self) -> &'static str {
