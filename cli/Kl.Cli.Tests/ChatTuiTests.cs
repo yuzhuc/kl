@@ -637,6 +637,24 @@ public sealed class ChatTuiTests
     }
 
     [Fact]
+    public void StickyHeaderDoesNotFlickerWhenANewerPromptIsVisible()
+    {
+        var state = new ChatTuiState();
+        state.Transcript.Add(new TranscriptEntry(TranscriptKind.User, "old prompt"));
+        state.Transcript.Add(new TranscriptEntry(
+            TranscriptKind.Assistant,
+            string.Join('\n', Enumerable.Range(1, 30).Select(index => $"old answer {index}"))));
+        state.Transcript.Add(new TranscriptEntry(TranscriptKind.User, "new prompt"));
+        state.Transcript.Add(new TranscriptEntry(TranscriptKind.Assistant, "new answer"));
+
+        var lines = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state))
+            .Split('\n');
+
+        Assert.Contains(lines, line => line.Contains("> new prompt", StringComparison.Ordinal));
+        Assert.DoesNotContain(lines, line =>
+            line.TrimStart().StartsWith("› old prompt", StringComparison.Ordinal));
+    }
+    [Fact]
     public void VisiblePromptIsNotDuplicatedByStickyHeader()
     {
         var state = new ChatTuiState();

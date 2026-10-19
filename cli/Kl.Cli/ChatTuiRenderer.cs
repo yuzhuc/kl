@@ -462,9 +462,9 @@ public static class ChatTuiRenderer
         UserPromptSpan? prompt = layout.Prompts.LastOrDefault(
             candidate => candidate.Start <= start);
         var contentHeight = bodyHeight;
-        var promptVisible = prompt is not null
-            && prompt.Start >= start
-            && prompt.Start < start + bodyHeight;
+        var promptVisible = layout.Prompts.Any(candidate =>
+            candidate.Start >= start
+            && candidate.Start < start + bodyHeight);
         if (prompt is not null && !promptVisible && bodyHeight > 1)
         {
             contentHeight = bodyHeight - 1;
