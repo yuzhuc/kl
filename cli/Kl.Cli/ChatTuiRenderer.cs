@@ -459,17 +459,14 @@ public static class ChatTuiRenderer
         var maximum = Math.Max(0, lines.Count - bodyHeight);
         var scroll = Math.Clamp(state.TranscriptScroll, 0, maximum);
         var start = Math.Max(0, lines.Count - bodyHeight - scroll);
-        UserPromptSpan? prompt = layout.Prompts.LastOrDefault(
-            candidate => candidate.Start <= start);
+        UserPromptSpan? prompt = state.HasReplayedHistory || lines.Count > bodyHeight
+            ? layout.Prompts.LastOrDefault()
+            : null;
         var contentHeight = bodyHeight;
-        var promptVisible = layout.Prompts.Any(candidate =>
-            candidate.Start >= start
-            && candidate.Start < start + bodyHeight);
-        if (prompt is not null && !promptVisible && bodyHeight > 1)
+        if (prompt is not null && bodyHeight > 1)
         {
             contentHeight = bodyHeight - 1;
             start = Math.Max(0, lines.Count - contentHeight - scroll);
-            prompt = layout.Prompts.LastOrDefault(candidate => candidate.Start <= start) ?? prompt;
         }
         var visible = lines
             .Skip(start)
@@ -480,9 +477,7 @@ public static class ChatTuiRenderer
             .Take(contentHeight)
             .ToList();
         return new ChatTranscriptWindow(
-            prompt is null || promptVisible
-                ? null
-                : RenderStickyPrompt(prompt.Text, width),
+            prompt is null ? null : RenderStickyPrompt(prompt.Text, width),
             start,
             contentHeight,
             visible,
