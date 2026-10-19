@@ -73,12 +73,50 @@ pub enum ToolError {
     NotFound(String),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InterruptBehavior {
+    Cancel,
+    Continue,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolSource {
+    Builtin,
+    Sidecar,
+    Wasm,
+    Mcp,
+}
+
 pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
     fn parameters(&self) -> Value;
     fn policy_request(&self, args: &Value) -> Result<PolicyRequest, ToolError>;
     fn execute(&self, context: &ToolContext<'_>, args: &Value) -> Result<ToolOutcome, ToolError>;
+
+    fn read_only(&self, _args: &Value) -> bool {
+        false
+    }
+
+    fn destructive(&self, _args: &Value) -> bool {
+        false
+    }
+
+    fn concurrency_safe(&self, args: &Value) -> bool {
+        self.read_only(args)
+    }
+
+    fn interrupt_behavior(&self) -> InterruptBehavior {
+        InterruptBehavior::Cancel
+    }
+
+    fn max_result_chars(&self) -> usize {
+        30_000
+    }
+
+    fn source(&self) -> ToolSource {
+        ToolSource::Builtin
+    }
 
     fn definition(&self) -> ToolDefinition {
         ToolDefinition {
@@ -198,6 +236,26 @@ mod tests {
             sandbox: Arc::new(SandboxManager::policy_only()),
             timeout: Duration::from_secs(20),
             max_output_bytes: 64 * 1024,
+        }
+    }
+
+    #[test]
+    fn builtin_tool_metadata() {
+        let registry = ToolRegistry::builtin();
+
+        for name in ["read_file", "grep", "glob"] {
+            let tool = registry.get(name).unwrap();
+            assert!(tool.read_only(&json!({})), "{name}");
+            assert!(tool.concurrency_safe(&json!({})), "{name}");
+            assert_eq!(tool.source(), ToolSource::Builtin);
+        }
+
+        for name in ["write_file", "edit_file", "shell", "git"] {
+            let tool = registry.get(name).unwrap();
+            assert!(tool.destructive(&json!({})), "{name}");
+            assert!(!tool.read_only(&json!({})), "{name}");
+            assert!(!tool.concurrency_safe(&json!({})), "{name}");
+            assert_eq!(tool.source(), ToolSource::Builtin);
         }
     }
 

@@ -13,6 +13,10 @@ impl Tool for ReadFileTool {
         "read_file"
     }
 
+    fn read_only(&self, _args: &Value) -> bool {
+        true
+    }
+
     fn description(&self) -> &'static str {
         "Read a text file inside the workspace. Returns numbered lines."
     }
@@ -85,6 +89,10 @@ impl Tool for WriteFileTool {
         "write_file"
     }
 
+    fn destructive(&self, _args: &Value) -> bool {
+        true
+    }
+
     fn description(&self) -> &'static str {
         "Create or replace a text file inside the workspace."
     }
@@ -145,6 +153,10 @@ pub struct EditFileTool;
 impl Tool for EditFileTool {
     fn name(&self) -> &'static str {
         "edit_file"
+    }
+
+    fn destructive(&self, _args: &Value) -> bool {
+        true
     }
 
     fn description(&self) -> &'static str {
