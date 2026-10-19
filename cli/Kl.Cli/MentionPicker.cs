@@ -146,7 +146,6 @@ public static class MentionPicker
         }
 
         var replacement = "@" + path + " ";
-        state.ResetInputScroll();
         state.Input = state.Input[..picker.Start] + replacement + state.Input[end..];
         state.Cursor = picker.Start + replacement.Length;
         Close(state);

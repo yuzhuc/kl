@@ -54,7 +54,7 @@ public sealed class ChatTuiTests
         };
         lines.AddRange(Enumerable.Repeat(string.Empty, 8));
         lines.Add(new string('─', 80));
-        lines.Add("  › Ask KL to do anything");
+        lines.Add("› Ask KL to do anything");
         lines.Add(new string('─', 80));
         lines.Add("  no provider configured · D:\\kl");
         lines.Add("  ← for agents · ? for shortcuts");
@@ -83,7 +83,7 @@ public sealed class ChatTuiTests
         };
         lines.AddRange(Enumerable.Repeat(string.Empty, 8));
         lines.Add(new string('─', 80));
-        lines.Add("  › 让 KL 做点什么，或输入 / 查看命令");
+        lines.Add("› 让 KL 做点什么，或输入 / 查看命令");
         lines.Add(new string('─', 80));
         lines.Add("  未配置 Provider · D:\\kl");
         lines.Add("  ← 代理 · ? 快捷键");
@@ -192,7 +192,7 @@ public sealed class ChatTuiTests
 
         Assert.True(render.Split('\n').Count(line => line == rule) >= 2);
         Assert.Contains(
-            "  " + DiffRender.Ansi.Bold + "›" + DiffRender.Ansi.Reset + " " +
+            DiffRender.Ansi.Bold + "›" + DiffRender.Ansi.Reset + " " +
             DiffRender.Ansi.Secondary + KlBrand.InputPlaceholder + DiffRender.Ansi.Reset,
             render);
     }
@@ -229,29 +229,23 @@ public sealed class ChatTuiTests
     }
 
     [Fact]
-    public void MultilineInputCanScrollManually()
+    public void UpDownMovesMultilineCursorAndArrowFollowsIt()
     {
         var state = new ChatTuiState();
         state.Input = string.Join('\n', Enumerable.Range(1, 12).Select(index => $"line {index}"));
         state.Cursor = state.Input.Length;
 
-        var maximum = ChatTuiRenderer.MaxInputScroll(state, 80, 24);
-        Assert.True(maximum > 0);
-        Assert.Equal(maximum, ChatTuiRenderer.CurrentInputScroll(state, 80, 24));
+        Assert.True(ChatTuiRenderer.CanMoveInputCursorVertical(state, 80));
+        Assert.True(ChatTuiRenderer.MoveInputCursorVertical(state, 80, -1));
 
-        state.SetInputScroll(0, maximum);
         var lines = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state))
             .Split('\n')
             .Select(line => line.TrimEnd())
             .ToList();
 
-        Assert.Contains(lines, line => line.EndsWith("line 1", StringComparison.Ordinal));
-        Assert.DoesNotContain(lines, line => line.Contains("line 12|", StringComparison.Ordinal));
-        Assert.True(state.InputScrollManual);
-
-        state.Insert('x');
-        Assert.False(state.InputScrollManual);
-        Assert.Equal(0, state.InputScroll);
+        Assert.Contains(lines, line => line.StartsWith("› ", StringComparison.Ordinal));
+        Assert.Contains(lines, line => line.EndsWith("line 11|", StringComparison.Ordinal));
+        Assert.DoesNotContain(lines, line => line.EndsWith("line 12|", StringComparison.Ordinal));
     }
     [Fact]
     public void ShiftEnterAndCtrlJInsertNewlines()

@@ -104,21 +104,28 @@ public static class ChatTuiRenderer
             TranscriptLines(state, Math.Max(20, width)).Count - bodyHeight);
     }
 
-    public static bool CanScrollInput(ChatTuiState state, int width, int height) =>
-        MaxInputScroll(state, width, height) > 0;
+    public static bool CanMoveInputCursorVertical(ChatTuiState state, int width) =>
+        WrapComposerRanges(state.Input, Math.Max(1, width - 5)).Count > 1;
 
-    public static int MaxInputScroll(ChatTuiState state, int width, int height)
+    public static bool MoveInputCursorVertical(
+        ChatTuiState state,
+        int width,
+        int delta)
     {
-        var (lines, _) = BuildComposerDisplay(state, width);
-        var visible = Math.Min(lines.Count, ComposerTextRowLimit(height));
-        return Math.Max(0, lines.Count - visible);
-    }
+        var ranges = WrapComposerRanges(state.Input, Math.Max(1, width - 5));
+        if (ranges.Count <= 1)
+        {
+            return false;
+        }
 
-    public static int CurrentInputScroll(ChatTuiState state, int width, int height)
-    {
-        var (lines, cursorRow) = BuildComposerDisplay(state, width);
-        var visible = Math.Min(lines.Count, ComposerTextRowLimit(height));
-        return EffectiveInputScroll(state, lines.Count, cursorRow, visible);
+        var (row, column) = LocateComposerCursor(state.Input, ranges, state.Cursor);
+        var target = Math.Clamp(row + delta, 0, ranges.Count - 1);
+        state.Cursor = IndexAtVisualColumn(
+            state.Input,
+            ranges[target].Start,
+            ranges[target].End,
+            column);
+        return true;
     }
     public static int ComposerHeight(ChatTuiState state, int width, int height)
     {
@@ -1333,16 +1340,21 @@ public static class ChatTuiRenderer
     {
         var (lines, cursorRow) = BuildComposerDisplay(state, width);
         var visible = Math.Min(lines.Count, ComposerTextRowLimit(height));
-        var scroll = EffectiveInputScroll(state, lines.Count, cursorRow, visible);
+        var maximum = Math.Max(0, lines.Count - visible);
+        var scroll = Math.Clamp(cursorRow - visible + 1, 0, maximum);
+        if (cursorRow < scroll)
+        {
+            scroll = cursorRow;
+        }
 
         var rule = DiffRender.Ansi.Secondary + new string('─', width) + DiffRender.Ansi.Reset;
         var rows = new List<string>(visible + 2) { rule };
         for (var row = 0; row < visible; row++)
         {
             var index = scroll + row;
-            var prefix = index == 0
-                ? "  " + DiffRender.Ansi.Bold + "›" + DiffRender.Ansi.Reset + " "
-                : "    ";
+            var prefix = index == cursorRow
+                ? DiffRender.Ansi.Bold + "›" + DiffRender.Ansi.Reset + " "
+                : "  ";
             var content = state.Input.Length == 0
                 ? DiffRender.Ansi.Secondary + lines[index] + DiffRender.Ansi.Reset
                 : lines[index];
@@ -1363,40 +1375,128 @@ public static class ChatTuiRenderer
         }
 
         var cursor = Math.Clamp(state.Cursor, 0, state.Input.Length);
-        var lines = WrapComposerText(
-            state.Input.Insert(cursor, "|"),
-            contentWidth);
-        var before = WrapComposerText(state.Input[..cursor], contentWidth);
-        return (lines, Math.Max(0, before.Count - 1));
+        var ranges = WrapComposerRanges(state.Input, contentWidth);
+        var (cursorRow, _) = LocateComposerCursor(state.Input, ranges, cursor);
+        var lines = new List<string>(ranges.Count);
+        for (var index = 0; index < ranges.Count; index++)
+        {
+            var range = ranges[index];
+            var line = state.Input[range.Start..range.End];
+            if (index == cursorRow)
+            {
+                var offset = Math.Clamp(cursor - range.Start, 0, line.Length);
+                line = line.Insert(offset, "|");
+            }
+            lines.Add(line);
+        }
+        return (lines, cursorRow);
     }
 
-    private static List<string> WrapComposerText(string text, int width)
+    private static List<(int Start, int End)> WrapComposerRanges(string text, int width)
     {
         var normalized = text
             .Replace("\r\n", "\n", StringComparison.Ordinal)
             .Replace('\r', '\n');
-        var lines = new List<string>();
-        foreach (var paragraph in normalized.Split('\n'))
+        var lines = new List<(int Start, int End)>();
+        var position = 0;
+        while (true)
         {
-            lines.AddRange(DisplayText.WrapToWidth(paragraph, width));
+            var newline = normalized.IndexOf('\n', position);
+            var end = newline >= 0 ? newline : normalized.Length;
+            AddComposerRange(normalized, position, end, width, lines);
+            if (newline < 0)
+            {
+                break;
+            }
+            position = newline + 1;
+            if (position == normalized.Length)
+            {
+                lines.Add((position, position));
+                break;
+            }
         }
-        return lines.Count == 0 ? new List<string> { string.Empty } : lines;
+        return lines.Count == 0 ? [(0, 0)] : lines;
     }
 
-    private static int EffectiveInputScroll(
-        ChatTuiState state,
-        int lineCount,
-        int cursorRow,
-        int visible)
+    private static void AddComposerRange(
+        string text,
+        int start,
+        int end,
+        int width,
+        List<(int Start, int End)> lines)
     {
-        var maximum = Math.Max(0, lineCount - visible);
-        if (state.InputScrollManual)
+        if (start == end)
         {
-            return Math.Clamp(state.InputScroll, 0, maximum);
+            lines.Add((start, end));
+            return;
         }
 
-        var scroll = Math.Clamp(cursorRow - visible + 1, 0, maximum);
-        return cursorRow < scroll ? cursorRow : scroll;
+        var lineStart = start;
+        var index = start;
+        var used = 0;
+        while (index < end)
+        {
+            var element = StringInfo.GetNextTextElement(text, index);
+            var elementWidth = DisplayText.Width(element);
+            if (used > 0 && used + elementWidth > width)
+            {
+                lines.Add((lineStart, index));
+                lineStart = index;
+                used = 0;
+            }
+            used += elementWidth;
+            index += element.Length;
+            if (used >= width)
+            {
+                lines.Add((lineStart, index));
+                lineStart = index;
+                used = 0;
+            }
+        }
+        if (lineStart < end)
+        {
+            lines.Add((lineStart, end));
+        }
+    }
+
+    private static (int Row, int Column) LocateComposerCursor(
+        string text,
+        IReadOnlyList<(int Start, int End)> ranges,
+        int cursor)
+    {
+        cursor = Math.Clamp(cursor, 0, text.Length);
+        var row = 0;
+        for (var index = 0; index < ranges.Count; index++)
+        {
+            if (cursor >= ranges[index].Start && cursor <= ranges[index].End)
+            {
+                row = index;
+            }
+        }
+        var range = ranges[row];
+        return (row, DisplayText.Width(text[range.Start..cursor]));
+    }
+
+    private static int IndexAtVisualColumn(string text, int start, int end, int column)
+    {
+        var index = start;
+        var used = 0;
+        while (index < end)
+        {
+            var element = StringInfo.GetNextTextElement(text, index);
+            var width = DisplayText.Width(element);
+            if (used + width > column)
+            {
+                break;
+            }
+            used += width;
+            index += element.Length;
+            if (used == column)
+            {
+                break;
+            }
+        }
+        return index;
     }
     private static int ComposerTextRowLimit(int height) =>
         Math.Clamp(height - 8, 1, 6);

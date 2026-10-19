@@ -773,11 +773,9 @@ public static class ChatTuiRunner
                             break;
                         case ChatKeyAction.ScrollUp:
                             if (state.Screen == ChatScreen.Chat
-                                && ChatTuiRenderer.CanScrollInput(state, width, height))
+                                && ChatTuiRenderer.CanMoveInputCursorVertical(state, width))
                             {
-                                state.SetInputScroll(
-                                    ChatTuiRenderer.CurrentInputScroll(state, width, height) - 1,
-                                    ChatTuiRenderer.MaxInputScroll(state, width, height));
+                                ChatTuiRenderer.MoveInputCursorVertical(state, width, -1);
                             }
                             else
                             {
@@ -786,11 +784,9 @@ public static class ChatTuiRunner
                             break;
                         case ChatKeyAction.ScrollDown:
                             if (state.Screen == ChatScreen.Chat
-                                && ChatTuiRenderer.CanScrollInput(state, width, height))
+                                && ChatTuiRenderer.CanMoveInputCursorVertical(state, width))
                             {
-                                state.SetInputScroll(
-                                    ChatTuiRenderer.CurrentInputScroll(state, width, height) + 1,
-                                    ChatTuiRenderer.MaxInputScroll(state, width, height));
+                                ChatTuiRenderer.MoveInputCursorVertical(state, width, 1);
                             }
                             else
                             {
