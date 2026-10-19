@@ -174,9 +174,7 @@ public static class ChatTuiRenderer
     private static List<string> RenderHome(ChatTuiState state, int width)
     {
         var lines = new List<string> { string.Empty };
-        foreach (var line in ChatTexts.Home(
-            state.Language,
-            !string.IsNullOrWhiteSpace(state.Provider)))
+        foreach (var line in ChatTexts.Home(state.Language))
         {
             foreach (var wrapped in DisplayText.WrapToWidth(line, width))
             {
@@ -867,6 +865,10 @@ public static class ChatTuiRenderer
                 bodyHeight,
                 state.Language);
         }
+        else if (MentionPicker.IsOpen(state))
+        {
+            overlay = RenderMentionPicker(state, width, bodyHeight);
+        }
         else if (ChatCommandPalette.IsOpen(state))
         {
             overlay = RenderCommandPalette(state, width, bodyHeight);
@@ -938,6 +940,43 @@ public static class ChatTuiRenderer
         return lines;
     }
 
+    public static List<string> MentionPickerLines(ChatTuiState state, int width) =>
+        RenderMentionPicker(state, Math.Max(20, width), int.MaxValue);
+
+    private static List<string> RenderMentionPicker(
+        ChatTuiState state,
+        int width,
+        int maximumLines)
+    {
+        if (!MentionPicker.IsOpen(state) || maximumLines <= 0)
+        {
+            return [];
+        }
+
+        var matches = state.MentionPicker.Matches;
+        if (matches.Count == 0)
+        {
+            return [DiffRender.Ansi.Dim + ChatTexts.NoFilesFound(state.Language) + DiffRender.Ansi.Reset];
+        }
+
+        var visible = Math.Min(MentionPicker.MaxVisible, maximumLines);
+        var selected = Math.Clamp(state.MentionPicker.Selection, 0, matches.Count - 1);
+        var start = Math.Clamp(
+            selected - visible + 1,
+            0,
+            Math.Max(0, matches.Count - visible));
+        var count = Math.Min(visible, matches.Count - start);
+        var lines = new List<string>(count);
+        for (var index = start; index < start + count; index++)
+        {
+            var row = (index == selected ? "› " : "  ") + matches[index];
+            var fitted = DiffRender.Ansi.Fit(row, width);
+            lines.Add(index == selected
+                ? DiffRender.Ansi.Inverse + fitted + DiffRender.Ansi.Reset
+                : fitted);
+        }
+        return lines;
+    }
     private static string RenderInput(ChatTuiState state, int width)
     {
         string content;
@@ -996,6 +1035,10 @@ public static class ChatTuiRenderer
         if (state.ModelPicker.IsOpen)
         {
             hints = ChatTexts.ModelPickerFooter(language);
+        }
+        else if (MentionPicker.IsOpen(state))
+        {
+            hints = ChatTexts.MentionFooter(language);
         }
         else if (ChatCommandPalette.IsOpen(state))
         {

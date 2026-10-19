@@ -391,6 +391,18 @@ public static class ChatTuiRunner
                         case ChatKeyAction.CommandPaletteClose:
                             state.DismissCommandPalette();
                             break;
+                        case ChatKeyAction.MentionPickerUp:
+                            MentionPicker.MoveSelection(state, -1);
+                            break;
+                        case ChatKeyAction.MentionPickerDown:
+                            MentionPicker.MoveSelection(state, 1);
+                            break;
+                        case ChatKeyAction.MentionPickerAccept:
+                            MentionPicker.Accept(state);
+                            break;
+                        case ChatKeyAction.MentionPickerClose:
+                            MentionPicker.Dismiss(state);
+                            break;
                         case ChatKeyAction.CommandPaletteAccept:
                             var selectedCommand = ChatCommandPalette.Selected(state);
                             if (selectedCommand is null)

@@ -654,6 +654,21 @@ public sealed class ChatTuiTests
         Assert.Equal("new answer", state.Transcript[1].Text);
     }
 
+    [Theory]
+    [InlineData(40)]
+    [InlineData(80)]
+    [InlineData(120)]
+    public void HomeFitsWidth(int width)
+    {
+        var state = new ChatTuiState();
+        state.Settings.SetLanguage(UiLanguage.ChineseSimplified);
+
+        var render = ChatTuiRenderer.Render(width, 24, state);
+
+        Assert.Contains("/init - 创建 AGENTS.md 并写入 KL 指令", render);
+        Assert.All(render.Split('\n'), line =>
+            Assert.True(DiffRender.Ansi.VisibleWidth(line) <= width));
+    }
     private static ConsoleKeyInfo Key(
         ConsoleKey key,
         char character = '\0',
