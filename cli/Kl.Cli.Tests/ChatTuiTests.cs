@@ -1209,6 +1209,91 @@ public sealed class ChatTuiTests
     }
 
     [Fact]
+    public void ExpandingCodeBlockPushesContentDownInsteadOfUp()
+    {
+        var state = new ChatTuiState();
+        for (var index = 0; index < 12; index++)
+        {
+            state.Transcript.Add(new TranscriptEntry(
+                TranscriptKind.Info,
+                $"filler {index}"));
+        }
+        state.Transcript.Add(new TranscriptEntry(TranscriptKind.Info, "anchor"));
+        state.Transcript.Add(new TranscriptEntry(
+            TranscriptKind.Assistant,
+            "```\none\ntwo\nthree\n```"));
+        for (var index = 0; index < 16; index++)
+        {
+            state.Transcript.Add(new TranscriptEntry(
+                TranscriptKind.Info,
+                $"tail {index}"));
+        }
+
+        var before = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state))
+            .Split('\n');
+        var anchorRow = Array.FindIndex(before, line => line.Contains("anchor"));
+        var headerRow = Array.FindIndex(before, line => line.Contains("▸ Code"));
+        Assert.True(anchorRow >= 0);
+        Assert.True(headerRow >= 0);
+
+        Assert.True(ChatTuiRenderer.ToggleTranscriptItemAt(
+            state, 80, 24, headerRow));
+        var after = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state))
+            .Split('\n');
+
+        Assert.Equal(anchorRow, Array.FindIndex(after, line => line.Contains("anchor")));
+        Assert.Equal(headerRow, Array.FindIndex(after, line => line.Contains("▾ Code")));
+        Assert.Contains(after, line => line.Contains("  one"));
+        Assert.Contains(after, line => line.Contains("  two"));
+        Assert.Contains(after, line => line.Contains("  three"));
+    }
+
+    [Fact]
+    public void TruncatedToolOutputShowsFloatingExpandBadge()
+    {
+        var state = new ChatTuiState();
+        state.Transcript.Add(new TranscriptEntry(
+            TranscriptKind.Tool,
+            string.Join('\n', Enumerable.Range(1, 8)
+                .Select(index => $"output {index}"))));
+
+        var collapsedRender = ChatTuiRenderer.Render(80, 24, state);
+        var collapsed = DiffRender.Ansi.Strip(collapsedRender).Split('\n');
+        var row = Array.FindIndex(collapsed, line => line.Contains("• Ran"));
+        Assert.True(row >= 0);
+        Assert.Contains("+4", collapsed[row]);
+        Assert.Contains(
+            DiffRender.Ansi.Selection + " +4 " + DiffRender.Ansi.Reset,
+            collapsedRender);
+        Assert.True(DiffRender.Ansi.VisibleWidth(collapsed[row]) <= 80);
+
+        Assert.True(ChatTuiRenderer.ToggleTranscriptItemAt(state, 80, 24, row));
+        var expanded = DiffRender.Ansi.Strip(
+            ChatTuiRenderer.Render(80, 24, state)).Split('\n');
+        var expandedRow = Array.FindIndex(expanded, line => line.Contains("• Ran"));
+        Assert.True(expandedRow >= 0);
+        Assert.Contains("−", expanded[expandedRow]);
+        Assert.Contains(expanded, line => line.Contains("output 8"));
+    }
+
+    [Fact]
+    public void TruncatedExplorationShowsFloatingBadge()
+    {
+        var state = new ChatTuiState();
+        foreach (var command in new[] { "read one", "read two", "read three", "read four" })
+        {
+            state.Transcript.Add(new TranscriptEntry(TranscriptKind.Tool, command));
+        }
+
+        var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state));
+        var header = plain.Split('\n')
+            .First(line => line.Contains("▸ Explored", StringComparison.Ordinal));
+
+        Assert.Contains("+4", header);
+        Assert.DoesNotContain("… +", plain);
+    }
+
+    [Fact]
     public void ClickingCollapsedCodeBlockExpandsIt()
     {
         var state = new ChatTuiState();
@@ -1222,12 +1307,17 @@ public sealed class ChatTuiTests
             collapsed,
             line => line.Contains("• ▸ Code · 1 line · csharp", StringComparison.Ordinal));
         Assert.True(row >= 0);
+        Assert.Contains("+1", collapsed[row]);
         Assert.True(ChatTuiRenderer.ToggleTranscriptItemAt(state, 80, 24, row));
 
         var expanded = DiffRender.Ansi.Strip(
-            ChatTuiRenderer.Render(80, 24, state));
-        Assert.Contains("• ▾ Code · 1 line · csharp", expanded);
-        Assert.Contains("var x = 1;", expanded);
+            ChatTuiRenderer.Render(80, 24, state)).Split('\n');
+        var expandedRow = Array.FindIndex(
+            expanded,
+            line => line.Contains("• ▾ Code · 1 line · csharp", StringComparison.Ordinal));
+        Assert.True(expandedRow >= 0);
+        Assert.Contains("−", expanded[expandedRow]);
+        Assert.Contains(expanded, line => line.Contains("var x = 1;"));
     }
 
     [Fact]
