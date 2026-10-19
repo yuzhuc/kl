@@ -2221,7 +2221,27 @@ impl Core {
 
     fn skill_list(&mut self, params: Value) -> Result<Value, RpcError> {
         let params: SkillListParams = parse_params(params, methods::SKILL_LIST)?;
-        let workspace = self.session_workspace(&params.session_id)?;
+        let SkillListParams {
+            session_id,
+            workspace,
+        } = params;
+        let workspace = if let Some(session_id) = session_id.as_deref() {
+            self.session_workspace(session_id)?
+        } else if let Some(workspace) = workspace {
+            let path = PathBuf::from(workspace);
+            if !path.is_dir() {
+                return Err(rpc_error(
+                    error_codes::INVALID_PARAMS,
+                    "skill.list workspace is not a directory",
+                ));
+            }
+            path
+        } else {
+            return Err(rpc_error(
+                error_codes::INVALID_PARAMS,
+                "skill.list requires session_id or workspace",
+            ));
+        };
         let skills = skills::discover(&self.context.home, &workspace)
             .into_iter()
             .map(|skill| SkillInfo {
@@ -2235,11 +2255,8 @@ impl Core {
     fn skill_get(&mut self, params: Value) -> Result<Value, RpcError> {
         let params: SkillGetParams = parse_params(params, methods::SKILL_GET)?;
         let workspace = self.session_workspace(&params.session_id)?;
-        let policy = PolicyEngine::new(&workspace, self.effective_policy_config())
-            .map_err(|error| rpc_error(error_codes::INVALID_PARAMS, error.to_string()))?;
         let content =
-            skills::load_body(&self.context.home, &workspace, &policy, &params.name, false)
-                .map_err(skill_error)?;
+            skills::load_body(&self.context.home, &workspace, &params.name).map_err(skill_error)?;
         to_value(SkillGetResult {
             name: params.name,
             content,
@@ -4100,7 +4117,34 @@ max_iterations = 2
     }
 
     #[test]
-    fn skill_rpc_does_not_bypass_outside_workspace_policy() {
+    fn skill_rpc_lists_by_workspace_and_rejects_missing_target() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = temp.path().join("workspace");
+        let skill = workspace.join(".kl/skills/alpha");
+        std::fs::create_dir_all(&skill).unwrap();
+        std::fs::write(
+            skill.join("SKILL.md"),
+            "---\nname: alpha\ndescription: Alpha description\n---\nSECRET BODY\n",
+        )
+        .unwrap();
+        let config = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let (mut core, _) = new_test_core(config, home.path());
+        core.handshaken = true;
+
+        let list = core
+            .skill_list(json!({"workspace": workspace.to_string_lossy()}))
+            .unwrap();
+        assert_eq!(list["skills"][0]["name"], "alpha");
+        assert_eq!(list["skills"][0]["description"], "Alpha description");
+
+        let missing = core.skill_list(json!({})).unwrap_err();
+        assert_eq!(missing.code, error_codes::INVALID_PARAMS);
+        assert!(missing.message.contains("session_id or workspace"));
+    }
+
+    #[test]
+    fn skill_rpc_loads_home_skill_body() {
         let temp = tempfile::tempdir().unwrap();
         let workspace = temp.path().join("workspace");
         std::fs::create_dir_all(&workspace).unwrap();
@@ -4123,11 +4167,11 @@ max_iterations = 2
         let list = core.skill_list(json!({"session_id": session_id})).unwrap();
         assert_eq!(list["skills"][0]["name"], "global");
 
-        let denied = core
+        let loaded = core
             .skill_get(json!({"session_id": session_id, "name": "global"}))
-            .unwrap_err();
-        assert_eq!(denied.code, error_codes::POLICY_DENIED);
-        assert!(denied.message.contains("outside the workspace"));
+            .unwrap();
+        assert_eq!(loaded["name"], "global");
+        assert_eq!(loaded["content"], "GLOBAL BODY\n");
     }
 
     #[test]

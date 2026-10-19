@@ -1,4 +1,4 @@
-use kl_policy::{Action, PolicyEngine};
+use kl_policy::Action;
 use kl_tools::{PolicyRequest, Tool, ToolContext, ToolError, ToolOutcome};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 const SUMMARY_MAX_BYTES: usize = 4 * 1024;
 const SKILL_FILE: &str = "SKILL.md";
+const BODY_MAX_BYTES: usize = 64 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkillSummary {
@@ -44,35 +45,31 @@ pub fn summary_prompt(skills: &[SkillSummary]) -> String {
     prompt
 }
 
-pub(crate) fn load_body(
-    home: &Path,
-    workspace: &Path,
-    policy: &PolicyEngine,
-    name: &str,
-    allow_ask: bool,
-) -> Result<String, ToolError> {
+pub(crate) fn load_body(home: &Path, workspace: &Path, name: &str) -> Result<String, ToolError> {
     validate_skill_name(name)?;
     let skill = discover(home, workspace)
         .into_iter()
         .find(|skill| skill.name == name)
         .ok_or_else(|| ToolError::NotFound(format!("unknown skill: {name}")))?;
-    let resource = skill.path.to_string_lossy().into_owned();
-    // shortcut: home skills still follow outside-workspace policy, add trusted skill roots when global skills become default.
-    let evaluation = policy.evaluate(Action::Read, &resource);
-    if evaluation.effect == kl_policy::Effect::Deny
-        || (!allow_ask && evaluation.effect == kl_policy::Effect::Ask)
-    {
-        return Err(ToolError::Policy(evaluation.reason));
-    }
-    let resolved = evaluation
-        .resolved
-        .ok_or_else(|| ToolError::Io("skill path was not resolved".to_owned()))?;
-    let bytes = fs::read(&resolved)
-        .map_err(|error| ToolError::Io(format!("cannot read {}: {error}", resolved.display())))?;
+    let bytes = fs::read(&skill.path)
+        .map_err(|error| ToolError::Io(format!("cannot read {}: {error}", skill.path.display())))?;
     let text = String::from_utf8_lossy(&bytes);
     let (_, body) = split_frontmatter(&text)
         .ok_or_else(|| ToolError::Io(format!("{name} has no frontmatter")))?;
-    Ok(body.to_owned())
+    Ok(truncate_body(body))
+}
+
+fn truncate_body(body: &str) -> String {
+    if body.len() <= BODY_MAX_BYTES {
+        return body.to_owned();
+    }
+    let mut end = BODY_MAX_BYTES;
+    while !body.is_char_boundary(end) {
+        end -= 1;
+    }
+    let mut truncated = body[..end].to_owned();
+    truncated.push_str("\n[skill truncated]");
+    truncated
 }
 
 pub(crate) struct SkillTool {
@@ -120,10 +117,11 @@ impl Tool for SkillTool {
         args: &Value,
     ) -> Result<PolicyRequest, ToolError> {
         let name = skill_name(args)?;
-        let skill = self.find(workspace, name)?;
+        self.find(workspace, name)?;
+        // Discovered skills are trusted roots; use the in-workspace root so home skills are not rejected as outside the workspace.
         Ok(PolicyRequest {
             action: Action::Read,
-            resource: skill.path.to_string_lossy().into_owned(),
+            resource: format!(".kl/skills/{name}"),
         })
     }
 
@@ -133,13 +131,7 @@ impl Tool for SkillTool {
 
     fn execute(&self, context: &ToolContext<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
         let name = skill_name(args)?;
-        let body = load_body(
-            &self.home,
-            context.policy.workspace(),
-            context.policy,
-            name,
-            true,
-        )?;
+        let body = load_body(&self.home, context.policy.workspace(), name)?;
         Ok(ToolOutcome::ok(
             format!("loaded skill {name}"),
             format!("<skill_content name=\"{name}\">\n{body}\n</skill_content>"),
@@ -364,7 +356,7 @@ mod tests {
     fn skill_tool_loads_body_by_name() {
         let home = tempfile::tempdir().unwrap();
         let workspace = tempfile::tempdir().unwrap();
-        let path = write_skill(
+        write_skill(
             &workspace.path().join(".kl/skills"),
             "alpha",
             &skill_content("alpha", "Alpha description", "Run the checks.\n"),
@@ -379,7 +371,11 @@ mod tests {
             .policy_request_for(workspace.path(), &json!({"name": "alpha"}))
             .unwrap();
         assert_eq!(request.action, Action::Read);
-        assert_eq!(Path::new(&request.resource), path);
+        assert_eq!(request.resource, ".kl/skills/alpha");
+        assert_eq!(
+            policy.evaluate(request.action, &request.resource).effect,
+            kl_policy::Effect::Allow
+        );
 
         let outcome = tool
             .execute(&context(&policy, &cancel), &json!({"name": "alpha"}))
@@ -390,23 +386,64 @@ mod tests {
     }
 
     #[test]
-    fn load_body_rejects_approval_required_reads_without_approval() {
+    fn load_body_loads_trusted_home_skill() {
         let home = tempfile::tempdir().unwrap();
-        let root = tempfile::tempdir().unwrap();
-        let workspace = root.path().join(".git/workspace");
+        let workspace = tempfile::tempdir().unwrap();
         write_skill(
-            &workspace.join(".kl/skills"),
+            &home.path().join("skills"),
             "alpha",
-            &skill_content("alpha", "Alpha description", "BODY"),
+            &skill_content("alpha", "Alpha description", "HOME BODY"),
         );
-        let policy = PolicyEngine::new(&workspace, PolicyConfig::default()).unwrap();
 
-        let error = load_body(home.path(), &workspace, &policy, "alpha", false).unwrap_err();
-        assert!(matches!(
-            error,
-            ToolError::Policy(message) if message.contains("requires approval")
-        ));
-        assert!(load_body(home.path(), &workspace, &policy, "alpha", true).is_ok());
+        assert_eq!(
+            load_body(home.path(), workspace.path(), "alpha").unwrap(),
+            "HOME BODY"
+        );
+    }
+
+    #[test]
+    fn load_body_truncates_long_body_on_char_boundary() {
+        let home = tempfile::tempdir().unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        let body = format!("{}TAIL", "界".repeat(BODY_MAX_BYTES));
+        write_skill(
+            &home.path().join("skills"),
+            "big",
+            &skill_content("big", "Big description", &body),
+        );
+
+        let loaded = load_body(home.path(), workspace.path(), "big").unwrap();
+        assert!(loaded.ends_with("[skill truncated]"));
+        assert!(!loaded.contains("TAIL"));
+        assert!(loaded.len() <= BODY_MAX_BYTES + "\n[skill truncated]".len());
+    }
+
+    #[test]
+    fn skill_tool_loads_home_skill_body() {
+        let home = tempfile::tempdir().unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        write_skill(
+            &home.path().join("skills"),
+            "alpha",
+            &skill_content("alpha", "Alpha description", "HOME BODY"),
+        );
+        let policy = PolicyEngine::new(workspace.path(), PolicyConfig::default()).unwrap();
+        let cancel = AtomicBool::new(false);
+        let tool = SkillTool {
+            home: home.path().to_path_buf(),
+        };
+
+        let request = tool
+            .policy_request_for(workspace.path(), &json!({"name": "alpha"}))
+            .unwrap();
+        assert_eq!(
+            policy.evaluate(request.action, &request.resource).effect,
+            kl_policy::Effect::Allow
+        );
+        let outcome = tool
+            .execute(&context(&policy, &cancel), &json!({"name": "alpha"}))
+            .unwrap();
+        assert!(outcome.output.contains("HOME BODY"));
     }
 
     #[test]

@@ -292,6 +292,13 @@ impl Tool for McpTool {
         } else {
             text
         };
+        if result
+            .get("isError")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
+            return Err(ToolError::Execution(output));
+        }
         Ok(ToolOutcome::ok(
             format!("called mcp tool {}", self.tool),
             output,
@@ -394,7 +401,17 @@ mod tests {
                         "description": "Echo text",
                         "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}}}
                     }]}),
-                    Some("tools/call") => json!({"content": [{"type": "text", "text": "hello"}]}),
+                    Some("tools/call") => {
+                        if message
+                            .pointer("/params/arguments/text")
+                            .and_then(Value::as_str)
+                            == Some("fail")
+                        {
+                            json!({"isError": true, "content": [{"type": "text", "text": "boom"}]})
+                        } else {
+                            json!({"content": [{"type": "text", "text": "hello"}]})
+                        }
+                    }
                     _ => json!({}),
                 };
                 let _ = responses
@@ -506,6 +523,37 @@ enabled = false
         let request = tool.policy_request(&json!({})).unwrap();
         assert_eq!(request.action, Action::Plugin);
         assert_eq!(request.resource, "mcp:fake-server:echo");
+        drop(tool);
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn mcp_tool_maps_is_error_to_execution_error() {
+        let (client, handle) = spawn_fake_server();
+        let spec = McpToolSpec {
+            name: "echo".to_owned(),
+            description: "Echo text".to_owned(),
+            parameters: json!({"type": "object"}),
+        };
+        let tool = McpTool::new("fake-server", spec, Arc::new(client));
+        let workspace = tempfile::tempdir().unwrap();
+        let policy =
+            kl_policy::PolicyEngine::new(workspace.path(), kl_policy::PolicyConfig::default())
+                .unwrap();
+        let cancel = std::sync::atomic::AtomicBool::new(false);
+        let context = ToolContext {
+            policy: &policy,
+            cancel: &cancel,
+            sandbox: Arc::new(kl_sandbox::SandboxManager::policy_only()),
+            timeout: Duration::from_secs(2),
+            max_output_bytes: 64 * 1024,
+        };
+
+        let error = tool
+            .execute(&context, &json!({"text": "fail"}))
+            .unwrap_err();
+        assert!(matches!(error, ToolError::Execution(message) if message.contains("boom")));
+
         drop(tool);
         handle.join().unwrap();
     }

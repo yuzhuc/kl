@@ -15,6 +15,8 @@ public enum ChatCommandKind
     Help,
     Exit,
     Agent,
+    Skills,
+    Mcp,
     Copy
 }
 
@@ -113,6 +115,18 @@ public static class ChatCommandPalette
             "view or switch the agent preset",
             "查看或切换 Agent preset",
             ["/agent"]),
+        new(
+            "/skills",
+            ChatCommandKind.Skills,
+            "list available skills",
+            "列出可用 Skills",
+            ["/skills"]),
+        new(
+            "/mcp",
+            ChatCommandKind.Mcp,
+            "list MCP tools",
+            "列出 MCP 工具",
+            ["/mcp"]),
         new(
             "/copy",
             ChatCommandKind.Copy,
