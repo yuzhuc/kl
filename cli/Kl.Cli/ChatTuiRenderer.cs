@@ -1873,7 +1873,7 @@ public static class ChatTuiRenderer
             var placeholder = ChatTexts.InputPlaceholder(state.Language);
             return (new List<string>
             {
-                (state.CursorVisible ? "|" : " ") + " " + placeholder
+                (state.CursorVisible ? "|" : " ") + placeholder
             }, 0);
         }
 
