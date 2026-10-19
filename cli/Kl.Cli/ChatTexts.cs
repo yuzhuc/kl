@@ -7,7 +7,10 @@ public static class ChatTexts
         language == UiLanguage.ChineseSimplified ? chinese : english;
 
     public static string InputPlaceholder(UiLanguage language) =>
-        T(language, "Ask KL to do anything", "描述一个任务，或输入 / 查看命令");
+        T(
+            language,
+            "Ask KL to do anything, or type / for commands",
+            "让 KL 做点什么，或输入 / 查看命令");
 
     public static string UserLabel(UiLanguage language) =>
         T(language, "You: ", "你：");
@@ -67,10 +70,13 @@ public static class ChatTexts
             "Ctrl+C 取消  Shift+↑/↓ 选择  Ctrl+R 推理");
 
     public static string IdleFooter(UiLanguage language) =>
-        T(
-            language,
-            "Ctrl+R reasoning  Ctrl+Shift+C copy  Ctrl+L clear  Ctrl+D exit  ? shortcuts",
-            "Ctrl+R 推理  Ctrl+Shift+C 复制  Ctrl+L 清屏  Ctrl+D 退出  ? 快捷键");
+        T(language, "? shortcuts", "? 快捷键");
+
+    public static string MentionFooter(UiLanguage language) =>
+        T(language, "↑/↓ select  Enter/Tab insert  Esc close", "↑/↓ 选择  Enter/Tab 插入  Esc 关闭");
+
+    public static string NoFilesFound(UiLanguage language) =>
+        T(language, "No files found", "未找到文件");
 
     public static string NoProviderStatus(UiLanguage language) =>
         T(
@@ -331,37 +337,31 @@ public static class ChatTexts
                 "Esc              back"
             };
 
-    public static IReadOnlyList<string> Home(UiLanguage language, bool hasProvider)
+    public static IReadOnlyList<string> Home(UiLanguage language)
     {
-        var lines = new List<string>();
         if (language == UiLanguage.ChineseSimplified)
         {
-            lines.Add("开始使用：描述一个任务，或尝试以下命令：");
-            lines.Add(string.Empty);
-            lines.Add("  /init          创建 AGENTS.md 并写入 KL 指令");
-            lines.Add("  /status        查看当前会话配置");
-            lines.Add("  /permissions   选择 KL 的权限与审批方式");
-            lines.Add("  /model         选择模型和推理强度");
-            lines.Add("  /review        审查当前改动并发现问题");
-        }
-        else
-        {
-            lines.Add("To get started, describe a task or try one of these commands:");
-            lines.Add(string.Empty);
-            lines.Add("  /init          create an AGENTS.md file with instructions for KL");
-            lines.Add("  /status        show current session configuration");
-            lines.Add("  /permissions   choose what KL is allowed to do");
-            lines.Add("  /model         choose what model and reasoning effort to use");
-            lines.Add("  /review        review changes and find issues");
+            return
+            [
+                "开始使用：描述一个任务，或尝试以下命令：",
+                string.Empty,
+                "/init - 创建 AGENTS.md 并写入 KL 指令",
+                "/status - 查看当前会话配置",
+                "/permissions - 选择 KL 的权限与审批方式",
+                "/model - 选择模型和推理强度",
+                "/review - 审查当前改动并发现问题"
+            ];
         }
 
-        if (!hasProvider)
-        {
-            lines.Add(string.Empty);
-            lines.Add(language == UiLanguage.ChineseSimplified
-                ? "  /settings      配置 Provider 和模型"
-                : "  /settings      configure a provider and model");
-        }
-        return lines;
+        return
+        [
+            "To get started, describe a task or try one of these commands:",
+            string.Empty,
+            "/init - create an AGENTS.md file with instructions for KL",
+            "/status - show current session configuration",
+            "/permissions - choose what KL is allowed to do",
+            "/model - choose what model and reasoning effort to use",
+            "/review - review changes and find issues"
+        ];
     }
 }

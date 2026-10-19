@@ -14,24 +14,11 @@ public sealed class ChatTuiTests
         Assert.Contains(
             "To get started, describe a task or try one of these commands:",
             render);
-        Assert.Contains(
-            "  /init          create an AGENTS.md file with instructions for KL",
-            render);
-        Assert.Contains(
-            "  /status        show current session configuration",
-            render);
-        Assert.Contains(
-            "  /permissions   choose what KL is allowed to do",
-            render);
-        Assert.Contains(
-            "  /model         choose what model and reasoning effort to use",
-            render);
-        Assert.Contains(
-            "  /review        review changes and find issues",
-            render);
-        Assert.Contains(
-            "  /settings      configure a provider and model",
-            render);
+        Assert.Contains("/init - create an AGENTS.md file with instructions for KL", render);
+        Assert.Contains("/status - show current session configuration", render);
+        Assert.Contains("/permissions - choose what KL is allowed to do", render);
+        Assert.Contains("/model - choose what model and reasoning effort to use", render);
+        Assert.Contains("/review - review changes and find issues", render);
     }
 
     [Fact]
@@ -42,21 +29,21 @@ public sealed class ChatTuiTests
         var render = ChatTuiRenderer.Render(100, 24, state);
 
         Assert.Contains("开始使用：描述一个任务，或尝试以下命令：", render);
-        Assert.Contains("  /init          创建 AGENTS.md 并写入 KL 指令", render);
-        Assert.Contains("  /status        查看当前会话配置", render);
-        Assert.Contains("  /permissions   选择 KL 的权限与审批方式", render);
-        Assert.Contains("  /model         选择模型和推理强度", render);
-        Assert.Contains("  /review        审查当前改动并发现问题", render);
-        Assert.Contains("  /settings      配置 Provider 和模型", render);
+        Assert.Contains("/init - 创建 AGENTS.md 并写入 KL 指令", render);
+        Assert.Contains("/status - 查看当前会话配置", render);
+        Assert.Contains("/permissions - 选择 KL 的权限与审批方式", render);
+        Assert.Contains("/model - 选择模型和推理强度", render);
+        Assert.Contains("/review - 审查当前改动并发现问题", render);
     }
 
     [Fact]
-    public void HomeHidesSettingsHintWhenProviderIsConfigured()
+    public void HomeShowsProviderModelAndShortcutLines()
     {
         var state = new ChatTuiState("D:\\work", "openai", "gpt-5", "session-1");
         var render = ChatTuiRenderer.Render(100, 24, state);
 
-        Assert.Contains("To get started", render);
+        Assert.Contains("openai/gpt-5  default", render);
+        Assert.Contains("? shortcuts", render);
         Assert.DoesNotContain("configure a provider and model", render);
     }
 
@@ -69,10 +56,9 @@ public sealed class ChatTuiTests
 
         Assert.Equal(24, lines.Length);
         Assert.Equal(">_ KL (v0.1.0)", lines[0].TrimEnd());
-        Assert.Contains("> Ask KL to do anything", render);
-        Assert.Contains("openai/gpt-5", render.Split('\n')[^1]);
-        Assert.Contains("Ctrl+R reasoning", render.Split('\n')[^1]);
-        Assert.Contains("? shortcuts", render.Split('\n')[^1]);
+        Assert.Contains("> Ask KL to do anything, or type / for commands", render);
+        Assert.Contains("openai/gpt-5  default", render);
+        Assert.Contains("? shortcuts", lines[^1]);
     }
 
     [Fact]
@@ -597,6 +583,21 @@ public sealed class ChatTuiTests
         Assert.Equal("new answer", state.Transcript[1].Text);
     }
 
+    [Theory]
+    [InlineData(40)]
+    [InlineData(80)]
+    [InlineData(120)]
+    public void HomeFitsWidth(int width)
+    {
+        var state = new ChatTuiState();
+        state.Settings.SetLanguage(UiLanguage.ChineseSimplified);
+
+        var render = ChatTuiRenderer.Render(width, 24, state);
+
+        Assert.Contains("/init - 创建 AGENTS.md 并写入 KL 指令", render);
+        Assert.All(render.Split('\n'), line =>
+            Assert.True(DiffRender.Ansi.VisibleWidth(line) <= width));
+    }
     private static ConsoleKeyInfo Key(
         ConsoleKey key,
         char character = '\0',

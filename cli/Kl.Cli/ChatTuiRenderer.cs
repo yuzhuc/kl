@@ -15,8 +15,12 @@ public static class ChatTuiRenderer
 
         width = Math.Max(20, width);
         height = Math.Max(8, height);
+        var home = IsHome(state);
         var showInput = state.Screen != ChatScreen.History;
-        var bodyHeight = Math.Max(1, height - (showInput ? 4 : 3));
+        var showModelLine = state.Screen == ChatScreen.Chat;
+        var fixedLines = 1 + (home ? 0 : 1) + (showInput ? 1 : 0) +
+            (showModelLine ? 1 : 0) + 1;
+        var bodyHeight = Math.Max(1, height - fixedLines);
 
         var body = state.Screen switch
         {
@@ -27,15 +31,19 @@ public static class ChatTuiRenderer
 
         ApplyOverlay(state, width, bodyHeight, body);
 
-        var lines = new List<string>
+        var lines = new List<string> { HeaderText };
+        if (!home)
         {
-            HeaderText,
-            new string('-', width)
-        };
+            lines.Add(new string('-', width));
+        }
         lines.AddRange(body);
         if (showInput)
         {
             lines.Add(RenderInput(state, width));
+        }
+        if (showModelLine)
+        {
+            lines.Add(RenderModelLine(state, width));
         }
         lines.Add(RenderFooter(state, width));
 
@@ -138,15 +146,18 @@ public static class ChatTuiRenderer
     {
         var language = state.Language;
         var lines = new List<string>();
-        foreach (var line in ChatTexts.Home(
-            language,
-            !string.IsNullOrWhiteSpace(state.Provider)))
+        foreach (var line in ChatTexts.Home(language))
         {
             lines.AddRange(DisplayText.WrapToWidth(line, width));
         }
         return lines;
     }
 
+    private static bool IsHome(ChatTuiState state) =>
+        state.Screen == ChatScreen.Chat
+        && state.Transcript.Count == 0
+        && !state.IsTurnActive
+        && !state.HasPendingApproval;
     private static List<string> RenderHistoryBody(
         ChatTuiState state,
         int width,
@@ -551,6 +562,10 @@ public static class ChatTuiRenderer
                 bodyHeight,
                 state.Language);
         }
+        else if (MentionPicker.IsOpen(state))
+        {
+            overlay = RenderMentionPicker(state, width, bodyHeight);
+        }
         else if (ChatCommandPalette.IsOpen(state))
         {
             overlay = RenderCommandPalette(state, width, bodyHeight);
@@ -622,6 +637,43 @@ public static class ChatTuiRenderer
         return lines;
     }
 
+    public static List<string> MentionPickerLines(ChatTuiState state, int width) =>
+        RenderMentionPicker(state, Math.Max(20, width), int.MaxValue);
+
+    private static List<string> RenderMentionPicker(
+        ChatTuiState state,
+        int width,
+        int maximumLines)
+    {
+        if (!MentionPicker.IsOpen(state) || maximumLines <= 0)
+        {
+            return [];
+        }
+
+        var matches = state.MentionPicker.Matches;
+        if (matches.Count == 0)
+        {
+            return [DiffRender.Ansi.Dim + ChatTexts.NoFilesFound(state.Language) + DiffRender.Ansi.Reset];
+        }
+
+        var visible = Math.Min(MentionPicker.MaxVisible, maximumLines);
+        var selected = Math.Clamp(state.MentionPicker.Selection, 0, matches.Count - 1);
+        var start = Math.Clamp(
+            selected - visible + 1,
+            0,
+            Math.Max(0, matches.Count - visible));
+        var count = Math.Min(visible, matches.Count - start);
+        var lines = new List<string>(count);
+        for (var index = start; index < start + count; index++)
+        {
+            var row = (index == selected ? "› " : "  ") + matches[index];
+            var fitted = DiffRender.Ansi.Fit(row, width);
+            lines.Add(index == selected
+                ? DiffRender.Ansi.Inverse + fitted + DiffRender.Ansi.Reset
+                : fitted);
+        }
+        return lines;
+    }
     private static string RenderInput(ChatTuiState state, int width)
     {
         if (state.Screen == ChatScreen.Shortcuts)
@@ -646,6 +698,15 @@ public static class ChatTuiRenderer
         return "> " + visible.Insert(relative, "|");
     }
 
+    private static string RenderModelLine(ChatTuiState state, int width)
+    {
+        var provider = string.IsNullOrWhiteSpace(state.Provider)
+            ? "provider/model"
+            : $"{state.Provider}/{state.Model}";
+        return DiffRender.Ansi.Dim +
+            DiffRender.Ansi.TruncateVisible(provider + "  default", width) +
+            DiffRender.Ansi.Reset;
+    }
     private static string RenderFooter(ChatTuiState state, int width)
     {
         var language = state.Language;
@@ -654,10 +715,7 @@ public static class ChatTuiRenderer
             return ChatTexts.HistoryFooter(language, state.HistorySearching);
         }
 
-        var provider = string.IsNullOrWhiteSpace(state.Provider)
-            ? "provider/model"
-            : $"{state.Provider}/{state.Model}";
-        var parts = new List<string> { provider };
+        var parts = new List<string>();
         if (!string.IsNullOrWhiteSpace(state.StatusMessage))
         {
             parts.Add(state.StatusMessage);
@@ -666,6 +724,10 @@ public static class ChatTuiRenderer
         if (state.ModelPicker.IsOpen)
         {
             parts.Add(ChatTexts.ModelPickerFooter(language));
+        }
+        else if (MentionPicker.IsOpen(state))
+        {
+            parts.Add(ChatTexts.MentionFooter(language));
         }
         else if (ChatCommandPalette.IsOpen(state))
         {

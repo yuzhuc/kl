@@ -39,6 +39,10 @@ public enum ChatKeyAction
     CommandPaletteDown,
     CommandPaletteAccept,
     CommandPaletteClose,
+    MentionPickerUp,
+    MentionPickerDown,
+    MentionPickerAccept,
+    MentionPickerClose,
     CancelOrExit,
     OpenHistory,
     HistoryUp,
@@ -155,6 +159,7 @@ public sealed class ChatTuiState
     public bool CommandPaletteDismissed { get; set; }
     public bool ReasoningVisible { get; set; } = true;
     public ChatModelPickerState ModelPicker { get; } = new();
+    public MentionPickerState MentionPicker { get; } = new();
     public SettingsTuiState Settings { get; } = new();
 
     public int? SelectionAnchor { get; private set; }
@@ -172,6 +177,7 @@ public sealed class ChatTuiState
         Input = Input.Insert(Math.Clamp(Cursor, 0, Input.Length), character.ToString());
         Cursor = Math.Clamp(Cursor + 1, 0, Input.Length);
         ResetCommandPalette();
+        Kl.Cli.MentionPicker.Update(this);
     }
 
     public void Backspace()
@@ -183,6 +189,7 @@ public sealed class ChatTuiState
         Input = Input.Remove(Cursor - 1, 1);
         Cursor--;
         ResetCommandPalette();
+        Kl.Cli.MentionPicker.Update(this);
     }
 
     public void Delete()
@@ -193,15 +200,32 @@ public sealed class ChatTuiState
         }
         Input = Input.Remove(Cursor, 1);
         ResetCommandPalette();
+        Kl.Cli.MentionPicker.Update(this);
     }
 
-    public void MoveCursorLeft() => Cursor = Math.Max(0, Cursor - 1);
+    public void MoveCursorLeft()
+    {
+        Cursor = Math.Max(0, Cursor - 1);
+        Kl.Cli.MentionPicker.Update(this);
+    }
 
-    public void MoveCursorRight() => Cursor = Math.Min(Input.Length, Cursor + 1);
+    public void MoveCursorRight()
+    {
+        Cursor = Math.Min(Input.Length, Cursor + 1);
+        Kl.Cli.MentionPicker.Update(this);
+    }
 
-    public void MoveCursorHome() => Cursor = 0;
+    public void MoveCursorHome()
+    {
+        Cursor = 0;
+        Kl.Cli.MentionPicker.Update(this);
+    }
 
-    public void MoveCursorEnd() => Cursor = Input.Length;
+    public void MoveCursorEnd()
+    {
+        Cursor = Input.Length;
+        Kl.Cli.MentionPicker.Update(this);
+    }
 
     public void DismissCommandPalette() => CommandPaletteDismissed = true;
 
@@ -210,6 +234,7 @@ public sealed class ChatTuiState
         Input = string.Empty;
         Cursor = 0;
         ResetCommandPalette();
+        Kl.Cli.MentionPicker.Update(this);
     }
 
     public void ToggleReasoning() => ReasoningVisible = !ReasoningVisible;
@@ -781,6 +806,22 @@ public static class ChatKeyMapper
                 'd' or 'D' or 'n' or 'N' => ChatKeyAction.ApprovalDeny,
                 _ => ChatKeyAction.None
             };
+        }
+
+        if (MentionPicker.IsOpen(state))
+        {
+            switch (key.Key)
+            {
+                case ConsoleKey.UpArrow:
+                    return ChatKeyAction.MentionPickerUp;
+                case ConsoleKey.DownArrow:
+                    return ChatKeyAction.MentionPickerDown;
+                case ConsoleKey.Enter:
+                case ConsoleKey.Tab:
+                    return ChatKeyAction.MentionPickerAccept;
+                case ConsoleKey.Escape:
+                    return ChatKeyAction.MentionPickerClose;
+            }
         }
 
         if (ChatCommandPalette.IsOpen(state))

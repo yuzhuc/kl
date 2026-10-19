@@ -100,7 +100,7 @@ public sealed class ChatCommandPaletteTests
         var beforeBody = ChatTuiRenderer.Render(80, 24, state)
             .Split('\n')
             .Skip(2)
-            .Take(20 - 8)
+            .Take(19 - 8)
             .ToArray();
 
         state.Input = "/";
@@ -110,7 +110,7 @@ public sealed class ChatCommandPaletteTests
         var afterBody = ChatTuiRenderer.Render(80, 24, state)
             .Split('\n')
             .Skip(2)
-            .Take(20 - 8)
+            .Take(19 - 8)
             .ToArray();
 
         Assert.Equal(beforeTranscript, afterTranscript);
