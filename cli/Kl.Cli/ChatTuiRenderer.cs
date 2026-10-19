@@ -2348,16 +2348,22 @@ public static class ChatTuiRenderer
                 : DiffRender.Ansi.Cyan;
         var key = $"tool:{entryIndex}";
         var expanded = state.IsTranscriptItemExpanded(key);
-        var marker = expanded ? "▾" : "▸";
-        var summary = lines.Count == 0
-            ? string.Empty
+        var hasStatus = success || failure;
+        var commandIndex = hasStatus && lines.Count > 1 ? 1 : 0;
+        var summary = lines.Count > commandIndex
+            ? DiffRender.RedactSensitive(lines[commandIndex].Trim())
             : DiffRender.RedactSensitive(lines[0].Trim());
-        var label = ChatTexts.ToolLabel(language).Trim();
+        var title = ChatTexts.T(language, "Ran", "运行");
         var result = new List<TranscriptLine>
         {
             new(
                 DiffRender.Ansi.Fit(
-                    color + marker + " " + label + " " + summary + DiffRender.Ansi.Reset,
+                    color +
+                    "• " +
+                    title +
+                    " " +
+                    summary +
+                    DiffRender.Ansi.Reset,
                     width),
                 new TranscriptToggle(key, TranscriptToggleKind.Tool))
         };
@@ -2366,13 +2372,14 @@ public static class ChatTuiRenderer
             return result;
         }
 
-        for (var index = 1; index < lines.Count; index++)
+        for (var index = hasStatus ? 0 : 1; index < lines.Count; index++)
         {
             var detail = DiffRender.RedactSensitive(lines[index]);
+            var detailColor = index == 0 && hasStatus ? color : DiffRender.Ansi.Secondary;
             foreach (var wrapped in WrapPlain("  " + detail, width))
             {
                 result.Add(new TranscriptLine(
-                    DiffRender.Ansi.Secondary + wrapped + DiffRender.Ansi.Reset));
+                    detailColor + wrapped + DiffRender.Ansi.Reset));
             }
         }
         return result;

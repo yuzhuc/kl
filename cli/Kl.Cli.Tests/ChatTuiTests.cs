@@ -428,7 +428,7 @@ public sealed class ChatTuiTests
 
         Assert.Contains("> fix it", render);
         Assert.Contains("• done", render);
-        Assert.Contains("[tool] shell cargo test", render);
+        Assert.Contains("• Ran shell cargo test", render);
         Assert.DoesNotContain(">_ KL", DiffRender.Ansi.Strip(render));
         Assert.DoesNotContain("D:\\work", DiffRender.Ansi.Strip(render));
         var plainLines = DiffRender.Ansi.Strip(render).Split('\n');
@@ -1028,12 +1028,13 @@ public sealed class ChatTuiTests
             StringComparison.Ordinal);
         var collapsed = DiffRender.Ansi.Strip(
             ChatTuiRenderer.Render(100, 24, state));
-        Assert.Contains("[tool] [ok] read_file: read 1 file", collapsed);
+        Assert.Contains("• Ran read_file {\"path\":\"a.txt\"}", collapsed);
         Assert.DoesNotContain("contents", collapsed);
 
         state.ToggleTranscriptItem("tool:0");
         var expanded = DiffRender.Ansi.Strip(
             ChatTuiRenderer.Render(100, 24, state));
+        Assert.Contains("[ok] read_file: read 1 file", expanded);
         Assert.Contains("read_file {\"path\":\"a.txt\"}", expanded);
         Assert.Contains("contents", expanded);
     }
