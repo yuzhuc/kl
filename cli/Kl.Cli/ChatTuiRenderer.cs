@@ -723,11 +723,17 @@ public static class ChatTuiRenderer
                 groupLines.Add(string.Empty);
             }
             firstGroup = false;
+            var groupLabel = HistoryGroupLabel(view, group, language);
+            var groupCount = group.Tasks.Count.ToString(CultureInfo.InvariantCulture);
+            var groupLabelWidth = Math.Max(
+                1,
+                width - DisplayText.Width(groupCount) - 2);
+            groupLabel = view.Grouping == HistoryGrouping.Workspace
+                ? CenterEllipsize(groupLabel, groupLabelWidth)
+                : DisplayText.Ellipsize(groupLabel, groupLabelWidth);
             groupLines.Add(
                 DiffRender.Ansi.Dim +
-                DiffRender.Ansi.Fit(
-                    HistoryGroupLabel(view, group, language) + "  " + group.Tasks.Count,
-                    width) +
+                DiffRender.Ansi.Fit(groupLabel + "  " + groupCount, width) +
                 DiffRender.Ansi.Reset);
             foreach (var task in group.Tasks)
             {
@@ -1054,6 +1060,26 @@ public static class ChatTuiRenderer
             DiffRender.Ansi.Reset;
     }
 
+    private static string CenterEllipsize(string text, int width)
+    {
+        if (width <= 0)
+        {
+            return string.Empty;
+        }
+        if (DisplayText.Width(text) <= width)
+        {
+            return text;
+        }
+        if (width == 1)
+        {
+            return "…";
+        }
+        var leftWidth = (width - 1) / 2;
+        var rightWidth = width - 1 - leftWidth;
+        return DisplayText.SliceToWidth(text, 0, leftWidth) +
+            "…" +
+            TailToWidth(text, rightWidth);
+    }
     private static string TailToWidth(string text, int width)
     {
         if (DisplayText.Width(text) <= width)
@@ -1895,6 +1921,13 @@ public static class ChatTuiRenderer
         {
             right.Add(DiffRender.Ansi.Dim + state.StatusMessage + DiffRender.Ansi.Reset);
         }
+        if (state.IsTurnActive)
+        {
+            right.Add(
+                DiffRender.Ansi.Green +
+                ChatTexts.T(language, "Working…", "运行中…") +
+                DiffRender.Ansi.Reset);
+        }
         if (state.WarningCount > 0)
         {
             right.Add(
@@ -2042,19 +2075,18 @@ public static class ChatTuiRenderer
 
         void FlushProse()
         {
-            if (prose.Count == 0)
+            foreach (var sourceLine in prose)
             {
-                return;
-            }
-            var value = string.Join('\n', prose);
-            if (!bulletShown)
-            {
-                value = ChatTexts.AssistantLabel(language) + value;
+                if (string.IsNullOrWhiteSpace(sourceLine))
+                {
+                    result.Add(new TranscriptLine(string.Empty));
+                    continue;
+                }
+                var label = bulletShown
+                    ? string.Empty
+                    : ChatTexts.AssistantLabel(language);
+                result.AddRange(RenderAssistantProseLine(sourceLine, width, label));
                 bulletShown = true;
-            }
-            foreach (var line in WrapPlain(value, width))
-            {
-                result.Add(new TranscriptLine(line));
             }
             prose.Clear();
         }
@@ -2139,6 +2171,135 @@ public static class ChatTuiRenderer
         }
         return result;
     }
+    private static List<TranscriptLine> RenderAssistantProseLine(
+        string sourceLine,
+        int width,
+        string label)
+    {
+        var raw = sourceLine.TrimEnd();
+        var indentLength = raw.Length - raw.TrimStart(' ').Length;
+        var indent = raw[..indentLength];
+        var body = raw[indentLength..];
+        if (body.Length == 0)
+        {
+            return [new TranscriptLine(string.Empty)];
+        }
+
+        var rule = body.Replace(" ", string.Empty, StringComparison.Ordinal);
+        if (rule.Length >= 3
+            && (rule.All(character => character == '-')
+                || rule.All(character => character == '*')
+                || rule.All(character => character == '_')))
+        {
+            return
+            [
+                new TranscriptLine(
+                    DiffRender.Ansi.Dim +
+                    new string('─', Math.Max(1, width)) +
+                    DiffRender.Ansi.Reset)
+            ];
+        }
+
+        var heading = false;
+        var quote = false;
+        var bullet = false;
+        var marker = string.Empty;
+        var hashes = 0;
+        while (hashes < body.Length && body[hashes] == '#')
+        {
+            hashes++;
+        }
+        if (hashes is >= 1 and <= 6
+            && hashes < body.Length
+            && body[hashes] == ' ')
+        {
+            heading = true;
+            body = body[(hashes + 1)..].TrimStart();
+        }
+        else if (body.StartsWith("> ", StringComparison.Ordinal))
+        {
+            quote = true;
+            marker = "│ ";
+            body = body[2..];
+        }
+        else if (body.Length >= 2
+            && body[0] is '-' or '*' or '+'
+            && body[1] == ' ')
+        {
+            bullet = true;
+            marker = label.Length > 0 ? string.Empty : "• ";
+            body = body[2..];
+        }
+
+        var plain = label + indent + marker + body;
+        var rendered = new List<TranscriptLine>();
+        foreach (var line in WrapPlain(plain, width))
+        {
+            var text = heading || quote
+                ? line
+                : StyleInlineMarkdown(line);
+            if (heading)
+            {
+                text = DiffRender.Ansi.Bold + text + DiffRender.Ansi.Reset;
+            }
+            else if (quote)
+            {
+                text = DiffRender.Ansi.Secondary + text + DiffRender.Ansi.Reset;
+            }
+            if (bullet)
+            {
+                var markerIndex = text.IndexOf('•');
+                if (markerIndex >= 0)
+                {
+                    text = text[..markerIndex] +
+                        DiffRender.Ansi.Accent +
+                        "•" +
+                        DiffRender.Ansi.Reset +
+                        text[(markerIndex + 1)..];
+                }
+            }
+            rendered.Add(new TranscriptLine(text));
+        }
+        return rendered;
+    }
+
+    private static string StyleInlineMarkdown(string text)
+    {
+        var builder = new System.Text.StringBuilder(text.Length + 16);
+        for (var index = 0; index < text.Length;)
+        {
+            if (text[index] == '`')
+            {
+                var end = text.IndexOf('`', index + 1);
+                if (end > index + 1)
+                {
+                    builder.Append(DiffRender.Ansi.Cyan);
+                    builder.Append(text, index + 1, end - index - 1);
+                    builder.Append(DiffRender.Ansi.Reset);
+                    index = end + 1;
+                    continue;
+                }
+            }
+            if ((text[index] == '*' || text[index] == '_')
+                && index + 2 < text.Length
+                && text[index + 1] == text[index])
+            {
+                var token = new string(text[index], 2);
+                var end = text.IndexOf(token, index + 2, StringComparison.Ordinal);
+                if (end > index + 2)
+                {
+                    builder.Append(DiffRender.Ansi.Bold);
+                    builder.Append(text, index + 2, end - index - 2);
+                    builder.Append(DiffRender.Ansi.Reset);
+                    index = end + 2;
+                    continue;
+                }
+            }
+            builder.Append(text[index]);
+            index++;
+        }
+        return builder.ToString();
+    }
     private static IEnumerable<string> RenderUserMessage(string text, int width)
     {
         foreach (var line in WrapPlain("> " + text, width))
@@ -2169,7 +2330,29 @@ public static class ChatTuiRenderer
         var count = rawLines.Length == 1
             ? ChatTexts.T(language, "1 line", "1 行")
             : ChatTexts.T(language, $"{rawLines.Length} lines", $"{rawLines.Length} 行");
-        var heading = $"{ChatTexts.DiffTitle(language)} · +{added} -{removed} · {count}";
+        var files = rawLines
+            .Where(line => line.StartsWith("+++ ", StringComparison.Ordinal))
+            .Select(line => line[4..].Trim().Split('\t')[0])
+            .Where(path => path.Length > 0
+                && !path.Equals("/dev/null", StringComparison.Ordinal))
+            .Select(path => path.StartsWith("b/", StringComparison.Ordinal)
+                ? path[2..]
+                : path)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        var subject = files.Count switch
+        {
+            1 => files[0],
+            > 1 => ChatTexts.T(
+                language,
+                $"{files.Count} files",
+                $"{files.Count} 个文件"),
+            _ => string.Empty
+        };
+        var stats = $"+{added} -{removed}";
+        var heading = subject.Length > 0
+            ? $"{ChatTexts.DiffTitle(language)} {subject} · {stats}"
+            : $"{ChatTexts.DiffTitle(language)} · {stats} · {count}";
         var result = new List<TranscriptLine>
         {
             new(
@@ -2213,28 +2396,61 @@ public static class ChatTuiRenderer
                 : DiffRender.Ansi.Cyan;
         var key = $"tool:{entryIndex}";
         var expanded = state.IsTranscriptItemExpanded(key);
-        var marker = expanded ? "▾" : "▸";
-        var summary = lines.Count == 0
-            ? string.Empty
+        var hasStatus = success || failure;
+        var commandIndex = hasStatus && lines.Count > 1 ? 1 : 0;
+        var summary = lines.Count > commandIndex
+            ? DiffRender.RedactSensitive(lines[commandIndex].Trim())
             : DiffRender.RedactSensitive(lines[0].Trim());
-        var label = ChatTexts.ToolLabel(language).Trim();
+        var title = ChatTexts.T(language, "Ran", "运行");
         var result = new List<TranscriptLine>
         {
             new(
                 DiffRender.Ansi.Fit(
-                    color + marker + " " + label + " " + summary + DiffRender.Ansi.Reset,
+                    color +
+                    "• " +
+                    DiffRender.Ansi.Reset +
+                    DiffRender.Ansi.Bold +
+                    title +
+                    DiffRender.Ansi.Reset +
+                    " " +
+                    summary +
+                    DiffRender.Ansi.Reset,
                     width),
                 new TranscriptToggle(key, TranscriptToggleKind.Tool))
         };
-        if (!expanded)
+        if (expanded)
         {
+            for (var index = hasStatus ? 0 : 1; index < lines.Count; index++)
+            {
+                var detail = DiffRender.RedactSensitive(lines[index]);
+                var detailColor = index == 0 && hasStatus
+                    ? color
+                    : DiffRender.Ansi.Secondary;
+                foreach (var wrapped in WrapPlain("  " + detail, width))
+                {
+                    result.Add(new TranscriptLine(
+                        detailColor + wrapped + DiffRender.Ansi.Reset));
+                }
+            }
             return result;
         }
 
-        for (var index = 1; index < lines.Count; index++)
+        var previewStart = hasStatus ? 2 : 1;
+        var preview = lines.Skip(previewStart).TakeLast(3).ToList();
+        if (preview.Count == 0 && hasStatus)
         {
-            var detail = DiffRender.RedactSensitive(lines[index]);
-            foreach (var wrapped in WrapPlain("  " + detail, width))
+            result.Add(new TranscriptLine(
+                DiffRender.Ansi.Secondary +
+                "  └ " +
+                ChatTexts.T(language, "(no output)", "（无输出）") +
+                DiffRender.Ansi.Reset));
+            return result;
+        }
+        for (var index = 0; index < preview.Count; index++)
+        {
+            var detail = DiffRender.RedactSensitive(preview[index]);
+            var prefix = index == 0 ? "  └ " : "    ";
+            foreach (var wrapped in WrapPlain(prefix + detail, width))
             {
                 result.Add(new TranscriptLine(
                     DiffRender.Ansi.Secondary + wrapped + DiffRender.Ansi.Reset));

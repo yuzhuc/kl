@@ -13,8 +13,6 @@ public static class ChatTexts
     public static string AssistantLabel(UiLanguage language) =>
         "• ";
 
-    public static string ToolLabel(UiLanguage language) =>
-        T(language, "[tool] ", "[工具] ");
 
     public static string ErrorLabel(UiLanguage language) =>
         T(language, "[error] ", "[错误] ");
