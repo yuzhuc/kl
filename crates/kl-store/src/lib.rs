@@ -9,6 +9,7 @@ use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
+pub const EVENT_SCHEMA_VERSION: u32 = 1;
 pub const TURN_STATE_IDLE: &str = "idle";
 pub const TURN_STATE_WORKING: &str = "working";
 pub const TURN_STATE_WAITING_APPROVAL: &str = "waiting_approval";
@@ -43,6 +44,15 @@ pub struct SessionMeta {
 pub struct SessionData {
     pub meta: SessionMeta,
     pub messages: Vec<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoredEvent {
+    pub seq: u64,
+    pub at: String,
+    #[serde(default = "default_event_schema_version")]
+    pub schema_version: u32,
+    pub event: CoreEvent,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -220,6 +230,7 @@ impl SessionStore {
         let record = EventRecord {
             seq,
             at: now(),
+            schema_version: EVENT_SCHEMA_VERSION,
             event,
         };
         let mut line = serde_json::to_vec(&record)?;
@@ -231,6 +242,23 @@ impl SessionStore {
         file.write_all(&line)?;
         file.flush()?;
         Ok(())
+    }
+
+    pub fn read_events(&self, session_id: &str) -> Result<Vec<StoredEvent>, StoreError> {
+        let path = self.session_dir(session_id).join("events.jsonl");
+        if !path.exists() {
+            return Ok(Vec::new());
+        }
+        let file = fs::File::open(path)?;
+        let mut events = Vec::new();
+        for line in BufReader::new(file).lines() {
+            let line = line?;
+            if line.trim().is_empty() {
+                continue;
+            }
+            events.push(serde_json::from_str(&line)?);
+        }
+        Ok(events)
     }
 
     pub fn event_count(&self, session_id: &str) -> Result<u64, StoreError> {
@@ -257,11 +285,17 @@ struct StateFile {
 struct EventRecord<'a> {
     seq: u64,
     at: String,
+    #[serde(default = "default_event_schema_version")]
+    schema_version: u32,
     event: &'a CoreEvent,
 }
 
 fn now() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
+}
+
+fn default_event_schema_version() -> u32 {
+    EVENT_SCHEMA_VERSION
 }
 
 fn default_turn_state() -> String {
@@ -416,6 +450,62 @@ mod tests {
         store.append_event(&data.meta.id, 1, &event).unwrap();
         store.append_event(&data.meta.id, 2, &event).unwrap();
         assert_eq!(store.event_count(&data.meta.id).unwrap(), 2);
+    }
+
+    #[test]
+    fn reads_events_in_order_with_schema_version() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(temp.path()).unwrap();
+        let data = store
+            .create("D:\\work", "openai", "gpt-test", "high")
+            .unwrap();
+        let first = CoreEvent::TurnStarted {
+            turn_id: "first".to_owned(),
+        };
+        let second = CoreEvent::TurnStarted {
+            turn_id: "second".to_owned(),
+        };
+        store.append_event(&data.meta.id, 1, &first).unwrap();
+        store.append_event(&data.meta.id, 2, &second).unwrap();
+
+        let events = store.read_events(&data.meta.id).unwrap();
+        assert_eq!(
+            events.iter().map(|event| event.seq).collect::<Vec<_>>(),
+            vec![1, 2]
+        );
+        assert!(
+            events
+                .iter()
+                .all(|event| event.schema_version == EVENT_SCHEMA_VERSION)
+        );
+        assert_eq!(events[0].event, first);
+        assert_eq!(events[1].event, second);
+    }
+
+    #[test]
+    fn reads_legacy_event_without_schema_version() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(temp.path()).unwrap();
+        let data = store
+            .create("D:\\work", "openai", "gpt-test", "high")
+            .unwrap();
+        let path = temp.path().join(&data.meta.id).join("events.jsonl");
+        let line = serde_json::json!({
+            "seq": 7,
+            "at": "2026-10-19T00:00:00.000Z",
+            "event": { "type": "turn.started", "data": { "turn_id": "old" } }
+        });
+        std::fs::write(path, format!("{line}\n")).unwrap();
+
+        let events = store.read_events(&data.meta.id).unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].schema_version, EVENT_SCHEMA_VERSION);
+        assert_eq!(
+            events[0].event,
+            CoreEvent::TurnStarted {
+                turn_id: "old".to_owned()
+            }
+        );
     }
 
     #[test]
