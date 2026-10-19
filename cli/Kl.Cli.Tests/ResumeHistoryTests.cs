@@ -126,6 +126,42 @@ public sealed class ResumeHistoryTests
         Assert.DoesNotContain("Ctrl+R to show", plain);
     }
 
+    [Fact]
+    public void PersistedToolCallsAreRestoredWithOutputAndDiff()
+    {
+        var messages = new List<HistoryMessage>
+        {
+            new("user", "run it", "", 2, null, null, null),
+            new("tool", "", "", 5, "shell", true, "exit 0"),
+            new("assistant", "done", "", 6, null, null, null)
+        };
+        var lines = new[]
+        {
+            """{"seq":2,"event":{"type":"turn.started","data":{"turn_id":"t1"}}}""",
+            """{"seq":3,"event":{"type":"tool.started","data":{"turn_id":"t1","call_id":"c1","name":"shell","args":{"command":"dir"}}}}""",
+            """{"seq":4,"event":{"type":"tool.output","data":{"turn_id":"t1","call_id":"c1","stream":"combined","chunk":"line1\n"}}}""",
+            """{"seq":5,"event":{"type":"tool.completed","data":{"turn_id":"t1","call_id":"c1","name":"shell","ok":true,"summary":"exit 0","output":"line1\nline2\n","diff":"+new"}}}""",
+            """{"seq":6,"event":{"type":"turn.completed","data":{"turn_id":"t1","status":"completed","text":"done"}}}"""
+        };
+
+        var events = ChatTuiState.ParseHistoryEvents(lines);
+        var state = new ChatTuiState();
+        state.AddHistory(messages, events.Reasoning, events.Tools);
+
+        var tool = Assert.Single(
+            state.Transcript,
+            entry => entry.Kind == TranscriptKind.Tool);
+        Assert.Contains("[ok] shell: exit 0", tool.Text);
+        Assert.Contains("shell {\"command\":\"dir\"}", tool.Text);
+        Assert.Contains("line2", tool.Text);
+        var diff = Assert.Single(
+            state.Transcript,
+            entry => entry.Kind == TranscriptKind.Diff);
+        Assert.Equal("+new", diff.Text);
+        Assert.Contains(
+            state.Transcript,
+            entry => entry.Kind == TranscriptKind.Assistant && entry.Text == "done");
+    }
     private sealed class SilentPresenter : ISessionPresenter
     {
         public ValueTask OnEventAsync(
