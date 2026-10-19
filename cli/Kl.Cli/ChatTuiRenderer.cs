@@ -303,10 +303,9 @@ public static class ChatTuiRenderer
     private static string RenderHeaderPath(ChatTuiState state, int width)
     {
         var path = DisplayWorkspacePath(state);
-        var (_, pathColor, _) = ContextColors(state);
         var available = Math.Max(1, width - 5);
         return DiffRender.Ansi.Fit(
-            "     " + pathColor +
+            "     " + DiffRender.Ansi.Secondary +
             DisplayText.Ellipsize(path, available) + DiffRender.Ansi.Reset,
             width);
     }
@@ -1196,15 +1195,24 @@ public static class ChatTuiRenderer
             var description = DiffRender.Ansi.TruncateVisible(
                 ChatCommandPalette.Description(command, language),
                 descriptionWidth);
-            var row =
-                $"{(index == selected ? "› " : "  ")}" +
-                DisplayText.PadToWidth(command.Name, nameWidth) +
-                "  " +
-                description;
-            var fitted = DiffRender.Ansi.Fit(row, width);
-            lines.Add(index == selected
-                ? DiffRender.Ansi.Inverse + fitted + DiffRender.Ansi.Reset
-                : fitted);
+            var marker = index == selected ? "› " : "  ";
+            var name = DisplayText.PadToWidth(command.Name, nameWidth);
+            if (index == selected)
+            {
+                var row = marker + name + "  " + description;
+                lines.Add(
+                    DiffRender.Ansi.Inverse +
+                    DiffRender.Ansi.Fit(row, width) +
+                    DiffRender.Ansi.Reset);
+            }
+            else
+            {
+                lines.Add(DiffRender.Ansi.Fit(
+                    marker + DiffRender.Ansi.Bold + name + DiffRender.Ansi.Reset +
+                    "  " + DiffRender.Ansi.Secondary + description +
+                    DiffRender.Ansi.Reset,
+                    width));
+            }
         }
         return lines;
     }

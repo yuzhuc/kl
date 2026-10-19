@@ -115,12 +115,12 @@ public sealed class ChatTuiTests
             " - create an AGENTS.md file with instructions for KL" +
             DiffRender.Ansi.Reset,
             render);
+        Assert.Contains(
+            "     " + DiffRender.Ansi.Secondary + "D:\\kl" + DiffRender.Ansi.Reset,
+            render);
         var lines = render.Split('\n');
-        var pathLine = lines.First(line =>
-            DiffRender.Ansi.Strip(line).TrimStart().StartsWith("D:\\kl", StringComparison.Ordinal));
         var modelLine = lines.First(line =>
             DiffRender.Ansi.Strip(line).Contains("openai/gpt-5 high", StringComparison.Ordinal));
-        Assert.NotEmpty(Ansi256Colors(pathLine));
         var sectionColors = Ansi256Colors(modelLine)
             .Where(color => color != 244)
             .Distinct()

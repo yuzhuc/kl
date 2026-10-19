@@ -169,6 +169,10 @@ public sealed class ChatCommandPaletteTests
         var lines = ChatTuiRenderer.CommandPaletteLines(state, 100);
         Assert.StartsWith(DiffRender.Ansi.Inverse + "› ", lines[0]);
         Assert.StartsWith("  /status", DiffRender.Ansi.Strip(lines[1]));
+        Assert.Contains(DiffRender.Ansi.Bold + "/status", lines[1]);
+        Assert.Contains(
+            DiffRender.Ansi.Secondary + "show current session configuration",
+            lines[1]);
 
         state.DismissCommandPalette();
         Assert.False(ChatCommandPalette.IsOpen(state));
