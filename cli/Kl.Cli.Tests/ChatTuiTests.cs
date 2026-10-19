@@ -880,6 +880,27 @@ public sealed class ChatTuiTests
     }
 
     [Fact]
+    public void FrameUpdateWritesOnlyChangedRows()
+    {
+        var previous = new[] { "first", "second", "third" };
+        var current = new[] { "first", "SECOND", "third" };
+
+        var update = ChatTuiRunner.BuildFrameUpdate(previous, current);
+
+        Assert.Equal("\u001b[2;1HSECOND\u001b[0K", update);
+    }
+
+    [Fact]
+    public void FrameUpdateClearsRowsRemovedFromTheFrame()
+    {
+        var update = ChatTuiRunner.BuildFrameUpdate(
+            new[] { "first", "second", "third" },
+            new[] { "first" });
+
+        Assert.Contains("\u001b[2;1H\u001b[0K", update);
+        Assert.Contains("\u001b[3;1H\u001b[0K", update);
+    }
+    [Fact]
     public void CtrlCBranchesBetweenCancelCopyAndExit()
     {
         var idle = new ChatTuiState();

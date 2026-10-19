@@ -93,6 +93,7 @@ public static class ChatTuiRunner
             var lastWidth = 0;
             var lastHeight = 0;
             var blinkSince = Environment.TickCount64;
+            string[]? lastFrame = null;
             while (!exit)
             {
                 var changed = false;
@@ -119,6 +120,7 @@ public static class ChatTuiRunner
                     state.CursorVisible = cursorVisible;
                     dirty = true;
                 }
+                var clearBeforeRender = forceClear;
                 if (forceClear)
                 {
                     Console.Out.Write("\u001b[0m\u001b[2J\u001b[H");
@@ -133,7 +135,17 @@ public static class ChatTuiRunner
                         lastWidth,
                         lastHeight))
                 {
-                    RenderFrame(width, height, state);
+                    var fullRedraw = clearBeforeRender
+                        || lastFrame is null
+                        || lastWidth == 0
+                        || width != lastWidth
+                        || height != lastHeight;
+                    lastFrame = RenderFrame(
+                        width,
+                        height,
+                        state,
+                        lastFrame,
+                        fullRedraw);
                     dirty = false;
                     lastWidth = width;
                     lastHeight = height;
@@ -1963,12 +1975,55 @@ public static class ChatTuiRunner
             allow ? "已发送审批：允许" : "已发送审批：拒绝");
     }
 
-    private static void RenderFrame(int width, int height, ChatTuiState state)
+    public static string BuildFrameUpdate(
+        IReadOnlyList<string> previous,
+        IReadOnlyList<string> current)
     {
-        var frame = ChatTuiRenderer.Render(width, height, state)
-            .Replace("\n", Environment.NewLine, StringComparison.Ordinal);
-        Console.Out.Write("\u001b[H" + frame + "\u001b[0J");
+        var builder = new System.Text.StringBuilder();
+        for (var row = 0; row < current.Count; row++)
+        {
+            if (row < previous.Count
+                && string.Equals(previous[row], current[row], StringComparison.Ordinal))
+            {
+                continue;
+            }
+            builder.Append("\u001b[")
+                .Append(row + 1)
+                .Append(";1H")
+                .Append(current[row])
+                .Append("\u001b[0K");
+        }
+        for (var row = current.Count; row < previous.Count; row++)
+        {
+            builder.Append("\u001b[")
+                .Append(row + 1)
+                .Append(";1H\u001b[0K");
+        }
+        return builder.ToString();
+    }
+
+    private static string[] RenderFrame(
+        int width,
+        int height,
+        ChatTuiState state,
+        string[]? previous,
+        bool fullRedraw)
+    {
+        var frame = ChatTuiRenderer.Render(width, height, state);
+        var lines = frame.Split('\n');
+        if (fullRedraw || previous is null)
+        {
+            Console.Out.Write(
+                "\u001b[H" +
+                frame.Replace("\n", Environment.NewLine, StringComparison.Ordinal) +
+                "\u001b[0J");
+        }
+        else
+        {
+            Console.Out.Write(BuildFrameUpdate(previous, lines));
+        }
         Console.Out.Flush();
+        return lines;
     }
 
     private static string GetString(JsonElement element, string name) =>
