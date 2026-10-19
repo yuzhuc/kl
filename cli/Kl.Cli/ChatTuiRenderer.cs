@@ -269,7 +269,33 @@ public static class ChatTuiRenderer
             return false;
         }
         state.ToggleTranscriptItem(toggle.Key);
+        if (toggle.Kind == TranscriptToggleKind.Reasoning)
+        {
+            KeepTranscriptStart(state, width, bodyHeight, window.Start);
+        }
         return true;
+    }
+
+    private static void KeepTranscriptStart(
+        ChatTuiState state,
+        int width,
+        int bodyHeight,
+        int targetStart)
+    {
+        var layout = BuildTranscriptLayout(state, width);
+        var maximum = Math.Max(0, layout.Lines.Count - bodyHeight);
+        state.TranscriptScroll = Math.Clamp(
+            layout.Lines.Count - bodyHeight - targetStart,
+            0,
+            maximum);
+        var window = BuildChatTranscriptWindow(state, width, bodyHeight, layout);
+        if (window.Start != targetStart)
+        {
+            state.TranscriptScroll = Math.Clamp(
+                state.TranscriptScroll + window.Start - targetStart,
+                0,
+                maximum);
+        }
     }
     public static List<string> TranscriptLines(ChatTuiState state, int width) =>
         BuildTranscriptLayout(state, width).Lines;
@@ -319,24 +345,25 @@ public static class ChatTuiRenderer
             }
             if (entry.Kind == TranscriptKind.Reasoning)
             {
-                var title = entry.IsComplete
-                    ? ChatTexts.T(language, "Done thinking", "完成思考")
-                    : ChatTexts.T(language, "Thinking…", "思考中…");
                 var key = ChatTuiState.ReasoningItemKey(entryIndex);
                 var expanded = state.IsTranscriptItemExpanded(key);
                 var marker = expanded ? "▾" : "▸";
-
-                var header = ColorLines(
-                    WrapPlain($"{marker} {title}", width),
-                    DiffRender.Ansi.Dim);
-                for (var index = 0; index < header.Count; index++)
+                var headerText = marker;
+                if (entry.IsComplete)
                 {
-                    Add(new TranscriptLine(
-                        header[index],
-                        index == 0
-                            ? new TranscriptToggle(key, TranscriptToggleKind.Reasoning)
-                            : null));
+                    headerText += " " + ChatTexts.T(language, "Done thinking", "完成思考");
                 }
+                else
+                {
+                    var preview = ReasoningPreview(entry.Text, Math.Max(1, width - 2));
+                    if (preview.Length > 0)
+                    {
+                        headerText += " " + preview;
+                    }
+                }
+                Add(new TranscriptLine(
+                    DiffRender.Ansi.Dim + headerText + DiffRender.Ansi.Reset,
+                    new TranscriptToggle(key, TranscriptToggleKind.Reasoning)));
                 if (!expanded)
                 {
                     continue;
@@ -350,7 +377,8 @@ public static class ChatTuiRenderer
                         : DiffRender.Ansi.Dim +
                             "  " +
                             contentLine +
-                            DiffRender.Ansi.Reset));
+                            DiffRender.Ansi.Reset,
+                        new TranscriptToggle(key, TranscriptToggleKind.Reasoning)));
                 }
                 continue;
             }
@@ -500,6 +528,18 @@ public static class ChatTuiRenderer
             visible,
             toggles,
             prompt?.Start);
+    }
+
+    private static string ReasoningPreview(string text, int width)
+    {
+        var normalized = (text ?? string.Empty)
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n');
+        var lastLine = normalized
+            .Split('\n')
+            .LastOrDefault(line => !string.IsNullOrWhiteSpace(line))
+            ?? string.Empty;
+        return DisplayText.TailToWidth(lastLine.Trim(), width);
     }
 
     private static string RenderStickyPrompt(string text, int width)

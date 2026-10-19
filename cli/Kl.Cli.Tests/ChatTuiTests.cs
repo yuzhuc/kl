@@ -1049,25 +1049,26 @@ public sealed class ChatTuiTests
         Assert.Equal("secret", reasoning.Text);
         var hidden = DiffRender.Ansi.Strip(
             ChatTuiRenderer.Render(100, 24, state));
-        Assert.Contains("▸ Thinking…", hidden);
+        Assert.Contains("▸ secret", hidden);
+        Assert.DoesNotContain("Thinking", hidden);
         Assert.DoesNotContain("Ctrl+R to show", hidden);
-        Assert.DoesNotContain("secret", hidden);
 
         state.ToggleReasoning();
         var visible = DiffRender.Ansi.Strip(
             ChatTuiRenderer.Render(100, 24, state));
-        Assert.Contains("▾ Thinking…", visible);
+        Assert.Contains("▾ secret", visible);
         Assert.Contains("  secret", visible);
-        Assert.DoesNotContain("Thinking… secret", visible);
+        Assert.DoesNotContain("Thinking", visible);
         var headerRow = visible.Split('\n')
             .Select(line => line.TrimEnd())
             .ToList()
-            .FindIndex(line => line.Contains("▾ Thinking…", StringComparison.Ordinal));
+            .FindIndex(line => line.Contains("▾ secret", StringComparison.Ordinal));
         Assert.True(headerRow >= 0);
         Assert.True(ChatTuiRenderer.ToggleTranscriptItemAt(state, 100, 24, headerRow));
-        Assert.Contains(
-            "▸ Thinking…",
-            DiffRender.Ansi.Strip(ChatTuiRenderer.Render(100, 24, state)));
+        var collapsed = DiffRender.Ansi.Strip(
+            ChatTuiRenderer.Render(100, 24, state));
+        Assert.Contains("▸ secret", collapsed);
+        Assert.DoesNotContain("  secret", collapsed);
 
         state.ToggleReasoning();
         state.CompleteReasoning();
@@ -1075,6 +1076,17 @@ public sealed class ChatTuiTests
             ChatTuiRenderer.Render(100, 24, state));
         Assert.Contains("▾ Done thinking", completed);
         Assert.Contains("  secret", completed);
+        var contentRow = completed.Split('\n')
+            .Select(line => line.TrimEnd())
+            .ToList()
+            .FindIndex(line => line.Contains("  secret", StringComparison.Ordinal));
+        Assert.True(contentRow >= 0);
+        Assert.True(ChatTuiRenderer.ToggleTranscriptItemAt(
+            state, 100, 24, contentRow));
+        var completedCollapsed = DiffRender.Ansi.Strip(
+            ChatTuiRenderer.Render(100, 24, state));
+        Assert.Contains("▸ Done thinking", completedCollapsed);
+        Assert.DoesNotContain("  secret", completedCollapsed);
     }
 
     [Fact]
@@ -1090,30 +1102,90 @@ public sealed class ChatTuiTests
             "second secret"));
 
         var hidden = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state));
-        Assert.Equal(
-            2,
-            hidden.Split('\n').Count(line =>
-                line.Contains("▸ Thinking…", StringComparison.Ordinal)));
+        Assert.Contains("▸ first secret", hidden);
+        Assert.Contains("▸ second secret", hidden);
 
         Assert.True(ChatTuiRenderer.ToggleTranscriptItemAt(state, 80, 24, 0));
         var firstExpanded = DiffRender.Ansi.Strip(
             ChatTuiRenderer.Render(80, 24, state));
-        Assert.Contains("first secret", firstExpanded);
-        Assert.DoesNotContain("second secret", firstExpanded);
-        Assert.Contains("▸ Thinking…", firstExpanded);
+        Assert.Contains("▾ first secret", firstExpanded);
+        Assert.Contains("  first secret", firstExpanded);
+        Assert.Contains("▸ second secret", firstExpanded);
+        Assert.DoesNotContain("  second secret", firstExpanded);
 
         state.ToggleReasoning();
         var allExpanded = DiffRender.Ansi.Strip(
             ChatTuiRenderer.Render(80, 24, state));
-        Assert.Contains("first secret", allExpanded);
-        Assert.Contains("second secret", allExpanded);
+        Assert.Contains("  first secret", allExpanded);
+        Assert.Contains("  second secret", allExpanded);
 
         state.ToggleReasoning();
         var allCollapsed = DiffRender.Ansi.Strip(
             ChatTuiRenderer.Render(80, 24, state));
-        Assert.DoesNotContain("first secret", allCollapsed);
-        Assert.DoesNotContain("second secret", allCollapsed);
+        Assert.Contains("▸ first secret", allCollapsed);
+        Assert.Contains("▸ second secret", allCollapsed);
+        Assert.DoesNotContain("  first secret", allCollapsed);
+        Assert.DoesNotContain("  second secret", allCollapsed);
     }
+
+    [Fact]
+    public void StreamingReasoningPreviewIsOneTailLine()
+    {
+        var state = new ChatTuiState();
+        state.Transcript.Add(new TranscriptEntry(
+            TranscriptKind.Reasoning,
+            "BEGIN " + new string('x', 60) + " END"));
+
+        var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(20, 24, state));
+        var preview = Assert.Single(
+            plain.Split('\n'),
+            line => line.Contains('▸'));
+
+        Assert.Contains("END", preview);
+        Assert.DoesNotContain("BEGIN", plain);
+        Assert.DoesNotContain("Thinking", plain);
+    }
+
+    [Fact]
+    public void ExpandingReasoningPushesContentDownInsteadOfUp()
+    {
+        var state = new ChatTuiState();
+        for (var index = 0; index < 12; index++)
+        {
+            state.Transcript.Add(new TranscriptEntry(
+                TranscriptKind.Info,
+                $"filler {index}"));
+        }
+        state.Transcript.Add(new TranscriptEntry(TranscriptKind.Info, "anchor"));
+        state.Transcript.Add(new TranscriptEntry(
+            TranscriptKind.Reasoning,
+            "one\ntwo\nthree"));
+        for (var index = 0; index < 16; index++)
+        {
+            state.Transcript.Add(new TranscriptEntry(
+                TranscriptKind.Info,
+                $"tail {index}"));
+        }
+
+        var before = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state))
+            .Split('\n');
+        var anchorRow = Array.FindIndex(before, line => line.Contains("anchor"));
+        var headerRow = Array.FindIndex(before, line => line.Contains("▸ three"));
+        Assert.True(anchorRow >= 0);
+        Assert.True(headerRow >= 0);
+
+        Assert.True(ChatTuiRenderer.ToggleTranscriptItemAt(
+            state, 80, 24, headerRow));
+        var after = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state))
+            .Split('\n');
+
+        Assert.Equal(anchorRow, Array.FindIndex(after, line => line.Contains("anchor")));
+        Assert.Equal(headerRow, Array.FindIndex(after, line => line.Contains("▾ three")));
+        Assert.Contains(after, line => line.Contains("  one"));
+        Assert.Contains(after, line => line.Contains("  two"));
+        Assert.Contains(after, line => line.Contains("  three"));
+    }
+
     [Fact]
     public void AssistantDeltaCompletesChineseReasoning()
     {
