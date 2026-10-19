@@ -1380,6 +1380,14 @@ public static class ChatTuiRunner
         switch (mouse.Kind)
         {
             case MouseInputKind.LeftDown:
+                if (ChatTuiRenderer.ToggleTranscriptItemAt(
+                        state,
+                        width,
+                        height,
+                        mouse.Row))
+                {
+                    break;
+                }
                 state.ClearSelection();
                 if (ChatTuiRenderer.TranscriptViewport(state, width, height) is { } viewport
                     && viewport.TryMap(mouse.Column, mouse.Row, out var point))

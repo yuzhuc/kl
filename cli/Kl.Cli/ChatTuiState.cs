@@ -180,7 +180,8 @@ public sealed class ChatTuiState
     public int HistoryRenameCursor { get; set; }
     public int CommandPaletteSelection { get; set; }
     public bool CommandPaletteDismissed { get; set; }
-    public bool ReasoningVisible { get; set; } = true;
+    public bool ReasoningVisible { get; set; }
+    public HashSet<string> ExpandedTranscriptItems { get; } = [];
     public ChatModelPickerState ModelPicker { get; } = new();
     public MentionPickerState MentionPicker { get; } = new();
     public SettingsTuiState Settings { get; } = new();
@@ -263,6 +264,17 @@ public sealed class ChatTuiState
     }
 
     public void ToggleReasoning() => ReasoningVisible = !ReasoningVisible;
+
+    public bool IsTranscriptItemExpanded(string key) =>
+        ExpandedTranscriptItems.Contains(key);
+
+    public void ToggleTranscriptItem(string key)
+    {
+        if (!ExpandedTranscriptItems.Remove(key))
+        {
+            ExpandedTranscriptItems.Add(key);
+        }
+    }
 
     public HistoryView GetHistoryView() =>
         HistoryView.Build(
@@ -480,16 +492,27 @@ public sealed class ChatTuiState
             "\n",
             lines.Skip(start)
                 .Take(end - start + 1)
-                .Select(DiffRender.Ansi.Strip));
+                .Select(line => DiffRender.Ansi.Strip(line).TrimEnd()));
     }
 
     public string? LastAssistantText() =>
         Transcript.LastOrDefault(entry => entry.Kind == TranscriptKind.Assistant)?.Text;
 
+    private static bool ToolEntryMatches(string text, string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return false;
+        }
+        var first = text.Split('\n', 2)[0].TrimStart();
+        return first.Equals(name, StringComparison.OrdinalIgnoreCase)
+            || first.StartsWith(name + " ", StringComparison.OrdinalIgnoreCase);
+    }
     public void ClearTranscript()
     {
         Transcript.Clear();
         TranscriptScroll = 0;
+        ExpandedTranscriptItems.Clear();
         PendingApprovalId = null;
         StatusMessage = null;
         IsTurnActive = false;
@@ -647,10 +670,22 @@ public sealed class ChatTuiState
                     $"[approval] {sessionEvent.Decision}"));
                 break;
             case SessionEventKind.ToolCompleted:
-                Transcript.Add(new TranscriptEntry(
-                    TranscriptKind.Tool,
+                var completion =
                     $"{(sessionEvent.Ok ? "[ok]" : "[fail]")} " +
-                    $"{sessionEvent.Name}: {sessionEvent.Summary}"));
+                    $"{sessionEvent.Name}: {sessionEvent.Summary}";
+                if (Transcript.Count > 0
+                    && Transcript[^1].Kind == TranscriptKind.Tool
+                    && ToolEntryMatches(Transcript[^1].Text, sessionEvent.Name))
+                {
+                    Transcript[^1] = Transcript[^1] with
+                    {
+                        Text = completion + "\n" + Transcript[^1].Text
+                    };
+                }
+                else
+                {
+                    Transcript.Add(new TranscriptEntry(TranscriptKind.Tool, completion));
+                }
                 if (!string.IsNullOrWhiteSpace(sessionEvent.Diff))
                 {
                     Transcript.Add(new TranscriptEntry(

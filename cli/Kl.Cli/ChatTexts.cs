@@ -9,11 +9,9 @@ public static class ChatTexts
     public static string InputPlaceholder(UiLanguage language) =>
         T(language, KlBrand.InputPlaceholder, "让 KL 做点什么，或输入 / 查看命令");
 
-    public static string UserLabel(UiLanguage language) =>
-        T(language, "You: ", "你：");
 
     public static string AssistantLabel(UiLanguage language) =>
-        T(language, "KL: ", "KL：");
+        "• ";
 
     public static string ToolLabel(UiLanguage language) =>
         T(language, "[tool] ", "[工具] ");
@@ -28,10 +26,10 @@ public static class ChatTexts
         T(language, "[diff]", "[差异]");
 
     public static string ThinkingLabel(UiLanguage language) =>
-        T(language, "Thinking… ", "思考中… ");
+        T(language, "▾ Thinking… ", "▾ 思考中… ");
 
     public static string ThinkingHidden(UiLanguage language) =>
-        T(language, "Thinking… (Ctrl+R to show)", "思考中…（Ctrl+R 显示）");
+        T(language, "▸ Thinking… (Ctrl+R to show)", "▸ 思考中…（Ctrl+R 显示）");
 
     public static string ApprovalTool(UiLanguage language) =>
         T(language, "tool", "工具");
@@ -210,7 +208,7 @@ public static class ChatTexts
         T(language, $"Worked for {seconds:0.0}s • {time}", $"耗时 {seconds:0.0}s • {time}");
 
     public static string HistoryTitle(UiLanguage language) =>
-        T(language, "History", "历史");
+        T(language, "History", "历史任务");
 
     public static string HistoryGroupBy(UiLanguage language, HistoryGrouping grouping) =>
         T(
