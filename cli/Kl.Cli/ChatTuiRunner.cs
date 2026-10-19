@@ -1913,11 +1913,14 @@ public static class ChatTuiRunner
         {
             var result = await session.HistoryAsync(20, cancellationToken)
                 .ConfigureAwait(false);
-            var reasoning = await LoadReasoningAsync(
+            var historyEvents = await LoadHistoryEventsAsync(
                 options,
                 session.SessionId,
                 cancellationToken).ConfigureAwait(false);
-            state.AddHistory(ChatTuiState.ParseHistory(result), reasoning);
+            state.AddHistory(
+                ChatTuiState.ParseHistory(result),
+                historyEvents.Reasoning,
+                historyEvents.Tools);
         }
         catch (Exception error)
             when (error is JsonRpcException or IOException or InvalidOperationException)
@@ -1928,7 +1931,7 @@ public static class ChatTuiRunner
         }
     }
 
-    private static async Task<IReadOnlyList<HistoryReasoning>> LoadReasoningAsync(
+    private static async Task<HistoryEvents> LoadHistoryEventsAsync(
         CliOptions options,
         string sessionId,
         CancellationToken cancellationToken)
@@ -1942,16 +1945,16 @@ public static class ChatTuiRunner
                 "events.jsonl");
             if (!File.Exists(path))
             {
-                return [];
+                return new HistoryEvents([], []);
             }
             var lines = await File.ReadAllLinesAsync(path, cancellationToken)
                 .ConfigureAwait(false);
-            return ChatTuiState.ParseReasoningEvents(lines);
+            return ChatTuiState.ParseHistoryEvents(lines);
         }
         catch (Exception error)
             when (error is IOException or UnauthorizedAccessException)
         {
-            return [];
+            return new HistoryEvents([], []);
         }
     }
 

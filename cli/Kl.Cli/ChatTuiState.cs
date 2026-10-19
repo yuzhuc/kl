@@ -103,6 +103,12 @@ public sealed record HistorySession(
 
 public sealed record HistoryReasoning(long StartSeq, long EndSeq, string Text);
 
+public sealed record HistoryTool(long Seq, string Text, string? Diff);
+
+public sealed record HistoryEvents(
+    List<HistoryReasoning> Reasoning,
+    Dictionary<long, HistoryTool> Tools);
+
 public sealed record HistoryMessage(
     string Role,
     string Text,
@@ -593,7 +599,8 @@ public sealed class ChatTuiState
 
     public void AddHistory(
         IEnumerable<HistoryMessage> messages,
-        IReadOnlyList<HistoryReasoning>? reasoning = null)
+        IReadOnlyList<HistoryReasoning>? reasoning = null,
+        IReadOnlyDictionary<long, HistoryTool>? tools = null)
     {
         var emittedReasoning = new HashSet<long>();
         void AddReasoning(long? seq)
@@ -630,10 +637,27 @@ public sealed class ChatTuiState
                     break;
                 case "tool":
                     AddReasoning(message.Seq);
-                    var tool = message.ToolDisplay();
-                    if (!string.IsNullOrWhiteSpace(tool))
+                    if (message.Seq is { } toolSeq
+                        && tools is not null
+                        && tools.TryGetValue(toolSeq, out var historyTool))
                     {
-                        Transcript.Add(new TranscriptEntry(TranscriptKind.Tool, tool));
+                        Transcript.Add(new TranscriptEntry(
+                            TranscriptKind.Tool,
+                            historyTool.Text));
+                        if (!string.IsNullOrWhiteSpace(historyTool.Diff))
+                        {
+                            Transcript.Add(new TranscriptEntry(
+                                TranscriptKind.Diff,
+                                historyTool.Diff));
+                        }
+                    }
+                    else
+                    {
+                        var tool = message.ToolDisplay();
+                        if (!string.IsNullOrWhiteSpace(tool))
+                        {
+                            Transcript.Add(new TranscriptEntry(TranscriptKind.Tool, tool));
+                        }
                     }
                     break;
             }
@@ -839,9 +863,15 @@ public sealed class ChatTuiState
         TranscriptScroll = Math.Clamp(TranscriptScroll + delta, 0, maximum);
     }
 
-    public static List<HistoryReasoning> ParseReasoningEvents(IEnumerable<string> lines)
+    public static List<HistoryReasoning> ParseReasoningEvents(IEnumerable<string> lines) =>
+        ParseHistoryEvents(lines).Reasoning;
+
+    public static HistoryEvents ParseHistoryEvents(IEnumerable<string> lines)
     {
         var turns = new List<HistoryReasoning>();
+        var tools = new Dictionary<long, HistoryTool>();
+        var toolBuilders =
+            new Dictionary<string, (string Name, string Args, StringBuilder Output)>();
         long? start = null;
         var text = new StringBuilder();
         var separateNext = false;
@@ -854,6 +884,13 @@ public sealed class ChatTuiState
             start = null;
             text.Clear();
             separateNext = false;
+        }
+        void MarkSeparate()
+        {
+            if (start is not null && text.Length > 0)
+            {
+                separateNext = true;
+            }
         }
 
         foreach (var line in lines)
@@ -881,6 +918,10 @@ public sealed class ChatTuiState
                 {
                     continue;
                 }
+                var data = stored.TryGetProperty("data", out var dataValue)
+                    && dataValue.ValueKind == JsonValueKind.Object
+                        ? dataValue
+                        : default;
                 switch (GetString(stored, "type"))
                 {
                     case "turn.started":
@@ -896,20 +937,89 @@ public sealed class ChatTuiState
                         {
                             text.Append('\n');
                         }
-                        text.Append(stored.TryGetProperty("data", out var data)
-                            ? GetString(data, "text")
-                            : string.Empty);
+                        text.Append(GetString(data, "text"));
                         separateNext = false;
                         break;
                     case "turn.completed":
                     case "turn.failed":
                         Finish(seq);
                         break;
-                    default:
-                        if (start is not null && text.Length > 0)
+                    case "tool.started":
+                        if (data.ValueKind == JsonValueKind.Object)
                         {
-                            separateNext = true;
+                            var callId = GetString(data, "call_id");
+                            if (callId.Length > 0)
+                            {
+                                toolBuilders[callId] = (
+                                    GetString(data, "name"),
+                                    GetRaw(data, "args"),
+                                    new StringBuilder());
+                            }
                         }
+                        MarkSeparate();
+                        break;
+                    case "tool.output":
+                        if (data.ValueKind == JsonValueKind.Object)
+                        {
+                            var callId = GetString(data, "call_id");
+                            if (callId.Length > 0)
+                            {
+                                if (!toolBuilders.TryGetValue(callId, out var builder))
+                                {
+                                    builder = (string.Empty, string.Empty, new StringBuilder());
+                                }
+                                builder.Output.Append(GetString(data, "chunk"));
+                                toolBuilders[callId] = builder;
+                            }
+                        }
+                        MarkSeparate();
+                        break;
+                    case "tool.completed":
+                        if (data.ValueKind == JsonValueKind.Object)
+                        {
+                            var callId = GetString(data, "call_id");
+                            var name = GetString(data, "name");
+                            var args = string.Empty;
+                            var output = GetString(data, "output");
+                            if (callId.Length > 0
+                                && toolBuilders.Remove(callId, out var builder))
+                            {
+                                if (name.Length == 0)
+                                {
+                                    name = builder.Name;
+                                }
+                                args = builder.Args;
+                                if (output.Length == 0 && builder.Output.Length > 0)
+                                {
+                                    output = builder.Output.ToString();
+                                }
+                            }
+                            var ok = !data.TryGetProperty("ok", out var okValue)
+                                || okValue.ValueKind != JsonValueKind.False;
+                            var summary = GetString(data, "summary");
+                            var toolText = new StringBuilder();
+                            toolText.Append(ok ? "[ok] " : "[fail] ");
+                            toolText.Append(name).Append(": ").Append(summary);
+                            if (args.Length > 0)
+                            {
+                                toolText.Append('\n').Append(name).Append(' ').Append(args);
+                            }
+                            if (output.Length > 0)
+                            {
+                                toolText.Append('\n').Append(output.TrimEnd());
+                            }
+                            var diff = GetOptionalString(data, "diff");
+                            tools[seq] = new HistoryTool(
+                                seq,
+                                SanitizeEventText(toolText.ToString()),
+                                string.IsNullOrWhiteSpace(diff)
+                                    ? null
+                                    : SanitizeEventText(diff));
+                        }
+                        MarkSeparate();
+                        break;
+                    default:
+                        MarkSeparate();
                         break;
                 }
             }
@@ -918,9 +1028,8 @@ public sealed class ChatTuiState
         {
             Finish(long.MaxValue);
         }
-        return turns;
+        return new HistoryEvents(turns, tools);
     }
-
     public static List<HistoryMessage> ParseHistory(JsonElement result)
     {
         var messages = new List<HistoryMessage>();
@@ -1000,6 +1109,28 @@ public sealed class ChatTuiState
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
+
+    private static string GetRaw(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) ? value.GetRawText() : string.Empty;
+
+    private static string SanitizeEventText(string text)
+    {
+        if (text.IndexOfAny(['\u001b', '\u0000', '\u0007']) < 0)
+        {
+            return text;
+        }
+
+        var builder = new StringBuilder(text.Length);
+        foreach (var character in text)
+        {
+            if (character is '\n' or '\r' or '\t'
+                || (character >= ' ' && character != '\u007f'))
+            {
+                builder.Append(character);
+            }
+        }
+        return builder.ToString();
+    }
 }
 
 public static class ChatCommand

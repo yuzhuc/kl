@@ -295,28 +295,42 @@ public static class ChatTuiRenderer
         }
     }
 
-    // Codex activity disclosure: an indented synthetic row below the block.
-    private static TranscriptLine? DisclosureLine(
+    // Codex activity disclosure: a floating badge on the block's last row.
+    private static void AttachDisclosure(
+        List<TranscriptLine> lines,
         string key,
         TranscriptToggleKind kind,
         int width,
         bool expanded,
         int hiddenLines)
     {
-        if (hiddenLines <= 0)
+        if (hiddenLines <= 0 || lines.Count == 0)
         {
-            return null;
+            return;
         }
         var label = expanded ? "−" : $"+{hiddenLines}";
-        var indent = Math.Min(width / 4, 4);
-        return new TranscriptLine(
-            new string(' ', indent) +
-            DiffRender.Ansi.Selection +
-            " " +
-            label +
-            " " +
-            DiffRender.Ansi.Reset,
+        var last = lines[^1];
+        lines[^1] = new TranscriptLine(
+            AppendDisclosureBadge(last.Text, label, width),
             new TranscriptToggle(key, kind));
+    }
+
+    private static string AppendDisclosureBadge(string text, string label, int width)
+    {
+        var badgeText = " " + label + " ";
+        var badgeWidth = DisplayText.Width(badgeText);
+        var rightMargin = Math.Clamp(width / 10, 4, 8);
+        var content = DiffRender.Ansi.TruncateVisible(
+            text,
+            Math.Max(1, width - rightMargin - badgeWidth));
+        var padding = Math.Max(
+            1,
+            width - rightMargin - DiffRender.Ansi.VisibleWidth(content) - badgeWidth);
+        return content +
+            new string(' ', padding) +
+            DiffRender.Ansi.Selection +
+            badgeText +
+            DiffRender.Ansi.Reset;
     }
 
     public static List<string> TranscriptLines(ChatTuiState state, int width) =>
@@ -2392,16 +2406,13 @@ public static class ChatTuiRenderer
                     }
                 }
             }
-            var disclosure = DisclosureLine(
+            AttachDisclosure(
+                result,
                 key,
                 TranscriptToggleKind.CodeBlock,
                 width,
                 expanded,
                 code.Count);
-            if (disclosure is not null)
-            {
-                result.Add(disclosure);
-            }
             code.Clear();
         }
 
@@ -2835,16 +2846,13 @@ public static class ChatTuiRenderer
                 result.Add(new TranscriptLine(line));
             }
         }
-        var disclosure = DisclosureLine(
+        AttachDisclosure(
+            result,
             key,
             TranscriptToggleKind.Diff,
             width,
             expanded,
             rawLines.Length);
-        if (disclosure is not null)
-        {
-            result.Add(disclosure);
-        }
         return result;
     }
     private static bool TryGetExplorationGroupEnd(
@@ -2945,15 +2953,15 @@ public static class ChatTuiRenderer
                 }
             }
         }
-        var disclosure = DisclosureLine(
-            key,
-            TranscriptToggleKind.ToolGroup,
-            width,
-            expanded,
-            end - start);
-        if (disclosure is not null)
+        if (!expanded)
         {
-            result.Add(disclosure);
+            AttachDisclosure(
+                result,
+                key,
+                TranscriptToggleKind.ToolGroup,
+                width,
+                false,
+                end - start);
         }
         return result;
     }
@@ -3002,19 +3010,14 @@ public static class ChatTuiRenderer
                 new TranscriptToggle(key, TranscriptToggleKind.Tool))
         };
 
-        void AddDisclosure()
-        {
-            var disclosure = DisclosureLine(
+        void AddDisclosure() =>
+            AttachDisclosure(
+                result,
                 key,
                 TranscriptToggleKind.Tool,
                 width,
                 expanded,
                 hidden);
-            if (disclosure is not null)
-            {
-                result.Add(disclosure);
-            }
-        }
         if (expanded)
         {
             for (var index = hasStatus ? 0 : 1; index < lines.Count; index++)
