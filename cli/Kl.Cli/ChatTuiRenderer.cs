@@ -2360,26 +2360,52 @@ public static class ChatTuiRenderer
                 DiffRender.Ansi.Fit(
                     color +
                     "• " +
+                    DiffRender.Ansi.Reset +
+                    DiffRender.Ansi.Bold +
                     title +
+                    DiffRender.Ansi.Reset +
                     " " +
                     summary +
                     DiffRender.Ansi.Reset,
                     width),
                 new TranscriptToggle(key, TranscriptToggleKind.Tool))
         };
-        if (!expanded)
+        if (expanded)
         {
+            for (var index = hasStatus ? 0 : 1; index < lines.Count; index++)
+            {
+                var detail = DiffRender.RedactSensitive(lines[index]);
+                var detailColor = index == 0 && hasStatus
+                    ? color
+                    : DiffRender.Ansi.Secondary;
+                foreach (var wrapped in WrapPlain("  " + detail, width))
+                {
+                    result.Add(new TranscriptLine(
+                        detailColor + wrapped + DiffRender.Ansi.Reset));
+                }
+            }
             return result;
         }
 
-        for (var index = hasStatus ? 0 : 1; index < lines.Count; index++)
+        var previewStart = hasStatus ? 2 : 1;
+        var preview = lines.Skip(previewStart).TakeLast(3).ToList();
+        if (preview.Count == 0 && hasStatus)
         {
-            var detail = DiffRender.RedactSensitive(lines[index]);
-            var detailColor = index == 0 && hasStatus ? color : DiffRender.Ansi.Secondary;
-            foreach (var wrapped in WrapPlain("  " + detail, width))
+            result.Add(new TranscriptLine(
+                DiffRender.Ansi.Secondary +
+                "  └ " +
+                ChatTexts.T(language, "(no output)", "（无输出）") +
+                DiffRender.Ansi.Reset));
+            return result;
+        }
+        for (var index = 0; index < preview.Count; index++)
+        {
+            var detail = DiffRender.RedactSensitive(preview[index]);
+            var prefix = index == 0 ? "  └ " : "    ";
+            foreach (var wrapped in WrapPlain(prefix + detail, width))
             {
                 result.Add(new TranscriptLine(
-                    detailColor + wrapped + DiffRender.Ansi.Reset));
+                    DiffRender.Ansi.Secondary + wrapped + DiffRender.Ansi.Reset));
             }
         }
         return result;

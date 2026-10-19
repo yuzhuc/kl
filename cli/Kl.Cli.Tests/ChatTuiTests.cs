@@ -428,7 +428,7 @@ public sealed class ChatTuiTests
 
         Assert.Contains("> fix it", render);
         Assert.Contains("• done", render);
-        Assert.Contains("• Ran shell cargo test", render);
+        Assert.Contains("• Ran shell cargo test", DiffRender.Ansi.Strip(render));
         Assert.DoesNotContain(">_ KL", DiffRender.Ansi.Strip(render));
         Assert.DoesNotContain("D:\\work", DiffRender.Ansi.Strip(render));
         var plainLines = DiffRender.Ansi.Strip(render).Split('\n');
@@ -1029,7 +1029,8 @@ public sealed class ChatTuiTests
         var collapsed = DiffRender.Ansi.Strip(
             ChatTuiRenderer.Render(100, 24, state));
         Assert.Contains("• Ran read_file {\"path\":\"a.txt\"}", collapsed);
-        Assert.DoesNotContain("contents", collapsed);
+        Assert.Contains("  └ contents", collapsed);
+        Assert.DoesNotContain("[ok] read_file: read 1 file", collapsed);
 
         state.ToggleTranscriptItem("tool:0");
         var expanded = DiffRender.Ansi.Strip(
@@ -1037,6 +1038,23 @@ public sealed class ChatTuiTests
         Assert.Contains("[ok] read_file: read 1 file", expanded);
         Assert.Contains("read_file {\"path\":\"a.txt\"}", expanded);
         Assert.Contains("contents", expanded);
+    }
+    [Fact]
+    public void ToolPreviewShowsLastThreeRedactedOutputLines()
+    {
+        var state = new ChatTuiState();
+        state.Transcript.Add(new TranscriptEntry(
+            TranscriptKind.Tool,
+            "[ok] shell: done\nshell run\nfirst\nsecond\n" +
+            "third api_key=super-secret\nfourth api_key=super-secret"));
+
+        var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(100, 24, state));
+
+        Assert.Contains("• Ran shell run", plain);
+        Assert.Contains("  └ second", plain);
+        Assert.DoesNotContain("first", plain);
+        Assert.Contains("api_key=***", plain);
+        Assert.DoesNotContain("super-secret", plain);
     }
     [Fact]
     public void ParsesMissingHistoryFieldsAsEmpty()
