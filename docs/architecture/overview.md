@@ -16,6 +16,7 @@ Rust trusted core (kl-core)
   McpClient + MCP tools
   HookRunner + HookedTool
   SubagentTool (read-only, sequential)
+  JobTool (sandboxed background commands)
   ToolRegistry (built-ins + sidecar/WASM + MCP + worktree)
   PolicyEngine (path/command/git/network/env/plugin/approval)
   SandboxManager (policy/AppContainer backends, strict probing, MXC status)
@@ -206,7 +207,8 @@ See `schemas/protocol/v1/`, `schemas/plugin/manifest-v1.schema.json` and
   isolation is not verified; the policy allowlist remains active. Linux and
   macOS report an unimplemented OS backend and strict mode fails closed.
 - WASM tool plugins are implemented; WASM providers are not.
-- PTY and background job management are not implemented.
+- PTY is not implemented. Background jobs are process-local and are not
+  persisted across Core restarts.
 - Deep mode is five ordinary agent turns, not a separate agent runtime.
   Repository symbol indexing is not implemented.
 - Reviewer/verifier edits are denied at the tool-policy boundary; a workspace

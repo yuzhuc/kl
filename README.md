@@ -30,7 +30,7 @@ kl (C#/.NET)  -- JSON-RPC 2.0 over stdio -->  kl-core (Rust)
 - `crates/kl-provider` — OpenAI Chat Completions, Anthropic Messages, OpenAI
   Responses and a deterministic scripted provider for offline tests/demos.
 - `crates/kl-tools` — `read_file`, `write_file`, `edit_file`, `grep`, `glob`,
-  `shell`, `git`, `skill`, `worktree`.
+  `shell`, `git`, `skill`, `worktree`, `job`.
 - `crates/kl-review` — deterministic diff context, local/security rules,
   secret and dependency scans, runtime-audit findings, optional LLM review,
   deduplication and confidence thresholds.
@@ -67,6 +67,8 @@ kl run "fix the failing test" --agent verify
   commands. Hooks can deny or fail a call; they never grant permissions.
 - Worktrees: the `worktree` tool creates isolated trees under
   `.kl/worktrees/<name>`.
+- Jobs: the `job` tool starts, inspects and stops sandboxed background
+  commands for the lifetime of the Core process.
 - Subagent: the read-only `subagent` tool runs a focused child agent without
   recursive subagent calls.
 
