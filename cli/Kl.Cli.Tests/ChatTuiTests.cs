@@ -56,7 +56,7 @@ public sealed class ChatTuiTests
         lines.Add(new string('─', 80));
         lines.Add("› Ask KL to do anything");
         lines.Add(new string('─', 80));
-        lines.Add("  no provider configured · D:\\kl");
+        lines.Add("  no provider configured · D:\\kl · New chat");
         lines.Add("  ← for agents · ? for shortcuts");
 
         Assert.Equal(string.Join('\n', lines), Snapshot(ChatTuiRenderer.Render(80, 24, state)));
@@ -85,7 +85,7 @@ public sealed class ChatTuiTests
         lines.Add(new string('─', 80));
         lines.Add("› 让 KL 做点什么，或输入 / 查看命令");
         lines.Add(new string('─', 80));
-        lines.Add("  未配置 Provider · D:\\kl");
+        lines.Add("  未配置 Provider · D:\\kl · 新对话");
         lines.Add("  ← 代理 · ? 快捷键");
 
         Assert.Equal(string.Join('\n', lines), Snapshot(ChatTuiRenderer.Render(80, 24, state)));
@@ -98,6 +98,9 @@ public sealed class ChatTuiTests
         {
             ReasoningEffort = "high"
         };
+        state.History.Add(new HistorySession(
+            "s1", "D:\\kl", "openai", "gpt-5", string.Empty, 1,
+            null, "Say hello", null, null, "high"));
 
         var render = ChatTuiRenderer.Render(80, 24, state);
 
@@ -118,10 +121,12 @@ public sealed class ChatTuiTests
         var modelLine = lines.First(line =>
             DiffRender.Ansi.Strip(line).Contains("openai/gpt-5 high", StringComparison.Ordinal));
         Assert.NotEmpty(Ansi256Colors(pathLine));
-        var modelColors = Ansi256Colors(modelLine);
-        Assert.True(modelColors.Count >= 2);
-        Assert.NotEqual(modelColors[0], modelColors[^1]);
-        Assert.Contains("D:\\kl", DiffRender.Ansi.Strip(modelLine));
+        var sectionColors = Ansi256Colors(modelLine)
+            .Where(color => color != 244)
+            .Distinct()
+            .ToList();
+        Assert.True(sectionColors.Count >= 3);
+        Assert.Contains("· D:\\kl · Say hello", DiffRender.Ansi.Strip(modelLine));
     }
 
     [Fact]
@@ -310,7 +315,7 @@ public sealed class ChatTuiTests
         var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(100, 24, state));
         var footer = plain.Split('\n')[^1];
         Assert.Contains("openai/gpt-5", plain);
-        Assert.Contains("Ctrl+R reasoning", footer);
+        Assert.Contains("← for agents · ? for shortcuts", footer);
     }
 
     [Fact]

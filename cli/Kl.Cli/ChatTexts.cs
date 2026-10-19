@@ -66,11 +66,6 @@ public static class ChatTexts
             "Ctrl+C cancel  Shift+↑/↓ select  Ctrl+R reasoning",
             "Ctrl+C 取消  Shift+↑/↓ 选择  Ctrl+R 推理");
 
-    public static string IdleFooter(UiLanguage language) =>
-        T(
-            language,
-            "Ctrl+R reasoning  Ctrl+Shift+C copy  Ctrl+L clear  Ctrl+D exit  ? shortcuts",
-            "Ctrl+R 推理  Ctrl+Shift+C 复制  Ctrl+L 清屏  Ctrl+D 退出  ? 快捷键");
 
     public static string NoProviderStatus(UiLanguage language) =>
         T(

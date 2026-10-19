@@ -303,7 +303,7 @@ public static class ChatTuiRenderer
     private static string RenderHeaderPath(ChatTuiState state, int width)
     {
         var path = DisplayWorkspacePath(state);
-        var (_, pathColor) = ContextColors(state);
+        var (_, pathColor, _) = ContextColors(state);
         var available = Math.Max(1, width - 5);
         return DiffRender.Ansi.Fit(
             "     " + pathColor +
@@ -836,18 +836,42 @@ public static class ChatTuiRenderer
     private static string TaskTitleColor(string sessionId) =>
         TaskTitleColors[StableColorIndex(sessionId)];
 
-    private static (string ModelColor, string PathColor) ContextColors(ChatTuiState state)
+    private static (string ModelColor, string PathColor, string TitleColor) ContextColors(
+        ChatTuiState state)
     {
-        var model = string.IsNullOrWhiteSpace(state.Provider)
-            ? "no provider configured"
-            : $"{state.Provider}/{state.Model}";
-        var modelIndex = StableColorIndex(model);
-        var pathIndex = StableColorIndex(DisplayWorkspacePath(state));
-        if (pathIndex == modelIndex)
+        var random = new Random(state.ContextColorSeed);
+        var indices = new List<int>(3);
+        while (indices.Count < 3)
         {
-            pathIndex = (pathIndex + 1) % TaskTitleColors.Length;
+            var index = random.Next(TaskTitleColors.Length);
+            if (!indices.Contains(index))
+            {
+                indices.Add(index);
+            }
         }
-        return (TaskTitleColors[modelIndex], TaskTitleColors[pathIndex]);
+        return (
+            TaskTitleColors[indices[0]],
+            TaskTitleColors[indices[1]],
+            TaskTitleColors[indices[2]]);
+    }
+
+    private static string ConversationTitle(ChatTuiState state)
+    {
+        var current = state.History.FirstOrDefault(
+            session => session.SessionId == state.SessionId);
+        if (!string.IsNullOrWhiteSpace(current?.Task))
+        {
+            return current.Task.Trim();
+        }
+
+        var firstUser = state.Transcript
+            .FirstOrDefault(entry => entry.Kind == TranscriptKind.User)
+            ?.Text;
+        if (!string.IsNullOrWhiteSpace(firstUser))
+        {
+            return firstUser.Trim().Split('\n')[0];
+        }
+        return ChatTexts.T(state.Language, "New chat", "新对话");
     }
 
     private static int StableColorIndex(string value)
@@ -1511,23 +1535,31 @@ public static class ChatTuiRenderer
                 ? string.Empty
                 : state.ReasoningEffort;
         var path = DisplayWorkspacePath(state);
-        var (modelColor, pathColor) = ContextColors(state);
+        var title = ConversationTitle(state);
+        var (modelColor, pathColor, titleColor) = ContextColors(state);
+        var separator = DiffRender.Ansi.Secondary + " · " + DiffRender.Ansi.Reset;
         var baseLine = "  " + modelColor + DiffRender.Ansi.Bold + model +
             DiffRender.Ansi.Reset;
         if (effort.Length > 0)
         {
             baseLine += " " + modelColor + effort + DiffRender.Ansi.Reset;
         }
-        baseLine += DiffRender.Ansi.Secondary + " · " + DiffRender.Ansi.Reset;
-        var remaining = width - DiffRender.Ansi.VisibleWidth(baseLine);
-        var pathText = remaining > 0
-            ? DisplayText.Ellipsize(path, remaining)
-            : string.Empty;
-        if (pathText.Length > 0)
+        baseLine += separator;
+        var remaining = width - DiffRender.Ansi.VisibleWidth(baseLine) -
+            DiffRender.Ansi.VisibleWidth(separator);
+        if (remaining <= 0)
         {
-            baseLine += pathColor + pathText + DiffRender.Ansi.Reset;
+            return DiffRender.Ansi.Fit(baseLine, width);
         }
-        return DiffRender.Ansi.Fit(baseLine, width);
+
+        var pathBudget = Math.Max(1, remaining / 2);
+        var titleBudget = Math.Max(1, remaining - pathBudget);
+        var pathText = DisplayText.Ellipsize(path, pathBudget);
+        var titleText = DisplayText.Ellipsize(title, titleBudget);
+        return DiffRender.Ansi.Fit(
+            baseLine + pathColor + pathText + DiffRender.Ansi.Reset +
+            separator + titleColor + titleText + DiffRender.Ansi.Reset,
+            width);
     }
 
     private static string RenderFooter(ChatTuiState state, int width)
@@ -1576,17 +1608,9 @@ public static class ChatTuiRenderer
         {
             hints = ChatTexts.WorkingFooter(language);
         }
-        else if (IsHome(state))
-        {
-            hints = "  " + RenderInlineHint(
-                [
-                    ("←", ChatTexts.T(language, "for agents", "代理")),
-                    ("?", ChatTexts.T(language, "for shortcuts", "快捷键"))
-                ]);
-        }
         else
         {
-            hints = ChatTexts.IdleFooter(language);
+            hints = RenderAgentShortcutsHint(language);
         }
 
         var right = new List<string>();
@@ -1659,6 +1683,12 @@ public static class ChatTuiRenderer
                 DiffRender.Ansi.Bold + hint.Key + DiffRender.Ansi.Reset + " " +
                 DiffRender.Ansi.Dim + hint.Label + DiffRender.Ansi.Reset));
 
+    private static string RenderAgentShortcutsHint(UiLanguage language) =>
+        "  " + RenderInlineHint(
+            [
+                ("←", ChatTexts.T(language, "for agents", "代理")),
+                ("?", ChatTexts.T(language, "for shortcuts", "快捷键"))
+            ]);
     private static string RenderInlineHint(
         IEnumerable<(string Key, string Label)> hints) =>
         string.Join(

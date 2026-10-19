@@ -155,6 +155,7 @@ public sealed class ChatTuiState
     public string ReasoningEffort { get; set; } = string.Empty;
     public int WarningCount { get; set; }
     public string SessionId { get; set; }
+    public int ContextColorSeed { get; } = Random.Shared.Next();
     public bool Verbose { get; init; }
     public string Input { get; set; } = string.Empty;
     public int Cursor { get; set; }
