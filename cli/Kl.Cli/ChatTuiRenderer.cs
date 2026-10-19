@@ -165,7 +165,9 @@ public static class ChatTuiRenderer
         var column = Math.Max(0, screenColumn - 2);
         var (renderedCursorRow, renderedCursorColumn) =
             LocateComposerCursor(state.Input, ranges, state.Cursor);
-        if (lineIndex == renderedCursorRow && column > renderedCursorColumn)
+        if (state.CursorVisible
+            && lineIndex == renderedCursorRow
+            && column > renderedCursorColumn)
         {
             column--;
         }
@@ -1079,6 +1081,7 @@ public static class ChatTuiRenderer
             state.HistorySearch,
             state.HistorySearchCursor,
             state.HistorySearching,
+            state.CursorVisible,
             width);
 
     private static string RenderHistoryRenameLine(
@@ -1090,6 +1093,7 @@ public static class ChatTuiRenderer
             state.HistoryRenameInput,
             state.HistoryRenameCursor,
             editing: true,
+            state.CursorVisible,
             width);
 
     private static string RenderHistoryEditorLine(
@@ -1097,6 +1101,7 @@ public static class ChatTuiRenderer
         string query,
         int cursorValue,
         bool editing,
+        bool cursorVisible,
         int width)
     {
         var contentWidth = Math.Max(0, width - DisplayText.Width(prefix));
@@ -1105,7 +1110,7 @@ public static class ChatTuiRenderer
         {
             content = string.Empty;
         }
-        else if (!editing)
+        else if (!editing || !cursorVisible)
         {
             content = DiffRender.Ansi.TruncateVisible(query, contentWidth);
         }
@@ -1865,7 +1870,11 @@ public static class ChatTuiRenderer
         var contentWidth = Math.Max(1, width - 5);
         if (state.Input.Length == 0)
         {
-            return (new List<string> { ChatTexts.InputPlaceholder(state.Language) }, 0);
+            var placeholder = ChatTexts.InputPlaceholder(state.Language);
+            return (new List<string>
+            {
+                state.CursorVisible ? "| " + placeholder : placeholder
+            }, 0);
         }
 
         var cursor = Math.Clamp(state.Cursor, 0, state.Input.Length);
@@ -1876,7 +1885,7 @@ public static class ChatTuiRenderer
         {
             var range = ranges[index];
             var line = state.Input[range.Start..range.End];
-            if (index == cursorRow)
+            if (state.CursorVisible && index == cursorRow)
             {
                 var offset = Math.Clamp(cursor - range.Start, 0, line.Length);
                 line = line.Insert(offset, "|");

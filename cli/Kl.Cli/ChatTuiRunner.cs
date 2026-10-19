@@ -92,6 +92,7 @@ public static class ChatTuiRunner
             var forceClear = false;
             var lastWidth = 0;
             var lastHeight = 0;
+            var blinkSince = Environment.TickCount64;
             while (!exit)
             {
                 var changed = false;
@@ -109,6 +110,14 @@ public static class ChatTuiRunner
                 if (lastWidth != 0 && (width != lastWidth || height != lastHeight))
                 {
                     state.ClearSelection();
+                }
+                var cursorVisible = CursorBlinkVisible(
+                    state,
+                    Environment.TickCount64 - blinkSince);
+                if (state.CursorVisible != cursorVisible)
+                {
+                    state.CursorVisible = cursorVisible;
+                    dirty = true;
                 }
                 if (forceClear)
                 {
@@ -130,8 +139,10 @@ public static class ChatTuiRunner
                     lastHeight = height;
                 }
 
+                var inputActivity = false;
                 while (inputs.Reader.TryRead(out var input))
                 {
+                    inputActivity = true;
                     if (input.Mouse is { } mouse)
                     {
                         HandleMouse(state, mouse, width, height);
@@ -846,6 +857,12 @@ public static class ChatTuiRunner
                     }
                     dirty = true;
                 }
+                if (inputActivity)
+                {
+                    blinkSince = Environment.TickCount64;
+                    state.CursorVisible = true;
+                    dirty = true;
+                }
 
                 await Task.Delay(30, cancellationToken).ConfigureAwait(false);
             }
@@ -1456,6 +1473,17 @@ public static class ChatTuiRunner
         }
     }
 
+    public static bool CursorBlinkVisible(
+        ChatTuiState state,
+        long elapsedMilliseconds) =>
+        !CursorCanBlink(state)
+        || (Math.Max(0, elapsedMilliseconds) / 500) % 2 == 0;
+
+    private static bool CursorCanBlink(ChatTuiState state) =>
+        state.Screen == ChatScreen.Chat
+        || state.Screen == ChatScreen.Shortcuts
+        || (state.Screen == ChatScreen.History
+            && (state.HistorySearching || state.HistoryRenaming));
     private static void CopyLastAssistant(ChatTuiState state)
     {
         var text = state.LastAssistantText();

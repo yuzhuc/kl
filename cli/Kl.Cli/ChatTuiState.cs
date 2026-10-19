@@ -178,6 +178,7 @@ public sealed class ChatTuiState
     public string HistoryRenameSessionId { get; set; } = string.Empty;
     public string HistoryRenameInput { get; set; } = string.Empty;
     public int HistoryRenameCursor { get; set; }
+    public bool CursorVisible { get; set; } = true;
     public int CommandPaletteSelection { get; set; }
     public int CommandPaletteScroll { get; set; }
     public bool CommandPaletteDismissed { get; set; }

@@ -17,7 +17,7 @@ public sealed class ChatTuiTests
             line => line.Trim() == KlBrand.TitleLine);
         Assert.Contains("/init - create an AGENTS.md file", plain);
         Assert.Contains("/model - choose what model and reasoning effort to use", plain);
-        Assert.Contains("› Ask KL to do anything", plain);
+        Assert.Contains("› | Ask KL to do anything", plain);
         Assert.Contains("? for shortcuts", plain);
         Assert.DoesNotContain("██╗  ██╗██╗", plain);
     }
@@ -54,7 +54,7 @@ public sealed class ChatTuiTests
         };
         lines.AddRange(Enumerable.Repeat(string.Empty, 8));
         lines.Add(new string('─', 80));
-        lines.Add("› Ask KL to do anything");
+        lines.Add("› | Ask KL to do anything");
         lines.Add(new string('─', 80));
         lines.Add("  no provider configured · D:\\kl · New chat");
         lines.Add("  ← for agents · ? for shortcuts");
@@ -83,7 +83,7 @@ public sealed class ChatTuiTests
         };
         lines.AddRange(Enumerable.Repeat(string.Empty, 8));
         lines.Add(new string('─', 80));
-        lines.Add("› 让 KL 做点什么，或输入 / 查看命令");
+        lines.Add("› | 让 KL 做点什么，或输入 / 查看命令");
         lines.Add(new string('─', 80));
         lines.Add("  未配置 Provider · D:\\kl · 新对话");
         lines.Add("  ← 代理 · ? 快捷键");
@@ -198,7 +198,7 @@ public sealed class ChatTuiTests
         Assert.True(render.Split('\n').Count(line => line == rule) >= 2);
         Assert.Contains(
             DiffRender.Ansi.Bold + "›" + DiffRender.Ansi.Reset + " " +
-            DiffRender.Ansi.Secondary + KlBrand.InputPlaceholder + DiffRender.Ansi.Reset,
+            DiffRender.Ansi.Secondary + "| " + KlBrand.InputPlaceholder + DiffRender.Ansi.Reset,
             render);
     }
     [Fact]
@@ -209,7 +209,7 @@ public sealed class ChatTuiTests
             .Split('\n')
             .Select(line => line.TrimEnd())
             .ToList();
-        var input = lines.FindIndex(line => line.Contains("› Ask KL to do anything", StringComparison.Ordinal));
+        var input = lines.FindIndex(line => line.Contains("› | Ask KL to do anything", StringComparison.Ordinal));
         var model = lines.FindIndex(line => line.Contains("no provider configured", StringComparison.Ordinal));
 
         Assert.True(input >= 0);
@@ -285,6 +285,59 @@ public sealed class ChatTuiTests
         Assert.True(ChatTuiRenderer.TryPlaceComposerCursorAt(
             state, 80, 24, 6, row));
         Assert.Equal(3, state.Cursor);
+    }
+    [Fact]
+    public void CursorBlinkTogglesOnlyForEditableScreens()
+    {
+        var state = new ChatTuiState();
+
+        Assert.True(ChatTuiRunner.CursorBlinkVisible(state, 0));
+        Assert.True(ChatTuiRunner.CursorBlinkVisible(state, 499));
+        Assert.False(ChatTuiRunner.CursorBlinkVisible(state, 500));
+        Assert.True(ChatTuiRunner.CursorBlinkVisible(state, 1000));
+
+        state.Screen = ChatScreen.History;
+        Assert.True(ChatTuiRunner.CursorBlinkVisible(state, 500));
+        state.HistorySearching = true;
+        Assert.False(ChatTuiRunner.CursorBlinkVisible(state, 500));
+        state.HistorySearching = false;
+        state.Screen = ChatScreen.Settings;
+        Assert.True(ChatTuiRunner.CursorBlinkVisible(state, 500));
+    }
+
+    [Fact]
+    public void CursorVisibilityControlsComposerAndHistoryEditors()
+    {
+        var state = new ChatTuiState
+        {
+            Input = "hi",
+            Cursor = 2
+        };
+        var visible = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state));
+        Assert.Contains("hi|", visible);
+
+        state.CursorVisible = false;
+        var hidden = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state));
+        Assert.DoesNotContain("hi|", hidden);
+        Assert.Contains("hi", hidden);
+
+        state.Input = string.Empty;
+        state.Cursor = 0;
+        state.CursorVisible = true;
+        Assert.Contains(
+            "› | Ask KL to do anything",
+            DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state)));
+
+        state.Screen = ChatScreen.History;
+        state.HistorySearching = true;
+        state.HistorySearch = "abc";
+        state.HistorySearchCursor = 3;
+        var searchVisible = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state));
+        Assert.Contains("Search › abc|", searchVisible);
+        state.CursorVisible = false;
+        var searchHidden = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state));
+        Assert.DoesNotContain("Search › abc|", searchHidden);
+        Assert.Contains("Search › abc", searchHidden);
     }
     [Fact]
     public void LongMultilineInputCapsHeightAndFollowsCursor()
@@ -374,7 +427,7 @@ public sealed class ChatTuiTests
 
         Assert.Equal(24, lines.Length);
         Assert.Equal(">_ KL (v0.1.0)", DiffRender.Ansi.Strip(lines[1]).Trim());
-        Assert.Contains("› Ask KL to do anything", DiffRender.Ansi.Strip(render));
+        Assert.Contains("› | Ask KL to do anything", DiffRender.Ansi.Strip(render));
         Assert.Contains("? for shortcuts", DiffRender.Ansi.Strip(render.Split('\n')[^1]));
     }
 
