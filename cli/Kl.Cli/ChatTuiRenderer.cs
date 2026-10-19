@@ -40,7 +40,7 @@ public static class ChatTuiRenderer
         var topMargin = state.Screen == ChatScreen.Chat ? 1 : 0;
         var bodyHeight = Math.Max(
             1,
-            height - topMargin - (showHeader ? (showSeparator ? 2 : 1) : 0) -
+            height - topMargin - (showHeader ? 2 : 0) - (showSeparator ? 1 : 0) -
             (showInput ? 1 : 0) - (showModelLine ? 1 : 0) - 1);
 
         var body = state.Screen switch
@@ -61,7 +61,8 @@ public static class ChatTuiRenderer
         {
             lines.Add(
                 "  " + DiffRender.Ansi.BoldAccent + ">_" + DiffRender.Ansi.Reset +
-                HeaderText[2..]);
+                DiffRender.Ansi.Secondary + HeaderText[2..] + DiffRender.Ansi.Reset);
+            lines.Add(RenderHeaderPath(state, width));
             if (showSeparator)
             {
                 lines.Add(new string('-', width));
@@ -93,7 +94,7 @@ public static class ChatTuiRenderer
 
     public static int MaxTranscriptScroll(ChatTuiState state, int width, int height)
     {
-        var bodyHeight = Math.Max(1, Math.Max(8, height) - 4);
+        var bodyHeight = Math.Max(1, Math.Max(8, height) - 7);
         return Math.Max(
             0,
             TranscriptLines(state, Math.Max(20, width)).Count - bodyHeight);
@@ -115,7 +116,7 @@ public static class ChatTuiRenderer
 
         width = Math.Max(20, width);
         height = Math.Max(8, height);
-        var bodyHeight = Math.Max(1, height - 1 - 2 - 1 - 1 - 1);
+        var bodyHeight = Math.Max(1, height - 7);
         var lines = TranscriptLines(state, width);
         if (lines.Count == 0)
         {
@@ -126,8 +127,8 @@ public static class ChatTuiRenderer
         var scroll = Math.Clamp(state.TranscriptScroll, 0, maximum);
         var start = Math.Max(0, lines.Count - bodyHeight - scroll);
         var visible = lines.Skip(start).Take(bodyHeight).ToList();
-        // Blank row + title + separator above the transcript.
-        return new TranscriptViewport(3, start, visible);
+        // Blank row + title + path + separator above the transcript.
+        return new TranscriptViewport(4, start, visible);
     }
 
     public static List<string> TranscriptLines(ChatTuiState state, int width)
@@ -225,14 +226,47 @@ public static class ChatTuiRenderer
         var lines = new List<string> { string.Empty };
         foreach (var line in ChatTexts.Home(state.Language))
         {
-            foreach (var wrapped in DisplayText.WrapToWidth(line, width))
+            if (line.Length == 0)
             {
-                lines.Add(wrapped.Length == 0
-                    ? string.Empty
-                    : DiffRender.Ansi.Dim + "  " + wrapped + DiffRender.Ansi.Reset);
+                lines.Add(string.Empty);
+                continue;
+            }
+
+            var split = line.IndexOf(" - ", StringComparison.Ordinal);
+            var command = split > 0 && line.StartsWith('/') ? line[..split] : null;
+            var wrapped = DisplayText.WrapToWidth(line, Math.Max(1, width - 2));
+            for (var index = 0; index < wrapped.Count; index++)
+            {
+                if (command is not null
+                    && index == 0
+                    && wrapped[index].StartsWith(command, StringComparison.Ordinal))
+                {
+                    lines.Add(
+                        "  " + DiffRender.Ansi.Bold + command + DiffRender.Ansi.Reset +
+                        DiffRender.Ansi.Secondary + wrapped[index][command.Length..] +
+                        DiffRender.Ansi.Reset);
+                }
+                else
+                {
+                    lines.Add(
+                        "  " + DiffRender.Ansi.Secondary + wrapped[index] +
+                        DiffRender.Ansi.Reset);
+                }
             }
         }
         return lines;
+    }
+
+    private static string RenderHeaderPath(ChatTuiState state, int width)
+    {
+        var path = string.IsNullOrWhiteSpace(state.Workspace)
+            ? Environment.CurrentDirectory
+            : state.Workspace;
+        var available = Math.Max(1, width - 5);
+        return DiffRender.Ansi.Fit(
+            "     " + DiffRender.Ansi.Secondary +
+            DisplayText.Ellipsize(path, available) + DiffRender.Ansi.Reset,
+            width);
     }
 
     private static bool IsHome(ChatTuiState state) =>
@@ -1105,8 +1139,11 @@ public static class ChatTuiRenderer
         }
         else if (IsHome(state))
         {
-            hints = "  " + RenderHintLine(
-                [("?", ChatTexts.T(language, "for shortcuts", "快捷键"))]);
+            hints = "  " + RenderInlineHint(
+                [
+                    ("←", ChatTexts.T(language, "for agents", "代理")),
+                    ("?", ChatTexts.T(language, "for shortcuts", "快捷键"))
+                ]);
         }
         else
         {
@@ -1122,9 +1159,11 @@ public static class ChatTuiRenderer
         {
             right.Add(
                 DiffRender.Ansi.Warning +
-                $"⚠ {state.WarningCount} " +
-                ChatTexts.T(language, "warning", "个警告") +
-                DiffRender.Ansi.Reset);
+                ChatTexts.WarningNoticeLabel(language, state.WarningCount) +
+                DiffRender.Ansi.Reset + DiffRender.Ansi.Secondary + " · " +
+                DiffRender.Ansi.Bold + "f2" + DiffRender.Ansi.Reset +
+                DiffRender.Ansi.Secondary +
+                ChatTexts.T(language, " to view", " 查看") + DiffRender.Ansi.Reset);
         }
         if (right.Count == 0)
         {
@@ -1181,6 +1220,13 @@ public static class ChatTuiRenderer
                 DiffRender.Ansi.Bold + hint.Key + DiffRender.Ansi.Reset + " " +
                 DiffRender.Ansi.Dim + hint.Label + DiffRender.Ansi.Reset));
 
+    private static string RenderInlineHint(
+        IEnumerable<(string Key, string Label)> hints) =>
+        string.Join(
+            " · ",
+            hints.Select(hint =>
+                DiffRender.Ansi.Bold + hint.Key + DiffRender.Ansi.Reset + " " +
+                DiffRender.Ansi.Dim + hint.Label + DiffRender.Ansi.Reset));
     private static IEnumerable<string> RenderEntry(
         TranscriptEntry entry,
         int width,

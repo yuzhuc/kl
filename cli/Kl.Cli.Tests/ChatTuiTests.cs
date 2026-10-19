@@ -37,11 +37,12 @@ public sealed class ChatTuiTests
     [Fact]
     public void ChatEnglishSnapshot()
     {
-        var state = new ChatTuiState();
+        var state = new ChatTuiState("D:\\kl");
         var lines = new List<string>
         {
             string.Empty,
             "  >_ KL (v0.1.0)",
+            "     D:\\kl",
             string.Empty,
             "  To get started, describe a task or try one of these commands:",
             string.Empty,
@@ -51,10 +52,10 @@ public sealed class ChatTuiTests
             "  /model - choose what model and reasoning effort to use",
             "  /review - review changes and find issues"
         };
-        lines.AddRange(Enumerable.Repeat(string.Empty, 11));
+        lines.AddRange(Enumerable.Repeat(string.Empty, 10));
         lines.Add("  › Ask KL to do anything");
         lines.Add("  no provider configured");
-        lines.Add("  ? for shortcuts");
+        lines.Add("  ← for agents · ? for shortcuts");
 
         Assert.Equal(string.Join('\n', lines), Snapshot(ChatTuiRenderer.Render(80, 24, state)));
     }
@@ -62,12 +63,13 @@ public sealed class ChatTuiTests
     [Fact]
     public void ChatChineseSnapshot()
     {
-        var state = new ChatTuiState();
+        var state = new ChatTuiState("D:\\kl");
         state.Settings.SetLanguage(UiLanguage.ChineseSimplified);
         var lines = new List<string>
         {
             string.Empty,
             "  >_ KL (v0.1.0)",
+            "     D:\\kl",
             string.Empty,
             "  开始使用：描述一个任务，或尝试以下命令：",
             string.Empty,
@@ -77,14 +79,35 @@ public sealed class ChatTuiTests
             "  /model - 选择模型和推理强度",
             "  /review - 审查当前改动并发现问题"
         };
-        lines.AddRange(Enumerable.Repeat(string.Empty, 11));
+        lines.AddRange(Enumerable.Repeat(string.Empty, 10));
         lines.Add("  › 让 KL 做点什么，或输入 / 查看命令");
         lines.Add("  未配置 Provider");
-        lines.Add("  ? 快捷键");
+        lines.Add("  ← 代理 · ? 快捷键");
 
         Assert.Equal(string.Join('\n', lines), Snapshot(ChatTuiRenderer.Render(80, 24, state)));
     }
 
+    [Fact]
+    public void HomeUsesCodexTitleCommandAndPathColors()
+    {
+        var state = new ChatTuiState("D:\\kl", "openai", "gpt-5", "s1");
+
+        var render = ChatTuiRenderer.Render(80, 24, state);
+
+        Assert.Contains(
+            DiffRender.Ansi.BoldAccent + ">_" + DiffRender.Ansi.Reset +
+            DiffRender.Ansi.Secondary + " KL (v0.1.0)" + DiffRender.Ansi.Reset,
+            render);
+        Assert.Contains(
+            "     " + DiffRender.Ansi.Secondary + "D:\\kl" + DiffRender.Ansi.Reset,
+            render);
+        Assert.Contains(
+            DiffRender.Ansi.Bold + "/init" + DiffRender.Ansi.Reset +
+            DiffRender.Ansi.Secondary +
+            " - create an AGENTS.md file with instructions for KL" +
+            DiffRender.Ansi.Reset,
+            render);
+    }
     [Fact]
     public void UserMessageUsesBlockFillAndSecondaryTextIsNotDim()
     {
@@ -145,14 +168,14 @@ public sealed class ChatTuiTests
         var state = new ChatTuiState("D:\\work", "deepseek", "deepseek-flash", "session-1")
         {
             ReasoningEffort = "high",
-            WarningCount = 1
+            WarningCount = 5
         };
 
         var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(100, 24, state));
         var lines = plain.Split('\n');
         Assert.Contains("deepseek/deepseek-flash  high", plain);
-        Assert.StartsWith("? for shortcuts", lines[^1].TrimStart());
-        Assert.EndsWith("⚠ 1 warning", lines[^1].TrimEnd());
+        Assert.StartsWith("← for agents · ? for shortcuts", lines[^1].TrimStart());
+        Assert.EndsWith("⚠ 5 warnings · f2 to view", lines[^1].TrimEnd());
     }
 
     [Fact]
@@ -781,7 +804,9 @@ public sealed class ChatTuiTests
 
         var render = ChatTuiRenderer.Render(width, 24, state);
 
-        Assert.Contains("/init - 创建 AGENTS.md 并写入 KL 指令", render);
+        Assert.Contains(
+            "/init - 创建 AGENTS.md 并写入 KL 指令",
+            DiffRender.Ansi.Strip(render));
         Assert.All(render.Split('\n'), line =>
             Assert.True(DiffRender.Ansi.VisibleWidth(line) <= width));
     }

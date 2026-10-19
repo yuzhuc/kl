@@ -107,6 +107,11 @@ public static class ChatTexts
     public static string CopyFailed(UiLanguage language, string error) =>
         T(language, "copy failed: " + error, "复制失败：" + error);
 
+    public static string WarningNoticeLabel(UiLanguage language, int count) =>
+        T(
+            language,
+            $"⚠ {count} warning{(count == 1 ? string.Empty : "s")}",
+            $"⚠ {count} 个警告");
     public static string NoAssistantToCopy(UiLanguage language) =>
         T(language, "no assistant message to copy", "没有可复制的助手消息");
 
