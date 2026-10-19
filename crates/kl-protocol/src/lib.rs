@@ -598,6 +598,8 @@ pub struct TurnStartParams {
     pub model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quality: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -835,6 +837,29 @@ mod tests {
         assert_eq!(encoded["type"], "user.message");
         let decoded: CoreEvent = serde_json::from_value(encoded).unwrap();
         assert_eq!(decoded, event);
+    }
+
+    #[test]
+    fn turn_start_agent_is_optional_and_round_trips() {
+        let legacy: TurnStartParams = serde_json::from_value(serde_json::json!({
+            "session_id": "session-1",
+            "prompt": "fix it"
+        }))
+        .unwrap();
+        assert_eq!(legacy.agent, None);
+
+        let params = TurnStartParams {
+            session_id: "session-1".to_owned(),
+            prompt: "fix it".to_owned(),
+            provider: None,
+            model: None,
+            quality: None,
+            agent: Some("plan".to_owned()),
+        };
+        let encoded = serde_json::to_value(&params).unwrap();
+        assert_eq!(encoded["agent"], "plan");
+        let decoded: TurnStartParams = serde_json::from_value(encoded).unwrap();
+        assert_eq!(decoded, params);
     }
 
     #[test]

@@ -7,8 +7,8 @@
 mod config;
 
 pub use config::{
-    Config, ConfigError, ProviderCatalog, QualityMode, RoleSettings, config_set_default_model,
-    provider_set_api_key, provider_set_enabled, provider_upsert,
+    AgentPreset, Config, ConfigError, ProviderCatalog, QualityMode, RoleSettings,
+    config_set_default_model, provider_set_api_key, provider_set_enabled, provider_upsert,
 };
 
 use config::AgentSettings;
@@ -514,6 +514,7 @@ struct DeepTurn {
     default_model: String,
     task: String,
     workspace: PathBuf,
+    tool_access: ToolAccess,
 }
 
 impl DeepTurn {
@@ -590,14 +591,13 @@ impl DeepTurn {
                 } else {
                     token_budget.saturating_sub(used)
                 },
-                tool_access: if self.settings.approval_mode == ApprovalMode::ReadOnly {
-                    ToolAccess::ReadOnly
-                } else {
-                    match stage {
+                tool_access: match self.tool_access {
+                    ToolAccess::Full => match stage {
                         DeepStage::Reviewer => ToolAccess::ReadOnly,
                         DeepStage::Verifier => ToolAccess::VerifyOnly,
                         _ => ToolAccess::Full,
-                    }
+                    },
+                    access => access,
                 },
             };
             let agent = Agent::new(
@@ -1598,7 +1598,7 @@ impl Core {
 
     fn turn_start(&mut self, params: Value) -> Result<Value, RpcError> {
         let params: TurnStartParams = parse_params(params, "turn.start")?;
-        let quality = match params.quality.as_deref() {
+        let mut quality = match params.quality.as_deref() {
             Some(raw) => QualityMode::parse(raw).ok_or_else(|| {
                 rpc_error(
                     error_codes::INVALID_PARAMS,
@@ -1607,6 +1607,19 @@ impl Core {
             })?,
             None => self.config.agent.quality,
         };
+        let agent_preset = match params.agent.as_deref() {
+            Some(raw) => AgentPreset::parse(raw).ok_or_else(|| {
+                rpc_error(
+                    error_codes::INVALID_PARAMS,
+                    format!("unknown agent preset: {raw}"),
+                )
+            })?,
+            None if quality == QualityMode::Deep => AgentPreset::Deep,
+            None => AgentPreset::Build,
+        };
+        if agent_preset == AgentPreset::Deep {
+            quality = QualityMode::Deep;
+        }
         let turn_id = uuid::Uuid::new_v4().to_string();
 
         self.threads.retain(|handle| !handle.is_finished());
@@ -1685,15 +1698,18 @@ impl Core {
         let cancels = self.cancels.clone();
         let router = self.router.clone();
         let agent_settings = self.config.agent.clone();
+        let global_tool_access = self.tool_access();
+        let tool_access = capped_tool_access(global_tool_access, agent_preset);
         let agent_config = AgentConfig {
             max_iterations: self.config.agent.max_iterations.max(1),
             max_tool_calls_per_turn: 32,
             max_tool_output_bytes: self.config.agent.max_tool_output_bytes,
             command_timeout: Duration::from_secs(self.config.agent.command_timeout_secs.max(1)),
             max_total_tokens: 0,
-            tool_access: self.tool_access(),
+            tool_access,
         };
         let is_deep = quality == QualityMode::Deep;
+        let prompt_prefix = agent_preset.prompt_prefix();
 
         let thread_session = session_id.clone();
         let thread_turn = turn_id.clone();
@@ -1733,8 +1749,9 @@ impl Core {
                     base_turn_id: thread_turn.clone(),
                     default_provider: thread_metadata.provider.clone(),
                     default_model: thread_metadata.model.clone(),
-                    task: prompt,
+                    task: format!("{prompt_prefix}{prompt}"),
                     workspace: PathBuf::from(&workspace),
+                    tool_access,
                 }
                 .run(&mut history)
             } else {
@@ -1747,6 +1764,7 @@ impl Core {
                     audit,
                     agent_config,
                 );
+                let prompt = format!("{prompt_prefix}{prompt}");
                 let prompt = if quality == QualityMode::Fast {
                     format!("Work quickly and keep the response concise.\n{prompt}")
                 } else {
@@ -2718,6 +2736,14 @@ fn store_error(error: StoreError) -> RpcError {
             "session name must be 1-160 characters",
         ),
         other => rpc_error(error_codes::INTERNAL_ERROR, other.to_string()),
+    }
+}
+
+fn capped_tool_access(global: ToolAccess, preset: AgentPreset) -> ToolAccess {
+    if global == ToolAccess::Full {
+        preset.tool_access()
+    } else {
+        global
     }
 }
 
@@ -3791,6 +3817,69 @@ max_iterations = 2
             .map(|stored| stored.seq)
             .expect("matching turn.started event");
         assert!(user_messages[0].0 < started_seq);
+    }
+
+    #[test]
+    fn agent_preset_defaults_and_tool_access_are_bounded() {
+        assert_eq!(
+            capped_tool_access(ToolAccess::Full, AgentPreset::Plan),
+            ToolAccess::ReadOnly
+        );
+        assert_eq!(
+            capped_tool_access(ToolAccess::Full, AgentPreset::Verify),
+            ToolAccess::VerifyOnly
+        );
+        assert_eq!(
+            capped_tool_access(ToolAccess::ReadOnly, AgentPreset::Build),
+            ToolAccess::ReadOnly
+        );
+        assert_eq!(
+            capped_tool_access(ToolAccess::ReadOnly, AgentPreset::Deep),
+            ToolAccess::ReadOnly
+        );
+    }
+
+    #[test]
+    fn turn_start_rejects_unknown_agent_preset() {
+        let temp = tempfile::tempdir().unwrap();
+        let config = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let (mut core, _) = new_test_core(config, home.path());
+        let error = core
+            .turn_start(json!({
+                "session_id": "missing",
+                "prompt": "hello",
+                "agent": "turbo"
+            }))
+            .unwrap_err();
+        assert_eq!(error.code, error_codes::INVALID_PARAMS);
+        assert!(error.message.contains("unknown agent preset"));
+    }
+
+    #[test]
+    fn turn_start_prepends_the_agent_preset_prompt() {
+        let temp = tempfile::tempdir().unwrap();
+        let config = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let (mut core, _) = new_test_core(config, home.path());
+        core.handshaken = true;
+        let created = core
+            .session_create(json!({"workspace": temp.path().to_string_lossy()}))
+            .unwrap();
+        let session_id = created["session_id"].as_str().unwrap().to_owned();
+        core.turn_start(json!({
+            "session_id": session_id,
+            "prompt": "hello",
+            "agent": "plan"
+        }))
+        .unwrap();
+        wait_for_threads(&mut core);
+        let history = core
+            .session_history(json!({"session_id": session_id}))
+            .unwrap();
+        let first = history["messages"][0]["text"].as_str().unwrap();
+        assert!(first.starts_with(AgentPreset::Plan.prompt_prefix()));
+        assert!(first.ends_with("hello"));
     }
 
     #[test]

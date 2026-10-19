@@ -479,6 +479,7 @@ internal static class Program
               --strict                   show low-confidence review findings
               --mode <mode>              review mode: quick|standard|strict
               --quality <mode>           quality mode: fast|balanced|deep
+              --agent <preset>           agent: build|plan|explore|review|verify|deep
               --yes, -y                  auto-approve tool requests
               --verbose, -v              show core diagnostics
             """);
