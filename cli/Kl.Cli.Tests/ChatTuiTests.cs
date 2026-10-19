@@ -52,8 +52,9 @@ public sealed class ChatTuiTests
             "  /model - choose what model and reasoning effort to use",
             "  /review - review changes and find issues"
         };
-        lines.AddRange(Enumerable.Repeat(string.Empty, 10));
+        lines.AddRange(Enumerable.Repeat(string.Empty, 9));
         lines.Add("  › Ask KL to do anything");
+        lines.Add(string.Empty);
         lines.Add("  no provider configured · D:\\kl");
         lines.Add("  ← for agents · ? for shortcuts");
 
@@ -79,8 +80,9 @@ public sealed class ChatTuiTests
             "  /model - 选择模型和推理强度",
             "  /review - 审查当前改动并发现问题"
         };
-        lines.AddRange(Enumerable.Repeat(string.Empty, 10));
+        lines.AddRange(Enumerable.Repeat(string.Empty, 9));
         lines.Add("  › 让 KL 做点什么，或输入 / 查看命令");
+        lines.Add(string.Empty);
         lines.Add("  未配置 Provider · D:\\kl");
         lines.Add("  ← 代理 · ? 快捷键");
 
@@ -112,8 +114,8 @@ public sealed class ChatTuiTests
             DiffRender.Ansi.Reset,
             render);
         Assert.Contains(
-            "  " + DiffRender.Ansi.BoldAccent + "openai/gpt-5" +
-            DiffRender.Ansi.Reset + " " + DiffRender.Ansi.Bold + "high" +
+            "  " + DiffRender.Ansi.Bold + "openai/gpt-5" +
+            DiffRender.Ansi.Reset + " " + DiffRender.Ansi.Cyan + "high" +
             DiffRender.Ansi.Reset + DiffRender.Ansi.Secondary + " · " +
             DiffRender.Ansi.Reset + DiffRender.Ansi.Path + "D:\\kl" +
             DiffRender.Ansi.Reset,
@@ -186,6 +188,50 @@ public sealed class ChatTuiTests
             DiffRender.Ansi.Secondary + KlBrand.InputPlaceholder +
             DiffRender.Ansi.ComposerBackground,
             render);
+    }
+    [Fact]
+    public void EmptyComposerReservesCodexPaddingRows()
+    {
+        var state = new ChatTuiState();
+        var lines = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state))
+            .Split('\n')
+            .Select(line => line.TrimEnd())
+            .ToList();
+        var input = lines.FindIndex(line => line.Contains("› Ask KL to do anything", StringComparison.Ordinal));
+        var model = lines.FindIndex(line => line.Contains("no provider configured", StringComparison.Ordinal));
+
+        Assert.True(input >= 0);
+        Assert.Equal(input + 2, model);
+    }
+
+    [Fact]
+    public void LongMultilineInputCapsHeightAndFollowsCursor()
+    {
+        var state = new ChatTuiState();
+        state.Input = string.Join('\n', Enumerable.Range(1, 12).Select(index => $"line {index}"));
+        state.Cursor = state.Input.Length;
+
+        var lines = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state))
+            .Split('\n')
+            .Select(line => line.TrimEnd())
+            .ToList();
+
+        Assert.Contains(lines, line => line.EndsWith("line 12|", StringComparison.Ordinal));
+        Assert.DoesNotContain(lines, line => line.Trim() == "› line 1");
+        Assert.Equal(24, lines.Count);
+    }
+
+    [Fact]
+    public void ShiftEnterAndCtrlJInsertNewlines()
+    {
+        var state = new ChatTuiState();
+
+        Assert.Equal(
+            ChatKeyAction.InsertNewline,
+            ChatKeyMapper.Map(Key(ConsoleKey.Enter, shift: true), state));
+        Assert.Equal(
+            ChatKeyAction.InsertNewline,
+            ChatKeyMapper.Map(Key(ConsoleKey.J, '\n', control: true), state));
     }
     [Fact]
     public void UserMessageUsesBlockFillAndSecondaryTextIsNotDim()

@@ -285,6 +285,9 @@ public static class ChatTuiRunner
                                 state.Insert(key.KeyChar);
                             }
                             break;
+                        case ChatKeyAction.InsertNewline:
+                            state.Insert('\n');
+                            break;
                         case ChatKeyAction.Backspace:
                             if (state.Screen == ChatScreen.History
                                 && state.HistoryRenaming)

@@ -28,6 +28,7 @@ public enum ChatKeyAction
 {
     None,
     Insert,
+    InsertNewline,
     Backspace,
     Delete,
     CursorLeft,
@@ -1004,6 +1005,12 @@ public static class ChatKeyMapper
             return key.Key == ConsoleKey.Escape || key.KeyChar == '?'
                 ? ChatKeyAction.ToggleShortcuts
                 : ChatKeyAction.None;
+        }
+
+        if ((shift && key.Key == ConsoleKey.Enter)
+            || (control && key.Key == ConsoleKey.J))
+        {
+            return ChatKeyAction.InsertNewline;
         }
 
         if (shift && key.Key == ConsoleKey.UpArrow)

@@ -41,10 +41,11 @@ public static class ChatTuiRenderer
         var showInput = chatLike;
         var showModelLine = chatLike;
         var topMargin = chatLike ? 1 : 0;
+        var inputHeight = showInput ? ComposerHeight(state, width, height) : 0;
         var bodyHeight = Math.Max(
             1,
             height - topMargin - (showHeader ? 2 : 0) - (showSeparator ? 1 : 0) -
-            (showInput ? 1 : 0) - (showModelLine ? 1 : 0) - 1);
+            inputHeight - (showModelLine ? 1 : 0) - 1);
 
         var body = state.Screen switch
         {
@@ -72,7 +73,7 @@ public static class ChatTuiRenderer
         lines.AddRange(body);
         if (showInput)
         {
-            lines.Add(RenderInput(state, width));
+            lines.AddRange(RenderInputLines(state, width, height));
         }
         if (showModelLine)
         {
@@ -95,12 +96,19 @@ public static class ChatTuiRenderer
 
     public static int MaxTranscriptScroll(ChatTuiState state, int width, int height)
     {
-        var bodyHeight = Math.Max(1, Math.Max(8, height) - 7);
+        var bodyHeight = Math.Max(
+            1,
+            Math.Max(8, height) - 6 - ComposerHeight(state, width, height));
         return Math.Max(
             0,
             TranscriptLines(state, Math.Max(20, width)).Count - bodyHeight);
     }
 
+    public static int ComposerHeight(ChatTuiState state, int width, int height)
+    {
+        var (lines, _) = BuildComposerDisplay(state, width);
+        return Math.Min(lines.Count, ComposerTextRowLimit(height)) + 2;
+    }
     public static TranscriptViewport? TranscriptViewport(
         ChatTuiState state,
         int width,
@@ -117,7 +125,7 @@ public static class ChatTuiRenderer
 
         width = Math.Max(20, width);
         height = Math.Max(8, height);
-        var bodyHeight = Math.Max(1, height - 7);
+        var bodyHeight = Math.Max(1, height - 6 - ComposerHeight(state, width, height));
         var lines = TranscriptLines(state, width);
         if (lines.Count == 0)
         {
@@ -1261,35 +1269,78 @@ public static class ChatTuiRenderer
         var parent = Path.GetDirectoryName(path)?.Replace('\\', '/');
         return string.IsNullOrEmpty(parent) ? "./" : parent.Replace('\\', '/') + "/";
     }
-    private static string RenderInput(ChatTuiState state, int width)
+    private static List<string> RenderInputLines(
+        ChatTuiState state,
+        int width,
+        int height)
     {
-        var prompt = "  " + DiffRender.Ansi.Bold + "›" + DiffRender.Ansi.Reset +
-            DiffRender.Ansi.ComposerBackground + " ";
-        string content;
+        var (lines, cursorRow) = BuildComposerDisplay(state, width);
+        var visible = Math.Min(lines.Count, ComposerTextRowLimit(height));
+        var maxScroll = Math.Max(0, lines.Count - visible);
+        var scroll = Math.Clamp(cursorRow - visible + 1, 0, maxScroll);
+        if (cursorRow < scroll)
+        {
+            scroll = cursorRow;
+        }
+
+        var rows = new List<string>(visible + 2)
+        {
+            DiffRender.Ansi.ComposerBackground + new string(' ', width) + DiffRender.Ansi.Reset
+        };
+        for (var row = 0; row < visible; row++)
+        {
+            var index = scroll + row;
+            var prefix = index == 0
+                ? "  " + DiffRender.Ansi.Bold + "›" + DiffRender.Ansi.Reset +
+                    DiffRender.Ansi.ComposerBackground + " "
+                : DiffRender.Ansi.ComposerBackground + "    ";
+            var content = state.Input.Length == 0
+                ? DiffRender.Ansi.Secondary + lines[index] +
+                    DiffRender.Ansi.ComposerBackground
+                : DiffRender.Ansi.Composer + lines[index];
+            rows.Add(
+                DiffRender.Ansi.ComposerBackground +
+                DiffRender.Ansi.Fit(prefix + content, width) +
+                DiffRender.Ansi.Reset);
+        }
+        rows.Add(
+            DiffRender.Ansi.ComposerBackground + new string(' ', width) + DiffRender.Ansi.Reset);
+        return rows;
+    }
+
+    private static (List<string> Lines, int CursorRow) BuildComposerDisplay(
+        ChatTuiState state,
+        int width)
+    {
+        var contentWidth = Math.Max(1, width - 5);
         if (state.Input.Length == 0)
         {
-            content = prompt + DiffRender.Ansi.Secondary +
-                ChatTexts.InputPlaceholder(state.Language) +
-                DiffRender.Ansi.ComposerBackground;
+            return (new List<string> { ChatTexts.InputPlaceholder(state.Language) }, 0);
         }
-        else
-        {
-            var available = Math.Max(1, width - 5);
-            var cursor = Math.Clamp(state.Cursor, 0, state.Input.Length);
-            var start = Math.Clamp(
-                cursor - available / 2,
-                0,
-                Math.Max(0, state.Input.Length - available));
-            var length = Math.Min(available, state.Input.Length - start);
-            var visible = state.Input.Substring(start, length);
-            var relative = Math.Clamp(cursor - start, 0, visible.Length);
-            content = prompt + DiffRender.Ansi.Composer +
-                visible.Insert(relative, "|");
-        }
-        return DiffRender.Ansi.ComposerBackground +
-            DiffRender.Ansi.Fit(content, width) +
-            DiffRender.Ansi.Reset;
+
+        var cursor = Math.Clamp(state.Cursor, 0, state.Input.Length);
+        var lines = WrapComposerText(
+            state.Input.Insert(cursor, "|"),
+            contentWidth);
+        var before = WrapComposerText(state.Input[..cursor], contentWidth);
+        return (lines, Math.Max(0, before.Count - 1));
     }
+
+    private static List<string> WrapComposerText(string text, int width)
+    {
+        var normalized = text
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n');
+        var lines = new List<string>();
+        foreach (var paragraph in normalized.Split('\n'))
+        {
+            lines.AddRange(DisplayText.WrapToWidth(paragraph, width));
+        }
+        return lines.Count == 0 ? new List<string> { string.Empty } : lines;
+    }
+
+    private static int ComposerTextRowLimit(int height) =>
+        Math.Clamp(height - 8, 1, 6);
 
     private static string RenderModelLine(ChatTuiState state, int width)
     {
@@ -1301,11 +1352,11 @@ public static class ChatTuiRenderer
                 ? string.Empty
                 : state.ReasoningEffort;
         var path = DisplayWorkspacePath(state);
-        var baseLine = "  " + DiffRender.Ansi.BoldAccent + model +
+        var baseLine = "  " + DiffRender.Ansi.Bold + model +
             DiffRender.Ansi.Reset;
         if (effort.Length > 0)
         {
-            baseLine += " " + DiffRender.Ansi.Bold + effort + DiffRender.Ansi.Reset;
+            baseLine += " " + DiffRender.Ansi.Cyan + effort + DiffRender.Ansi.Reset;
         }
         baseLine += DiffRender.Ansi.Secondary + " · " + DiffRender.Ansi.Reset;
         var remaining = width - DiffRender.Ansi.VisibleWidth(baseLine);
