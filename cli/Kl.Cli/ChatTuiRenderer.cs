@@ -2087,16 +2087,29 @@ public static class ChatTuiRenderer
 
         void FlushProse()
         {
-            foreach (var sourceLine in prose)
+            for (var index = 0; index < prose.Count;)
             {
+                var label = bulletShown
+                    ? string.Empty
+                    : ChatTexts.AssistantLabel(language);
+                if (TryRenderMarkdownTable(
+                        prose,
+                        ref index,
+                        width,
+                        label,
+                        out var table))
+                {
+                    result.AddRange(table);
+                    bulletShown = true;
+                    continue;
+                }
+
+                var sourceLine = prose[index++];
                 if (string.IsNullOrWhiteSpace(sourceLine))
                 {
                     result.Add(new TranscriptLine(string.Empty));
                     continue;
                 }
-                var label = bulletShown
-                    ? string.Empty
-                    : ChatTexts.AssistantLabel(language);
                 result.AddRange(RenderAssistantProseLine(sourceLine, width, label));
                 bulletShown = true;
             }
@@ -2183,6 +2196,150 @@ public static class ChatTuiRenderer
         }
         return result;
     }
+    private static bool TryRenderMarkdownTable(
+        IReadOnlyList<string> lines,
+        ref int index,
+        int width,
+        string label,
+        out List<TranscriptLine> rendered)
+    {
+        rendered = [];
+        if (index + 1 >= lines.Count
+            || !TryMarkdownTableCells(lines[index], out var header)
+            || header.Count < 2
+            || !IsMarkdownTableSeparator(lines[index + 1], header.Count))
+        {
+            return false;
+        }
+
+        var rows = new List<IReadOnlyList<string>>();
+        var end = index + 2;
+        while (end < lines.Count
+            && !string.IsNullOrWhiteSpace(lines[end])
+            && TryMarkdownTableCells(lines[end], out var row)
+            && row.Count == header.Count)
+        {
+            rows.Add(row);
+            end++;
+        }
+
+        var labelWidth = DisplayText.Width(label);
+        var available = width - labelWidth - (3 * header.Count + 1);
+        if (available < header.Count * 3)
+        {
+            return false;
+        }
+        var widths = Enumerable.Range(0, header.Count)
+            .Select(column => Math.Max(
+                3,
+                rows.SelectMany(row => new[] { header[column], row[column] })
+                    .Max(DisplayText.Width)))
+            .ToArray();
+        var total = widths.Sum();
+        while (total > available)
+        {
+            var widest = -1;
+            var widestValue = 3;
+            for (var column = 0; column < widths.Length; column++)
+            {
+                if (widths[column] > widestValue)
+                {
+                    widest = column;
+                    widestValue = widths[column];
+                }
+            }
+            if (widest < 0)
+            {
+                return false;
+            }
+            widths[widest]--;
+            total--;
+        }
+
+        var indent = new string(' ', labelWidth);
+        rendered.Add(new TranscriptLine(
+            label + RenderMarkdownTableRow(header, widths, DiffRender.Ansi.Bold)));
+        rendered.Add(new TranscriptLine(
+            indent + RenderMarkdownTableSeparator(widths)));
+        foreach (var row in rows)
+        {
+            rendered.Add(new TranscriptLine(
+                indent + RenderMarkdownTableRow(row, widths, string.Empty)));
+        }
+        index = end;
+        return true;
+    }
+
+    private static bool TryMarkdownTableCells(
+        string line,
+        out List<string> cells)
+    {
+        var trimmed = line.Trim();
+        cells = [];
+        if (!trimmed.Contains('|'))
+        {
+            return false;
+        }
+        cells = trimmed.Trim('|')
+            .Split('|')
+            .Select(cell => cell.Trim())
+            .ToList();
+        return cells.Count >= 2;
+    }
+
+    private static bool IsMarkdownTableSeparator(string line, int columns)
+    {
+        if (!TryMarkdownTableCells(line, out var cells) || cells.Count != columns)
+        {
+            return false;
+        }
+        return cells.All(cell =>
+        {
+            var value = cell.Trim().Trim(':');
+            return value.Length >= 3 && value.All(character => character == '-');
+        });
+    }
+
+    private static string RenderMarkdownTableRow(
+        IReadOnlyList<string> cells,
+        IReadOnlyList<int> widths,
+        string style)
+    {
+        var builder = new System.Text.StringBuilder();
+        builder.Append(DiffRender.Ansi.Dim).Append("│ ").Append(DiffRender.Ansi.Reset);
+        for (var column = 0; column < cells.Count; column++)
+        {
+            if (column > 0)
+            {
+                builder.Append(DiffRender.Ansi.Dim)
+                    .Append(" │ ")
+                    .Append(DiffRender.Ansi.Reset);
+            }
+            var value = DisplayText.PadToWidth(
+                DisplayText.Ellipsize(cells[column], widths[column]),
+                widths[column]);
+            if (style.Length > 0)
+            {
+                builder.Append(style);
+            }
+            builder.Append(value);
+            if (style.Length > 0)
+            {
+                builder.Append(DiffRender.Ansi.Reset);
+            }
+        }
+        builder.Append(DiffRender.Ansi.Dim).Append(" │").Append(DiffRender.Ansi.Reset);
+        return builder.ToString();
+    }
+
+    private static string RenderMarkdownTableSeparator(IReadOnlyList<int> widths) =>
+        DiffRender.Ansi.Dim +
+        "├" +
+        string.Join(
+            "┼",
+            widths.Select(width => new string('─', width + 2))) +
+        "┤" +
+        DiffRender.Ansi.Reset;
     private static List<TranscriptLine> RenderAssistantProseLine(
         string sourceLine,
         int width,

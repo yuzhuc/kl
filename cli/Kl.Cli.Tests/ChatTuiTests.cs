@@ -880,6 +880,27 @@ public sealed class ChatTuiTests
         Assert.Contains(DiffRender.Ansi.Underline, render);
     }
     [Fact]
+    public void AssistantRendersMarkdownTable()
+    {
+        var state = new ChatTuiState();
+        state.Transcript.Add(new TranscriptEntry(
+            TranscriptKind.Assistant,
+            "Intro\n| Name | Value |\n| --- | --- |\n" +
+            "| alpha | 1 |\n| beta-long | 2 |"));
+
+        var render = ChatTuiRenderer.Render(60, 24, state);
+        var plain = DiffRender.Ansi.Strip(render);
+
+        Assert.Contains("│ Name", plain);
+        Assert.Contains("├", plain);
+        Assert.Contains("alpha", plain);
+        Assert.Contains("beta-long", plain);
+        Assert.DoesNotContain("| --- |", plain);
+        Assert.All(
+            render.Split('\n'),
+            line => Assert.True(DiffRender.Ansi.VisibleWidth(line) <= 60));
+    }
+    [Fact]
     public void DiffLinesAreColoredByKind()
     {
         var state = new ChatTuiState();
@@ -1241,6 +1262,7 @@ public sealed class ChatTuiTests
             TranscriptKind.Assistant,
             "完成。\n## 标题\n- **重点** 与 `代码`\n" +
             "1. 第一项\n见 [链接](https://example.com)\n> 引用\n" +
+            "| A | B |\n| --- | --- |\n| one | two |\n" +
             "```csharp\nvar answer = 42;\n```"));
         state.Transcript.Add(new TranscriptEntry(TranscriptKind.Tool, "[ok] shell: exit 0"));
         state.Transcript.Add(new TranscriptEntry(TranscriptKind.Diff, "-old\n+new"));
