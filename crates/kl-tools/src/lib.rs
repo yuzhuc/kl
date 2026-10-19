@@ -15,6 +15,7 @@ use kl_provider::ToolDefinition;
 use kl_sandbox::SandboxManager;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
@@ -92,6 +93,13 @@ pub trait Tool: Send + Sync {
     fn description(&self) -> &str;
     fn parameters(&self) -> Value;
     fn policy_request(&self, args: &Value) -> Result<PolicyRequest, ToolError>;
+    fn policy_request_for(
+        &self,
+        _workspace: &Path,
+        args: &Value,
+    ) -> Result<PolicyRequest, ToolError> {
+        self.policy_request(args)
+    }
     fn validate(&self, _args: &Value) -> Result<(), ToolError> {
         Ok(())
     }
