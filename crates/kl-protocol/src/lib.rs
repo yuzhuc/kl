@@ -49,6 +49,9 @@ pub mod methods {
     pub const WORKSPACE_INIT: &str = "workspace.init";
     pub const AGENT_CONFIG_GET: &str = "agent.config.get";
     pub const AGENT_CONFIG_SET: &str = "agent.config.set";
+    pub const SKILL_LIST: &str = "skill.list";
+    pub const SKILL_GET: &str = "skill.get";
+    pub const MCP_LIST: &str = "mcp.list";
     pub const PLUGIN_LIST: &str = "plugin.list";
     pub const PLUGIN_INSTALL: &str = "plugin.install";
     pub const PLUGIN_RELOAD: &str = "plugin.reload";
@@ -586,6 +589,46 @@ pub struct SessionDeleteParams {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SessionDeleteResult {
     pub deleted: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SkillListParams {
+    pub session_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SkillInfo {
+    pub name: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SkillListResult {
+    pub skills: Vec<SkillInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SkillGetParams {
+    pub session_id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SkillGetResult {
+    pub name: String,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct McpToolInfo {
+    pub name: String,
+    pub description: String,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct McpListResult {
+    pub tools: Vec<McpToolInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
