@@ -185,7 +185,7 @@ fn git_args(args: &Value) -> Result<Vec<String>, ToolError> {
     }
 }
 
-fn apply_env_policy(policy: &kl_policy::PolicyEngine, spec: &mut CommandSpec) {
+pub(crate) fn apply_env_policy(policy: &kl_policy::PolicyEngine, spec: &mut CommandSpec) {
     let allowed = &policy.config().env_allowlist;
     if allowed.is_empty() {
         return;
@@ -231,7 +231,7 @@ fn resolve_cwd(context: &ToolContext<'_>, raw: &str) -> Result<PathBuf, ToolErro
         .ok_or_else(|| ToolError::Io("cwd was not resolved".to_owned()))
 }
 
-fn describe_output(output: CommandOutput, limit: usize) -> ToolOutcome {
+pub(crate) fn describe_output(output: CommandOutput, limit: usize) -> ToolOutcome {
     let summary = if output.timed_out {
         format!("timed out after {} ms", output.duration_ms)
     } else if output.cancelled {
