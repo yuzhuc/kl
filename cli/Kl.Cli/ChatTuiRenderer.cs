@@ -295,32 +295,28 @@ public static class ChatTuiRenderer
         }
     }
 
-    private static string FitWithDisclosure(
-        string text,
+    // Codex activity disclosure: an indented synthetic row below the block.
+    private static TranscriptLine? DisclosureLine(
+        string key,
+        TranscriptToggleKind kind,
         int width,
         bool expanded,
         int hiddenLines)
     {
-        var badge = hiddenLines <= 0
-            ? null
-            : expanded ? "−" : $"+{hiddenLines}";
-        if (badge is null)
+        if (hiddenLines <= 0)
         {
-            return DiffRender.Ansi.Fit(text, width);
+            return null;
         }
-        var badgeText = " " + badge + " ";
-        var badgeWidth = DisplayText.Width(badgeText);
-        var content = DiffRender.Ansi.TruncateVisible(
-            text,
-            Math.Max(1, width - badgeWidth - 1));
-        var padding = Math.Max(
-            1,
-            width - DiffRender.Ansi.VisibleWidth(content) - badgeWidth);
-        return content +
-            new string(' ', padding) +
+        var label = expanded ? "−" : $"+{hiddenLines}";
+        var indent = Math.Min(width / 4, 4);
+        return new TranscriptLine(
+            new string(' ', indent) +
             DiffRender.Ansi.Selection +
-            badgeText +
-            DiffRender.Ansi.Reset;
+            " " +
+            label +
+            " " +
+            DiffRender.Ansi.Reset,
+            new TranscriptToggle(key, kind));
     }
 
     public static List<string> TranscriptLines(ChatTuiState state, int width) =>
@@ -2374,7 +2370,7 @@ public static class ChatTuiRenderer
             var label = bulletShown ? string.Empty : ChatTexts.AssistantLabel(language);
             bulletShown = true;
             result.Add(new TranscriptLine(
-                FitWithDisclosure(
+                DiffRender.Ansi.Fit(
                     label +
                     DiffRender.Ansi.Accent +
                     marker +
@@ -2383,9 +2379,7 @@ public static class ChatTuiRenderer
                     " " +
                     heading +
                     DiffRender.Ansi.Reset,
-                    width,
-                    expanded,
-                    code.Count),
+                    width),
                 new TranscriptToggle(key, TranscriptToggleKind.CodeBlock)));
             if (expanded)
             {
@@ -2397,6 +2391,16 @@ public static class ChatTuiRenderer
                             DiffRender.Ansi.Cyan + wrapped + DiffRender.Ansi.Reset));
                     }
                 }
+            }
+            var disclosure = DisclosureLine(
+                key,
+                TranscriptToggleKind.CodeBlock,
+                width,
+                expanded,
+                code.Count);
+            if (disclosure is not null)
+            {
+                result.Add(disclosure);
             }
             code.Clear();
         }
@@ -2813,7 +2817,7 @@ public static class ChatTuiRenderer
         var result = new List<TranscriptLine>
         {
             new(
-                FitWithDisclosure(
+                DiffRender.Ansi.Fit(
                     DiffRender.Ansi.BoldCyan +
                     marker +
                     DiffRender.Ansi.Reset +
@@ -2821,9 +2825,7 @@ public static class ChatTuiRenderer
                     " " +
                     heading +
                     DiffRender.Ansi.Reset,
-                    width,
-                    expanded,
-                    rawLines.Length),
+                    width),
                 new TranscriptToggle(key, TranscriptToggleKind.Diff))
         };
         if (expanded)
@@ -2832,6 +2834,16 @@ public static class ChatTuiRenderer
             {
                 result.Add(new TranscriptLine(line));
             }
+        }
+        var disclosure = DisclosureLine(
+            key,
+            TranscriptToggleKind.Diff,
+            width,
+            expanded,
+            rawLines.Length);
+        if (disclosure is not null)
+        {
+            result.Add(disclosure);
         }
         return result;
     }
@@ -2888,7 +2900,7 @@ public static class ChatTuiRenderer
         var result = new List<TranscriptLine>
         {
             new(
-                FitWithDisclosure(
+                DiffRender.Ansi.Fit(
                     DiffRender.Ansi.Dim +
                     marker +
                     DiffRender.Ansi.Reset +
@@ -2896,9 +2908,7 @@ public static class ChatTuiRenderer
                     " " +
                     title +
                     DiffRender.Ansi.Reset,
-                    width,
-                    expanded,
-                    end - start),
+                    width),
                 new TranscriptToggle(key, TranscriptToggleKind.ToolGroup))
         };
         if (expanded)
@@ -2912,27 +2922,38 @@ public static class ChatTuiRenderer
                     width,
                     language));
             }
-            return result;
         }
-
-        var commands = state.Transcript
-            .Skip(start)
-            .Take(end - start)
-            .Select(entry => ToolCommandLine(entry.Text))
-            .ToList();
-        var contentWidth = Math.Max(1, width - 4);
-        for (var index = 0; index < Math.Min(3, commands.Count); index++)
+        else
         {
-            var wrapped = WrapPlain(commands[index], contentWidth);
-            for (var line = 0; line < wrapped.Count; line++)
+            var commands = state.Transcript
+                .Skip(start)
+                .Take(end - start)
+                .Select(entry => ToolCommandLine(entry.Text))
+                .ToList();
+            var contentWidth = Math.Max(1, width - 4);
+            for (var index = 0; index < Math.Min(3, commands.Count); index++)
             {
-                var prefix = index == 0 && line == 0 ? "  └ " : "    ";
-                result.Add(new TranscriptLine(
-                    DiffRender.Ansi.Secondary +
-                    prefix +
-                    wrapped[line] +
-                    DiffRender.Ansi.Reset));
+                var wrapped = WrapPlain(commands[index], contentWidth);
+                for (var line = 0; line < wrapped.Count; line++)
+                {
+                    var prefix = index == 0 && line == 0 ? "  └ " : "    ";
+                    result.Add(new TranscriptLine(
+                        DiffRender.Ansi.Secondary +
+                        prefix +
+                        wrapped[line] +
+                        DiffRender.Ansi.Reset));
+                }
             }
+        }
+        var disclosure = DisclosureLine(
+            key,
+            TranscriptToggleKind.ToolGroup,
+            width,
+            expanded,
+            end - start);
+        if (disclosure is not null)
+        {
+            result.Add(disclosure);
         }
         return result;
     }
@@ -2967,7 +2988,7 @@ public static class ChatTuiRenderer
         var result = new List<TranscriptLine>
         {
             new(
-                FitWithDisclosure(
+                DiffRender.Ansi.Fit(
                     color +
                     "• " +
                     DiffRender.Ansi.Reset +
@@ -2977,11 +2998,23 @@ public static class ChatTuiRenderer
                     " " +
                     summary +
                     DiffRender.Ansi.Reset,
-                    width,
-                    expanded,
-                    hidden),
+                    width),
                 new TranscriptToggle(key, TranscriptToggleKind.Tool))
         };
+
+        void AddDisclosure()
+        {
+            var disclosure = DisclosureLine(
+                key,
+                TranscriptToggleKind.Tool,
+                width,
+                expanded,
+                hidden);
+            if (disclosure is not null)
+            {
+                result.Add(disclosure);
+            }
+        }
         if (expanded)
         {
             for (var index = hasStatus ? 0 : 1; index < lines.Count; index++)
@@ -2996,6 +3029,7 @@ public static class ChatTuiRenderer
                         detailColor + wrapped + DiffRender.Ansi.Reset));
                 }
             }
+            AddDisclosure();
             return result;
         }
 
@@ -3007,6 +3041,7 @@ public static class ChatTuiRenderer
                 "  └ " +
                 ChatTexts.T(language, "(no output)", "（无输出）") +
                 DiffRender.Ansi.Reset));
+            AddDisclosure();
             return result;
         }
         for (var index = 0; index < preview.Count; index++)
@@ -3019,6 +3054,7 @@ public static class ChatTuiRenderer
                     DiffRender.Ansi.Secondary + wrapped + DiffRender.Ansi.Reset));
             }
         }
+        AddDisclosure();
         return result;
     }
 

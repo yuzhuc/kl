@@ -1261,18 +1261,24 @@ public sealed class ChatTuiTests
         var collapsed = DiffRender.Ansi.Strip(collapsedRender).Split('\n');
         var row = Array.FindIndex(collapsed, line => line.Contains("• Ran"));
         Assert.True(row >= 0);
-        Assert.Contains("+4", collapsed[row]);
+        var badgeRow = Array.FindIndex(collapsed, line => line.Contains("+4"));
+        Assert.True(badgeRow >= 0);
+        Assert.DoesNotContain("+4", collapsed[row]);
+        Assert.True(collapsed[badgeRow].IndexOf("+4", StringComparison.Ordinal) < 10);
         Assert.Contains(
             DiffRender.Ansi.Selection + " +4 " + DiffRender.Ansi.Reset,
             collapsedRender);
         Assert.True(DiffRender.Ansi.VisibleWidth(collapsed[row]) <= 80);
 
-        Assert.True(ChatTuiRenderer.ToggleTranscriptItemAt(state, 80, 24, row));
+        Assert.True(ChatTuiRenderer.ToggleTranscriptItemAt(state, 80, 24, badgeRow));
         var expanded = DiffRender.Ansi.Strip(
             ChatTuiRenderer.Render(80, 24, state)).Split('\n');
         var expandedRow = Array.FindIndex(expanded, line => line.Contains("• Ran"));
         Assert.True(expandedRow >= 0);
-        Assert.Contains("−", expanded[expandedRow]);
+        var collapseRow = Array.FindIndex(expanded, line => line.Contains("−"));
+        Assert.True(collapseRow >= 0);
+        Assert.True(expanded[collapseRow].IndexOf("−", StringComparison.Ordinal) < 10);
+        Assert.DoesNotContain("−", expanded[expandedRow]);
         Assert.Contains(expanded, line => line.Contains("output 8"));
     }
 
@@ -1286,10 +1292,13 @@ public sealed class ChatTuiTests
         }
 
         var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state));
-        var header = plain.Split('\n')
-            .First(line => line.Contains("▸ Explored", StringComparison.Ordinal));
+        var lines = plain.Split('\n');
+        var header = lines.First(line => line.Contains("▸ Explored", StringComparison.Ordinal));
+        var badge = Array.FindIndex(lines, line => line.Contains("+4"));
 
-        Assert.Contains("+4", header);
+        Assert.True(badge >= 0);
+        Assert.DoesNotContain("+4", header);
+        Assert.True(lines[badge].IndexOf("+4", StringComparison.Ordinal) < 10);
         Assert.DoesNotContain("… +", plain);
     }
 
@@ -1307,7 +1316,10 @@ public sealed class ChatTuiTests
             collapsed,
             line => line.Contains("• ▸ Code · 1 line · csharp", StringComparison.Ordinal));
         Assert.True(row >= 0);
-        Assert.Contains("+1", collapsed[row]);
+        var badgeRow = Array.FindIndex(collapsed, line => line.Contains("+1"));
+        Assert.True(badgeRow >= 0);
+        Assert.DoesNotContain("+1", collapsed[row]);
+        Assert.True(collapsed[badgeRow].IndexOf("+1", StringComparison.Ordinal) < 10);
         Assert.True(ChatTuiRenderer.ToggleTranscriptItemAt(state, 80, 24, row));
 
         var expanded = DiffRender.Ansi.Strip(
@@ -1316,7 +1328,10 @@ public sealed class ChatTuiTests
             expanded,
             line => line.Contains("• ▾ Code · 1 line · csharp", StringComparison.Ordinal));
         Assert.True(expandedRow >= 0);
-        Assert.Contains("−", expanded[expandedRow]);
+        var collapseRow = Array.FindIndex(expanded, line => line.Contains("−"));
+        Assert.True(collapseRow >= 0);
+        Assert.True(expanded[collapseRow].IndexOf("−", StringComparison.Ordinal) < 10);
+        Assert.DoesNotContain("−", expanded[expandedRow]);
         Assert.Contains(expanded, line => line.Contains("var x = 1;"));
     }
 
