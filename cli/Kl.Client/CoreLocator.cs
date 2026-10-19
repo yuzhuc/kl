@@ -1,4 +1,4 @@
-namespace Kl.Cli;
+namespace Kl.Client;
 
 public static class CoreLocator
 {

@@ -15,12 +15,31 @@ public sealed class CliOptions
     public bool Strict { get; set; }
     public string? ReviewMode { get; set; }
     public string? Quality { get; set; }
+    public string? Agent { get; set; }
     public bool AutoApprove { get; set; }
     public bool Verbose { get; set; }
     public bool Help { get; set; }
     public bool Version { get; set; }
 
     public string TaskText => string.Join(' ', Positionals).Trim();
+
+    public KlClientOptions ToClientOptions() => new()
+    {
+        CorePath = CorePath,
+        ConfigPath = ConfigPath,
+        HomePath = HomePath
+    };
+
+    public KlSessionOptions ToSessionOptions() => new()
+    {
+        SessionId = Session,
+        Workspace = Workspace,
+        Provider = Provider,
+        Model = Model,
+        Quality = Quality,
+        Agent = Agent,
+        Verbose = Verbose
+    };
 }
 
 public static class CommandLine
@@ -84,6 +103,13 @@ public static class CommandLine
                     if (options.Quality is not ("fast" or "balanced" or "deep"))
                     {
                         throw new ArgumentException($"unknown quality mode: {options.Quality}");
+                    }
+                    break;
+                case "--agent":
+                    options.Agent = Next(args, ref i, arg);
+                    if (options.Agent is not ("build" or "plan" or "explore" or "review" or "verify" or "deep"))
+                    {
+                        throw new ArgumentException($"unknown agent preset: {options.Agent}");
                     }
                     break;
                 case "--yes":

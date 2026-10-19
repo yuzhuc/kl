@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
 
-namespace Kl.Cli;
+namespace Kl.Client;
 
 public sealed record HandshakeInfo(
     string ServerName,
@@ -34,7 +34,7 @@ public sealed class KlCoreClient : IAsyncDisposable
         remove => _rpc.Diagnostic -= value;
     }
 
-    public static KlCoreClient Start(CliOptions options)
+    public static KlCoreClient Start(KlClientOptions options)
     {
         var corePath = CoreLocator.Find(options.CorePath);
         var startInfo = new ProcessStartInfo(corePath)
@@ -179,6 +179,7 @@ public sealed class KlCoreClient : IAsyncDisposable
         string? provider,
         string? model,
         string? quality,
+        string? agent,
         CancellationToken cancellationToken = default)
     {
         var parameters = new Dictionary<string, object?>
@@ -197,6 +198,10 @@ public sealed class KlCoreClient : IAsyncDisposable
         if (!string.IsNullOrWhiteSpace(quality))
         {
             parameters["quality"] = quality;
+        }
+        if (!string.IsNullOrWhiteSpace(agent))
+        {
+            parameters["agent"] = agent;
         }
         return RequestAsync(Protocol.TurnStart, parameters, cancellationToken);
     }

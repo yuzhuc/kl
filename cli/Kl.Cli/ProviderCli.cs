@@ -40,7 +40,7 @@ public static class ProviderCli
             return 64;
         }
 
-        await using var client = KlCoreClient.Start(options);
+        await using var client = KlCoreClient.Start(options.ToClientOptions());
         AttachDiagnostics(client, options, ui);
         await client.HandshakeAsync().ConfigureAwait(false);
         var result = await client.SetProviderApiKeyAsync(provider, key).ConfigureAwait(false);
@@ -62,7 +62,7 @@ public static class ProviderCli
             return Unknown(ui, "model", subcommand);
         }
 
-        await using var client = KlCoreClient.Start(options);
+        await using var client = KlCoreClient.Start(options.ToClientOptions());
         AttachDiagnostics(client, options, ui);
         await client.HandshakeAsync().ConfigureAwait(false);
 
@@ -97,7 +97,7 @@ public static class ProviderCli
 
     private static async Task<int> ListAsync(CliOptions options, ConsoleUi ui)
     {
-        await using var client = KlCoreClient.Start(options);
+        await using var client = KlCoreClient.Start(options.ToClientOptions());
         AttachDiagnostics(client, options, ui);
         await client.HandshakeAsync().ConfigureAwait(false);
         var result = await client.ListProvidersAsync().ConfigureAwait(false);
@@ -216,7 +216,7 @@ public static class ProviderCli
 
         var provider = id.Trim();
 
-        await using var client = KlCoreClient.Start(options);
+        await using var client = KlCoreClient.Start(options.ToClientOptions());
         AttachDiagnostics(client, options, ui);
         await client.HandshakeAsync().ConfigureAwait(false);
         var protocols = new Dictionary<string, object?>();
@@ -270,7 +270,7 @@ public static class ProviderCli
             return 64;
         }
         var provider = options.Positionals[1].Trim();
-        await using var client = KlCoreClient.Start(options);
+        await using var client = KlCoreClient.Start(options.ToClientOptions());
         AttachDiagnostics(client, options, ui);
         await client.HandshakeAsync().ConfigureAwait(false);
         var result = await client.SetProviderEnabledAsync(provider, enabled)

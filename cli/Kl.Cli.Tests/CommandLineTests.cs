@@ -86,6 +86,21 @@ public sealed class CommandLineTests
     }
 
     [Fact]
+    public void ParsesAgentPreset()
+    {
+        var options = CommandLine.Parse(["run", "inspect", "--agent", "plan"]);
+        Assert.Equal("plan", options.Agent);
+        Assert.Equal("plan", options.ToSessionOptions().Agent);
+    }
+
+    [Fact]
+    public void RejectsUnknownAgentPreset()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            CommandLine.Parse(["run", "task", "--agent", "turbo"]));
+    }
+
+    [Fact]
     public void RejectsUnknownReviewMode()
     {
         Assert.Throws<ArgumentException>(() =>

@@ -519,6 +519,24 @@ impl Agent {
             return error_payload(&message);
         };
 
+        if let Err(error) = tool.validate(&args) {
+            let message = error.to_string();
+            if let Err(audit_error) = self.record_failure(
+                session_id,
+                turn_id,
+                call,
+                tool.name(),
+                "invalid",
+                "invalid",
+                &args,
+                &message,
+                sink,
+            ) {
+                return error_payload(&audit_error.to_string());
+            }
+            return error_payload(&message);
+        }
+
         let request: PolicyRequest = match tool.policy_request(&args) {
             Ok(request) => request,
             Err(error) => {
@@ -666,7 +684,10 @@ impl Agent {
         match outcome {
             Ok(outcome) => {
                 audit.ok = outcome.success;
-                let output = truncate(&outcome.output, self.config.max_tool_output_bytes);
+                let output = truncate_chars_keep_ends(
+                    &truncate(&outcome.output, self.config.max_tool_output_bytes),
+                    tool.max_result_chars(),
+                );
                 audit.with_output(&output);
                 if let Err(error) = self.emit_audit(&audit, turn_id, sink) {
                     return error_payload(&error.to_string());
@@ -826,15 +847,39 @@ fn join_worker(worker: &mut Option<std::thread::JoinHandle<()>>, timeout: Durati
         std::thread::sleep(Duration::from_millis(20));
     }
 }
+const AGENTS_MD_LIMIT: usize = 16 * 1024;
+
 fn system_prompt(workspace: &std::path::Path) -> String {
-    format!(
+    let mut prompt = format!(
         "You are KL, a terminal coding agent. Work only inside the workspace at {}.\n\
          Inspect before editing. Use read_file, grep and glob to gather evidence; use edit_file \
          for exact replacements and write_file for new files. Use shell for builds/tests and git \
          for repository operations. Keep changes minimal, match existing style, and verify with \
          tests when practical. Never claim success without evidence.",
         workspace.display()
-    )
+    );
+    let agents_path = workspace.join("AGENTS.md");
+    let Ok(metadata) = std::fs::symlink_metadata(&agents_path) else {
+        return prompt;
+    };
+    if !metadata.file_type().is_file() {
+        return prompt;
+    }
+    let Ok(mut content) = std::fs::read_to_string(&agents_path) else {
+        return prompt;
+    };
+    if content.len() > AGENTS_MD_LIMIT {
+        let mut end = AGENTS_MD_LIMIT;
+        while !content.is_char_boundary(end) {
+            end -= 1;
+        }
+        content.truncate(end);
+        content.push_str("\n[AGENTS.md truncated]");
+    }
+    prompt.push_str("\n\nProject instructions from AGENTS.md:\n");
+    prompt.push_str(&content);
+    prompt.push('\n');
+    prompt
 }
 
 fn result_payload(ok: bool, summary: &str, output: &str, diff: Option<&str>) -> String {
@@ -993,13 +1038,35 @@ fn truncate(text: &str, limit: usize) -> String {
     format!("{}... [truncated]", &text[..end])
 }
 
+fn truncate_chars_keep_ends(text: &str, limit: usize) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() <= limit {
+        return text.to_owned();
+    }
+
+    const MARKER: &str = "\n... [truncated] ...\n";
+    let marker_len = MARKER.chars().count();
+    if limit <= marker_len {
+        return MARKER.chars().take(limit).collect();
+    }
+
+    let keep = limit - marker_len;
+    let head_len = keep / 2;
+    let tail_len = keep - head_len;
+    let head: String = chars[..head_len].iter().collect();
+    let tail: String = chars[chars.len() - tail_len..].iter().collect();
+    format!("{head}{MARKER}{tail}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use kl_audit::MemoryAudit;
-    use kl_policy::PolicyConfig;
+    use kl_policy::{Action, PolicyConfig};
     use kl_provider::{FinishReason, ModelInfo, Protocol, ScriptedProvider, Usage};
+    use kl_tools::{Tool, ToolOutcome};
     use std::sync::Mutex;
+    use std::sync::atomic::AtomicUsize;
     use std::time::Instant;
 
     #[derive(Default)]
@@ -1079,6 +1146,40 @@ mod tests {
         )
     }
 
+    #[test]
+    fn system_prompt_includes_agents_md() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("AGENTS.md"), "Use tabs.\n").unwrap();
+
+        let prompt = system_prompt(temp.path());
+
+        assert!(prompt.contains("Project instructions from AGENTS.md:\nUse tabs.\n"));
+    }
+
+    #[test]
+    fn system_prompt_ignores_missing_agents_md() {
+        let temp = tempfile::tempdir().unwrap();
+
+        let prompt = system_prompt(temp.path());
+
+        assert!(!prompt.contains("Project instructions from AGENTS.md"));
+    }
+
+    #[test]
+    fn system_prompt_truncates_agents_md_at_char_boundary() {
+        let temp = tempfile::tempdir().unwrap();
+        let content = format!("{}é", "a".repeat(AGENTS_MD_LIMIT - 1));
+        std::fs::write(temp.path().join("AGENTS.md"), content).unwrap();
+
+        let prompt = system_prompt(temp.path());
+
+        let expected = format!(
+            "{}\n[AGENTS.md truncated]\n",
+            "a".repeat(AGENTS_MD_LIMIT - 1)
+        );
+        assert!(prompt.ends_with(&expected));
+    }
+
     fn test_agent(provider: Arc<dyn Provider>, metadata: ModelMetadata) -> Agent {
         let tools = ToolRegistry::builtin();
         for name in tools.names() {
@@ -1096,6 +1197,198 @@ mod tests {
             Arc::new(MemoryAudit::default()),
             AgentConfig::default(),
         )
+    }
+
+    struct ValidatingTool {
+        executions: Arc<AtomicUsize>,
+    }
+
+    impl Tool for ValidatingTool {
+        fn name(&self) -> &str {
+            "validating"
+        }
+
+        fn description(&self) -> &str {
+            "validation test tool"
+        }
+
+        fn parameters(&self) -> Value {
+            serde_json::json!({"type": "object"})
+        }
+
+        fn validate(&self, _args: &Value) -> Result<(), ToolError> {
+            Err(ToolError::InvalidArgs(
+                "required argument missing".to_owned(),
+            ))
+        }
+
+        fn policy_request(&self, _args: &Value) -> Result<PolicyRequest, ToolError> {
+            Ok(PolicyRequest {
+                action: Action::Read,
+                resource: "test".to_owned(),
+            })
+        }
+
+        fn execute(
+            &self,
+            _context: &ToolContext<'_>,
+            _args: &Value,
+        ) -> Result<ToolOutcome, ToolError> {
+            self.executions.fetch_add(1, Ordering::Relaxed);
+            Ok(ToolOutcome::ok("executed", "executed"))
+        }
+    }
+
+    struct OutputTool;
+
+    impl Tool for OutputTool {
+        fn name(&self) -> &str {
+            "output"
+        }
+
+        fn description(&self) -> &str {
+            "output test tool"
+        }
+
+        fn parameters(&self) -> Value {
+            serde_json::json!({"type": "object"})
+        }
+
+        fn policy_request(&self, _args: &Value) -> Result<PolicyRequest, ToolError> {
+            Ok(PolicyRequest {
+                action: Action::Read,
+                resource: "test".to_owned(),
+            })
+        }
+
+        fn execute(
+            &self,
+            _context: &ToolContext<'_>,
+            _args: &Value,
+        ) -> Result<ToolOutcome, ToolError> {
+            Ok(ToolOutcome::ok(
+                "output",
+                format!("HEAD{}TAIL", "x".repeat(200)),
+            ))
+        }
+
+        fn max_result_chars(&self) -> usize {
+            40
+        }
+    }
+
+    fn test_agent_with_tool(tool: Arc<dyn Tool>, config: AgentConfig) -> (Agent, Arc<MemoryAudit>) {
+        let tools = ToolRegistry::builtin();
+        for name in tools.names() {
+            tools.remove(&name);
+        }
+        tools.register(tool);
+        let policy = Arc::new(
+            PolicyEngine::new(std::env::current_dir().unwrap(), PolicyConfig::default()).unwrap(),
+        );
+        let audit = Arc::new(MemoryAudit::default());
+        let agent = Agent::new(
+            Arc::new(FailingProvider),
+            metadata(),
+            Arc::new(tools),
+            policy,
+            Arc::new(SandboxManager::policy_only()),
+            audit.clone(),
+            config,
+        );
+        (agent, audit)
+    }
+
+    #[test]
+    fn validation_failure_skips_execution_and_records_invalid_audit() {
+        let executions = Arc::new(AtomicUsize::new(0));
+        let (agent, audit) = test_agent_with_tool(
+            Arc::new(ValidatingTool {
+                executions: executions.clone(),
+            }),
+            AgentConfig::default(),
+        );
+        let sink = RecordingSink::default();
+        let call = ToolCall {
+            id: "call".to_owned(),
+            name: "validating".to_owned(),
+            arguments: "{}".to_owned(),
+        };
+
+        let payload = agent.execute_tool_call(
+            "session",
+            "turn",
+            &call,
+            &AtomicBool::new(false),
+            &sink,
+            &Gate(ApprovalDecision::Allow),
+        );
+
+        let payload: Value = serde_json::from_str(&payload).unwrap();
+        assert_eq!(payload["ok"], false);
+        assert!(
+            payload["error"]
+                .as_str()
+                .unwrap()
+                .contains("required argument missing")
+        );
+        assert_eq!(executions.load(Ordering::Relaxed), 0);
+        let records = audit.records();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].decision, "invalid");
+        assert!(!records[0].ok);
+        assert!(
+            sink.events
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|event| matches!(event, CoreEvent::ToolCompleted { ok: false, .. }))
+        );
+    }
+
+    #[test]
+    fn result_chars_limit_keeps_head_and_tail() {
+        let (agent, audit) = test_agent_with_tool(
+            Arc::new(OutputTool),
+            AgentConfig {
+                max_tool_output_bytes: 4096,
+                ..AgentConfig::default()
+            },
+        );
+        let sink = RecordingSink::default();
+        let call = ToolCall {
+            id: "call".to_owned(),
+            name: "output".to_owned(),
+            arguments: "{}".to_owned(),
+        };
+
+        let payload = agent.execute_tool_call(
+            "session",
+            "turn",
+            &call,
+            &AtomicBool::new(false),
+            &sink,
+            &Gate(ApprovalDecision::Allow),
+        );
+        let payload: Value = serde_json::from_str(&payload).unwrap();
+        let output = payload["output"].as_str().unwrap();
+        assert_eq!(output.chars().count(), 40);
+        assert!(output.starts_with("HEAD"));
+        assert!(output.ends_with("TAIL"));
+        assert!(output.contains("... [truncated] ..."));
+
+        let events = sink.events.lock().unwrap();
+        let emitted: String = events
+            .iter()
+            .filter_map(|event| match event {
+                CoreEvent::ToolOutput { chunk, .. } => Some(chunk.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(emitted, output);
+        let records = audit.records();
+        assert_eq!(records.len(), 1);
+        assert!(records[0].ok);
     }
 
     #[derive(Default)]

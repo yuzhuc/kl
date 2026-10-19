@@ -1132,7 +1132,7 @@ public static class ChatTuiRunner
         state.ModelPicker.Close();
         try
         {
-            await using var client = KlCoreClient.Start(options);
+            await using var client = KlCoreClient.Start(options.ToClientOptions());
             await client.HandshakeAsync(cancellationToken).ConfigureAwait(false);
             await client.SetDefaultModelAsync(
                     selected.Provider,
@@ -1845,7 +1845,8 @@ public static class ChatTuiRunner
         var sessionOptions = CloneWithSession(options, sessionId);
         var presenter = new TuiSessionPresenter(options.AutoApprove);
         var session = await KlSessionClient.StartAsync(
-            sessionOptions,
+            sessionOptions.ToClientOptions(),
+            sessionOptions.ToSessionOptions(),
             presenter,
             cancellationToken,
             progress).ConfigureAwait(false);
@@ -1980,7 +1981,7 @@ public static class ChatTuiRunner
         object? parameters,
         CancellationToken cancellationToken)
     {
-        await using var client = KlCoreClient.Start(options);
+        await using var client = KlCoreClient.Start(options.ToClientOptions());
         await client.HandshakeAsync(cancellationToken).ConfigureAwait(false);
         return await client.RequestAsync(method, parameters, cancellationToken)
             .ConfigureAwait(false);

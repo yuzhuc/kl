@@ -4,7 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
 
-namespace Kl.Cli;
+namespace Kl.Client;
 
 public sealed class JsonRpcException : Exception
 {

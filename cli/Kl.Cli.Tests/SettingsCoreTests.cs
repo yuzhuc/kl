@@ -140,7 +140,7 @@ public sealed class SettingsCoreTests
                 }
                 """);
 
-            await using (var client = KlCoreClient.Start(options))
+            await using (var client = KlCoreClient.Start(options.ToClientOptions()))
             {
                 await client.HandshakeAsync();
                 await client.PluginInstallAsync(source);

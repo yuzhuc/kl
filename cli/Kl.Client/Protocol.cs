@@ -1,4 +1,4 @@
-namespace Kl.Cli;
+namespace Kl.Client;
 
 /// <summary>Wire constants shared with the Rust core and the JSON fixtures.</summary>
 public static class Protocol

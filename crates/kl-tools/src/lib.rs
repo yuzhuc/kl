@@ -92,6 +92,10 @@ pub trait Tool: Send + Sync {
     fn description(&self) -> &str;
     fn parameters(&self) -> Value;
     fn policy_request(&self, args: &Value) -> Result<PolicyRequest, ToolError>;
+    fn validate(&self, _args: &Value) -> Result<(), ToolError> {
+        Ok(())
+    }
+
     fn execute(&self, context: &ToolContext<'_>, args: &Value) -> Result<ToolOutcome, ToolError>;
 
     fn read_only(&self, _args: &Value) -> bool {

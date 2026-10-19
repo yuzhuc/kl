@@ -26,7 +26,7 @@ public sealed class CoreHandshakeTests
             """);
         try
         {
-            await using var client = KlCoreClient.Start(new CliOptions
+            await using var client = KlCoreClient.Start(new KlClientOptions
             {
                 ConfigPath = config,
                 HomePath = Path.Combine(root, "home")
@@ -51,7 +51,7 @@ public sealed class CoreHandshakeTests
         var options = new CliOptions { HomePath = home };
         try
         {
-            await using var client = KlCoreClient.Start(options);
+            await using var client = KlCoreClient.Start(options.ToClientOptions());
             var handshake = await client.HandshakeAsync();
             Assert.Equal(Protocol.CoreName, handshake.ServerName);
             Assert.Equal(Protocol.Version, handshake.ProtocolVersion);
