@@ -307,6 +307,17 @@ public static class ChatTuiRenderer
             }
             if (entry.Kind == TranscriptKind.Tool)
             {
+                if (TryGetExplorationGroupEnd(state, entryIndex, out var groupEnd))
+                {
+                    AddRange(RenderExplorationGroupLines(
+                        state,
+                        entryIndex,
+                        groupEnd,
+                        width,
+                        language));
+                    entryIndex = groupEnd - 1;
+                    continue;
+                }
                 AddRange(RenderToolLines(
                     state,
                     entryIndex,
@@ -452,6 +463,7 @@ public static class ChatTuiRenderer
         CodeBlock,
         Diff,
         Tool,
+        ToolGroup,
         Reasoning
     }
 
@@ -2418,6 +2430,110 @@ public static class ChatTuiRenderer
             {
                 result.Add(new TranscriptLine(line));
             }
+        }
+        return result;
+    }
+    private static bool TryGetExplorationGroupEnd(
+        ChatTuiState state,
+        int start,
+        out int end)
+    {
+        end = start;
+        while (end < state.Transcript.Count
+            && state.Transcript[end].Kind == TranscriptKind.Tool
+            && IsExplorationTool(state.Transcript[end].Text))
+        {
+            end++;
+        }
+        return end - start >= 2;
+    }
+
+    private static bool IsExplorationTool(string text)
+    {
+        var command = ToolCommandLine(text);
+        var name = command.Split(' ', 2)[0];
+        return name.StartsWith("read", StringComparison.OrdinalIgnoreCase)
+            || name.StartsWith("list", StringComparison.OrdinalIgnoreCase)
+            || name.StartsWith("search", StringComparison.OrdinalIgnoreCase)
+            || name.StartsWith("grep", StringComparison.OrdinalIgnoreCase)
+            || name.StartsWith("glob", StringComparison.OrdinalIgnoreCase)
+            || name.StartsWith("find", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ToolCommandLine(string text)
+    {
+        var lines = text
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n')
+            .Split('\n');
+        var status = lines[0].StartsWith("[ok]", StringComparison.Ordinal)
+            || lines[0].StartsWith("[fail]", StringComparison.Ordinal);
+        var index = status && lines.Length > 1 ? 1 : 0;
+        return DiffRender.RedactSensitive(lines[index].Trim());
+    }
+
+    private static List<TranscriptLine> RenderExplorationGroupLines(
+        ChatTuiState state,
+        int start,
+        int end,
+        int width,
+        UiLanguage language)
+    {
+        var key = $"toolgroup:{start}";
+        var expanded = state.IsTranscriptItemExpanded(key);
+        var marker = expanded ? "▾" : "▸";
+        var title = ChatTexts.T(language, "Explored", "已探索");
+        var result = new List<TranscriptLine>
+        {
+            new(
+                DiffRender.Ansi.Dim +
+                marker +
+                DiffRender.Ansi.Reset +
+                DiffRender.Ansi.Bold +
+                " " +
+                title +
+                DiffRender.Ansi.Reset,
+                new TranscriptToggle(key, TranscriptToggleKind.ToolGroup))
+        };
+        if (expanded)
+        {
+            for (var index = start; index < end; index++)
+            {
+                result.AddRange(RenderToolLines(
+                    state,
+                    index,
+                    state.Transcript[index].Text,
+                    width,
+                    language));
+            }
+            return result;
+        }
+
+        var commands = state.Transcript
+            .Skip(start)
+            .Take(end - start)
+            .Select(entry => ToolCommandLine(entry.Text))
+            .ToList();
+        var contentWidth = Math.Max(1, width - 4);
+        for (var index = 0; index < Math.Min(3, commands.Count); index++)
+        {
+            var wrapped = WrapPlain(commands[index], contentWidth);
+            for (var line = 0; line < wrapped.Count; line++)
+            {
+                var prefix = index == 0 && line == 0 ? "  └ " : "    ";
+                result.Add(new TranscriptLine(
+                    DiffRender.Ansi.Secondary +
+                    prefix +
+                    wrapped[line] +
+                    DiffRender.Ansi.Reset));
+            }
+        }
+        if (commands.Count > 3)
+        {
+            result.Add(new TranscriptLine(
+                DiffRender.Ansi.Secondary +
+                $"    … +{commands.Count - 3}" +
+                DiffRender.Ansi.Reset));
         }
         return result;
     }

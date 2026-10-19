@@ -1077,6 +1077,51 @@ public sealed class ChatTuiTests
         Assert.DoesNotContain("super-secret", plain);
     }
     [Fact]
+    public void ConsecutiveExplorationToolsCollapseIntoAGroup()
+    {
+        var state = new ChatTuiState();
+        state.Transcript.Add(new TranscriptEntry(
+            TranscriptKind.Tool,
+            "read_file {\"path\":\"a.txt\"}"));
+        state.Transcript.Add(new TranscriptEntry(
+            TranscriptKind.Tool,
+            "search_files {\"query\":\"needle\"}"));
+        state.Transcript.Add(new TranscriptEntry(
+            TranscriptKind.Tool,
+            "list_dir ."));
+
+        var collapsed = DiffRender.Ansi.Strip(
+            ChatTuiRenderer.Render(80, 24, state));
+        Assert.Contains("▸ Explored", collapsed);
+        Assert.Contains("  └ read_file", collapsed);
+        Assert.Contains("search_files", collapsed);
+        Assert.DoesNotContain("• Ran", collapsed);
+
+        state.ToggleTranscriptItem("toolgroup:0");
+        var expanded = DiffRender.Ansi.Strip(
+            ChatTuiRenderer.Render(80, 24, state));
+        Assert.Contains("▾ Explored", expanded);
+        Assert.Contains("• Ran read_file", expanded);
+    }
+
+    [Fact]
+    public void SingleOrNonExplorationToolsKeepCommandRows()
+    {
+        var state = new ChatTuiState();
+        state.Transcript.Add(new TranscriptEntry(
+            TranscriptKind.Tool,
+            "read_file {\"path\":\"a.txt\"}"));
+        state.Transcript.Add(new TranscriptEntry(
+            TranscriptKind.Tool,
+            "shell cargo test"));
+
+        var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state));
+
+        Assert.DoesNotContain("Explored", plain);
+        Assert.Contains("• Ran read_file", plain);
+        Assert.Contains("• Ran shell cargo test", plain);
+    }
+    [Fact]
     public void ParsesMissingHistoryFieldsAsEmpty()
     {
         using var document = JsonDocument.Parse(
