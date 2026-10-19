@@ -182,6 +182,24 @@ public sealed class ChatCommandPaletteTests
     }
 
     [Fact]
+    public void MovingUpFromLastMovesHighlightBeforeScrollingWindow()
+    {
+        var state = new ChatTuiState { Input = "/", Cursor = 1 };
+        var matches = ChatCommandPalette.Matches("/");
+        state.CommandPaletteSelection = matches.Count - 1;
+
+        var bottomLines = ChatTuiRenderer.CommandPaletteLines(state, 100);
+        var bottomRow = bottomLines.FindIndex(line =>
+            line.StartsWith(DiffRender.Ansi.Inverse + "› ", StringComparison.Ordinal));
+        Assert.Equal(ChatCommandPalette.MaxVisible - 1, bottomRow);
+
+        state.CommandPaletteSelection--;
+        var upwardLines = ChatTuiRenderer.CommandPaletteLines(state, 100);
+        var upwardRow = upwardLines.FindIndex(line =>
+            line.StartsWith(DiffRender.Ansi.Inverse + "› ", StringComparison.Ordinal));
+        Assert.Equal(bottomRow - 1, upwardRow);
+    }
+    [Fact]
     public void UpDownControlPAndControlNCycleSelection()
     {
         var state = new ChatTuiState { Input = "/", Cursor = 1 };

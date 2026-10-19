@@ -1553,10 +1553,7 @@ public static class ChatTuiRenderer
             state.CommandPaletteSelection,
             0,
             matches.Count - 1);
-        var start = Math.Clamp(
-            selected - visible + 1,
-            0,
-            Math.Max(0, matches.Count - visible));
+        var start = Math.Min(selected, Math.Max(0, matches.Count - visible));
         var count = Math.Min(visible, matches.Count - start);
 
         var lines = new List<string>(count);
@@ -1624,11 +1621,10 @@ public static class ChatTuiRenderer
         var selected = matches.Count == 0
             ? 0
             : Math.Clamp(state.MentionPicker.Selection, 0, matches.Count - 1);
-        var start = matches.Count == 0
+        var start = matches.Count == 0 || availableRows == 0
             ? 0
-            : Math.Clamp(
-                selected - availableRows + 1,
-                0,
+            : Math.Min(
+                selected,
                 Math.Max(0, matches.Count - availableRows));
         var count = Math.Min(availableRows, Math.Max(0, matches.Count - start));
         if (matches.Count == 0)

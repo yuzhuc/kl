@@ -1363,17 +1363,24 @@ public static class ChatTuiRunner
 
         if (mouse.Kind is MouseInputKind.WheelUp or MouseInputKind.WheelDown)
         {
-            var interactive = !state.ModelPicker.IsOpen
-                && !MentionPicker.IsOpen(state)
-                && !ChatCommandPalette.IsOpen(state);
+            var delta = mouse.Kind == MouseInputKind.WheelUp ? -1 : 1;
             state.ClearSelection();
-            if (interactive)
+            if (ChatCommandPalette.IsOpen(state))
             {
-                state.ScrollTranscript(
-                    mouse.Kind == MouseInputKind.WheelUp ? 1 : -1,
-                    width,
-                    height);
+                ChatCommandPalette.MoveSelection(state, delta);
+                return;
             }
+            if (MentionPicker.IsOpen(state))
+            {
+                MentionPicker.MoveSelection(state, delta);
+                return;
+            }
+            if (state.ModelPicker.IsOpen)
+            {
+                state.ModelPicker.Move(delta);
+                return;
+            }
+            state.ScrollTranscript(-delta, width, height);
             return;
         }
 
