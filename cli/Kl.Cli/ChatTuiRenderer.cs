@@ -295,6 +295,16 @@ public static class ChatTuiRenderer
                     language));
                 continue;
             }
+            if (entry.Kind == TranscriptKind.Diff)
+            {
+                AddRange(RenderDiffLines(
+                    state,
+                    entryIndex,
+                    entry.Text,
+                    width,
+                    language));
+                continue;
+            }
             if (entry.Kind == TranscriptKind.Tool)
             {
                 AddRange(RenderToolLines(
@@ -440,6 +450,7 @@ public static class ChatTuiRenderer
     private enum TranscriptToggleKind
     {
         CodeBlock,
+        Diff,
         Tool,
         Reasoning
     }
@@ -508,11 +519,13 @@ public static class ChatTuiRenderer
             width);
     }
 
-    private static string DisplayWorkspacePath(ChatTuiState state)
-    {
-        var path = string.IsNullOrWhiteSpace(state.Workspace)
+    private static string DisplayWorkspacePath(ChatTuiState state) =>
+        DisplayPath(string.IsNullOrWhiteSpace(state.Workspace)
             ? Environment.CurrentDirectory
-            : state.Workspace;
+            : state.Workspace);
+
+    private static string DisplayPath(string path)
+    {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (string.IsNullOrEmpty(home))
         {
@@ -553,6 +566,8 @@ public static class ChatTuiRenderer
         var now = DateTimeOffset.UtcNow;
         var header = RenderHistoryHeader(state, view, width, language);
         var contentHeight = Math.Max(1, bodyHeight - header.Count);
+        var editor = RenderHistoryEditor(state, width, language);
+        var editorHeight = editor is null ? 0 : 1;
         List<string> body;
 
         if (width >= 90)
@@ -564,9 +579,13 @@ public static class ChatTuiRenderer
                 view,
                 selection,
                 leftWidth,
-                contentHeight,
+                Math.Max(1, contentHeight - editorHeight),
                 language,
                 now);
+            if (editor is not null)
+            {
+                left.Insert(0, editor);
+            }
             var right = RenderHistoryDetails(selected, detailWidth, language);
             body = ComposeHistoryColumns(
                 left,
@@ -577,15 +596,19 @@ public static class ChatTuiRenderer
         }
         else
         {
+            var minimumListHeight = view.Tasks.Count > 0 && width >= 56 ? 3 : 1;
             var details = RenderHistoryDetails(selected, width, language);
-            var detailBudget = Math.Max(0, contentHeight - 2);
+            var detailBudget = Math.Max(
+                0,
+                contentHeight - editorHeight - minimumListHeight - 1);
             if (details.Count > detailBudget)
             {
                 details = details.Take(detailBudget).ToList();
             }
             var listHeight = Math.Max(
-                1,
-                contentHeight - details.Count - (details.Count > 0 ? 1 : 0));
+                minimumListHeight,
+                contentHeight - editorHeight - details.Count -
+                (details.Count > 0 ? 1 : 0));
             body = BuildHistoryList(
                 view,
                 selection,
@@ -593,6 +616,10 @@ public static class ChatTuiRenderer
                 listHeight,
                 language,
                 now);
+            if (editor is not null)
+            {
+                body.Insert(0, editor);
+            }
             if (details.Count > 0)
             {
                 body.Add(string.Empty);
@@ -611,28 +638,18 @@ public static class ChatTuiRenderer
         int width,
         UiLanguage language)
     {
-        var lines = new List<string>();
-        if (state.HistoryRenaming)
+        var lines = new List<string>
         {
-            lines.Add(RenderHistoryRenameLine(state, width, language));
-        }
-        else if (state.HistorySearching || state.HistorySearch.Length > 0)
-        {
-            lines.Add(RenderHistorySearchLine(state, width, language));
-        }
-        else
-        {
-            lines.Add(
-                DiffRender.Ansi.Bold +
-                ChatTexts.HistoryTitle(language) +
-                DiffRender.Ansi.Reset + "  " +
-                DiffRender.Ansi.Dim +
-                ChatTexts.HistoryGroupBy(language, state.HistoryGrouping) +
-                "  g" +
-                DiffRender.Ansi.Reset);
-        }
+            DiffRender.Ansi.Bold +
+            ChatTexts.HistoryTitle(language) +
+            DiffRender.Ansi.Reset + "  " +
+            DiffRender.Ansi.Dim +
+            ChatTexts.HistoryGroupBy(language, state.HistoryGrouping) +
+            "  g" +
+            DiffRender.Ansi.Reset
+        };
 
-        var filterHint = width >= 80
+        var filterHint = width >= 80 && !HasHistoryEditor(state)
             ? RenderHintLine(
                 [("Tab/Shift+Tab", ChatTexts.T(language, "switch", "切换"))])
             : string.Empty;
@@ -925,6 +942,26 @@ public static class ChatTuiRenderer
         return lines;
     }
 
+    private static bool HasHistoryEditor(ChatTuiState state) =>
+        state.HistoryRenaming
+        || state.HistorySearching
+        || state.HistorySearch.Length > 0;
+
+    private static string? RenderHistoryEditor(
+        ChatTuiState state,
+        int width,
+        UiLanguage language)
+    {
+        if (state.HistoryRenaming)
+        {
+            return RenderHistoryRenameLine(state, width, language);
+        }
+        if (state.HistorySearching || state.HistorySearch.Length > 0)
+        {
+            return RenderHistorySearchLine(state, width, language);
+        }
+        return null;
+    }
     private static string RenderHistorySearchLine(
         ChatTuiState state,
         int width,
@@ -986,7 +1023,10 @@ public static class ChatTuiRenderer
 
         return DiffRender.Ansi.ActiveTab +
             DiffRender.Ansi.Fit(
-                DiffRender.Ansi.BoldAccent + prefix + DiffRender.Ansi.Reset + content,
+                DiffRender.Ansi.BoldCyan +
+                prefix +
+                DiffRender.Ansi.ResetForeground +
+                content,
                 width) +
             DiffRender.Ansi.Reset;
     }
@@ -1082,15 +1122,20 @@ public static class ChatTuiRenderer
     }
 
     private static string WorkspaceLabel(string workspace) =>
-        string.IsNullOrWhiteSpace(workspace) ? "—" : workspace;
+        string.IsNullOrWhiteSpace(workspace) ? "—" : DisplayPath(workspace);
 
     private static string HistoryGroupLabel(
         HistoryView view,
         HistoryGroup group,
         UiLanguage language) =>
-        view.Grouping == HistoryGrouping.Status && group.Tasks.Count > 0
-            ? ChatTexts.HistoryStatus(language, group.Tasks[0].Status)
-            : WorkspaceLabel(group.Label);
+        view.Grouping switch
+        {
+            HistoryGrouping.Status => group.Tasks.Count > 0
+                ? ChatTexts.HistoryStatus(language, group.Tasks[0].Status)
+                : group.Label,
+            HistoryGrouping.Model => group.Label,
+            _ => WorkspaceLabel(group.Label)
+        };
 
     private static string ValueOrDash(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "—" : value.Trim();
@@ -1758,9 +1803,12 @@ public static class ChatTuiRenderer
             return DiffRender.Ansi.Fit(baseLine, width);
         }
 
-        var pathBudget = Math.Max(1, remaining / 2);
-        var titleBudget = Math.Max(1, remaining - pathBudget);
-        var pathText = DisplayText.Ellipsize(path, pathBudget);
+        var pathText = DisplayText.Ellipsize(
+            path,
+            Math.Max(1, remaining / 2));
+        var titleBudget = Math.Max(
+            1,
+            remaining - DisplayText.Width(pathText));
         var titleText = DisplayText.Ellipsize(title, titleBudget);
         return DiffRender.Ansi.Fit(
             baseLine + pathColor + pathText + DiffRender.Ansi.Reset +
@@ -1839,12 +1887,10 @@ public static class ChatTuiRenderer
             return hints;
         }
 
-        var rightText = string.Join("  ", right);
-        var gap = width - DiffRender.Ansi.VisibleWidth(hints) -
-            DiffRender.Ansi.VisibleWidth(rightText);
-        return gap > 0
-            ? hints + new string(' ', gap) + rightText
-            : hints + "  " + rightText;
+        return RenderFooterWithStatus(
+            hints,
+            string.Join("  ", right),
+            width);
     }
 
     private static string RenderHistoryFooter(ChatTuiState state, int width)
@@ -1874,11 +1920,35 @@ public static class ChatTuiRenderer
             return line;
         }
         var status = DiffRender.Ansi.Dim + state.StatusMessage + DiffRender.Ansi.Reset;
-        var gap = width - DiffRender.Ansi.VisibleWidth(line) -
-            DiffRender.Ansi.VisibleWidth(status);
-        return gap > 0
-            ? line + new string(' ', gap) + status
-            : line + "  " + status;
+        return RenderFooterWithStatus(line, status, width);
+    }
+
+    private static string RenderFooterWithStatus(
+        string hints,
+        string? status,
+        int width)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            return hints;
+        }
+
+        var statusWidth = DiffRender.Ansi.VisibleWidth(status);
+        if (statusWidth >= width)
+        {
+            return DiffRender.Ansi.Fit(status, width);
+        }
+        var hintWidth = width - statusWidth - 1;
+        if (hintWidth <= 0)
+        {
+            return new string(' ', width - statusWidth) + status;
+        }
+        if (DiffRender.Ansi.VisibleWidth(hints) > hintWidth)
+        {
+            hints = DiffRender.Ansi.TruncateVisible(hints, hintWidth);
+        }
+        var gap = Math.Max(1, width - DiffRender.Ansi.VisibleWidth(hints) - statusWidth);
+        return hints + new string(' ', gap) + status;
     }
 
     private static string RenderHintLine(
@@ -1984,7 +2054,14 @@ public static class ChatTuiRenderer
             bulletShown = true;
             result.Add(new TranscriptLine(
                 DiffRender.Ansi.Fit(
-                    label + DiffRender.Ansi.Secondary + marker + " " + heading + DiffRender.Ansi.Reset,
+                    label +
+                    DiffRender.Ansi.Accent +
+                    marker +
+                    DiffRender.Ansi.Reset +
+                    DiffRender.Ansi.Secondary +
+                    " " +
+                    heading +
+                    DiffRender.Ansi.Reset,
                     width),
                 new TranscriptToggle(key, TranscriptToggleKind.CodeBlock)));
             if (expanded)
@@ -2047,6 +2124,51 @@ public static class ChatTuiRenderer
                 DisplayText.PadToWidth(line, width) +
                 DiffRender.Ansi.Reset;
         }
+    }
+    private static List<TranscriptLine> RenderDiffLines(
+        ChatTuiState state,
+        int entryIndex,
+        string text,
+        int width,
+        UiLanguage language)
+    {
+        var normalized = text
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n');
+        var rawLines = normalized.Split('\n');
+        var key = $"diff:{entryIndex}";
+        var expanded = state.IsTranscriptItemExpanded(key);
+        var marker = expanded ? "▾" : "▸";
+        var added = rawLines.Count(line =>
+            line.StartsWith('+') && !line.StartsWith("+++", StringComparison.Ordinal));
+        var removed = rawLines.Count(line =>
+            line.StartsWith('-') && !line.StartsWith("---", StringComparison.Ordinal));
+        var count = rawLines.Length == 1
+            ? ChatTexts.T(language, "1 line", "1 行")
+            : ChatTexts.T(language, $"{rawLines.Length} lines", $"{rawLines.Length} 行");
+        var heading = $"{ChatTexts.DiffTitle(language)} · +{added} -{removed} · {count}";
+        var result = new List<TranscriptLine>
+        {
+            new(
+                DiffRender.Ansi.Fit(
+                    DiffRender.Ansi.BoldCyan +
+                    marker +
+                    DiffRender.Ansi.Reset +
+                    DiffRender.Ansi.Secondary +
+                    " " +
+                    heading +
+                    DiffRender.Ansi.Reset,
+                    width),
+                new TranscriptToggle(key, TranscriptToggleKind.Diff))
+        };
+        if (expanded)
+        {
+            foreach (var line in RenderDiff(text, width, language).Skip(1))
+            {
+                result.Add(new TranscriptLine(line));
+            }
+        }
+        return result;
     }
     private static List<TranscriptLine> RenderToolLines(
         ChatTuiState state,

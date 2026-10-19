@@ -26,10 +26,10 @@ public static class ChatTexts
         T(language, "[diff]", "[差异]");
 
     public static string ThinkingLabel(UiLanguage language) =>
-        T(language, "Thinking… ", "思考中… ");
+        T(language, "▾ Thinking… ", "▾ 思考中… ");
 
     public static string ThinkingHidden(UiLanguage language) =>
-        T(language, "Thinking… (Ctrl+R to show)", "思考中…（Ctrl+R 显示）");
+        T(language, "▸ Thinking… (Ctrl+R to show)", "▸ 思考中…（Ctrl+R 显示）");
 
     public static string ApprovalTool(UiLanguage language) =>
         T(language, "tool", "工具");
@@ -208,7 +208,7 @@ public static class ChatTexts
         T(language, $"Worked for {seconds:0.0}s • {time}", $"耗时 {seconds:0.0}s • {time}");
 
     public static string HistoryTitle(UiLanguage language) =>
-        T(language, "History", "历史");
+        T(language, "History", "历史任务");
 
     public static string HistoryGroupBy(UiLanguage language, HistoryGrouping grouping) =>
         T(

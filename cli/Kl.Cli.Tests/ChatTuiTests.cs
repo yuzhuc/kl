@@ -329,13 +329,65 @@ public sealed class ChatTuiTests
             WarningCount = 5
         };
 
-        var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(100, 24, state));
+        var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state));
         var lines = plain.Split('\n');
         Assert.Contains("deepseek/deepseek-flash high · D:\\work", plain);
         Assert.StartsWith("← for agents · ? for shortcuts", lines[^1].TrimStart());
         Assert.EndsWith("⚠ 5 warnings · f2 to view", lines[^1].TrimEnd());
+        Assert.True(DiffRender.Ansi.VisibleWidth(lines[^1]) <= 80);
     }
 
+    [Fact]
+    public void ModelLineGivesUnusedPathSpaceToTheTitle()
+    {
+        var state = new ChatTuiState(
+            "D:\\kl",
+            "deepseek",
+            "deepseek-flash",
+            "session-1")
+        {
+            ReasoningEffort = "high",
+            History =
+            [
+                new HistorySession(
+                    "session-1",
+                    "D:\\kl",
+                    "deepseek",
+                    "deepseek-flash",
+                    "2026-10-19T10:00:00Z",
+                    1,
+                    "ready",
+                    "A very long conversation title that needs room",
+                    "prompt",
+                    null,
+                    "high")
+            ]
+        };
+
+        var lines = DiffRender.Ansi.Strip(
+            ChatTuiRenderer.Render(80, 24, state)).Split('\n');
+
+        Assert.Contains(
+            "A very long conversation title that",
+            lines[^2],
+            StringComparison.Ordinal);
+    }
+    [Fact]
+    public void HomeFooterKeepsChineseWarningAtEightyColumns()
+    {
+        var state = new ChatTuiState("D:\\work", "deepseek", "deepseek-flash", "session-1")
+        {
+            WarningCount = 1
+        };
+        state.Settings.SetLanguage(UiLanguage.ChineseSimplified);
+
+        var lines = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state))
+            .Split('\n');
+
+        Assert.StartsWith("← 代理 · ? 快捷键", lines[^1].TrimStart());
+        Assert.EndsWith("⚠ 1 个警告 · f2 查看", lines[^1].TrimEnd());
+        Assert.True(DiffRender.Ansi.VisibleWidth(lines[^1]) <= 80);
+    }
     [Fact]
     public void RenderShowsTranscriptEntryKinds()
     {
@@ -352,6 +404,7 @@ public sealed class ChatTuiTests
             Reason: "modifies a tracked file"));
         state.Transcript.Add(new TranscriptEntry(TranscriptKind.Diff, "-old\n+new"));
         state.Transcript.Add(new TranscriptEntry(TranscriptKind.Error, "boom"));
+        state.ToggleTranscriptItem("diff:4");
 
         var render = ChatTuiRenderer.Render(100, 24, state);
 
@@ -789,6 +842,15 @@ public sealed class ChatTuiTests
             TranscriptKind.Diff,
             "+new\n-old\n@@ hunk\n context"));
 
+        var collapsed = ChatTuiRenderer.TranscriptLines(state, 100);
+        Assert.Contains(
+            collapsed,
+            line => DiffRender.Ansi.Strip(line).Contains("▸ [diff]", StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            collapsed,
+            line => DiffRender.Ansi.Strip(line).Contains("+new", StringComparison.Ordinal));
+
+        state.ToggleTranscriptItem("diff:0");
         var lines = ChatTuiRenderer.TranscriptLines(state, 100);
 
         Assert.Contains(lines, line => line.Contains("[diff]"));

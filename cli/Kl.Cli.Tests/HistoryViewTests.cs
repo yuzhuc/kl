@@ -274,6 +274,67 @@ public sealed class HistoryViewTests
 
         Assert.Contains("|", searchLine);
         Assert.True(DisplayText.Width(DiffRender.Ansi.Strip(searchLine)) <= 40);
+
+        var rawLines = render.Split('\n');
+        var lines = rawLines
+            .Select(line => DiffRender.Ansi.Strip(line).TrimEnd())
+            .ToList();
+        var titleRow = lines.FindIndex(line => line.Contains("历史", StringComparison.Ordinal));
+        var tabRow = lines.FindIndex(line => line.Contains("全部 1", StringComparison.Ordinal));
+        var separatorRow = lines.FindIndex(line =>
+            line.Length > 0 && line.All(character => character == '─'));
+        var searchRow = lines.FindIndex(line => line.Contains("搜索 ›", StringComparison.Ordinal));
+        Assert.True(titleRow < tabRow);
+        Assert.True(tabRow < separatorRow);
+        Assert.True(separatorRow < searchRow);
+        Assert.Contains(DiffRender.Ansi.ActiveTab, rawLines[searchRow]);
+        Assert.Contains(DiffRender.Ansi.ResetForeground, rawLines[searchRow]);
+    }
+
+    [Fact]
+    public void HistorySearchKeepsTabsAndTableHeaderVisible()
+    {
+        var state = new ChatTuiState
+        {
+            Screen = ChatScreen.History,
+            HistorySearching = true,
+            HistorySearch = "task",
+            HistorySearchCursor = 4,
+            History = [Session("s1", "D:\\kl", "ready", "task one")]
+        };
+
+        var lines = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state))
+            .Split('\n')
+            .Select(line => line.TrimEnd())
+            .ToList();
+
+        var titleRow = lines.FindIndex(line => line.Contains("History", StringComparison.Ordinal));
+        var tabRow = lines.FindIndex(line => line.Contains("All 1", StringComparison.Ordinal));
+        var separatorRow = lines.FindIndex(line =>
+            line.Length > 0 && line.All(character => character == '─'));
+        var searchRow = lines.FindIndex(line => line.Contains("Search ›", StringComparison.Ordinal));
+        var tableRow = lines.FindIndex(line => line.Contains("Tasks", StringComparison.Ordinal));
+        Assert.True(titleRow < tabRow);
+        Assert.True(tabRow < separatorRow);
+        Assert.True(separatorRow < searchRow);
+        Assert.True(searchRow < tableRow);
+    }
+    [Fact]
+    public void HistoryUsesHomeShorthandForWorkspacePaths()
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var workspace = Path.Combine(home, "project");
+        var state = new ChatTuiState
+        {
+            Screen = ChatScreen.History,
+            HistorySelection = 0,
+            History = [Session("s1", workspace, "ready", "home task")]
+        };
+
+        var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(120, 24, state));
+
+        Assert.Contains("~" + Path.DirectorySeparatorChar + "project", plain);
+        Assert.DoesNotContain(home, plain, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -317,7 +378,7 @@ public sealed class HistoryViewTests
         var render = ChatTuiRenderer.Render(120, 24, state);
         var plain = DiffRender.Ansi.Strip(render);
 
-        Assert.Contains("历史  分组：工作区", plain);
+        Assert.Contains("历史任务  分组：工作区", plain);
         Assert.Contains("全部 1", plain);
         Assert.Contains("未命名任务", plain);
         Assert.Contains("任务详情", plain);
@@ -403,6 +464,15 @@ public sealed class HistoryViewTests
         var rename = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(100, 24, state));
         Assert.Contains("重命名 › new| name", rename);
         Assert.Contains("Enter 保存", rename.Split('\n')[^1]);
+        var renameLines = rename.Split('\n')
+            .Select(line => line.TrimEnd())
+            .ToList();
+        var renameTitle = renameLines.FindIndex(line => line.Contains("历史", StringComparison.Ordinal));
+        var renameSeparator = renameLines.FindIndex(line =>
+            line.Length > 0 && line.All(character => character == '─'));
+        var renameEditor = renameLines.FindIndex(line => line.Contains("重命名 ›", StringComparison.Ordinal));
+        Assert.True(renameTitle < renameSeparator);
+        Assert.True(renameSeparator < renameEditor);
 
         state.HistoryRenaming = false;
         state.Screen = ChatScreen.Shortcuts;
