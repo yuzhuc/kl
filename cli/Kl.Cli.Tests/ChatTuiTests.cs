@@ -272,8 +272,10 @@ public sealed class ChatTuiTests
 
         var render = ChatTuiRenderer.Render(80, 24, state);
 
-        Assert.Contains(DiffRender.Ansi.UserMessage, render);
-        Assert.Contains(DiffRender.Ansi.BoldAccent, render);
+        var userLine = render.Split('\n')
+            .First(line => line.Contains("> fix it", StringComparison.Ordinal));
+        Assert.StartsWith(DiffRender.Ansi.UserMessage, userLine);
+        Assert.Equal(80, DiffRender.Ansi.VisibleWidth(userLine));
         Assert.Contains(DiffRender.Ansi.Secondary, render);
         Assert.DoesNotContain("\u001b[2m", render);
     }
@@ -353,9 +355,16 @@ public sealed class ChatTuiTests
 
         var render = ChatTuiRenderer.Render(100, 24, state);
 
-        Assert.Contains("You: fix it", render);
+        Assert.Contains("> fix it", render);
         Assert.Contains("KL: done", render);
         Assert.Contains("[tool] shell cargo test", render);
+        Assert.DoesNotContain(">_ KL", DiffRender.Ansi.Strip(render));
+        Assert.DoesNotContain("D:\\work", DiffRender.Ansi.Strip(render));
+        var plainLines = DiffRender.Ansi.Strip(render).Split('\n');
+        var userIndex = Array.FindIndex(plainLines, line => line.Contains("> fix it", StringComparison.Ordinal));
+        var assistantIndex = Array.FindIndex(plainLines, line => line.Contains("KL: done", StringComparison.Ordinal));
+        Assert.True(assistantIndex > userIndex);
+        Assert.True(string.IsNullOrWhiteSpace(plainLines[userIndex + 1]));
         Assert.Contains("[approval]", render);
         Assert.Contains("tool: edit", render);
         Assert.Contains("command/path: write src/lib.rs", render);

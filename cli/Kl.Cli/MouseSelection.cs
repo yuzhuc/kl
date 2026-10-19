@@ -81,7 +81,7 @@ public sealed class MouseSelection
             var width = DisplayText.Width(plain);
             var from = row == startRow ? Math.Clamp(start.Column, 0, width) : 0;
             var to = row == endRow ? Math.Clamp(end.Column + 1, 0, width) : width;
-            selected.Add(to > from ? DisplayText.SliceToWidth(plain, from, to) : string.Empty);
+            selected.Add(to > from ? DisplayText.SliceToWidth(plain, from, to).TrimEnd() : string.Empty);
         }
         return string.Join('\n', selected);
     }

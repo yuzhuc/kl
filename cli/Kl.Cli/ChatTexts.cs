@@ -9,8 +9,6 @@ public static class ChatTexts
     public static string InputPlaceholder(UiLanguage language) =>
         T(language, KlBrand.InputPlaceholder, "让 KL 做点什么，或输入 / 查看命令");
 
-    public static string UserLabel(UiLanguage language) =>
-        T(language, "You: ", "你：");
 
     public static string AssistantLabel(UiLanguage language) =>
         T(language, "KL: ", "KL：");

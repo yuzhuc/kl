@@ -36,15 +36,15 @@ public static class ChatTuiRenderer
         var chatLike = state.Screen == ChatScreen.Chat
             || (state.Screen == ChatScreen.Shortcuts
                 && state.ShortcutReturnScreen == ChatScreen.Chat);
-        var showHeader = state.Screen != ChatScreen.History;
-        var showSeparator = state.Screen == ChatScreen.Chat && !IsHome(state);
+        var showHeader = state.Screen == ChatScreen.Shortcuts
+            || (state.Screen == ChatScreen.Chat && IsHome(state));
         var showInput = chatLike;
         var showModelLine = chatLike;
-        var topMargin = chatLike ? 1 : 0;
+        var topMargin = showHeader && chatLike ? 1 : 0;
         var inputHeight = showInput ? ComposerHeight(state, width, height) : 0;
         var bodyHeight = Math.Max(
             1,
-            height - topMargin - (showHeader ? 2 : 0) - (showSeparator ? 1 : 0) -
+            height - topMargin - (showHeader ? 2 : 0) -
             inputHeight - (showModelLine ? 1 : 0) - 1);
 
         var body = state.Screen switch
@@ -65,10 +65,6 @@ public static class ChatTuiRenderer
         {
             lines.Add(RenderHeaderTitle());
             lines.Add(RenderHeaderPath(state, width));
-            if (showSeparator)
-            {
-                lines.Add(new string('-', width));
-            }
         }
         lines.AddRange(body);
         if (showInput)
@@ -98,7 +94,7 @@ public static class ChatTuiRenderer
     {
         var bodyHeight = Math.Max(
             1,
-            Math.Max(8, height) - 6 - ComposerHeight(state, width, height));
+            Math.Max(8, height) - 2 - ComposerHeight(state, width, height));
         return Math.Max(
             0,
             TranscriptLines(state, Math.Max(20, width)).Count - bodyHeight);
@@ -148,7 +144,7 @@ public static class ChatTuiRenderer
 
         width = Math.Max(20, width);
         height = Math.Max(8, height);
-        var bodyHeight = Math.Max(1, height - 6 - ComposerHeight(state, width, height));
+        var bodyHeight = Math.Max(1, height - 2 - ComposerHeight(state, width, height));
         var lines = TranscriptLines(state, width);
         if (lines.Count == 0)
         {
@@ -159,8 +155,7 @@ public static class ChatTuiRenderer
         var scroll = Math.Clamp(state.TranscriptScroll, 0, maximum);
         var start = Math.Max(0, lines.Count - bodyHeight - scroll);
         var visible = lines.Skip(start).Take(bodyHeight).ToList();
-        // Blank row + title + path + separator above the transcript.
-        return new TranscriptViewport(4, start, visible);
+        return new TranscriptViewport(0, start, visible);
     }
 
     public static List<string> TranscriptLines(ChatTuiState state, int width)
@@ -169,8 +164,15 @@ public static class ChatTuiRenderer
         var language = state.Language;
         var lines = new List<string>();
         var hiddenReasoningShown = false;
-        foreach (var entry in state.Transcript)
+        for (var entryIndex = 0; entryIndex < state.Transcript.Count; entryIndex++)
         {
+            var entry = state.Transcript[entryIndex];
+            if (entryIndex > 0
+                && state.Transcript[entryIndex - 1].Kind == TranscriptKind.User
+                && entry.Kind != TranscriptKind.User)
+            {
+                lines.Add(string.Empty);
+            }
             if (entry.Kind == TranscriptKind.Reasoning)
             {
                 if (!state.ReasoningVisible)
@@ -1712,9 +1714,7 @@ public static class ChatTuiRenderer
         switch (entry.Kind)
         {
             case TranscriptKind.User:
-                return ColorLines(
-                    WrapPlain(ChatTexts.UserLabel(language) + entry.Text, width),
-                    DiffRender.Ansi.UserMessage);
+                return RenderUserMessage(entry.Text, width);
             case TranscriptKind.Assistant:
                 return WrapPlain(
                     ChatTexts.AssistantLabel(language) + entry.Text,
@@ -1738,6 +1738,15 @@ public static class ChatTuiRenderer
         }
     }
 
+    private static IEnumerable<string> RenderUserMessage(string text, int width)
+    {
+        foreach (var line in WrapPlain("> " + text, width))
+        {
+            yield return DiffRender.Ansi.UserMessage +
+                DisplayText.PadToWidth(line, width) +
+                DiffRender.Ansi.Reset;
+        }
+    }
     private static IEnumerable<string> RenderTool(
         string text,
         int width,

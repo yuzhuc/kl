@@ -480,7 +480,7 @@ public sealed class ChatTuiState
             "\n",
             lines.Skip(start)
                 .Take(end - start + 1)
-                .Select(DiffRender.Ansi.Strip));
+                .Select(line => DiffRender.Ansi.Strip(line).TrimEnd()));
     }
 
     public string? LastAssistantText() =>
