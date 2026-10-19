@@ -285,6 +285,9 @@ public static class ChatTuiRunner
                                 state.Insert(key.KeyChar);
                             }
                             break;
+                        case ChatKeyAction.InsertNewline:
+                            state.Insert('\n');
+                            break;
                         case ChatKeyAction.Backspace:
                             if (state.Screen == ChatScreen.History
                                 && state.HistoryRenaming)
@@ -769,10 +772,26 @@ public static class ChatTuiRunner
                             }
                             break;
                         case ChatKeyAction.ScrollUp:
-                            state.ScrollTranscript(1, width, height);
+                            if (state.Screen == ChatScreen.Chat
+                                && ChatTuiRenderer.CanMoveInputCursorVertical(state, width))
+                            {
+                                ChatTuiRenderer.MoveInputCursorVertical(state, width, -1);
+                            }
+                            else
+                            {
+                                state.ScrollTranscript(1, width, height);
+                            }
                             break;
                         case ChatKeyAction.ScrollDown:
-                            state.ScrollTranscript(-1, width, height);
+                            if (state.Screen == ChatScreen.Chat
+                                && ChatTuiRenderer.CanMoveInputCursorVertical(state, width))
+                            {
+                                ChatTuiRenderer.MoveInputCursorVertical(state, width, 1);
+                            }
+                            else
+                            {
+                                state.ScrollTranscript(-1, width, height);
+                            }
                             break;
                         case ChatKeyAction.ApprovalAllow:
                             ResolveApproval(

@@ -28,6 +28,7 @@ public enum ChatKeyAction
 {
     None,
     Insert,
+    InsertNewline,
     Backspace,
     Delete,
     CursorLeft,
@@ -154,6 +155,7 @@ public sealed class ChatTuiState
     public string ReasoningEffort { get; set; } = string.Empty;
     public int WarningCount { get; set; }
     public string SessionId { get; set; }
+    public int ContextColorSeed { get; } = Random.Shared.Next();
     public bool Verbose { get; init; }
     public string Input { get; set; } = string.Empty;
     public int Cursor { get; set; }
@@ -1004,6 +1006,12 @@ public static class ChatKeyMapper
             return key.Key == ConsoleKey.Escape || key.KeyChar == '?'
                 ? ChatKeyAction.ToggleShortcuts
                 : ChatKeyAction.None;
+        }
+
+        if ((shift && key.Key == ConsoleKey.Enter)
+            || (control && key.Key == ConsoleKey.J))
+        {
+            return ChatKeyAction.InsertNewline;
         }
 
         if (shift && key.Key == ConsoleKey.UpArrow)

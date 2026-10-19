@@ -52,9 +52,11 @@ public sealed class ChatTuiTests
             "  /model - choose what model and reasoning effort to use",
             "  /review - review changes and find issues"
         };
-        lines.AddRange(Enumerable.Repeat(string.Empty, 10));
-        lines.Add("  › Ask KL to do anything");
-        lines.Add("  no provider configured · D:\\kl");
+        lines.AddRange(Enumerable.Repeat(string.Empty, 8));
+        lines.Add(new string('─', 80));
+        lines.Add("› Ask KL to do anything");
+        lines.Add(new string('─', 80));
+        lines.Add("  no provider configured · D:\\kl · New chat");
         lines.Add("  ← for agents · ? for shortcuts");
 
         Assert.Equal(string.Join('\n', lines), Snapshot(ChatTuiRenderer.Render(80, 24, state)));
@@ -79,9 +81,11 @@ public sealed class ChatTuiTests
             "  /model - 选择模型和推理强度",
             "  /review - 审查当前改动并发现问题"
         };
-        lines.AddRange(Enumerable.Repeat(string.Empty, 10));
-        lines.Add("  › 让 KL 做点什么，或输入 / 查看命令");
-        lines.Add("  未配置 Provider · D:\\kl");
+        lines.AddRange(Enumerable.Repeat(string.Empty, 8));
+        lines.Add(new string('─', 80));
+        lines.Add("› 让 KL 做点什么，或输入 / 查看命令");
+        lines.Add(new string('─', 80));
+        lines.Add("  未配置 Provider · D:\\kl · 新对话");
         lines.Add("  ← 代理 · ? 快捷键");
 
         Assert.Equal(string.Join('\n', lines), Snapshot(ChatTuiRenderer.Render(80, 24, state)));
@@ -94,6 +98,9 @@ public sealed class ChatTuiTests
         {
             ReasoningEffort = "high"
         };
+        state.History.Add(new HistorySession(
+            "s1", "D:\\kl", "openai", "gpt-5", string.Empty, 1,
+            null, "Say hello", null, null, "high"));
 
         var render = ChatTuiRenderer.Render(80, 24, state);
 
@@ -103,21 +110,23 @@ public sealed class ChatTuiTests
             DiffRender.Ansi.Secondary + " (v0.1.0)" + DiffRender.Ansi.Reset,
             render);
         Assert.Contains(
-            "     " + DiffRender.Ansi.Path + "D:\\kl" + DiffRender.Ansi.Reset,
-            render);
-        Assert.Contains(
             DiffRender.Ansi.Bold + "/init" + DiffRender.Ansi.Reset +
             DiffRender.Ansi.Secondary +
             " - create an AGENTS.md file with instructions for KL" +
             DiffRender.Ansi.Reset,
             render);
-        Assert.Contains(
-            "  " + DiffRender.Ansi.BoldAccent + "openai/gpt-5" +
-            DiffRender.Ansi.Reset + " " + DiffRender.Ansi.Bold + "high" +
-            DiffRender.Ansi.Reset + DiffRender.Ansi.Secondary + " · " +
-            DiffRender.Ansi.Reset + DiffRender.Ansi.Path + "D:\\kl" +
-            DiffRender.Ansi.Reset,
-            render);
+        var lines = render.Split('\n');
+        var pathLine = lines.First(line =>
+            DiffRender.Ansi.Strip(line).TrimStart().StartsWith("D:\\kl", StringComparison.Ordinal));
+        var modelLine = lines.First(line =>
+            DiffRender.Ansi.Strip(line).Contains("openai/gpt-5 high", StringComparison.Ordinal));
+        Assert.NotEmpty(Ansi256Colors(pathLine));
+        var sectionColors = Ansi256Colors(modelLine)
+            .Where(color => color != 244)
+            .Distinct()
+            .ToList();
+        Assert.True(sectionColors.Count >= 3);
+        Assert.Contains("· D:\\kl · Say hello", DiffRender.Ansi.Strip(modelLine));
     }
 
     [Fact]
@@ -160,6 +169,11 @@ public sealed class ChatTuiTests
 
         var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(110, 30, state));
 
+        Assert.Contains("/init - create an AGENTS.md file with instructions for KL", plain);
+        Assert.Contains("/review - review changes and find issues", plain);
+        Assert.True(
+            plain.IndexOf("/review - review changes", StringComparison.Ordinal) <
+            plain.IndexOf("Keyboard shortcuts", StringComparison.Ordinal));
         Assert.Contains("Keyboard shortcuts", plain);
         Assert.Contains("Compose", plain);
         Assert.Contains("Session", plain);
@@ -167,6 +181,88 @@ public sealed class ChatTuiTests
         Assert.Contains("/settings customize", plain);
         Assert.Contains("openai/gpt-5 high · D:\\kl", plain);
         Assert.EndsWith("? / esc close", plain.Split('\n')[^1].TrimEnd());
+
+        var compact = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state));
+        Assert.Contains("/settings customize", compact);
+        Assert.EndsWith("? / esc close", compact.Split('\n')[^1].TrimEnd());
+    }
+
+    [Fact]
+    public void ComposerUsesTwoRulesAndMutedPlaceholder()
+    {
+        var state = new ChatTuiState();
+
+        var render = ChatTuiRenderer.Render(80, 24, state);
+        var rule = DiffRender.Ansi.Secondary + new string('─', 80) + DiffRender.Ansi.Reset;
+
+        Assert.True(render.Split('\n').Count(line => line == rule) >= 2);
+        Assert.Contains(
+            DiffRender.Ansi.Bold + "›" + DiffRender.Ansi.Reset + " " +
+            DiffRender.Ansi.Secondary + KlBrand.InputPlaceholder + DiffRender.Ansi.Reset,
+            render);
+    }
+    [Fact]
+    public void EmptyComposerReservesCodexPaddingRows()
+    {
+        var state = new ChatTuiState();
+        var lines = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state))
+            .Split('\n')
+            .Select(line => line.TrimEnd())
+            .ToList();
+        var input = lines.FindIndex(line => line.Contains("› Ask KL to do anything", StringComparison.Ordinal));
+        var model = lines.FindIndex(line => line.Contains("no provider configured", StringComparison.Ordinal));
+
+        Assert.True(input >= 0);
+        Assert.Equal(input + 2, model);
+    }
+
+    [Fact]
+    public void LongMultilineInputCapsHeightAndFollowsCursor()
+    {
+        var state = new ChatTuiState();
+        state.Input = string.Join('\n', Enumerable.Range(1, 12).Select(index => $"line {index}"));
+        state.Cursor = state.Input.Length;
+
+        var lines = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state))
+            .Split('\n')
+            .Select(line => line.TrimEnd())
+            .ToList();
+
+        Assert.Contains(lines, line => line.EndsWith("line 12|", StringComparison.Ordinal));
+        Assert.DoesNotContain(lines, line => line.Trim() == "› line 1");
+        Assert.Equal(24, lines.Count);
+    }
+
+    [Fact]
+    public void UpDownMovesMultilineCursorAndArrowFollowsIt()
+    {
+        var state = new ChatTuiState();
+        state.Input = string.Join('\n', Enumerable.Range(1, 12).Select(index => $"line {index}"));
+        state.Cursor = state.Input.Length;
+
+        Assert.True(ChatTuiRenderer.CanMoveInputCursorVertical(state, 80));
+        Assert.True(ChatTuiRenderer.MoveInputCursorVertical(state, 80, -1));
+
+        var lines = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state))
+            .Split('\n')
+            .Select(line => line.TrimEnd())
+            .ToList();
+
+        Assert.Contains(lines, line => line.StartsWith("› ", StringComparison.Ordinal));
+        Assert.Contains(lines, line => line.EndsWith("line 11|", StringComparison.Ordinal));
+        Assert.DoesNotContain(lines, line => line.EndsWith("line 12|", StringComparison.Ordinal));
+    }
+    [Fact]
+    public void ShiftEnterAndCtrlJInsertNewlines()
+    {
+        var state = new ChatTuiState();
+
+        Assert.Equal(
+            ChatKeyAction.InsertNewline,
+            ChatKeyMapper.Map(Key(ConsoleKey.Enter, shift: true), state));
+        Assert.Equal(
+            ChatKeyAction.InsertNewline,
+            ChatKeyMapper.Map(Key(ConsoleKey.J, '\n', control: true), state));
     }
     [Fact]
     public void UserMessageUsesBlockFillAndSecondaryTextIsNotDim()
@@ -219,7 +315,7 @@ public sealed class ChatTuiTests
         var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(100, 24, state));
         var footer = plain.Split('\n')[^1];
         Assert.Contains("openai/gpt-5", plain);
-        Assert.Contains("Ctrl+R reasoning", footer);
+        Assert.Contains("← for agents · ? for shortcuts", footer);
     }
 
     [Fact]
@@ -889,6 +985,24 @@ public sealed class ChatTuiTests
             Assert.True(DiffRender.Ansi.VisibleWidth(line) <= width));
     }
 
+    private static List<int> Ansi256Colors(string text)
+    {
+        const string prefix = "\u001b[38;5;";
+        var colors = new List<int>();
+        for (var index = text.IndexOf(prefix, StringComparison.Ordinal);
+             index >= 0;
+             index = text.IndexOf(prefix, index + prefix.Length, StringComparison.Ordinal))
+        {
+            var start = index + prefix.Length;
+            var end = text.IndexOf('m', start);
+            if (end > start && int.TryParse(text[start..end], out var color))
+            {
+                colors.Add(color);
+            }
+            index = end >= 0 ? end : start;
+        }
+        return colors;
+    }
     private static string Snapshot(string render) =>
         string.Join(
             '\n',

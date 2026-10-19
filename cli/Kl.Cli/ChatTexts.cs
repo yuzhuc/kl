@@ -66,11 +66,6 @@ public static class ChatTexts
             "Ctrl+C cancel  Shift+↑/↓ select  Ctrl+R reasoning",
             "Ctrl+C 取消  Shift+↑/↓ 选择  Ctrl+R 推理");
 
-    public static string IdleFooter(UiLanguage language) =>
-        T(
-            language,
-            "Ctrl+R reasoning  Ctrl+Shift+C copy  Ctrl+L clear  Ctrl+D exit  ? shortcuts",
-            "Ctrl+R 推理  Ctrl+Shift+C 复制  Ctrl+L 清屏  Ctrl+D 退出  ? 快捷键");
 
     public static string NoProviderStatus(UiLanguage language) =>
         T(
@@ -423,7 +418,7 @@ public static class ChatTexts
         language == UiLanguage.ChineseSimplified
             ? [
                 ("编辑", [
-                    ("/", "命令"), ("@", "提及文件"), ("Enter", "发送消息"),
+                    ("/", "命令"), ("@", "提及文件"), ("Enter", "发送消息"), ("Ctrl+J", "换行"),
                     ("Ctrl+Shift+C", "复制最后消息"), ("/copy", "复制最后消息")
                 ]),
                 ("会话", [
@@ -437,7 +432,7 @@ public static class ChatTexts
             ]
             : [
                 ("Compose", [
-                    ("/", "Commands"), ("@", "Mention files"), ("Enter", "Send message"),
+                    ("/", "Commands"), ("@", "Mention files"), ("Enter", "Send message"), ("Ctrl+J", "New line"),
                     ("Ctrl+Shift+C", "Copy last message"), ("/copy", "Copy last message")
                 ]),
                 ("Session", [

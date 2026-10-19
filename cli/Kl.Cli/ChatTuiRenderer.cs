@@ -41,10 +41,11 @@ public static class ChatTuiRenderer
         var showInput = chatLike;
         var showModelLine = chatLike;
         var topMargin = chatLike ? 1 : 0;
+        var inputHeight = showInput ? ComposerHeight(state, width, height) : 0;
         var bodyHeight = Math.Max(
             1,
             height - topMargin - (showHeader ? 2 : 0) - (showSeparator ? 1 : 0) -
-            (showInput ? 1 : 0) - (showModelLine ? 1 : 0) - 1);
+            inputHeight - (showModelLine ? 1 : 0) - 1);
 
         var body = state.Screen switch
         {
@@ -72,7 +73,7 @@ public static class ChatTuiRenderer
         lines.AddRange(body);
         if (showInput)
         {
-            lines.Add(RenderInput(state, width));
+            lines.AddRange(RenderInputLines(state, width, height));
         }
         if (showModelLine)
         {
@@ -95,12 +96,42 @@ public static class ChatTuiRenderer
 
     public static int MaxTranscriptScroll(ChatTuiState state, int width, int height)
     {
-        var bodyHeight = Math.Max(1, Math.Max(8, height) - 7);
+        var bodyHeight = Math.Max(
+            1,
+            Math.Max(8, height) - 6 - ComposerHeight(state, width, height));
         return Math.Max(
             0,
             TranscriptLines(state, Math.Max(20, width)).Count - bodyHeight);
     }
 
+    public static bool CanMoveInputCursorVertical(ChatTuiState state, int width) =>
+        WrapComposerRanges(state.Input, Math.Max(1, width - 5)).Count > 1;
+
+    public static bool MoveInputCursorVertical(
+        ChatTuiState state,
+        int width,
+        int delta)
+    {
+        var ranges = WrapComposerRanges(state.Input, Math.Max(1, width - 5));
+        if (ranges.Count <= 1)
+        {
+            return false;
+        }
+
+        var (row, column) = LocateComposerCursor(state.Input, ranges, state.Cursor);
+        var target = Math.Clamp(row + delta, 0, ranges.Count - 1);
+        state.Cursor = IndexAtVisualColumn(
+            state.Input,
+            ranges[target].Start,
+            ranges[target].End,
+            column);
+        return true;
+    }
+    public static int ComposerHeight(ChatTuiState state, int width, int height)
+    {
+        var (lines, _) = BuildComposerDisplay(state, width);
+        return Math.Min(lines.Count, ComposerTextRowLimit(height)) + 2;
+    }
     public static TranscriptViewport? TranscriptViewport(
         ChatTuiState state,
         int width,
@@ -117,7 +148,7 @@ public static class ChatTuiRenderer
 
         width = Math.Max(20, width);
         height = Math.Max(8, height);
-        var bodyHeight = Math.Max(1, height - 7);
+        var bodyHeight = Math.Max(1, height - 6 - ComposerHeight(state, width, height));
         var lines = TranscriptLines(state, width);
         if (lines.Count == 0)
         {
@@ -272,9 +303,10 @@ public static class ChatTuiRenderer
     private static string RenderHeaderPath(ChatTuiState state, int width)
     {
         var path = DisplayWorkspacePath(state);
+        var (_, pathColor, _) = ContextColors(state);
         var available = Math.Max(1, width - 5);
         return DiffRender.Ansi.Fit(
-            "     " + DiffRender.Ansi.Path +
+            "     " + pathColor +
             DisplayText.Ellipsize(path, available) + DiffRender.Ansi.Reset,
             width);
     }
@@ -801,14 +833,55 @@ public static class ChatTuiRenderer
             ? ChatTexts.UntitledTask(language)
             : session.Task.Trim();
 
-    private static string TaskTitleColor(string sessionId)
+    private static string TaskTitleColor(string sessionId) =>
+        TaskTitleColors[StableColorIndex(sessionId)];
+
+    private static (string ModelColor, string PathColor, string TitleColor) ContextColors(
+        ChatTuiState state)
+    {
+        var random = new Random(state.ContextColorSeed);
+        var indices = new List<int>(3);
+        while (indices.Count < 3)
+        {
+            var index = random.Next(TaskTitleColors.Length);
+            if (!indices.Contains(index))
+            {
+                indices.Add(index);
+            }
+        }
+        return (
+            TaskTitleColors[indices[0]],
+            TaskTitleColors[indices[1]],
+            TaskTitleColors[indices[2]]);
+    }
+
+    private static string ConversationTitle(ChatTuiState state)
+    {
+        var current = state.History.FirstOrDefault(
+            session => session.SessionId == state.SessionId);
+        if (!string.IsNullOrWhiteSpace(current?.Task))
+        {
+            return current.Task.Trim();
+        }
+
+        var firstUser = state.Transcript
+            .FirstOrDefault(entry => entry.Kind == TranscriptKind.User)
+            ?.Text;
+        if (!string.IsNullOrWhiteSpace(firstUser))
+        {
+            return firstUser.Trim().Split('\n')[0];
+        }
+        return ChatTexts.T(state.Language, "New chat", "新对话");
+    }
+
+    private static int StableColorIndex(string value)
     {
         var hash = 14695981039346656037UL;
-        foreach (var character in sessionId)
+        foreach (var character in value)
         {
             hash = (hash ^ (byte)character) * 1099511628211UL;
         }
-        return TaskTitleColors[(int)(hash % (ulong)TaskTitleColors.Length)];
+        return (int)(hash % (ulong)TaskTitleColors.Length);
     }
 
     private static string WorkspaceLabel(string workspace) =>
@@ -882,11 +955,10 @@ public static class ChatTuiRenderer
 
         var language = state.Language;
         var groups = ChatTexts.ChatShortcutGroups(language);
-        var lines = new List<string>
-        {
-            DiffRender.Ansi.Bold + ChatTexts.ShortcutsTitle(language) + DiffRender.Ansi.Reset,
-            string.Empty
-        };
+        var lines = RenderHome(state, width);
+        lines.Add(string.Empty);
+        lines.Add(DiffRender.Ansi.Bold + ChatTexts.ShortcutsTitle(language) + DiffRender.Ansi.Reset);
+        lines.Add(string.Empty);
 
         if (width >= 70)
         {
@@ -943,12 +1015,35 @@ public static class ChatTuiRenderer
         }
 
         lines.Add(string.Empty);
-        lines.Add(
+        var settingsLine =
             DiffRender.Ansi.Accent + "/settings" + DiffRender.Ansi.Reset +
             DiffRender.Ansi.Secondary + " " +
             ChatTexts.T(language, "customize", "自定义") +
-            DiffRender.Ansi.Reset);
-        return PadBody(lines.Take(bodyHeight).ToList(), bodyHeight);
+            DiffRender.Ansi.Reset;
+        lines.Add(settingsLine);
+        if (lines.Count > bodyHeight)
+        {
+            var title = DiffRender.Ansi.Bold + ChatTexts.ShortcutsTitle(language) +
+                DiffRender.Ansi.Reset;
+            var titleIndex = lines.IndexOf(title);
+            if (titleIndex > 0 && lines[titleIndex - 1].Length == 0)
+            {
+                lines.RemoveAt(titleIndex - 1);
+                titleIndex--;
+            }
+            if (titleIndex >= 0
+                && titleIndex + 1 < lines.Count
+                && lines[titleIndex + 1].Length == 0)
+            {
+                lines.RemoveAt(titleIndex + 1);
+            }
+        }
+        if (lines.Count > bodyHeight)
+        {
+            lines = lines.Take(Math.Max(0, bodyHeight - 1)).ToList();
+            lines.Add(settingsLine);
+        }
+        return PadBody(lines, bodyHeight);
     }
 
     private static List<string> RenderHistoryShortcutsBody(
@@ -1262,32 +1357,173 @@ public static class ChatTuiRenderer
         var parent = Path.GetDirectoryName(path)?.Replace('\\', '/');
         return string.IsNullOrEmpty(parent) ? "./" : parent.Replace('\\', '/') + "/";
     }
-    private static string RenderInput(ChatTuiState state, int width)
+    private static List<string> RenderInputLines(
+        ChatTuiState state,
+        int width,
+        int height)
     {
-        var prompt = "  " + DiffRender.Ansi.BoldAccent + "›" +
-            DiffRender.Ansi.Reset + DiffRender.Ansi.Composer + " ";
-        string content;
+        var (lines, cursorRow) = BuildComposerDisplay(state, width);
+        var visible = Math.Min(lines.Count, ComposerTextRowLimit(height));
+        var maximum = Math.Max(0, lines.Count - visible);
+        var scroll = Math.Clamp(cursorRow - visible + 1, 0, maximum);
+        if (cursorRow < scroll)
+        {
+            scroll = cursorRow;
+        }
+
+        var rule = DiffRender.Ansi.Secondary + new string('─', width) + DiffRender.Ansi.Reset;
+        var rows = new List<string>(visible + 2) { rule };
+        for (var row = 0; row < visible; row++)
+        {
+            var index = scroll + row;
+            var prefix = index == cursorRow
+                ? DiffRender.Ansi.Bold + "›" + DiffRender.Ansi.Reset + " "
+                : "  ";
+            var content = state.Input.Length == 0
+                ? DiffRender.Ansi.Secondary + lines[index] + DiffRender.Ansi.Reset
+                : lines[index];
+            rows.Add(DiffRender.Ansi.Fit(prefix + content, width));
+        }
+        rows.Add(rule);
+        return rows;
+    }
+
+    private static (List<string> Lines, int CursorRow) BuildComposerDisplay(
+        ChatTuiState state,
+        int width)
+    {
+        var contentWidth = Math.Max(1, width - 5);
         if (state.Input.Length == 0)
         {
-            content = prompt + ChatTexts.InputPlaceholder(state.Language);
+            return (new List<string> { ChatTexts.InputPlaceholder(state.Language) }, 0);
         }
-        else
+
+        var cursor = Math.Clamp(state.Cursor, 0, state.Input.Length);
+        var ranges = WrapComposerRanges(state.Input, contentWidth);
+        var (cursorRow, _) = LocateComposerCursor(state.Input, ranges, cursor);
+        var lines = new List<string>(ranges.Count);
+        for (var index = 0; index < ranges.Count; index++)
         {
-            var available = Math.Max(1, width - 5);
-            var cursor = Math.Clamp(state.Cursor, 0, state.Input.Length);
-            var start = Math.Clamp(
-                cursor - available / 2,
-                0,
-                Math.Max(0, state.Input.Length - available));
-            var length = Math.Min(available, state.Input.Length - start);
-            var visible = state.Input.Substring(start, length);
-            var relative = Math.Clamp(cursor - start, 0, visible.Length);
-            content = prompt + visible.Insert(relative, "|");
+            var range = ranges[index];
+            var line = state.Input[range.Start..range.End];
+            if (index == cursorRow)
+            {
+                var offset = Math.Clamp(cursor - range.Start, 0, line.Length);
+                line = line.Insert(offset, "|");
+            }
+            lines.Add(line);
         }
-        return DiffRender.Ansi.Composer +
-            DiffRender.Ansi.Fit(content, width) +
-            DiffRender.Ansi.Reset;
+        return (lines, cursorRow);
     }
+
+    private static List<(int Start, int End)> WrapComposerRanges(string text, int width)
+    {
+        var normalized = text
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n');
+        var lines = new List<(int Start, int End)>();
+        var position = 0;
+        while (true)
+        {
+            var newline = normalized.IndexOf('\n', position);
+            var end = newline >= 0 ? newline : normalized.Length;
+            AddComposerRange(normalized, position, end, width, lines);
+            if (newline < 0)
+            {
+                break;
+            }
+            position = newline + 1;
+            if (position == normalized.Length)
+            {
+                lines.Add((position, position));
+                break;
+            }
+        }
+        return lines.Count == 0 ? [(0, 0)] : lines;
+    }
+
+    private static void AddComposerRange(
+        string text,
+        int start,
+        int end,
+        int width,
+        List<(int Start, int End)> lines)
+    {
+        if (start == end)
+        {
+            lines.Add((start, end));
+            return;
+        }
+
+        var lineStart = start;
+        var index = start;
+        var used = 0;
+        while (index < end)
+        {
+            var element = StringInfo.GetNextTextElement(text, index);
+            var elementWidth = DisplayText.Width(element);
+            if (used > 0 && used + elementWidth > width)
+            {
+                lines.Add((lineStart, index));
+                lineStart = index;
+                used = 0;
+            }
+            used += elementWidth;
+            index += element.Length;
+            if (used >= width)
+            {
+                lines.Add((lineStart, index));
+                lineStart = index;
+                used = 0;
+            }
+        }
+        if (lineStart < end)
+        {
+            lines.Add((lineStart, end));
+        }
+    }
+
+    private static (int Row, int Column) LocateComposerCursor(
+        string text,
+        IReadOnlyList<(int Start, int End)> ranges,
+        int cursor)
+    {
+        cursor = Math.Clamp(cursor, 0, text.Length);
+        var row = 0;
+        for (var index = 0; index < ranges.Count; index++)
+        {
+            if (cursor >= ranges[index].Start && cursor <= ranges[index].End)
+            {
+                row = index;
+            }
+        }
+        var range = ranges[row];
+        return (row, DisplayText.Width(text[range.Start..cursor]));
+    }
+
+    private static int IndexAtVisualColumn(string text, int start, int end, int column)
+    {
+        var index = start;
+        var used = 0;
+        while (index < end)
+        {
+            var element = StringInfo.GetNextTextElement(text, index);
+            var width = DisplayText.Width(element);
+            if (used + width > column)
+            {
+                break;
+            }
+            used += width;
+            index += element.Length;
+            if (used == column)
+            {
+                break;
+            }
+        }
+        return index;
+    }
+    private static int ComposerTextRowLimit(int height) =>
+        Math.Clamp(height - 8, 1, 6);
 
     private static string RenderModelLine(ChatTuiState state, int width)
     {
@@ -1299,22 +1535,31 @@ public static class ChatTuiRenderer
                 ? string.Empty
                 : state.ReasoningEffort;
         var path = DisplayWorkspacePath(state);
-        var baseLine = "  " + DiffRender.Ansi.BoldAccent + model +
+        var title = ConversationTitle(state);
+        var (modelColor, pathColor, titleColor) = ContextColors(state);
+        var separator = DiffRender.Ansi.Secondary + " · " + DiffRender.Ansi.Reset;
+        var baseLine = "  " + modelColor + DiffRender.Ansi.Bold + model +
             DiffRender.Ansi.Reset;
         if (effort.Length > 0)
         {
-            baseLine += " " + DiffRender.Ansi.Bold + effort + DiffRender.Ansi.Reset;
+            baseLine += " " + modelColor + effort + DiffRender.Ansi.Reset;
         }
-        baseLine += DiffRender.Ansi.Secondary + " · " + DiffRender.Ansi.Reset;
-        var remaining = width - DiffRender.Ansi.VisibleWidth(baseLine);
-        var pathText = remaining > 0
-            ? DisplayText.Ellipsize(path, remaining)
-            : string.Empty;
-        if (pathText.Length > 0)
+        baseLine += separator;
+        var remaining = width - DiffRender.Ansi.VisibleWidth(baseLine) -
+            DiffRender.Ansi.VisibleWidth(separator);
+        if (remaining <= 0)
         {
-            baseLine += DiffRender.Ansi.Path + pathText + DiffRender.Ansi.Reset;
+            return DiffRender.Ansi.Fit(baseLine, width);
         }
-        return DiffRender.Ansi.Fit(baseLine, width);
+
+        var pathBudget = Math.Max(1, remaining / 2);
+        var titleBudget = Math.Max(1, remaining - pathBudget);
+        var pathText = DisplayText.Ellipsize(path, pathBudget);
+        var titleText = DisplayText.Ellipsize(title, titleBudget);
+        return DiffRender.Ansi.Fit(
+            baseLine + pathColor + pathText + DiffRender.Ansi.Reset +
+            separator + titleColor + titleText + DiffRender.Ansi.Reset,
+            width);
     }
 
     private static string RenderFooter(ChatTuiState state, int width)
@@ -1363,17 +1608,9 @@ public static class ChatTuiRenderer
         {
             hints = ChatTexts.WorkingFooter(language);
         }
-        else if (IsHome(state))
-        {
-            hints = "  " + RenderInlineHint(
-                [
-                    ("←", ChatTexts.T(language, "for agents", "代理")),
-                    ("?", ChatTexts.T(language, "for shortcuts", "快捷键"))
-                ]);
-        }
         else
         {
-            hints = ChatTexts.IdleFooter(language);
+            hints = RenderAgentShortcutsHint(language);
         }
 
         var right = new List<string>();
@@ -1446,6 +1683,12 @@ public static class ChatTuiRenderer
                 DiffRender.Ansi.Bold + hint.Key + DiffRender.Ansi.Reset + " " +
                 DiffRender.Ansi.Dim + hint.Label + DiffRender.Ansi.Reset));
 
+    private static string RenderAgentShortcutsHint(UiLanguage language) =>
+        "  " + RenderInlineHint(
+            [
+                ("←", ChatTexts.T(language, "for agents", "代理")),
+                ("?", ChatTexts.T(language, "for shortcuts", "快捷键"))
+            ]);
     private static string RenderInlineHint(
         IEnumerable<(string Key, string Label)> hints) =>
         string.Join(
