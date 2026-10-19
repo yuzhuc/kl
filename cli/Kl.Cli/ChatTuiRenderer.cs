@@ -1527,6 +1527,29 @@ public static class ChatTuiRenderer
     public static List<string> CommandPaletteLines(ChatTuiState state, int width) =>
         RenderCommandPalette(state, Math.Max(20, width), int.MaxValue);
 
+    private static int ResolveListViewport(
+        int selected,
+        int currentScroll,
+        int count,
+        int visible)
+    {
+        if (count <= 0 || visible <= 0)
+        {
+            return 0;
+        }
+
+        var maximum = Math.Max(0, count - visible);
+        var start = Math.Clamp(currentScroll, 0, maximum);
+        if (selected < start)
+        {
+            start = selected;
+        }
+        else if (selected >= start + visible)
+        {
+            start = selected - visible + 1;
+        }
+        return Math.Clamp(start, 0, maximum);
+    }
     private static List<string> RenderCommandPalette(
         ChatTuiState state,
         int width,
@@ -1553,7 +1576,12 @@ public static class ChatTuiRenderer
             state.CommandPaletteSelection,
             0,
             matches.Count - 1);
-        var start = Math.Min(selected, Math.Max(0, matches.Count - visible));
+        var start = ResolveListViewport(
+            selected,
+            state.CommandPaletteScroll,
+            matches.Count,
+            visible);
+        state.CommandPaletteScroll = start;
         var count = Math.Min(visible, matches.Count - start);
 
         var lines = new List<string>(count);
@@ -1621,11 +1649,12 @@ public static class ChatTuiRenderer
         var selected = matches.Count == 0
             ? 0
             : Math.Clamp(state.MentionPicker.Selection, 0, matches.Count - 1);
-        var start = matches.Count == 0 || availableRows == 0
-            ? 0
-            : Math.Min(
-                selected,
-                Math.Max(0, matches.Count - availableRows));
+        var start = ResolveListViewport(
+            selected,
+            state.MentionPicker.Scroll,
+            matches.Count,
+            availableRows);
+        state.MentionPicker.Scroll = start;
         var count = Math.Min(availableRows, Math.Max(0, matches.Count - start));
         if (matches.Count == 0)
         {

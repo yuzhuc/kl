@@ -179,6 +179,7 @@ public sealed class ChatTuiState
     public string HistoryRenameInput { get; set; } = string.Empty;
     public int HistoryRenameCursor { get; set; }
     public int CommandPaletteSelection { get; set; }
+    public int CommandPaletteScroll { get; set; }
     public bool CommandPaletteDismissed { get; set; }
     public bool ReasoningVisible { get; set; }
     public HashSet<string> ExpandedTranscriptItems { get; } = [];
@@ -531,6 +532,7 @@ public sealed class ChatTuiState
         AssistantStarted = false;
         ClearSelection();
         CommandPaletteSelection = 0;
+        CommandPaletteScroll = 0;
         CommandPaletteDismissed = false;
     }
 
@@ -549,6 +551,7 @@ public sealed class ChatTuiState
     private void ResetCommandPalette()
     {
         CommandPaletteSelection = 0;
+        CommandPaletteScroll = 0;
         CommandPaletteDismissed = false;
     }
 

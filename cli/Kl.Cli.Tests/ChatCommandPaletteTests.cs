@@ -200,6 +200,22 @@ public sealed class ChatCommandPaletteTests
         Assert.Equal(bottomRow - 1, upwardRow);
     }
     [Fact]
+    public void MovingDownPinsHighlightToLastVisibleRow()
+    {
+        var state = new ChatTuiState { Input = "/", Cursor = 1 };
+        var lines = ChatTuiRenderer.CommandPaletteLines(state, 100);
+        for (var step = 0; step < ChatCommandPalette.MaxVisible; step++)
+        {
+            ChatCommandPalette.MoveSelection(state, 1);
+            lines = ChatTuiRenderer.CommandPaletteLines(state, 100);
+        }
+
+        var selectedRow = lines.FindIndex(line =>
+            line.StartsWith(DiffRender.Ansi.Inverse + "› ", StringComparison.Ordinal));
+        Assert.Equal(ChatCommandPalette.MaxVisible - 1, selectedRow);
+        Assert.Equal(1, state.CommandPaletteScroll);
+    }
+    [Fact]
     public void UpDownControlPAndControlNCycleSelection()
     {
         var state = new ChatTuiState { Input = "/", Cursor = 1 };

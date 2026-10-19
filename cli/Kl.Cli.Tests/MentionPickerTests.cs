@@ -161,6 +161,31 @@ public sealed class MentionPickerTests
         Assert.Equal(bottomRow - 1, upwardRow);
     }
     [Fact]
+    public void MovingDownPinsHighlightToLastVisibleRow()
+    {
+        using var workspace = new TempWorkspace();
+        for (var index = 0; index < 12; index++)
+        {
+            workspace.File($"src/file{index:00}.cs", "code");
+        }
+
+        var state = new ChatTuiState(workspace.Path);
+        state.Input = "@";
+        state.Cursor = 1;
+        MentionPicker.Update(state);
+        var lines = ChatTuiRenderer.MentionPickerLines(state, 80);
+        for (var step = 0; step < MentionPicker.MaxVisible; step++)
+        {
+            MentionPicker.MoveSelection(state, 1);
+            lines = ChatTuiRenderer.MentionPickerLines(state, 80);
+        }
+
+        var selectedRow = lines.FindIndex(line =>
+            line.StartsWith(DiffRender.Ansi.Selection, StringComparison.Ordinal));
+        Assert.Equal(7 + MentionPicker.MaxVisible - 1, selectedRow);
+        Assert.Equal(1, state.MentionPicker.Scroll);
+    }
+    [Fact]
     public void SelectionWraps()
     {
         using var workspace = new TempWorkspace();
