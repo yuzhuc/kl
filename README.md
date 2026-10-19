@@ -157,10 +157,10 @@ replayed twice.
 
 If no provider is configured, `kl` still opens the chat page and shows a hint to use `/settings`. After a provider and default model are saved, the chat page creates a session automatically without restarting.
 
-From the chat input, enter `/settings` or `/设置` to open the settings page.
+From the chat input, enter `/settings` or `/设置` to open the settings page. `/agent` shows or switches the active agent preset, `/skills` lists discovered skills, and `/mcp` lists registered MCP tools.
 The page uses a two-column layout: Model, Agent, Plugins, Skills and Config on
 the left, and the selected group on the right. Model, Plugins and Config are
-implemented; Agent and Skills are placeholders. Use Up/Down to move,
+implemented; Agent exposes permission/reasoning settings, and Skills is a read-only placeholder. Use `/agent` in chat to switch the active preset. Use Up/Down to move,
 Tab/Shift+Tab to switch columns, Enter to edit or confirm, Esc to return,
 Ctrl+S to save, and F2 to save and exit.
 
@@ -535,7 +535,7 @@ Events: `session.created`, `turn.started`, `turn.delta`, `turn.reasoning`,
 - Strict git execution requires the git installation root to be ACL-grantable.
   If it is on a volume whose root cannot be granted, the git tool fails closed
   with an explicit sandbox error.
-- WASM plugin hosting is not implemented; sidecar is the current plugin runtime.
+- WASM tool plugins are implemented; WASM providers are not.
 - Deep quality mode is explicit orchestration of five ordinary agent turns, not
   a separate multi-agent runtime. Repository symbol indexing is not implemented.
 - Reviewer/verifier workspace edits are detected by a fingerprint guard and fail
@@ -548,6 +548,6 @@ Events: `session.created`, `turn.started`, `turn.delta`, `turn.reasoning`,
   API keys were available in the implementation environment. The offline mock
   SSE conformance tests pass for all three protocols.
 
-Next stage entry point: add Linux/macOS OS backends, WASM plugin runtime,
-verified network isolation, repository symbol indexing, and live provider
-conformance/replay fixtures.
+Next stage entry point: add Linux/macOS OS backends, PTY, verified network
+isolation, repository symbol indexing, custom agent preset files, real MCP
+server conformance, and live provider conformance/replay fixtures.

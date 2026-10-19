@@ -67,16 +67,18 @@ a preset.
 
 Skills are discovered from `~/.kl/skills/<name>/SKILL.md` and
 `<workspace>/.kl/skills/<name>/SKILL.md`. Only name and description enter the
-prompt; the `skill` tool loads the body on demand. Skill bodies are untrusted
-context and never execute commands automatically. Home skills remain subject
-to the outside-workspace read policy.
+prompt; the `skill` tool loads the body on demand. Skill bodies are treated as
+untrusted context and never execute commands automatically. `~/.kl/skills` and
+`<workspace>/.kl/skills` are trusted skill roots; discovery rejects symlinks
+and body size is capped.
 
 ## MCP
 
 `~/.kl/mcp.toml` configures stdio MCP servers. KL performs `initialize`,
 `tools/list` and `tools/call`, registers discovered tools as
 `mcp__<server>__<tool>`, and routes them through Policy, Approval, Audit and
-the ToolPipeline. Startup failures are isolated per server.
+the ToolPipeline. Startup failures are isolated per server. MCP `isError` 
+responses are surfaced as tool failures.
 
 ## Hooks
 
