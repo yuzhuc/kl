@@ -706,6 +706,8 @@ pub struct ReviewResult {
 pub enum CoreEvent {
     #[serde(rename = "session.created")]
     SessionCreated { session_id: String },
+    #[serde(rename = "user.message")]
+    UserMessage { turn_id: String, text: String },
     #[serde(rename = "turn.started")]
     TurnStarted { turn_id: String },
     #[serde(rename = "turn.delta")]
@@ -821,6 +823,18 @@ mod tests {
         assert_eq!(negotiate(&[0, 1, 99]), Some(1));
         assert_eq!(negotiate(&[]), None);
         assert_eq!(negotiate(&[99]), None);
+    }
+
+    #[test]
+    fn user_message_event_round_trips() {
+        let event = CoreEvent::UserMessage {
+            turn_id: "turn-1".to_owned(),
+            text: "fix it".to_owned(),
+        };
+        let encoded = serde_json::to_value(&event).unwrap();
+        assert_eq!(encoded["type"], "user.message");
+        let decoded: CoreEvent = serde_json::from_value(encoded).unwrap();
+        assert_eq!(decoded, event);
     }
 
     #[test]
