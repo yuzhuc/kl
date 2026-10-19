@@ -537,7 +537,7 @@ impl Agent {
             return error_payload(&message);
         }
 
-        let request: PolicyRequest = match tool.policy_request(&args) {
+        let request: PolicyRequest = match tool.policy_request_for(self.policy.workspace(), &args) {
             Ok(request) => request,
             Err(error) => {
                 let message = error.to_string();

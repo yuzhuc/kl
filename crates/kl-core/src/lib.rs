@@ -5,6 +5,10 @@
 //! approval responses.
 
 mod config;
+mod hooks;
+mod mcp;
+mod skills;
+mod subagent;
 
 pub use config::{
     AgentPreset, Config, ConfigError, ProviderCatalog, QualityMode, RoleSettings,
@@ -176,6 +180,8 @@ pub enum CoreError {
     Policy(#[from] PolicyError),
     #[error("plugin error: {0}")]
     Plugin(#[from] PluginError),
+    #[error("hook error: {0}")]
+    Hook(String),
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 }
@@ -870,6 +876,8 @@ impl Core {
     fn new(context: ServerContext, emitter: Emitter) -> Result<Self, CoreError> {
         std::fs::create_dir_all(&context.home)?;
         let config = Config::load(&context.config_path)?;
+        let hook_config =
+            hooks::HookConfig::load(&context.home.join("hooks.toml")).map_err(CoreError::Hook)?;
         let sandbox = Arc::new(SandboxManager::probe(&config.sandbox));
         let plugin_host = Arc::new(PluginHost::with_sandbox(
             context.home.join("plugins"),
@@ -886,14 +894,45 @@ impl Core {
         for disabled in &catalog.disabled {
             router.mark_disabled(disabled);
         }
-        let tools = Arc::new(ToolRegistry::builtin());
-        register_plugin_adapters(&plugin_host, &router, &tools);
         let store = Arc::new(SessionStore::new(context.home.join("sessions"))?);
         let audit = Arc::new(AuditLog::open(
             context.home.join("audit"),
             config.audit.rotate_bytes,
             config.audit.keep_files,
         )?);
+        let tools = Arc::new(ToolRegistry::builtin());
+        tools.register(Arc::new(skills::SkillTool {
+            home: context.home.clone(),
+        }));
+        register_plugin_adapters(&plugin_host, &router, &tools);
+        // shortcut: MCP startup handshake is capped at 10s; tool calls still use the agent timeout.
+        register_mcp_tools(
+            &context.home,
+            &tools,
+            Duration::from_secs(config.agent.command_timeout_secs.clamp(1, 10)),
+        );
+        tools.register(Arc::new(subagent::SubagentTool::new(
+            router.clone(),
+            tools.clone(),
+            sandbox.clone(),
+            audit.clone(),
+            AgentConfig {
+                max_iterations: config.agent.max_iterations.max(1),
+                max_tool_calls_per_turn: 32,
+                max_tool_output_bytes: config.agent.max_tool_output_bytes,
+                command_timeout: Duration::from_secs(config.agent.command_timeout_secs.max(1)),
+                max_total_tokens: 0,
+                tool_access: ToolAccess::ReadOnly,
+            },
+        )));
+        if !hook_config.is_empty() {
+            let runner = Arc::new(hooks::HookRunner::new(hook_config));
+            for name in tools.names() {
+                if let Some(tool) = tools.get(&name) {
+                    tools.register(Arc::new(hooks::HookedTool::new(tool, runner.clone())));
+                }
+            }
+        }
         let hub = EventHub::new(emitter, store.clone());
         let approval_timeout = Duration::from_secs(config.agent.approval_timeout_secs.max(1));
         Ok(Self {
@@ -1661,6 +1700,8 @@ impl Core {
             (metadata, workspace, state.messages.clone(), provider)
         };
 
+        let skills_summary =
+            skills::summary_prompt(&skills::discover(&self.context.home, Path::new(&workspace)));
         let policy = Arc::new(
             PolicyEngine::new(PathBuf::from(&workspace), self.effective_policy_config())
                 .map_err(|error| rpc_error(error_codes::INVALID_PARAMS, error.to_string()))?,
@@ -1749,7 +1790,7 @@ impl Core {
                     base_turn_id: thread_turn.clone(),
                     default_provider: thread_metadata.provider.clone(),
                     default_model: thread_metadata.model.clone(),
-                    task: format!("{prompt_prefix}{prompt}"),
+                    task: format!("{skills_summary}{prompt_prefix}{prompt}"),
                     workspace: PathBuf::from(&workspace),
                     tool_access,
                 }
@@ -1764,7 +1805,7 @@ impl Core {
                     audit,
                     agent_config,
                 );
-                let prompt = format!("{prompt_prefix}{prompt}");
+                let prompt = format!("{skills_summary}{prompt_prefix}{prompt}");
                 let prompt = if quality == QualityMode::Fast {
                     format!("Work quickly and keep the response concise.\n{prompt}")
                 } else {
@@ -2310,6 +2351,36 @@ fn register_plugin_adapters(
                     tools.register(Arc::new(tool));
                 }
             }
+        }
+    }
+}
+
+fn register_mcp_tools(home: &Path, tools: &Arc<ToolRegistry>, timeout: Duration) {
+    let config = match mcp::load_config(home) {
+        Ok(config) => config,
+        Err(error) => {
+            eprintln!(
+                "mcp: cannot read {}: {error}",
+                home.join("mcp.toml").display()
+            );
+            return;
+        }
+    };
+    for (name, server) in config.enabled_servers() {
+        let client = match mcp::McpClient::connect(server, timeout) {
+            Ok(client) => Arc::new(client),
+            Err(error) => {
+                eprintln!("mcp: server {name} unavailable: {error}");
+                continue;
+            }
+        };
+        match client.list_tools() {
+            Ok(specs) => {
+                for spec in specs {
+                    tools.register(Arc::new(mcp::McpTool::new(name, spec, client.clone())));
+                }
+            }
+            Err(error) => eprintln!("mcp: server {name} tools/list failed: {error}"),
         }
     }
 }
@@ -3880,6 +3951,42 @@ max_iterations = 2
         let first = history["messages"][0]["text"].as_str().unwrap();
         assert!(first.starts_with(AgentPreset::Plan.prompt_prefix()));
         assert!(first.ends_with("hello"));
+    }
+
+    #[test]
+    fn turn_start_prepends_discovered_skill_summaries() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = temp.path().join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let config = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let skill = home.path().join("skills").join("alpha");
+        std::fs::create_dir_all(&skill).unwrap();
+        std::fs::write(
+            skill.join("SKILL.md"),
+            "---\nname: alpha\ndescription: Alpha description\n---\nSECRET BODY\n",
+        )
+        .unwrap();
+        let (mut core, _) = new_test_core(config, home.path());
+        core.handshaken = true;
+        let created = core
+            .session_create(json!({"workspace": workspace.to_string_lossy()}))
+            .unwrap();
+        let session_id = created["session_id"].as_str().unwrap().to_owned();
+        core.turn_start(json!({
+            "session_id": session_id,
+            "prompt": "hello"
+        }))
+        .unwrap();
+        wait_for_threads(&mut core);
+        let history = core
+            .session_history(json!({"session_id": session_id}))
+            .unwrap();
+        let first = history["messages"][0]["text"].as_str().unwrap();
+        assert!(first.starts_with("alpha: Alpha description\n"));
+        assert!(first.ends_with("hello"));
+        assert_eq!(first.matches("Alpha description").count(), 1);
+        assert!(!first.contains("SECRET BODY"));
     }
 
     #[test]

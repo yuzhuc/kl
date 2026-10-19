@@ -5,16 +5,19 @@ mod diff;
 mod files;
 mod search;
 mod shell;
+mod worktree;
 
 pub use files::{EditFileTool, ReadFileTool, WriteFileTool};
 pub use search::{GlobTool, GrepTool};
 pub use shell::{GitTool, ShellTool};
+pub use worktree::WorktreeTool;
 
 use kl_policy::{Action, PolicyEngine};
 use kl_provider::ToolDefinition;
 use kl_sandbox::SandboxManager;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
@@ -92,6 +95,13 @@ pub trait Tool: Send + Sync {
     fn description(&self) -> &str;
     fn parameters(&self) -> Value;
     fn policy_request(&self, args: &Value) -> Result<PolicyRequest, ToolError>;
+    fn policy_request_for(
+        &self,
+        _workspace: &Path,
+        args: &Value,
+    ) -> Result<PolicyRequest, ToolError> {
+        self.policy_request(args)
+    }
     fn validate(&self, _args: &Value) -> Result<(), ToolError> {
         Ok(())
     }
@@ -136,6 +146,12 @@ pub struct ToolRegistry {
 }
 
 impl ToolRegistry {
+    pub fn empty() -> Self {
+        Self {
+            tools: RwLock::new(HashMap::new()),
+        }
+    }
+
     pub fn builtin() -> Self {
         let tools: Vec<Arc<dyn Tool>> = vec![
             Arc::new(ReadFileTool),
@@ -145,6 +161,7 @@ impl ToolRegistry {
             Arc::new(GlobTool),
             Arc::new(ShellTool),
             Arc::new(GitTool),
+            Arc::new(WorktreeTool),
         ];
         Self {
             tools: RwLock::new(
@@ -177,6 +194,13 @@ impl ToolRegistry {
             .unwrap_or_else(|error| error.into_inner())
             .get(name)
             .cloned()
+    }
+
+    pub fn snapshot(&self) -> Vec<Arc<dyn Tool>> {
+        let tools = self.tools.read().unwrap_or_else(|error| error.into_inner());
+        let mut snapshot: Vec<Arc<dyn Tool>> = tools.values().cloned().collect();
+        snapshot.sort_by(|left, right| left.name().cmp(right.name()));
+        snapshot
     }
 
     pub fn definitions(&self) -> Vec<ToolDefinition> {
@@ -254,7 +278,7 @@ mod tests {
             assert_eq!(tool.source(), ToolSource::Builtin);
         }
 
-        for name in ["write_file", "edit_file", "shell", "git"] {
+        for name in ["write_file", "edit_file", "shell", "git", "worktree"] {
             let tool = registry.get(name).unwrap();
             assert!(tool.destructive(&json!({})), "{name}");
             assert!(!tool.read_only(&json!({})), "{name}");
