@@ -2042,19 +2042,18 @@ public static class ChatTuiRenderer
 
         void FlushProse()
         {
-            if (prose.Count == 0)
+            foreach (var sourceLine in prose)
             {
-                return;
-            }
-            var value = string.Join('\n', prose);
-            if (!bulletShown)
-            {
-                value = ChatTexts.AssistantLabel(language) + value;
+                if (string.IsNullOrWhiteSpace(sourceLine))
+                {
+                    result.Add(new TranscriptLine(string.Empty));
+                    continue;
+                }
+                var label = bulletShown
+                    ? string.Empty
+                    : ChatTexts.AssistantLabel(language);
+                result.AddRange(RenderAssistantProseLine(sourceLine, width, label));
                 bulletShown = true;
-            }
-            foreach (var line in WrapPlain(value, width))
-            {
-                result.Add(new TranscriptLine(line));
             }
             prose.Clear();
         }
@@ -2138,6 +2137,135 @@ public static class ChatTuiRenderer
             FlushProse();
         }
         return result;
+    }
+    private static List<TranscriptLine> RenderAssistantProseLine(
+        string sourceLine,
+        int width,
+        string label)
+    {
+        var raw = sourceLine.TrimEnd();
+        var indentLength = raw.Length - raw.TrimStart(' ').Length;
+        var indent = raw[..indentLength];
+        var body = raw[indentLength..];
+        if (body.Length == 0)
+        {
+            return [new TranscriptLine(string.Empty)];
+        }
+
+        var rule = body.Replace(" ", string.Empty, StringComparison.Ordinal);
+        if (rule.Length >= 3
+            && (rule.All(character => character == '-')
+                || rule.All(character => character == '*')
+                || rule.All(character => character == '_')))
+        {
+            return
+            [
+                new TranscriptLine(
+                    DiffRender.Ansi.Dim +
+                    new string('─', Math.Max(1, width)) +
+                    DiffRender.Ansi.Reset)
+            ];
+        }
+
+        var heading = false;
+        var quote = false;
+        var bullet = false;
+        var marker = string.Empty;
+        var hashes = 0;
+        while (hashes < body.Length && body[hashes] == '#')
+        {
+            hashes++;
+        }
+        if (hashes is >= 1 and <= 6
+            && hashes < body.Length
+            && body[hashes] == ' ')
+        {
+            heading = true;
+            body = body[(hashes + 1)..].TrimStart();
+        }
+        else if (body.StartsWith("> ", StringComparison.Ordinal))
+        {
+            quote = true;
+            marker = "│ ";
+            body = body[2..];
+        }
+        else if (body.Length >= 2
+            && body[0] is '-' or '*' or '+'
+            && body[1] == ' ')
+        {
+            bullet = true;
+            marker = label.Length > 0 ? string.Empty : "• ";
+            body = body[2..];
+        }
+
+        var plain = label + indent + marker + body;
+        var rendered = new List<TranscriptLine>();
+        foreach (var line in WrapPlain(plain, width))
+        {
+            var text = heading || quote
+                ? line
+                : StyleInlineMarkdown(line);
+            if (heading)
+            {
+                text = DiffRender.Ansi.Bold + text + DiffRender.Ansi.Reset;
+            }
+            else if (quote)
+            {
+                text = DiffRender.Ansi.Secondary + text + DiffRender.Ansi.Reset;
+            }
+            if (bullet)
+            {
+                var markerIndex = text.IndexOf('•');
+                if (markerIndex >= 0)
+                {
+                    text = text[..markerIndex] +
+                        DiffRender.Ansi.Accent +
+                        "•" +
+                        DiffRender.Ansi.Reset +
+                        text[(markerIndex + 1)..];
+                }
+            }
+            rendered.Add(new TranscriptLine(text));
+        }
+        return rendered;
+    }
+
+    private static string StyleInlineMarkdown(string text)
+    {
+        var builder = new System.Text.StringBuilder(text.Length + 16);
+        for (var index = 0; index < text.Length;)
+        {
+            if (text[index] == '`')
+            {
+                var end = text.IndexOf('`', index + 1);
+                if (end > index + 1)
+                {
+                    builder.Append(DiffRender.Ansi.Cyan);
+                    builder.Append(text, index + 1, end - index - 1);
+                    builder.Append(DiffRender.Ansi.Reset);
+                    index = end + 1;
+                    continue;
+                }
+            }
+            if ((text[index] == '*' || text[index] == '_')
+                && index + 2 < text.Length
+                && text[index + 1] == text[index])
+            {
+                var token = new string(text[index], 2);
+                var end = text.IndexOf(token, index + 2, StringComparison.Ordinal);
+                if (end > index + 2)
+                {
+                    builder.Append(DiffRender.Ansi.Bold);
+                    builder.Append(text, index + 2, end - index - 2);
+                    builder.Append(DiffRender.Ansi.Reset);
+                    index = end + 2;
+                    continue;
+                }
+            }
+            builder.Append(text[index]);
+            index++;
+        }
+        return builder.ToString();
     }
     private static IEnumerable<string> RenderUserMessage(string text, int width)
     {
