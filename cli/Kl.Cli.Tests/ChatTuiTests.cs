@@ -160,6 +160,11 @@ public sealed class ChatTuiTests
 
         var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(110, 30, state));
 
+        Assert.Contains("/init - create an AGENTS.md file with instructions for KL", plain);
+        Assert.Contains("/review - review changes and find issues", plain);
+        Assert.True(
+            plain.IndexOf("/review - review changes", StringComparison.Ordinal) <
+            plain.IndexOf("Keyboard shortcuts", StringComparison.Ordinal));
         Assert.Contains("Keyboard shortcuts", plain);
         Assert.Contains("Compose", plain);
         Assert.Contains("Session", plain);
@@ -167,6 +172,20 @@ public sealed class ChatTuiTests
         Assert.Contains("/settings customize", plain);
         Assert.Contains("openai/gpt-5 high · D:\\kl", plain);
         Assert.EndsWith("? / esc close", plain.Split('\n')[^1].TrimEnd());
+    }
+    [Fact]
+    public void ComposerUsesCodexPromptAndPlaceholderColors()
+    {
+        var state = new ChatTuiState();
+
+        var render = ChatTuiRenderer.Render(80, 24, state);
+
+        Assert.Contains(
+            DiffRender.Ansi.ComposerBackground + "  " + DiffRender.Ansi.Bold + "›" +
+            DiffRender.Ansi.Reset + DiffRender.Ansi.ComposerBackground + " " +
+            DiffRender.Ansi.Secondary + KlBrand.InputPlaceholder +
+            DiffRender.Ansi.ComposerBackground,
+            render);
     }
     [Fact]
     public void UserMessageUsesBlockFillAndSecondaryTextIsNotDim()

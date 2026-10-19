@@ -882,11 +882,10 @@ public static class ChatTuiRenderer
 
         var language = state.Language;
         var groups = ChatTexts.ChatShortcutGroups(language);
-        var lines = new List<string>
-        {
-            DiffRender.Ansi.Bold + ChatTexts.ShortcutsTitle(language) + DiffRender.Ansi.Reset,
-            string.Empty
-        };
+        var lines = RenderHome(state, width);
+        lines.Add(string.Empty);
+        lines.Add(DiffRender.Ansi.Bold + ChatTexts.ShortcutsTitle(language) + DiffRender.Ansi.Reset);
+        lines.Add(string.Empty);
 
         if (width >= 70)
         {
@@ -1264,12 +1263,14 @@ public static class ChatTuiRenderer
     }
     private static string RenderInput(ChatTuiState state, int width)
     {
-        var prompt = "  " + DiffRender.Ansi.BoldAccent + "›" +
-            DiffRender.Ansi.Reset + DiffRender.Ansi.Composer + " ";
+        var prompt = "  " + DiffRender.Ansi.Bold + "›" + DiffRender.Ansi.Reset +
+            DiffRender.Ansi.ComposerBackground + " ";
         string content;
         if (state.Input.Length == 0)
         {
-            content = prompt + ChatTexts.InputPlaceholder(state.Language);
+            content = prompt + DiffRender.Ansi.Secondary +
+                ChatTexts.InputPlaceholder(state.Language) +
+                DiffRender.Ansi.ComposerBackground;
         }
         else
         {
@@ -1282,9 +1283,10 @@ public static class ChatTuiRenderer
             var length = Math.Min(available, state.Input.Length - start);
             var visible = state.Input.Substring(start, length);
             var relative = Math.Clamp(cursor - start, 0, visible.Length);
-            content = prompt + visible.Insert(relative, "|");
+            content = prompt + DiffRender.Ansi.Composer +
+                visible.Insert(relative, "|");
         }
-        return DiffRender.Ansi.Composer +
+        return DiffRender.Ansi.ComposerBackground +
             DiffRender.Ansi.Fit(content, width) +
             DiffRender.Ansi.Reset;
     }
