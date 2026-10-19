@@ -8,6 +8,7 @@ mod config;
 mod hooks;
 mod mcp;
 mod skills;
+mod subagent;
 
 pub use config::{
     AgentPreset, Config, ConfigError, ProviderCatalog, QualityMode, RoleSettings,
@@ -893,6 +894,12 @@ impl Core {
         for disabled in &catalog.disabled {
             router.mark_disabled(disabled);
         }
+        let store = Arc::new(SessionStore::new(context.home.join("sessions"))?);
+        let audit = Arc::new(AuditLog::open(
+            context.home.join("audit"),
+            config.audit.rotate_bytes,
+            config.audit.keep_files,
+        )?);
         let tools = Arc::new(ToolRegistry::builtin());
         tools.register(Arc::new(skills::SkillTool {
             home: context.home.clone(),
@@ -904,6 +911,20 @@ impl Core {
             &tools,
             Duration::from_secs(config.agent.command_timeout_secs.clamp(1, 10)),
         );
+        tools.register(Arc::new(subagent::SubagentTool::new(
+            router.clone(),
+            tools.clone(),
+            sandbox.clone(),
+            audit.clone(),
+            AgentConfig {
+                max_iterations: config.agent.max_iterations.max(1),
+                max_tool_calls_per_turn: 32,
+                max_tool_output_bytes: config.agent.max_tool_output_bytes,
+                command_timeout: Duration::from_secs(config.agent.command_timeout_secs.max(1)),
+                max_total_tokens: 0,
+                tool_access: ToolAccess::ReadOnly,
+            },
+        )));
         if !hook_config.is_empty() {
             let runner = Arc::new(hooks::HookRunner::new(hook_config));
             for name in tools.names() {
@@ -912,12 +933,6 @@ impl Core {
                 }
             }
         }
-        let store = Arc::new(SessionStore::new(context.home.join("sessions"))?);
-        let audit = Arc::new(AuditLog::open(
-            context.home.join("audit"),
-            config.audit.rotate_bytes,
-            config.audit.keep_files,
-        )?);
         let hub = EventHub::new(emitter, store.clone());
         let approval_timeout = Duration::from_secs(config.agent.approval_timeout_secs.max(1));
         Ok(Self {

@@ -144,6 +144,12 @@ pub struct ToolRegistry {
 }
 
 impl ToolRegistry {
+    pub fn empty() -> Self {
+        Self {
+            tools: RwLock::new(HashMap::new()),
+        }
+    }
+
     pub fn builtin() -> Self {
         let tools: Vec<Arc<dyn Tool>> = vec![
             Arc::new(ReadFileTool),
@@ -185,6 +191,13 @@ impl ToolRegistry {
             .unwrap_or_else(|error| error.into_inner())
             .get(name)
             .cloned()
+    }
+
+    pub fn snapshot(&self) -> Vec<Arc<dyn Tool>> {
+        let tools = self.tools.read().unwrap_or_else(|error| error.into_inner());
+        let mut snapshot: Vec<Arc<dyn Tool>> = tools.values().cloned().collect();
+        snapshot.sort_by(|left, right| left.name().cmp(right.name()));
+        snapshot
     }
 
     pub fn definitions(&self) -> Vec<ToolDefinition> {
