@@ -161,6 +161,52 @@ public sealed class MentionPickerTests
         Assert.Equal(bottomRow - 1, upwardRow);
     }
     [Fact]
+    public void MovingDownScrollsAtSecondToLastVisibleRow()
+    {
+        using var workspace = new TempWorkspace();
+        for (var index = 0; index < 12; index++)
+        {
+            workspace.File($"src/file{index:00}.cs", "code");
+        }
+
+        var state = new ChatTuiState(workspace.Path);
+        state.Input = "@";
+        state.Cursor = 1;
+        MentionPicker.Update(state);
+        var lines = ChatTuiRenderer.MentionPickerLines(state, 80);
+        for (var step = 0; step < MentionPicker.MaxVisible; step++)
+        {
+            MentionPicker.MoveSelection(state, 1);
+            lines = ChatTuiRenderer.MentionPickerLines(state, 80);
+        }
+
+        var selectedRow = lines.FindIndex(line =>
+            line.StartsWith(DiffRender.Ansi.Selection, StringComparison.Ordinal));
+        Assert.Equal(7 + MentionPicker.MaxVisible - 2, selectedRow);
+        Assert.Equal(2, state.MentionPicker.Scroll);
+    }
+    [Fact]
+    public void ClickingAMentionItemFillsTheComposer()
+    {
+        using var workspace = new TempWorkspace();
+        workspace.File("src/file00.cs", "code");
+        var state = new ChatTuiState(workspace.Path);
+        state.Input = "@";
+        state.Cursor = 1;
+        MentionPicker.Update(state);
+        var lines = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state))
+            .Split('\n');
+        var row = Array.FindIndex(
+            lines,
+            line => line.Contains("file00.cs", StringComparison.Ordinal));
+        Assert.True(row >= 0);
+
+        Assert.True(ChatTuiRenderer.TryClickPopupItemAt(state, 80, 24, row));
+        Assert.Equal("@src/file00.cs ", state.Input);
+        Assert.Equal(state.Input.Length, state.Cursor);
+        Assert.False(MentionPicker.IsOpen(state));
+    }
+    [Fact]
     public void SelectionWraps()
     {
         using var workspace = new TempWorkspace();

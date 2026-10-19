@@ -178,9 +178,11 @@ public sealed class ChatTuiState
     public string HistoryRenameSessionId { get; set; } = string.Empty;
     public string HistoryRenameInput { get; set; } = string.Empty;
     public int HistoryRenameCursor { get; set; }
+    public bool CursorVisible { get; set; } = true;
     public int CommandPaletteSelection { get; set; }
+    public int CommandPaletteScroll { get; set; }
     public bool CommandPaletteDismissed { get; set; }
-    public bool ReasoningVisible { get; set; }
+
     public HashSet<string> ExpandedTranscriptItems { get; } = [];
     public ChatModelPickerState ModelPicker { get; } = new();
     public MentionPickerState MentionPicker { get; } = new();
@@ -274,7 +276,33 @@ public sealed class ChatTuiState
             }
         }
     }
-    public void ToggleReasoning() => ReasoningVisible = !ReasoningVisible;
+    public static string ReasoningItemKey(int index) => $"reasoning:{index}";
+
+    public void ToggleReasoning()
+    {
+        var keys = Transcript
+            .Select((entry, index) => (entry, index))
+            .Where(item => item.entry.Kind == TranscriptKind.Reasoning)
+            .Select(item => ReasoningItemKey(item.index))
+            .ToList();
+        if (keys.Count == 0)
+        {
+            return;
+        }
+
+        var expand = keys.Any(key => !ExpandedTranscriptItems.Contains(key));
+        foreach (var key in keys)
+        {
+            if (expand)
+            {
+                ExpandedTranscriptItems.Add(key);
+            }
+            else
+            {
+                ExpandedTranscriptItems.Remove(key);
+            }
+        }
+    }
 
     public bool IsTranscriptItemExpanded(string key) =>
         ExpandedTranscriptItems.Contains(key);
@@ -531,6 +559,7 @@ public sealed class ChatTuiState
         AssistantStarted = false;
         ClearSelection();
         CommandPaletteSelection = 0;
+        CommandPaletteScroll = 0;
         CommandPaletteDismissed = false;
     }
 
@@ -549,6 +578,7 @@ public sealed class ChatTuiState
     private void ResetCommandPalette()
     {
         CommandPaletteSelection = 0;
+        CommandPaletteScroll = 0;
         CommandPaletteDismissed = false;
     }
 

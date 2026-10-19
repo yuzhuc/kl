@@ -165,7 +165,8 @@ public static class ChatTuiRenderer
         var column = Math.Max(0, screenColumn - 2);
         var (renderedCursorRow, renderedCursorColumn) =
             LocateComposerCursor(state.Input, ranges, state.Cursor);
-        if (lineIndex == renderedCursorRow && column > renderedCursorColumn)
+        if (lineIndex == renderedCursorRow
+            && column > renderedCursorColumn)
         {
             column--;
         }
@@ -249,14 +250,7 @@ public static class ChatTuiRenderer
         {
             return false;
         }
-        if (toggle.Kind == TranscriptToggleKind.Reasoning)
-        {
-            state.ToggleReasoning();
-        }
-        else
-        {
-            state.ToggleTranscriptItem(toggle.Key);
-        }
+        state.ToggleTranscriptItem(toggle.Key);
         return true;
     }
     public static List<string> TranscriptLines(ChatTuiState state, int width) =>
@@ -310,8 +304,10 @@ public static class ChatTuiRenderer
                 var title = entry.IsComplete
                     ? ChatTexts.T(language, "Done thinking", "完成思考")
                     : ChatTexts.T(language, "Thinking…", "思考中…");
-                var marker = state.ReasoningVisible ? "▾" : "▸";
-                var suffix = state.ReasoningVisible
+                var key = ChatTuiState.ReasoningItemKey(entryIndex);
+                var expanded = state.IsTranscriptItemExpanded(key);
+                var marker = expanded ? "▾" : "▸";
+                var suffix = expanded
                     ? string.Empty
                     : ChatTexts.T(language, " (Ctrl+R to show)", "（Ctrl+R 显示）");
                 var header = ColorLines(
@@ -322,10 +318,10 @@ public static class ChatTuiRenderer
                     Add(new TranscriptLine(
                         header[index],
                         index == 0
-                            ? new TranscriptToggle("reasoning", TranscriptToggleKind.Reasoning)
+                            ? new TranscriptToggle(key, TranscriptToggleKind.Reasoning)
                             : null));
                 }
-                if (!state.ReasoningVisible)
+                if (!expanded)
                 {
                     continue;
                 }
@@ -1079,6 +1075,7 @@ public static class ChatTuiRenderer
             state.HistorySearch,
             state.HistorySearchCursor,
             state.HistorySearching,
+            state.CursorVisible,
             width);
 
     private static string RenderHistoryRenameLine(
@@ -1090,6 +1087,7 @@ public static class ChatTuiRenderer
             state.HistoryRenameInput,
             state.HistoryRenameCursor,
             editing: true,
+            state.CursorVisible,
             width);
 
     private static string RenderHistoryEditorLine(
@@ -1097,6 +1095,7 @@ public static class ChatTuiRenderer
         string query,
         int cursorValue,
         bool editing,
+        bool cursorVisible,
         int width)
     {
         var contentWidth = Math.Max(0, width - DisplayText.Width(prefix));
@@ -1112,9 +1111,10 @@ public static class ChatTuiRenderer
         else
         {
             var cursor = Math.Clamp(cursorValue, 0, query.Length);
+            var cursorGlyph = cursorVisible ? "|" : " ";
             if (DisplayText.Width(query) + 1 <= contentWidth)
             {
-                content = query.Insert(cursor, "|");
+                content = query.Insert(cursor, cursorGlyph);
             }
             else
             {
@@ -1124,7 +1124,7 @@ public static class ChatTuiRenderer
                 var before = query[..cursor];
                 var after = query[cursor..];
                 content = TailToWidth(before, leftWidth) +
-                    "|" +
+                    cursorGlyph +
                     DisplayText.TruncateToWidth(after, rightWidth);
             }
         }
@@ -1527,6 +1527,95 @@ public static class ChatTuiRenderer
     public static List<string> CommandPaletteLines(ChatTuiState state, int width) =>
         RenderCommandPalette(state, Math.Max(20, width), int.MaxValue);
 
+    private static int ResolveListViewport(
+        int selected,
+        int currentScroll,
+        int count,
+        int visible)
+    {
+        if (count <= 0 || visible <= 0)
+        {
+            return 0;
+        }
+
+        var maximum = Math.Max(0, count - visible);
+        var start = Math.Clamp(currentScroll, 0, maximum);
+        var margin = visible >= 3 ? 1 : 0;
+        if (selected < start + margin)
+        {
+            start = selected - margin;
+        }
+        else if (selected > start + visible - 1 - margin)
+        {
+            start = selected - visible + 1 + margin;
+        }
+        return Math.Clamp(start, 0, maximum);
+    }
+    public static bool TryClickPopupItemAt(
+        ChatTuiState state,
+        int width,
+        int height,
+        int screenRow)
+    {
+        if (state.Screen != ChatScreen.Chat)
+        {
+            return false;
+        }
+
+        width = Math.Max(20, width);
+        height = Math.Max(8, height);
+        var showHeader = IsHome(state);
+        var topMargin = showHeader ? 1 : 0;
+        var inputHeight = ComposerHeight(state, width, height);
+        var bodyHeight = Math.Max(
+            1,
+            height - topMargin - (showHeader ? 2 : 0) -
+            inputHeight - 1 - 1);
+        var bodyTop = topMargin + (showHeader ? 2 : 0);
+
+        if (ChatCommandPalette.IsOpen(state))
+        {
+            var overlay = RenderCommandPalette(state, width, bodyHeight);
+            var local = screenRow - (bodyTop + bodyHeight - overlay.Count);
+            if (local < 0 || local >= overlay.Count)
+            {
+                return false;
+            }
+            var matches = ChatCommandPalette.Matches(state.Input);
+            var index = state.CommandPaletteScroll + local;
+            if (index < 0 || index >= matches.Count)
+            {
+                return false;
+            }
+            state.CommandPaletteSelection = index;
+            state.Input = matches[index].Name + " ";
+            state.Cursor = state.Input.Length;
+            state.DismissCommandPalette();
+            return true;
+        }
+
+        if (MentionPicker.IsOpen(state))
+        {
+            var overlay = RenderMentionPicker(state, width, bodyHeight);
+            var local = screenRow - (bodyTop + bodyHeight - overlay.Count);
+            var availableRows = Math.Min(
+                MentionPicker.MaxVisible,
+                Math.Max(0, bodyHeight - 9));
+            var itemRow = local - 7;
+            var index = state.MentionPicker.Scroll + itemRow;
+            if (itemRow < 0
+                || itemRow >= availableRows
+                || index < 0
+                || index >= state.MentionPicker.Matches.Count)
+            {
+                return false;
+            }
+            state.MentionPicker.Selection = index;
+            return MentionPicker.Accept(state);
+        }
+
+        return false;
+    }
     private static List<string> RenderCommandPalette(
         ChatTuiState state,
         int width,
@@ -1553,7 +1642,12 @@ public static class ChatTuiRenderer
             state.CommandPaletteSelection,
             0,
             matches.Count - 1);
-        var start = Math.Min(selected, Math.Max(0, matches.Count - visible));
+        var start = ResolveListViewport(
+            selected,
+            state.CommandPaletteScroll,
+            matches.Count,
+            visible);
+        state.CommandPaletteScroll = start;
         var count = Math.Min(visible, matches.Count - start);
 
         var lines = new List<string>(count);
@@ -1621,11 +1715,12 @@ public static class ChatTuiRenderer
         var selected = matches.Count == 0
             ? 0
             : Math.Clamp(state.MentionPicker.Selection, 0, matches.Count - 1);
-        var start = matches.Count == 0 || availableRows == 0
-            ? 0
-            : Math.Min(
-                selected,
-                Math.Max(0, matches.Count - availableRows));
+        var start = ResolveListViewport(
+            selected,
+            state.MentionPicker.Scroll,
+            matches.Count,
+            availableRows);
+        state.MentionPicker.Scroll = start;
         var count = Math.Min(availableRows, Math.Max(0, matches.Count - start));
         if (matches.Count == 0)
         {
@@ -1770,7 +1865,11 @@ public static class ChatTuiRenderer
         var contentWidth = Math.Max(1, width - 5);
         if (state.Input.Length == 0)
         {
-            return (new List<string> { ChatTexts.InputPlaceholder(state.Language) }, 0);
+            var placeholder = ChatTexts.InputPlaceholder(state.Language);
+            return (new List<string>
+            {
+                (state.CursorVisible ? "|" : " ") + placeholder
+            }, 0);
         }
 
         var cursor = Math.Clamp(state.Cursor, 0, state.Input.Length);
@@ -1784,7 +1883,7 @@ public static class ChatTuiRenderer
             if (index == cursorRow)
             {
                 var offset = Math.Clamp(cursor - range.Start, 0, line.Length);
-                line = line.Insert(offset, "|");
+                line = line.Insert(offset, state.CursorVisible ? "|" : " ");
             }
             lines.Add(line);
         }

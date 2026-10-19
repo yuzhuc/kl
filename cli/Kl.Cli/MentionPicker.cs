@@ -13,6 +13,7 @@ public sealed class MentionPickerState
     public int Start { get; set; }
     public string Query { get; set; } = string.Empty;
     public int Selection { get; set; }
+    public int Scroll { get; set; }
     public MentionFilter Filter { get; set; } = MentionFilter.AllResults;
     public bool Loaded { get; set; }
     public List<string> Files { get; set; } = [];
@@ -70,7 +71,13 @@ public static class MentionPicker
         picker.DismissedToken = string.Empty;
         picker.Open = true;
         picker.Start = start;
+        var previousQuery = picker.Query;
         picker.Query = token[1..];
+        if (!previousQuery.Equals(picker.Query, StringComparison.Ordinal))
+        {
+            picker.Selection = 0;
+            picker.Scroll = 0;
+        }
 
         if (!picker.Loaded)
         {
@@ -121,6 +128,7 @@ public static class MentionPicker
         var index = Array.IndexOf(values, state.MentionPicker.Filter);
         state.MentionPicker.Filter = values[(index + delta + values.Length) % values.Length];
         state.MentionPicker.Selection = 0;
+        state.MentionPicker.Scroll = 0;
     }
     public static string? Selected(ChatTuiState state)
     {
@@ -227,5 +235,6 @@ public static class MentionPicker
         state.MentionPicker.Open = false;
         state.MentionPicker.Dismissed = false;
         state.MentionPicker.DismissedToken = string.Empty;
+        state.MentionPicker.Scroll = 0;
     }
 }
