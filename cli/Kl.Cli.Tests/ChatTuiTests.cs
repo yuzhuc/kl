@@ -54,7 +54,7 @@ public sealed class ChatTuiTests
         };
         lines.AddRange(Enumerable.Repeat(string.Empty, 10));
         lines.Add("  › Ask KL to do anything");
-        lines.Add("  no provider configured");
+        lines.Add("  no provider configured · D:\\kl");
         lines.Add("  ← for agents · ? for shortcuts");
 
         Assert.Equal(string.Join('\n', lines), Snapshot(ChatTuiRenderer.Render(80, 24, state)));
@@ -81,7 +81,7 @@ public sealed class ChatTuiTests
         };
         lines.AddRange(Enumerable.Repeat(string.Empty, 10));
         lines.Add("  › 让 KL 做点什么，或输入 / 查看命令");
-        lines.Add("  未配置 Provider");
+        lines.Add("  未配置 Provider · D:\\kl");
         lines.Add("  ← 代理 · ? 快捷键");
 
         Assert.Equal(string.Join('\n', lines), Snapshot(ChatTuiRenderer.Render(80, 24, state)));
@@ -90,13 +90,17 @@ public sealed class ChatTuiTests
     [Fact]
     public void HomeUsesCodexTitleCommandAndPathColors()
     {
-        var state = new ChatTuiState("D:\\kl", "openai", "gpt-5", "s1");
+        var state = new ChatTuiState("D:\\kl", "openai", "gpt-5", "s1")
+        {
+            ReasoningEffort = "high"
+        };
 
         var render = ChatTuiRenderer.Render(80, 24, state);
 
         Assert.Contains(
             DiffRender.Ansi.BoldAccent + ">_" + DiffRender.Ansi.Reset +
-            DiffRender.Ansi.Secondary + " KL (v0.1.0)" + DiffRender.Ansi.Reset,
+            DiffRender.Ansi.Bold + " KL" + DiffRender.Ansi.Reset +
+            DiffRender.Ansi.Secondary + " (v0.1.0)" + DiffRender.Ansi.Reset,
             render);
         Assert.Contains(
             "     " + DiffRender.Ansi.Secondary + "D:\\kl" + DiffRender.Ansi.Reset,
@@ -107,6 +111,42 @@ public sealed class ChatTuiTests
             " - create an AGENTS.md file with instructions for KL" +
             DiffRender.Ansi.Reset,
             render);
+        Assert.Contains(
+            "  " + DiffRender.Ansi.BoldAccent + "openai/gpt-5" +
+            DiffRender.Ansi.Reset + " " + DiffRender.Ansi.Bold + "high" +
+            DiffRender.Ansi.Reset + DiffRender.Ansi.Secondary + " · " +
+            DiffRender.Ansi.Reset + DiffRender.Ansi.Secondary + "D:\\kl" +
+            DiffRender.Ansi.Reset,
+            render);
+    }
+
+    [Fact]
+    public void HomeAndModelLineAbbreviateUserDirectory()
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var state = new ChatTuiState(home, "openai", "gpt-5", "s1")
+        {
+            ReasoningEffort = "high"
+        };
+
+        var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state));
+
+        Assert.Contains("     ~", plain);
+        Assert.Contains("openai/gpt-5 high · ~", plain);
+    }
+
+    [Fact]
+    public void DefaultReasoningEffortIsHidden()
+    {
+        var state = new ChatTuiState("D:\\kl", "openai", "gpt-5", "s1")
+        {
+            ReasoningEffort = "default"
+        };
+
+        var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state));
+
+        Assert.Contains("openai/gpt-5 · D:\\kl", plain);
+        Assert.DoesNotContain("openai/gpt-5 default", plain);
     }
     [Fact]
     public void UserMessageUsesBlockFillAndSecondaryTextIsNotDim()
@@ -173,7 +213,7 @@ public sealed class ChatTuiTests
 
         var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(100, 24, state));
         var lines = plain.Split('\n');
-        Assert.Contains("deepseek/deepseek-flash  high", plain);
+        Assert.Contains("deepseek/deepseek-flash high · D:\\work", plain);
         Assert.StartsWith("← for agents · ? for shortcuts", lines[^1].TrimStart());
         Assert.EndsWith("⚠ 5 warnings · f2 to view", lines[^1].TrimEnd());
     }

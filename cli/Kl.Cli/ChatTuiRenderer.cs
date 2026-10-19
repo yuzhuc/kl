@@ -59,9 +59,7 @@ public static class ChatTuiRenderer
         }
         if (showHeader)
         {
-            lines.Add(
-                "  " + DiffRender.Ansi.BoldAccent + ">_" + DiffRender.Ansi.Reset +
-                DiffRender.Ansi.Secondary + HeaderText[2..] + DiffRender.Ansi.Reset);
+            lines.Add(RenderHeaderTitle());
             lines.Add(RenderHeaderPath(state, width));
             if (showSeparator)
             {
@@ -257,16 +255,50 @@ public static class ChatTuiRenderer
         return lines;
     }
 
+    private static string RenderHeaderTitle()
+    {
+        var suffix = HeaderText[2..];
+        var version = suffix.IndexOf(" (", StringComparison.Ordinal);
+        var name = version >= 0 ? suffix[..version] : suffix;
+        var versionText = version >= 0 ? suffix[version..] : string.Empty;
+        return "  " + DiffRender.Ansi.BoldAccent + ">_" + DiffRender.Ansi.Reset +
+            DiffRender.Ansi.Bold + name + DiffRender.Ansi.Reset +
+            DiffRender.Ansi.Secondary + versionText + DiffRender.Ansi.Reset;
+    }
+
     private static string RenderHeaderPath(ChatTuiState state, int width)
     {
-        var path = string.IsNullOrWhiteSpace(state.Workspace)
-            ? Environment.CurrentDirectory
-            : state.Workspace;
+        var path = DisplayWorkspacePath(state);
         var available = Math.Max(1, width - 5);
         return DiffRender.Ansi.Fit(
             "     " + DiffRender.Ansi.Secondary +
             DisplayText.Ellipsize(path, available) + DiffRender.Ansi.Reset,
             width);
+    }
+
+    private static string DisplayWorkspacePath(ChatTuiState state)
+    {
+        var path = string.IsNullOrWhiteSpace(state.Workspace)
+            ? Environment.CurrentDirectory
+            : state.Workspace;
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (string.IsNullOrEmpty(home))
+        {
+            return path;
+        }
+
+        var fullPath = Path.GetFullPath(path);
+        var fullHome = Path.GetFullPath(home)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (fullPath.Equals(fullHome, StringComparison.OrdinalIgnoreCase))
+        {
+            return "~";
+        }
+        return fullPath.StartsWith(
+            fullHome + Path.DirectorySeparatorChar,
+            StringComparison.OrdinalIgnoreCase)
+            ? "~" + fullPath[fullHome.Length..]
+            : path;
     }
 
     private static bool IsHome(ChatTuiState state) =>
@@ -1092,13 +1124,27 @@ public static class ChatTuiRenderer
         var model = string.IsNullOrWhiteSpace(state.Provider)
             ? ChatTexts.T(state.Language, "no provider configured", "未配置 Provider")
             : $"{state.Provider}/{state.Model}";
-        if (!string.IsNullOrWhiteSpace(state.ReasoningEffort))
+        var effort = string.IsNullOrWhiteSpace(state.ReasoningEffort)
+            || state.ReasoningEffort.Equals("default", StringComparison.OrdinalIgnoreCase)
+                ? string.Empty
+                : state.ReasoningEffort;
+        var path = DisplayWorkspacePath(state);
+        var baseLine = "  " + DiffRender.Ansi.BoldAccent + model +
+            DiffRender.Ansi.Reset;
+        if (effort.Length > 0)
         {
-            model += "  " + state.ReasoningEffort;
+            baseLine += " " + DiffRender.Ansi.Bold + effort + DiffRender.Ansi.Reset;
         }
-        return DiffRender.Ansi.Fit(
-            "  " + DiffRender.Ansi.Dim + model + DiffRender.Ansi.Reset,
-            width);
+        baseLine += DiffRender.Ansi.Secondary + " · " + DiffRender.Ansi.Reset;
+        var remaining = width - DiffRender.Ansi.VisibleWidth(baseLine);
+        var pathText = remaining > 0
+            ? DisplayText.Ellipsize(path, remaining)
+            : string.Empty;
+        if (pathText.Length > 0)
+        {
+            baseLine += DiffRender.Ansi.Secondary + pathText + DiffRender.Ansi.Reset;
+        }
+        return DiffRender.Ansi.Fit(baseLine, width);
     }
 
     private static string RenderFooter(ChatTuiState state, int width)
