@@ -165,8 +165,7 @@ public static class ChatTuiRenderer
         var column = Math.Max(0, screenColumn - 2);
         var (renderedCursorRow, renderedCursorColumn) =
             LocateComposerCursor(state.Input, ranges, state.Cursor);
-        if (state.CursorVisible
-            && lineIndex == renderedCursorRow
+        if (lineIndex == renderedCursorRow
             && column > renderedCursorColumn)
         {
             column--;
@@ -1110,16 +1109,17 @@ public static class ChatTuiRenderer
         {
             content = string.Empty;
         }
-        else if (!editing || !cursorVisible)
+        else if (!editing)
         {
             content = DiffRender.Ansi.TruncateVisible(query, contentWidth);
         }
         else
         {
             var cursor = Math.Clamp(cursorValue, 0, query.Length);
+            var cursorGlyph = cursorVisible ? "|" : " ";
             if (DisplayText.Width(query) + 1 <= contentWidth)
             {
-                content = query.Insert(cursor, "|");
+                content = query.Insert(cursor, cursorGlyph);
             }
             else
             {
@@ -1129,7 +1129,7 @@ public static class ChatTuiRenderer
                 var before = query[..cursor];
                 var after = query[cursor..];
                 content = TailToWidth(before, leftWidth) +
-                    "|" +
+                    cursorGlyph +
                     DisplayText.TruncateToWidth(after, rightWidth);
             }
         }
@@ -1873,7 +1873,7 @@ public static class ChatTuiRenderer
             var placeholder = ChatTexts.InputPlaceholder(state.Language);
             return (new List<string>
             {
-                state.CursorVisible ? "| " + placeholder : placeholder
+                (state.CursorVisible ? "|" : " ") + " " + placeholder
             }, 0);
         }
 
@@ -1885,10 +1885,10 @@ public static class ChatTuiRenderer
         {
             var range = ranges[index];
             var line = state.Input[range.Start..range.End];
-            if (state.CursorVisible && index == cursorRow)
+            if (index == cursorRow)
             {
                 var offset = Math.Clamp(cursor - range.Start, 0, line.Length);
-                line = line.Insert(offset, "|");
+                line = line.Insert(offset, state.CursorVisible ? "|" : " ");
             }
             lines.Add(line);
         }

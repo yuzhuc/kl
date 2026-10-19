@@ -340,6 +340,41 @@ public sealed class ChatTuiTests
         Assert.Contains("Search › abc", searchHidden);
     }
     [Fact]
+    public void CursorBlinkKeepsComposerTextColumnsStable()
+    {
+        var state = new ChatTuiState
+        {
+            Input = "hi there",
+            Cursor = 2
+        };
+        var visible = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state))
+            .Split('\n')
+            .First(line => line.Contains("hi| there", StringComparison.Ordinal));
+        state.CursorVisible = false;
+        var hidden = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state))
+            .Split('\n')
+            .First(line => line.Contains("hi  there", StringComparison.Ordinal));
+
+        Assert.Equal(visible.IndexOf("there", StringComparison.Ordinal),
+            hidden.IndexOf("there", StringComparison.Ordinal));
+
+        state.Input = string.Empty;
+        state.Cursor = 0;
+        state.CursorVisible = true;
+        var visiblePlaceholder = DiffRender.Ansi.Strip(
+                ChatTuiRenderer.Render(80, 24, state))
+            .Split('\n')
+            .First(line => line.Contains("Ask KL", StringComparison.Ordinal));
+        state.CursorVisible = false;
+        var hiddenPlaceholder = DiffRender.Ansi.Strip(
+                ChatTuiRenderer.Render(80, 24, state))
+            .Split('\n')
+            .First(line => line.Contains("Ask KL", StringComparison.Ordinal));
+
+        Assert.Equal(visiblePlaceholder.IndexOf("Ask KL", StringComparison.Ordinal),
+            hiddenPlaceholder.IndexOf("Ask KL", StringComparison.Ordinal));
+    }
+    [Fact]
     public void LongMultilineInputCapsHeightAndFollowsCursor()
     {
         var state = new ChatTuiState();
