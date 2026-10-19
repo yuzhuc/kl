@@ -21,6 +21,23 @@ public sealed class CliOptions
     public bool Version { get; set; }
 
     public string TaskText => string.Join(' ', Positionals).Trim();
+
+    public KlClientOptions ToClientOptions() => new()
+    {
+        CorePath = CorePath,
+        ConfigPath = ConfigPath,
+        HomePath = HomePath
+    };
+
+    public KlSessionOptions ToSessionOptions() => new()
+    {
+        SessionId = Session,
+        Workspace = Workspace,
+        Provider = Provider,
+        Model = Model,
+        Quality = Quality,
+        Verbose = Verbose
+    };
 }
 
 public static class CommandLine

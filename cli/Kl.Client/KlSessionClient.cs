@@ -2,18 +2,18 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
 
-namespace Kl.Cli;
+namespace Kl.Client;
 
 public sealed record TurnOutcome(string Status, string Text);
 
 /// <summary>
 /// Owns one core session and serializes turn events. Events are delivered to a
-/// presenter so the terminal UI never has to parse JSON-RPC notifications.
+/// presenter so clients never have to parse JSON-RPC notifications.
 /// </summary>
 public sealed class KlSessionClient : IAsyncDisposable
 {
     private readonly KlCoreClient _client;
-    private readonly CliOptions _options;
+    private readonly KlSessionOptions _sessionOptions;
     private readonly ISessionPresenter _presenter;
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Task _eventLoop;
@@ -25,12 +25,12 @@ public sealed class KlSessionClient : IAsyncDisposable
 
     private KlSessionClient(
         KlCoreClient client,
-        CliOptions options,
+        KlSessionOptions sessionOptions,
         ISessionPresenter presenter,
         JsonElement session)
     {
         _client = client;
-        _options = options;
+        _sessionOptions = sessionOptions;
         _presenter = presenter;
         SessionId = session.GetProperty("session_id").GetString() ?? string.Empty;
         Workspace = session.GetProperty("workspace").GetString() ?? string.Empty;
@@ -53,35 +53,36 @@ public sealed class KlSessionClient : IAsyncDisposable
     public int MessageCount { get; }
 
     public static async Task<KlSessionClient> StartAsync(
-        CliOptions options,
+        KlClientOptions clientOptions,
+        KlSessionOptions sessionOptions,
         ISessionPresenter presenter,
         CancellationToken cancellationToken = default,
         Action<string>? progress = null)
     {
-        var client = KlCoreClient.Start(options);
+        var client = KlCoreClient.Start(clientOptions);
         try
         {
             progress?.Invoke("handshaking");
             await client.HandshakeAsync(cancellationToken).ConfigureAwait(false);
             progress?.Invoke("opening-session");
             JsonElement session;
-            if (!string.IsNullOrWhiteSpace(options.Session))
+            if (!string.IsNullOrWhiteSpace(sessionOptions.SessionId))
             {
-                session = await client.ResumeSessionAsync(options.Session, cancellationToken)
+                session = await client.ResumeSessionAsync(sessionOptions.SessionId, cancellationToken)
                     .ConfigureAwait(false);
             }
             else
             {
                 var workspace = Path.GetFullPath(
-                    options.Workspace ?? Directory.GetCurrentDirectory());
+                    sessionOptions.Workspace ?? Directory.GetCurrentDirectory());
                 session = await client.CreateSessionAsync(
                     workspace,
-                    options.Provider,
-                    options.Model,
+                    sessionOptions.Provider,
+                    sessionOptions.Model,
                     cancellationToken).ConfigureAwait(false);
             }
 
-            var result = new KlSessionClient(client, options, presenter, session);
+            var result = new KlSessionClient(client, sessionOptions, presenter, session);
             progress?.Invoke("session-ready");
             return result;
         }
@@ -128,9 +129,9 @@ public sealed class KlSessionClient : IAsyncDisposable
             var start = await _client.StartTurnAsync(
                 SessionId,
                 prompt,
-                _options.Provider,
-                _options.Model,
-                _options.Quality,
+                _sessionOptions.Provider,
+                _sessionOptions.Model,
+                _sessionOptions.Quality,
                 cancellationToken).ConfigureAwait(false);
             _currentTurnId = start.GetProperty("turn_id").GetString();
             if (_cancelRequested)
@@ -295,7 +296,7 @@ public sealed class KlSessionClient : IAsyncDisposable
                             || okElement.GetBoolean()),
                     cancellationToken).ConfigureAwait(false);
                 break;
-            case "audit.recorded" when _options.Verbose:
+            case "audit.recorded" when _sessionOptions.Verbose:
                 await _presenter.OnEventAsync(
                     new SessionEvent(
                         SessionEventKind.AuditRecorded,
