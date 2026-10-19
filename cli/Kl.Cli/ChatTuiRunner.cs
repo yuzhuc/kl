@@ -12,6 +12,8 @@ public enum CtrlCAction
     Exit
 }
 
+public sealed record ChatExtensionItem(string Name, string Description);
+
 public static class ChatTuiRunner
 {
     public static bool CanUseTui =>
@@ -21,6 +23,29 @@ public static class ChatTuiRunner
     public static bool IsPrompt(string? input) =>
         !string.IsNullOrWhiteSpace(input)
         && !input.TrimStart().StartsWith('/');
+
+    public static IReadOnlyList<ChatExtensionItem> ParseExtensionItems(
+        JsonElement result,
+        string property)
+    {
+        var items = new List<ChatExtensionItem>();
+        if (!result.TryGetProperty(property, out var values)
+            || values.ValueKind != JsonValueKind.Array)
+        {
+            return items;
+        }
+
+        foreach (var value in values.EnumerateArray())
+        {
+            var name = GetString(value, "name");
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                continue;
+            }
+            items.Add(new ChatExtensionItem(name, GetString(value, "description")));
+        }
+        return items;
+    }
 
     public static bool TryParseAgentCommand(string? input, out string? preset)
     {
@@ -976,6 +1001,14 @@ public static class ChatTuiRunner
             case ChatCommandKind.Agent:
                 ShowAgentPresets(state);
                 break;
+            case ChatCommandKind.Skills:
+                await RunSkillsAsync(state, connection, cancellationToken)
+                    .ConfigureAwait(false);
+                break;
+            case ChatCommandKind.Mcp:
+                await RunMcpAsync(state, connection, cancellationToken)
+                    .ConfigureAwait(false);
+                break;
             case ChatCommandKind.Review:
                 await RunReviewAsync(
                     options,
@@ -1053,6 +1086,92 @@ public static class ChatTuiRunner
         connection?.Session.SetAgent(preset);
         state.AddInfo(ChatTexts.AgentSet(state.Language, preset));
         state.ClearInput();
+    }
+
+    private static async Task RunSkillsAsync(
+        ChatTuiState state,
+        Connection? connection,
+        CancellationToken cancellationToken)
+    {
+        var language = state.Language;
+        state.AddInfo(ChatTexts.SkillsTitle(language));
+        if (connection is null)
+        {
+            state.AddError(ChatTexts.SkillsUnavailable(language));
+            return;
+        }
+
+        try
+        {
+            var result = await RequestCoreAsync(
+                    connection.Session,
+                    "skill.list",
+                    new Dictionary<string, object?>
+                    {
+                        ["session_id"] = state.SessionId
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false);
+            AddExtensionItems(
+                state,
+                ParseExtensionItems(result, "skills"),
+                ChatTexts.SkillsEmpty(language));
+        }
+        catch (Exception error) when (IsCommandError(error))
+        {
+            state.AddError(ChatTexts.SkillsError(language, error.Message));
+        }
+    }
+
+    private static async Task RunMcpAsync(
+        ChatTuiState state,
+        Connection? connection,
+        CancellationToken cancellationToken)
+    {
+        var language = state.Language;
+        state.AddInfo(ChatTexts.McpTitle(language));
+        if (connection is null)
+        {
+            state.AddError(ChatTexts.McpUnavailable(language));
+            return;
+        }
+
+        try
+        {
+            var result = await RequestCoreAsync(
+                    connection.Session,
+                    "mcp.list",
+                    null,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            AddExtensionItems(
+                state,
+                ParseExtensionItems(result, "tools"),
+                ChatTexts.McpEmpty(language));
+        }
+        catch (Exception error) when (IsCommandError(error))
+        {
+            state.AddError(ChatTexts.McpError(language, error.Message));
+        }
+    }
+
+    private static void AddExtensionItems(
+        ChatTuiState state,
+        IReadOnlyList<ChatExtensionItem> items,
+        string emptyText)
+    {
+        if (items.Count == 0)
+        {
+            state.AddInfo(emptyText);
+            return;
+        }
+
+        foreach (var item in items)
+        {
+            state.AddInfo(string.IsNullOrWhiteSpace(item.Description)
+                ? item.Name
+                : $"{item.Name} — {item.Description}");
+        }
     }
 
     private static async Task RunInitAsync(

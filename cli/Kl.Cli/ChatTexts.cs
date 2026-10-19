@@ -131,6 +131,30 @@ public static class ChatTexts
             $"unknown agent preset '{preset}'. available: {presets}",
             $"未知 Agent preset '{preset}'。可用：{presets}");
 
+    public static string SkillsTitle(UiLanguage language) =>
+        T(language, "Skills", "Skills");
+
+    public static string SkillsEmpty(UiLanguage language) =>
+        T(language, "No skills found.", "没有可用的 Skills。");
+
+    public static string SkillsUnavailable(UiLanguage language) =>
+        T(language, "skills unavailable: no active session", "Skills 不可用：没有活动会话");
+
+    public static string SkillsError(UiLanguage language, string error) =>
+        T(language, $"skill.list unavailable: {error}", $"skill.list 不可用：{error}");
+
+    public static string McpTitle(UiLanguage language) =>
+        T(language, "MCP", "MCP");
+
+    public static string McpEmpty(UiLanguage language) =>
+        T(language, "No MCP tools found.", "没有可用的 MCP 工具。");
+
+    public static string McpUnavailable(UiLanguage language) =>
+        T(language, "MCP unavailable: no active session", "MCP 不可用：没有活动会话");
+
+    public static string McpError(UiLanguage language, string error) =>
+        T(language, $"mcp.list unavailable: {error}", $"mcp.list 不可用：{error}");
+
     public static string SessionStatusTitle(UiLanguage language) =>
         T(language, "Session", "会话");
 
