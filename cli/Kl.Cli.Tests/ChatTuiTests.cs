@@ -356,13 +356,13 @@ public sealed class ChatTuiTests
         var render = ChatTuiRenderer.Render(100, 24, state);
 
         Assert.Contains("> fix it", render);
-        Assert.Contains("KL: done", render);
+        Assert.Contains("• done", render);
         Assert.Contains("[tool] shell cargo test", render);
         Assert.DoesNotContain(">_ KL", DiffRender.Ansi.Strip(render));
         Assert.DoesNotContain("D:\\work", DiffRender.Ansi.Strip(render));
         var plainLines = DiffRender.Ansi.Strip(render).Split('\n');
         var userIndex = Array.FindIndex(plainLines, line => line.Contains("> fix it", StringComparison.Ordinal));
-        var assistantIndex = Array.FindIndex(plainLines, line => line.Contains("KL: done", StringComparison.Ordinal));
+        var assistantIndex = Array.FindIndex(plainLines, line => line.Contains("• done", StringComparison.Ordinal));
         Assert.True(assistantIndex > userIndex);
         Assert.True(string.IsNullOrWhiteSpace(plainLines[userIndex + 1]));
         Assert.Contains("[approval]", render);
@@ -385,7 +385,7 @@ public sealed class ChatTuiTests
 
         var render = ChatTuiRenderer.Render(100, 24, state);
 
-        Assert.Contains("KL: done", render);
+        Assert.Contains("• done", render);
         Assert.Contains("Worked for 1.2s •", render);
     }
 
@@ -417,8 +417,11 @@ public sealed class ChatTuiTests
         state.Transcript.Add(new TranscriptEntry(
             TranscriptKind.Assistant,
             string.Join('\n', Enumerable.Range(1, 40).Select(index => $"answer line {index}"))));
-        state.TranscriptScroll = 8;
+        var latest = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(60, 24, state))
+            .Split('\n');
+        Assert.StartsWith("› Please explain", latest[0]);
 
+        state.TranscriptScroll = 8;
         var render = ChatTuiRenderer.Render(60, 24, state);
         var lines = DiffRender.Ansi.Strip(render).Split('\n');
 
@@ -742,16 +745,40 @@ public sealed class ChatTuiTests
             state.Transcript,
             entry => entry.Kind == TranscriptKind.Reasoning);
         Assert.Equal("secret", reasoning.Text);
-        var visible = ChatTuiRenderer.Render(100, 24, state);
-        Assert.Contains("Thinking… secret", visible);
-
-        state.ToggleReasoning();
         var hidden = ChatTuiRenderer.Render(100, 24, state);
         Assert.Contains("Thinking… (Ctrl+R to show)", hidden);
         Assert.DoesNotContain("secret", hidden);
 
         state.ToggleReasoning();
-        Assert.Contains("Thinking… secret", ChatTuiRenderer.Render(100, 24, state));
+        var visible = ChatTuiRenderer.Render(100, 24, state);
+        Assert.Contains("Thinking… secret", visible);
+
+        state.ToggleReasoning();
+        Assert.Contains(
+            "Thinking… (Ctrl+R to show)",
+            ChatTuiRenderer.Render(100, 24, state));
+    }
+
+    [Fact]
+    public void ClickingCollapsedCodeBlockExpandsIt()
+    {
+        var state = new ChatTuiState();
+        state.Transcript.Add(new TranscriptEntry(
+            TranscriptKind.Assistant,
+            "```csharp\nvar x = 1;\n```"));
+
+        var collapsed = DiffRender.Ansi.Strip(
+            ChatTuiRenderer.Render(80, 24, state)).Split('\n');
+        var row = Array.FindIndex(
+            collapsed,
+            line => line.Contains("• ▸ Code · 1 line · csharp", StringComparison.Ordinal));
+        Assert.True(row >= 0);
+        Assert.True(ChatTuiRenderer.ToggleTranscriptItemAt(state, 80, 24, row));
+
+        var expanded = DiffRender.Ansi.Strip(
+            ChatTuiRenderer.Render(80, 24, state));
+        Assert.Contains("• ▾ Code · 1 line · csharp", expanded);
+        Assert.Contains("var x = 1;", expanded);
     }
 
     [Fact]
@@ -802,12 +829,16 @@ public sealed class ChatTuiTests
         var state = new ChatTuiState();
         var text = string.Join(
             "\n",
-            Enumerable.Range(0, 30).Select(index => $"line-{index}"));
+            Enumerable.Range(0, 30).Select(index => index < 2
+                ? $"line-{index} api_key=super-secret"
+                : $"line-{index}"));
         state.Transcript.Add(new TranscriptEntry(TranscriptKind.Tool, text));
+        state.ToggleTranscriptItem("tool:0");
 
         var render = ChatTuiRenderer.Render(100, 40, state);
 
-        Assert.Contains("line-0", render);
+        Assert.Contains("line-0 api_key=***", render);
+        Assert.DoesNotContain("super-secret", render);
         Assert.Contains("line-19", render);
         Assert.DoesNotContain("line-20", render);
         Assert.Contains("(10 lines omitted)", render);
@@ -986,7 +1017,10 @@ public sealed class ChatTuiTests
         state.Transcript.Add(new TranscriptEntry(
             TranscriptKind.User,
             "请修复一个很长的中文任务，确保消息块在窄终端中正确换行。"));
-        state.Transcript.Add(new TranscriptEntry(TranscriptKind.Assistant, "完成。"));
+        state.Transcript.Add(new TranscriptEntry(TranscriptKind.Reasoning, "先分析问题。"));
+        state.Transcript.Add(new TranscriptEntry(
+            TranscriptKind.Assistant,
+            "完成。\n```csharp\nvar answer = 42;\n```"));
         state.Transcript.Add(new TranscriptEntry(TranscriptKind.Tool, "[ok] shell: exit 0"));
         state.Transcript.Add(new TranscriptEntry(TranscriptKind.Diff, "-old\n+new"));
         state.Transcript.Add(new TranscriptEntry(TranscriptKind.Error, "示例错误"));

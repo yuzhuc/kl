@@ -162,6 +162,50 @@ public static class ChatTuiRenderer
             window.Visible);
     }
 
+    public static bool ToggleTranscriptItemAt(
+        ChatTuiState state,
+        int width,
+        int height,
+        int screenRow)
+    {
+        if (state.Screen != ChatScreen.Chat
+            || state.ModelPicker.IsOpen
+            || MentionPicker.IsOpen(state)
+            || ChatCommandPalette.IsOpen(state))
+        {
+            return false;
+        }
+
+        width = Math.Max(20, width);
+        height = Math.Max(8, height);
+        var bodyHeight = Math.Max(1, height - 2 - ComposerHeight(state, width, height));
+        var layout = BuildTranscriptLayout(state, width);
+        if (layout.Lines.Count == 0)
+        {
+            return false;
+        }
+
+        var window = BuildChatTranscriptWindow(state, width, bodyHeight, layout);
+        var localRow = screenRow - (window.Header is null ? 0 : 1);
+        if (localRow < 0 || localRow >= window.Toggles.Count)
+        {
+            return false;
+        }
+        var toggle = window.Toggles[localRow];
+        if (toggle is null)
+        {
+            return false;
+        }
+        if (toggle.Kind == TranscriptToggleKind.Reasoning)
+        {
+            state.ToggleReasoning();
+        }
+        else
+        {
+            state.ToggleTranscriptItem(toggle.Key);
+        }
+        return true;
+    }
     public static List<string> TranscriptLines(ChatTuiState state, int width) =>
         BuildTranscriptLayout(state, width).Lines;
 
@@ -170,8 +214,32 @@ public static class ChatTuiRenderer
         width = Math.Max(1, width);
         var language = state.Language;
         var lines = new List<string>();
+        var toggles = new List<TranscriptToggle?>();
         var prompts = new List<UserPromptSpan>();
         var hiddenReasoningShown = false;
+
+        void Add(TranscriptLine line)
+        {
+            lines.Add(line.Text);
+            toggles.Add(line.Toggle);
+        }
+
+        void AddRange(IEnumerable<TranscriptLine> rendered)
+        {
+            foreach (var line in rendered)
+            {
+                Add(line);
+            }
+        }
+
+        void AddPlain(IEnumerable<string> rendered)
+        {
+            foreach (var line in rendered)
+            {
+                Add(new TranscriptLine(line));
+            }
+        }
+
         for (var entryIndex = 0; entryIndex < state.Transcript.Count; entryIndex++)
         {
             var entry = state.Transcript[entryIndex];
@@ -182,7 +250,7 @@ public static class ChatTuiRenderer
                 && ((entry.Kind == TranscriptKind.User && previous != TranscriptKind.User)
                     || (entry.Kind != TranscriptKind.User && previous == TranscriptKind.User)))
             {
-                lines.Add(string.Empty);
+                Add(new TranscriptLine(string.Empty));
             }
             if (entry.Kind == TranscriptKind.Reasoning)
             {
@@ -193,13 +261,21 @@ public static class ChatTuiRenderer
                         continue;
                     }
                     hiddenReasoningShown = true;
-                    lines.AddRange(ColorLines(
+                    var hidden = ColorLines(
                         WrapPlain(ChatTexts.ThinkingHidden(language), width),
-                        DiffRender.Ansi.Dim));
+                        DiffRender.Ansi.Dim);
+                    for (var index = 0; index < hidden.Count; index++)
+                    {
+                        Add(new TranscriptLine(
+                            hidden[index],
+                            index == 0
+                                ? new TranscriptToggle("reasoning", TranscriptToggleKind.Reasoning)
+                                : null));
+                    }
                     continue;
                 }
 
-                lines.AddRange(ColorLines(
+                AddPlain(ColorLines(
                     WrapPlain(ChatTexts.ThinkingLabel(language) + entry.Text, width),
                     DiffRender.Ansi.Dim));
                 continue;
@@ -209,9 +285,29 @@ public static class ChatTuiRenderer
             {
                 prompts.Add(new UserPromptSpan(lines.Count, entry.Text));
             }
-            lines.AddRange(RenderEntry(entry, width, language));
+            if (entry.Kind == TranscriptKind.Assistant)
+            {
+                AddRange(RenderAssistantLines(
+                    state,
+                    entryIndex,
+                    entry.Text,
+                    width,
+                    language));
+                continue;
+            }
+            if (entry.Kind == TranscriptKind.Tool)
+            {
+                AddRange(RenderToolLines(
+                    state,
+                    entryIndex,
+                    entry.Text,
+                    width,
+                    language));
+                continue;
+            }
+            AddPlain(RenderEntry(entry, width, language));
         }
-        return new TranscriptLayout(lines, prompts);
+        return new TranscriptLayout(lines, prompts, toggles);
     }
     private static List<string> RenderChatBody(
         ChatTuiState state,
@@ -221,7 +317,7 @@ public static class ChatTuiRenderer
         var layout = BuildTranscriptLayout(state, width);
         if (layout.Lines.Count == 0 && !state.IsTurnActive)
         {
-            layout = new TranscriptLayout(RenderHome(state, width), []);
+            layout = new TranscriptLayout(RenderHome(state, width), [], []);
         }
 
         var window = BuildChatTranscriptWindow(
@@ -284,9 +380,8 @@ public static class ChatTuiRenderer
         var maximum = Math.Max(0, lines.Count - bodyHeight);
         var scroll = Math.Clamp(state.TranscriptScroll, 0, maximum);
         var start = Math.Max(0, lines.Count - bodyHeight - scroll);
-        UserPromptSpan? prompt = scroll > 0
-            ? layout.Prompts.LastOrDefault(candidate => candidate.Start <= start)
-            : null;
+        UserPromptSpan? prompt = layout.Prompts.LastOrDefault(
+            candidate => candidate.Start <= start);
         var contentHeight = bodyHeight;
         if (prompt is not null && bodyHeight > 1)
         {
@@ -298,11 +393,16 @@ public static class ChatTuiRenderer
             .Skip(start)
             .Take(contentHeight)
             .ToList();
+        var toggles = layout.Toggles
+            .Skip(start)
+            .Take(contentHeight)
+            .ToList();
         return new ChatTranscriptWindow(
             prompt is null ? null : RenderStickyPrompt(prompt.Text, width),
             start,
             contentHeight,
-            visible);
+            visible,
+            toggles);
     }
 
     private static string RenderStickyPrompt(string text, int width)
@@ -326,13 +426,30 @@ public static class ChatTuiRenderer
 
     private sealed record TranscriptLayout(
         List<string> Lines,
-        List<UserPromptSpan> Prompts);
+        List<UserPromptSpan> Prompts,
+        List<TranscriptToggle?> Toggles);
+
+    private sealed record TranscriptLine(
+        string Text,
+        TranscriptToggle? Toggle = null);
+
+    private sealed record TranscriptToggle(
+        string Key,
+        TranscriptToggleKind Kind);
+
+    private enum TranscriptToggleKind
+    {
+        CodeBlock,
+        Tool,
+        Reasoning
+    }
 
     private sealed record ChatTranscriptWindow(
         string? Header,
         int Start,
         int VisibleHeight,
-        List<string> Visible);
+        List<string> Visible,
+        List<TranscriptToggle?> Toggles);
 
     private static List<string> RenderHome(ChatTuiState state, int width)
     {
@@ -1794,12 +1911,7 @@ public static class ChatTuiRenderer
         {
             case TranscriptKind.User:
                 return RenderUserMessage(entry.Text, width);
-            case TranscriptKind.Assistant:
-                return WrapPlain(
-                    ChatTexts.AssistantLabel(language) + entry.Text,
-                    width);
-            case TranscriptKind.Tool:
-                return RenderTool(entry.Text, width, language);
+
             case TranscriptKind.Approval:
                 return RenderApproval(entry.Text, width, language);
             case TranscriptKind.Diff:
@@ -1817,6 +1929,116 @@ public static class ChatTuiRenderer
         }
     }
 
+    private static List<TranscriptLine> RenderAssistantLines(
+        ChatTuiState state,
+        int entryIndex,
+        string text,
+        int width,
+        UiLanguage language)
+    {
+        var result = new List<TranscriptLine>();
+        var prose = new List<string>();
+        var code = new List<string>();
+        var normalized = text
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n');
+        var bulletShown = false;
+        var inCode = false;
+        var blockIndex = 0;
+        var codeLanguage = string.Empty;
+
+        void FlushProse()
+        {
+            if (prose.Count == 0)
+            {
+                return;
+            }
+            var value = string.Join('\n', prose);
+            if (!bulletShown)
+            {
+                value = ChatTexts.AssistantLabel(language) + value;
+                bulletShown = true;
+            }
+            foreach (var line in WrapPlain(value, width))
+            {
+                result.Add(new TranscriptLine(line));
+            }
+            prose.Clear();
+        }
+
+        void FlushCode()
+        {
+            var key = $"code:{entryIndex}:{blockIndex}";
+            var expanded = state.IsTranscriptItemExpanded(key);
+            var marker = expanded ? "▾" : "▸";
+            var count = code.Count == 1
+                ? ChatTexts.T(language, "1 line", "1 行")
+                : ChatTexts.T(language, $"{code.Count} lines", $"{code.Count} 行");
+            var heading = string.IsNullOrEmpty(codeLanguage)
+                ? ChatTexts.T(language, $"Code · {count}", $"代码 · {count}")
+                : ChatTexts.T(
+                    language,
+                    $"Code · {count} · {codeLanguage}",
+                    $"代码 · {count} · {codeLanguage}");
+            var label = bulletShown ? string.Empty : ChatTexts.AssistantLabel(language);
+            bulletShown = true;
+            result.Add(new TranscriptLine(
+                DiffRender.Ansi.Fit(
+                    label + DiffRender.Ansi.Secondary + marker + " " + heading + DiffRender.Ansi.Reset,
+                    width),
+                new TranscriptToggle(key, TranscriptToggleKind.CodeBlock)));
+            if (expanded)
+            {
+                foreach (var codeLine in code)
+                {
+                    foreach (var wrapped in DisplayText.WrapToWidth("  " + codeLine, width))
+                    {
+                        result.Add(new TranscriptLine(
+                            DiffRender.Ansi.Cyan + wrapped + DiffRender.Ansi.Reset));
+                    }
+                }
+            }
+            code.Clear();
+        }
+
+        foreach (var line in normalized.Split('\n'))
+        {
+            var trimmed = line.TrimStart();
+            if (trimmed.StartsWith("```", StringComparison.Ordinal))
+            {
+                if (inCode)
+                {
+                    FlushCode();
+                    inCode = false;
+                    blockIndex++;
+                }
+                else
+                {
+                    FlushProse();
+                    inCode = true;
+                    codeLanguage = trimmed[3..].Trim();
+                }
+                continue;
+            }
+            if (inCode)
+            {
+                code.Add(line);
+            }
+            else
+            {
+                prose.Add(line);
+            }
+        }
+        if (inCode)
+        {
+            FlushCode();
+        }
+        else
+        {
+            FlushProse();
+        }
+        return result;
+    }
     private static IEnumerable<string> RenderUserMessage(string text, int width)
     {
         foreach (var line in WrapPlain("> " + text, width))
@@ -1826,7 +2048,9 @@ public static class ChatTuiRenderer
                 DiffRender.Ansi.Reset;
         }
     }
-    private static IEnumerable<string> RenderTool(
+    private static List<TranscriptLine> RenderToolLines(
+        ChatTuiState state,
+        int entryIndex,
         string text,
         int width,
         UiLanguage language)
@@ -1837,26 +2061,41 @@ public static class ChatTuiRenderer
             language);
         var success = text.StartsWith("[ok]", StringComparison.Ordinal);
         var failure = text.StartsWith("[fail]", StringComparison.Ordinal);
-        var prefix = success || failure
+        var color = success
+            ? DiffRender.Ansi.Green
+            : failure
+                ? DiffRender.Ansi.Red
+                : DiffRender.Ansi.Cyan;
+        var key = $"tool:{entryIndex}";
+        var expanded = state.IsTranscriptItemExpanded(key);
+        var marker = expanded ? "▾" : "▸";
+        var summary = lines.Count == 0
             ? string.Empty
-            : ChatTexts.ToolLabel(language);
-
-        var rendered = new List<string>();
-        for (var index = 0; index < lines.Count; index++)
+            : DiffRender.RedactSensitive(lines[0].Trim());
+        var label = ChatTexts.ToolLabel(language).Trim();
+        var result = new List<TranscriptLine>
         {
-            var line = (index == 0 ? prefix : string.Empty) + lines[index];
-            rendered.AddRange(WrapPlain(line, width));
+            new(
+                DiffRender.Ansi.Fit(
+                    color + marker + " " + label + " " + summary + DiffRender.Ansi.Reset,
+                    width),
+                new TranscriptToggle(key, TranscriptToggleKind.Tool))
+        };
+        if (!expanded)
+        {
+            return result;
         }
 
-        if (success)
+        for (var index = 1; index < lines.Count; index++)
         {
-            return ColorLines(rendered, DiffRender.Ansi.Green);
+            var detail = DiffRender.RedactSensitive(lines[index]);
+            foreach (var wrapped in WrapPlain("  " + detail, width))
+            {
+                result.Add(new TranscriptLine(
+                    DiffRender.Ansi.Secondary + wrapped + DiffRender.Ansi.Reset));
+            }
         }
-        if (failure)
-        {
-            return ColorLines(rendered, DiffRender.Ansi.Red);
-        }
-        return ColorLines(rendered, DiffRender.Ansi.Cyan);
+        return result;
     }
 
     private static IEnumerable<string> RenderApproval(

@@ -11,7 +11,7 @@ public static class ChatTexts
 
 
     public static string AssistantLabel(UiLanguage language) =>
-        T(language, "KL: ", "KL：");
+        "• ";
 
     public static string ToolLabel(UiLanguage language) =>
         T(language, "[tool] ", "[工具] ");

@@ -180,7 +180,8 @@ public sealed class ChatTuiState
     public int HistoryRenameCursor { get; set; }
     public int CommandPaletteSelection { get; set; }
     public bool CommandPaletteDismissed { get; set; }
-    public bool ReasoningVisible { get; set; } = true;
+    public bool ReasoningVisible { get; set; }
+    public HashSet<string> ExpandedTranscriptItems { get; } = [];
     public ChatModelPickerState ModelPicker { get; } = new();
     public MentionPickerState MentionPicker { get; } = new();
     public SettingsTuiState Settings { get; } = new();
@@ -263,6 +264,17 @@ public sealed class ChatTuiState
     }
 
     public void ToggleReasoning() => ReasoningVisible = !ReasoningVisible;
+
+    public bool IsTranscriptItemExpanded(string key) =>
+        ExpandedTranscriptItems.Contains(key);
+
+    public void ToggleTranscriptItem(string key)
+    {
+        if (!ExpandedTranscriptItems.Remove(key))
+        {
+            ExpandedTranscriptItems.Add(key);
+        }
+    }
 
     public HistoryView GetHistoryView() =>
         HistoryView.Build(
@@ -490,6 +502,7 @@ public sealed class ChatTuiState
     {
         Transcript.Clear();
         TranscriptScroll = 0;
+        ExpandedTranscriptItems.Clear();
         PendingApprovalId = null;
         StatusMessage = null;
         IsTurnActive = false;
