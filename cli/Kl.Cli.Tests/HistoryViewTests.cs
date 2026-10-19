@@ -429,6 +429,28 @@ public sealed class HistoryViewTests
         Assert.Contains("…", plain);
     }
     [Fact]
+    public void HistoryShowsScrollIndicatorsForLongLists()
+    {
+        var state = new ChatTuiState
+        {
+            Screen = ChatScreen.History,
+            HistorySelection = 15,
+            History = Enumerable.Range(0, 20)
+                .Select(index => Session(
+                    $"s{index}",
+                    "D:\\kl",
+                    "ready",
+                    $"task {index:00}"))
+                .ToList()
+        };
+
+        var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 16, state));
+
+        Assert.Contains("↑", plain);
+        Assert.Contains("↓", plain);
+        Assert.Contains("task 15", plain);
+    }
+    [Fact]
     public void HistoryUsesCodexSelectionAndActiveTabColors()
     {
         var state = new ChatTuiState

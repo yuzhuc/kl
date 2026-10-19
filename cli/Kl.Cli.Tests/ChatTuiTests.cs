@@ -965,6 +965,39 @@ public sealed class ChatTuiTests
     }
 
     [Fact]
+    public void ToolCompletionMergesIntoASingleCollapsedEntry()
+    {
+        var state = new ChatTuiState();
+        state.Apply(new SessionEvent(
+            SessionEventKind.ToolStarted,
+            Name: "read_file",
+            Args: "{\"path\":\"a.txt\"}"));
+        state.Apply(new SessionEvent(
+            SessionEventKind.ToolOutput,
+            Text: "contents"));
+        state.Apply(new SessionEvent(
+            SessionEventKind.ToolCompleted,
+            Name: "read_file",
+            Summary: "read 1 file",
+            Ok: true));
+
+        var entry = Assert.Single(state.Transcript);
+        Assert.StartsWith(
+            "[ok] read_file: read 1 file\nread_file ",
+            entry.Text,
+            StringComparison.Ordinal);
+        var collapsed = DiffRender.Ansi.Strip(
+            ChatTuiRenderer.Render(100, 24, state));
+        Assert.Contains("[tool] [ok] read_file: read 1 file", collapsed);
+        Assert.DoesNotContain("contents", collapsed);
+
+        state.ToggleTranscriptItem("tool:0");
+        var expanded = DiffRender.Ansi.Strip(
+            ChatTuiRenderer.Render(100, 24, state));
+        Assert.Contains("read_file {\"path\":\"a.txt\"}", expanded);
+        Assert.Contains("contents", expanded);
+    }
+    [Fact]
     public void ParsesMissingHistoryFieldsAsEmpty()
     {
         using var document = JsonDocument.Parse(

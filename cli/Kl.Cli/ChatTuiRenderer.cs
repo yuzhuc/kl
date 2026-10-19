@@ -596,7 +596,7 @@ public static class ChatTuiRenderer
         }
         else
         {
-            var minimumListHeight = view.Tasks.Count > 0 && width >= 56 ? 3 : 1;
+            var minimumListHeight = view.Tasks.Count > 0 && width >= 56 ? 5 : 1;
             var details = RenderHistoryDetails(selected, width, language);
             var detailBudget = Math.Max(
                 0,
@@ -708,20 +708,12 @@ public static class ChatTuiRenderer
     {
         var lines = new List<string>();
         var groupLines = new List<string>();
-        var selectedLine = -1;
+        var selectedIndex = -1;
         var taskIndex = 0;
         var (statusWidth, timeWidth) = HistoryColumnWidths(
             view,
             language,
             now);
-        if (height >= 3 && width >= 56)
-        {
-            lines.Add(RenderHistoryTableHeader(
-                width,
-                statusWidth,
-                timeWidth,
-                language));
-        }
 
         var firstGroup = true;
         foreach (var group in view.Groups)
@@ -741,7 +733,7 @@ public static class ChatTuiRenderer
             {
                 if (taskIndex == selection)
                 {
-                    selectedLine = lines.Count + groupLines.Count;
+                    selectedIndex = groupLines.Count;
                 }
                 groupLines.Add(FormatHistoryTaskRow(
                     task,
@@ -762,19 +754,43 @@ public static class ChatTuiRenderer
                 : ChatTexts.NoSessions(language));
         }
 
-        var available = Math.Max(0, height - lines.Count);
-        if (groupLines.Count > available && selectedLine >= lines.Count)
-        {
-            var selectedRelative = selectedLine - lines.Count;
-            var start = Math.Clamp(
-                selectedRelative - available + 1,
+        var showHeader = height >= 3 && width >= 56;
+        var scrollable = groupLines.Count >
+            Math.Max(0, height - (showHeader ? 1 : 0));
+        var showTopIndicator = !showHeader && scrollable && height >= 3;
+        var showBottomIndicator = scrollable && height >= 3;
+        var available = Math.Max(
+            0,
+            height -
+            (showHeader ? 1 : 0) -
+            (showTopIndicator ? 1 : 0) -
+            (showBottomIndicator ? 1 : 0));
+        var start = scrollable && selectedIndex >= 0
+            ? Math.Clamp(
+                selectedIndex - available + 1,
                 0,
-                Math.Max(0, groupLines.Count - available));
-            lines.AddRange(groupLines.Skip(start).Take(available));
-        }
-        else
+                Math.Max(0, groupLines.Count - available))
+            : 0;
+
+        if (showTopIndicator)
         {
-            lines.AddRange(groupLines.Take(available));
+            lines.Add(RenderHistoryScrollIndicator(start > 0 ? "↑" : " ", width));
+        }
+        if (showHeader)
+        {
+            lines.Add(RenderHistoryTableHeader(
+                width,
+                statusWidth,
+                timeWidth,
+                language,
+                start > 0));
+        }
+        lines.AddRange(groupLines.Skip(start).Take(available));
+        if (showBottomIndicator)
+        {
+            lines.Add(RenderHistoryScrollIndicator(
+                start + available < groupLines.Count ? "↓" : " ",
+                width));
         }
         return PadBody(lines, height);
     }
@@ -840,11 +856,13 @@ public static class ChatTuiRenderer
         int width,
         int statusWidth,
         int timeWidth,
-        UiLanguage language)
+        UiLanguage language,
+        bool hasMoreAbove)
     {
         var titleWidth = Math.Max(1, width - statusWidth - timeWidth - 8);
+        var gutter = hasMoreAbove ? "↑   " : "    ";
         var header = DiffRender.Ansi.Fit(
-            "    " +
+            gutter +
             DisplayText.PadToWidth(ChatTexts.TasksColumn(language), titleWidth) +
             "  " +
             DisplayText.PadToWidth(ChatTexts.StatusColumn(language), statusWidth) +
@@ -853,6 +871,11 @@ public static class ChatTuiRenderer
             width);
         return DiffRender.Ansi.Dim + header + DiffRender.Ansi.Reset;
     }
+
+    private static string RenderHistoryScrollIndicator(string marker, int width) =>
+        DiffRender.Ansi.Fit(
+            DiffRender.Ansi.Dim + marker + DiffRender.Ansi.Reset,
+            width);
 
     private static (string Symbol, string Color) HistoryStatusVisual(
         HistoryTaskStatus status) =>

@@ -498,6 +498,16 @@ public sealed class ChatTuiState
     public string? LastAssistantText() =>
         Transcript.LastOrDefault(entry => entry.Kind == TranscriptKind.Assistant)?.Text;
 
+    private static bool ToolEntryMatches(string text, string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return false;
+        }
+        var first = text.Split('\n', 2)[0].TrimStart();
+        return first.Equals(name, StringComparison.OrdinalIgnoreCase)
+            || first.StartsWith(name + " ", StringComparison.OrdinalIgnoreCase);
+    }
     public void ClearTranscript()
     {
         Transcript.Clear();
@@ -660,10 +670,22 @@ public sealed class ChatTuiState
                     $"[approval] {sessionEvent.Decision}"));
                 break;
             case SessionEventKind.ToolCompleted:
-                Transcript.Add(new TranscriptEntry(
-                    TranscriptKind.Tool,
+                var completion =
                     $"{(sessionEvent.Ok ? "[ok]" : "[fail]")} " +
-                    $"{sessionEvent.Name}: {sessionEvent.Summary}"));
+                    $"{sessionEvent.Name}: {sessionEvent.Summary}";
+                if (Transcript.Count > 0
+                    && Transcript[^1].Kind == TranscriptKind.Tool
+                    && ToolEntryMatches(Transcript[^1].Text, sessionEvent.Name))
+                {
+                    Transcript[^1] = Transcript[^1] with
+                    {
+                        Text = completion + "\n" + Transcript[^1].Text
+                    };
+                }
+                else
+                {
+                    Transcript.Add(new TranscriptEntry(TranscriptKind.Tool, completion));
+                }
                 if (!string.IsNullOrWhiteSpace(sessionEvent.Diff))
                 {
                     Transcript.Add(new TranscriptEntry(
