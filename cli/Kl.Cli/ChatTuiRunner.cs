@@ -23,10 +23,10 @@ public static class ChatTuiRunner
         && !input.TrimStart().StartsWith('/');
 
     public static CtrlCAction ResolveCtrlC(ChatTuiState state, bool hasConnection) =>
-        hasConnection && (state.IsTurnActive || state.HasPendingApproval)
-            ? CtrlCAction.Cancel
-            : state.HasSelection
-                ? CtrlCAction.CopySelection
+        state.HasSelection
+            ? CtrlCAction.CopySelection
+            : hasConnection && (state.IsTurnActive || state.HasPendingApproval)
+                ? CtrlCAction.Cancel
                 : CtrlCAction.Exit;
 
     public static async Task<int> RunAsync(
@@ -44,19 +44,35 @@ public static class ChatTuiRunner
         Connection? connection = null;
         try
         {
-            await SplashScreen.ShowAsync(CanUseTui, cancellationToken).ConfigureAwait(false);
             var language = SettingsTuiRunner.LoadLanguage(options);
+            SplashScreen.Start(
+                CanUseTui,
+                ChatTexts.StartupStage(language, "starting-core"));
             ChatTuiState state;
             try
             {
                 connection = await OpenSessionAsync(
                     options,
                     options.Session,
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken,
+                    stage => SplashScreen.Update(
+                        CanUseTui,
+                        ChatTexts.StartupStage(language, stage))).ConfigureAwait(false);
                 state = NewState(connection.Session, options.Verbose, language);
+                SplashScreen.Update(
+                    CanUseTui,
+                    ChatTexts.StartupStage(language, "loading-transcript"));
                 await LoadTranscriptAsync(connection.Session, state, cancellationToken)
                     .ConfigureAwait(false);
+                SplashScreen.Update(
+                    CanUseTui,
+                    ChatTexts.StartupStage(language, "loading-history"));
                 state.History = await LoadHistoryAsync(connection.Session, state)
+                    .ConfigureAwait(false);
+                SplashScreen.Update(
+                    CanUseTui,
+                    ChatTexts.StartupStage(language, "checking-environment"));
+                await LoadHomeStatusAsync(connection.Session, state, cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (JsonRpcException error) when (error.Code == -32005)
@@ -65,24 +81,11 @@ public static class ChatTuiRunner
             }
 
             state.Settings.SetLanguage(language);
+            SplashScreen.Update(CanUseTui, ChatTexts.StartupStage(language, "ready"));
 
-            var keys = Channel.CreateUnbounded<ConsoleKeyInfo>(
+            var inputs = Channel.CreateUnbounded<ConsoleInputEvent>(
                 new UnboundedChannelOptions { SingleReader = true });
-            _ = Task.Run(() =>
-            {
-                while (true)
-                {
-                    try
-                    {
-                        keys.Writer.TryWrite(Console.ReadKey(intercept: true));
-                    }
-                    catch (Exception error)
-                        when (error is IOException or InvalidOperationException)
-                    {
-                        break;
-                    }
-                }
-            });
+            _ = Task.Run(() => ConsoleMouseInput.ReadLoop(inputs.Writer));
 
             var exit = false;
             var dirty = true;
@@ -103,6 +106,10 @@ public static class ChatTuiRunner
 
                 var width = Math.Max(20, Console.WindowWidth);
                 var height = Math.Max(8, Console.WindowHeight);
+                if (lastWidth != 0 && (width != lastWidth || height != lastHeight))
+                {
+                    state.ClearSelection();
+                }
                 if (forceClear)
                 {
                     Console.Out.Write("\u001b[0m\u001b[2J\u001b[H");
@@ -123,8 +130,18 @@ public static class ChatTuiRunner
                     lastHeight = height;
                 }
 
-                while (keys.Reader.TryRead(out var key))
+                while (inputs.Reader.TryRead(out var input))
                 {
+                    if (input.Mouse is { } mouse)
+                    {
+                        HandleMouse(state, mouse, width, height);
+                        dirty = true;
+                        continue;
+                    }
+                    if (input.Key is not { } key)
+                    {
+                        continue;
+                    }
                     if (state.Screen == ChatScreen.Settings)
                     {
                         var control = (key.Modifiers & ConsoleModifiers.Control) != 0;
@@ -254,6 +271,11 @@ public static class ChatTuiRunner
                     {
                         case ChatKeyAction.Insert:
                             if (state.Screen == ChatScreen.History
+                                && state.HistoryRenaming)
+                            {
+                                state.InsertHistoryRename(key.KeyChar);
+                            }
+                            else if (state.Screen == ChatScreen.History
                                 && state.HistorySearching)
                             {
                                 state.InsertHistorySearch(key.KeyChar);
@@ -265,6 +287,11 @@ public static class ChatTuiRunner
                             break;
                         case ChatKeyAction.Backspace:
                             if (state.Screen == ChatScreen.History
+                                && state.HistoryRenaming)
+                            {
+                                state.BackspaceHistoryRename();
+                            }
+                            else if (state.Screen == ChatScreen.History
                                 && state.HistorySearching)
                             {
                                 state.BackspaceHistorySearch();
@@ -276,6 +303,11 @@ public static class ChatTuiRunner
                             break;
                         case ChatKeyAction.Delete:
                             if (state.Screen == ChatScreen.History
+                                && state.HistoryRenaming)
+                            {
+                                state.DeleteHistoryRename();
+                            }
+                            else if (state.Screen == ChatScreen.History
                                 && state.HistorySearching)
                             {
                                 state.DeleteHistorySearch();
@@ -287,6 +319,11 @@ public static class ChatTuiRunner
                             break;
                         case ChatKeyAction.CursorLeft:
                             if (state.Screen == ChatScreen.History
+                                && state.HistoryRenaming)
+                            {
+                                state.MoveHistoryRenameLeft();
+                            }
+                            else if (state.Screen == ChatScreen.History
                                 && state.HistorySearching)
                             {
                                 state.MoveHistorySearchLeft();
@@ -298,6 +335,11 @@ public static class ChatTuiRunner
                             break;
                         case ChatKeyAction.CursorRight:
                             if (state.Screen == ChatScreen.History
+                                && state.HistoryRenaming)
+                            {
+                                state.MoveHistoryRenameRight();
+                            }
+                            else if (state.Screen == ChatScreen.History
                                 && state.HistorySearching)
                             {
                                 state.MoveHistorySearchRight();
@@ -309,6 +351,11 @@ public static class ChatTuiRunner
                             break;
                         case ChatKeyAction.CursorHome:
                             if (state.Screen == ChatScreen.History
+                                && state.HistoryRenaming)
+                            {
+                                state.MoveHistoryRenameHome();
+                            }
+                            else if (state.Screen == ChatScreen.History
                                 && state.HistorySearching)
                             {
                                 state.MoveHistorySearchHome();
@@ -320,6 +367,11 @@ public static class ChatTuiRunner
                             break;
                         case ChatKeyAction.CursorEnd:
                             if (state.Screen == ChatScreen.History
+                                && state.HistoryRenaming)
+                            {
+                                state.MoveHistoryRenameEnd();
+                            }
+                            else if (state.Screen == ChatScreen.History
                                 && state.HistorySearching)
                             {
                                 state.MoveHistorySearchEnd();
@@ -337,6 +389,24 @@ public static class ChatTuiRunner
                             break;
                         case ChatKeyAction.CommandPaletteClose:
                             state.DismissCommandPalette();
+                            break;
+                        case ChatKeyAction.MentionPickerUp:
+                            MentionPicker.MoveSelection(state, -1);
+                            break;
+                        case ChatKeyAction.MentionPickerDown:
+                            MentionPicker.MoveSelection(state, 1);
+                            break;
+                        case ChatKeyAction.MentionPickerPreviousFilter:
+                            MentionPicker.MoveFilter(state, -1);
+                            break;
+                        case ChatKeyAction.MentionPickerNextFilter:
+                            MentionPicker.MoveFilter(state, 1);
+                            break;
+                        case ChatKeyAction.MentionPickerAccept:
+                            MentionPicker.Accept(state);
+                            break;
+                        case ChatKeyAction.MentionPickerClose:
+                            MentionPicker.Dismiss(state);
                             break;
                         case ChatKeyAction.CommandPaletteAccept:
                             var selectedCommand = ChatCommandPalette.Selected(state);
@@ -425,28 +495,128 @@ public static class ChatTuiRunner
                             state.Screen = ChatScreen.History;
                             break;
                         case ChatKeyAction.HistoryUp:
+                            state.PendingHistoryDeleteSessionId = null;
                             state.HistorySelection = HistoryView.MoveSelection(
                                 state.HistorySelection,
                                 -1,
                                 state.GetHistoryView().Tasks.Count);
                             break;
                         case ChatKeyAction.HistoryDown:
+                            state.PendingHistoryDeleteSessionId = null;
                             state.HistorySelection = HistoryView.MoveSelection(
                                 state.HistorySelection,
                                 1,
                                 state.GetHistoryView().Tasks.Count);
                             break;
+                        case ChatKeyAction.HistoryPageUp:
+                            state.PendingHistoryDeleteSessionId = null;
+                            state.HistorySelection = HistoryView.MoveSelection(
+                                state.HistorySelection,
+                                -10,
+                                state.GetHistoryView().Tasks.Count);
+                            break;
+                        case ChatKeyAction.HistoryPageDown:
+                            state.PendingHistoryDeleteSessionId = null;
+                            state.HistorySelection = HistoryView.MoveSelection(
+                                state.HistorySelection,
+                                10,
+                                state.GetHistoryView().Tasks.Count);
+                            break;
+                        case ChatKeyAction.HistoryHome:
+                            state.PendingHistoryDeleteSessionId = null;
+                            state.HistorySelection = 0;
+                            break;
+                        case ChatKeyAction.HistoryEnd:
+                            state.PendingHistoryDeleteSessionId = null;
+                            state.HistorySelection = Math.Max(
+                                0,
+                                state.GetHistoryView().Tasks.Count - 1);
+                            break;
+                        case ChatKeyAction.HistoryRename:
+                            state.PendingHistoryDeleteSessionId = null;
+                            var renameTarget = state.GetHistoryView().Selected(
+                                state.HistorySelection);
+                            if (renameTarget is not null)
+                            {
+                                state.StartHistoryRename(renameTarget.Session);
+                            }
+                            break;
+                        case ChatKeyAction.HistoryRenameAccept:
+                            if (connection is null)
+                            {
+                                break;
+                            }
+                            var renameName = state.HistoryRenameInput.Trim();
+                            if (renameName.Length == 0)
+                            {
+                                state.StatusMessage = ChatTexts.HistoryRenameEmpty(
+                                    state.Language);
+                                break;
+                            }
+                            try
+                            {
+                                await connection.Session.RenameSessionAsync(
+                                    state.HistoryRenameSessionId,
+                                    renameName).ConfigureAwait(false);
+                                state.CancelHistoryRename();
+                                state.History = await LoadHistoryAsync(
+                                    connection.Session,
+                                    state).ConfigureAwait(false);
+                                state.StatusMessage = ChatTexts.HistoryRenamed(
+                                    state.Language);
+                            }
+                            catch (Exception error)
+                                when (error is JsonRpcException or IOException
+                                    or InvalidOperationException)
+                            {
+                                state.StatusMessage = ChatTexts.HistoryRenameFailed(
+                                    state.Language,
+                                    error.Message);
+                            }
+                            break;
+                        case ChatKeyAction.HistoryRenameCancel:
+                            state.CancelHistoryRename();
+                            break;
+                        case ChatKeyAction.HistoryStop:
+                            if (connection is null)
+                            {
+                                break;
+                            }
+                            var stopTarget = state.GetHistoryView().Selected(
+                                state.HistorySelection);
+                            if (stopTarget?.Session.SessionId == state.SessionId
+                                && state.IsTurnActive)
+                            {
+                                await connection.Session.CancelAsync(cancellationToken)
+                                    .ConfigureAwait(false);
+                                state.StatusMessage = ChatTexts.Cancelling(state.Language);
+                            }
+                            else
+                            {
+                                state.StatusMessage = ChatTexts.NoRunningTask(
+                                    state.Language);
+                            }
+                            break;
                         case ChatKeyAction.HistoryNextFilter:
+                            state.PendingHistoryDeleteSessionId = null;
                             state.SetHistoryFilter(HistoryView.MoveFilter(
                                 state.HistoryFilter,
                                 1));
                             break;
                         case ChatKeyAction.HistoryPreviousFilter:
+                            state.PendingHistoryDeleteSessionId = null;
                             state.SetHistoryFilter(HistoryView.MoveFilter(
                                 state.HistoryFilter,
                                 -1));
                             break;
+                        case ChatKeyAction.HistoryNextGrouping:
+                            state.PendingHistoryDeleteSessionId = null;
+                            state.SetHistoryGrouping(HistoryView.MoveGrouping(
+                                state.HistoryGrouping,
+                                1));
+                            break;
                         case ChatKeyAction.HistorySearch:
+                            state.PendingHistoryDeleteSessionId = null;
                             state.StartHistorySearch();
                             break;
                         case ChatKeyAction.HistorySearchAccept:
@@ -456,6 +626,7 @@ public static class ChatTuiRunner
                             state.CloseHistorySearch(clear: true);
                             break;
                         case ChatKeyAction.HistoryOpen:
+                            state.PendingHistoryDeleteSessionId = null;
                             if (connection is null)
                             {
                                 break;
@@ -492,6 +663,7 @@ public static class ChatTuiRunner
                             }
                             break;
                         case ChatKeyAction.HistoryNew:
+                            state.PendingHistoryDeleteSessionId = null;
                             if (connection is null)
                             {
                                 break;
@@ -521,7 +693,68 @@ public static class ChatTuiRunner
                                     connection.Session.SessionId));
                             }
                             break;
+                        case ChatKeyAction.HistoryDelete:
+                            if (connection is null || state.IsTurnActive)
+                            {
+                                break;
+                            }
+                            var deleteTarget = state.GetHistoryView().Selected(
+                                state.HistorySelection);
+                            if (deleteTarget is null)
+                            {
+                                break;
+                            }
+                            var deleteId = deleteTarget.Session.SessionId;
+                            if (deleteId == state.SessionId)
+                            {
+                                state.PendingHistoryDeleteSessionId = null;
+                                state.StatusMessage = ChatTexts.CannotDeleteCurrentSession(
+                                    state.Language);
+                                break;
+                            }
+                            if (state.PendingHistoryDeleteSessionId != deleteId)
+                            {
+                                state.PendingHistoryDeleteSessionId = deleteId;
+                                state.StatusMessage = null;
+                                break;
+                            }
+                            try
+                            {
+                                await connection.Session.DeleteSessionAsync(deleteId)
+                                    .ConfigureAwait(false);
+                                state.PendingHistoryDeleteSessionId = null;
+                                state.History = await LoadHistoryAsync(
+                                    connection.Session,
+                                    state).ConfigureAwait(false);
+                                state.HistorySelection = Math.Clamp(
+                                    state.HistorySelection,
+                                    0,
+                                    Math.Max(0, state.GetHistoryView().Tasks.Count - 1));
+                                state.StatusMessage = ChatTexts.HistoryDeleted(
+                                    state.Language);
+                            }
+                            catch (Exception error)
+                                when (error is JsonRpcException or IOException
+                                    or InvalidOperationException)
+                            {
+                                state.PendingHistoryDeleteSessionId = null;
+                                state.StatusMessage = ChatTexts.HistoryDeleteFailed(
+                                    state.Language,
+                                    error.Message);
+                            }
+                            break;
                         case ChatKeyAction.HistoryBack:
+                            if (state.HistoryRenaming)
+                            {
+                                state.CancelHistoryRename();
+                                break;
+                            }
+                            if (state.PendingHistoryDeleteSessionId is not null)
+                            {
+                                state.PendingHistoryDeleteSessionId = null;
+                                state.StatusMessage = null;
+                                break;
+                            }
                             state.Screen = ChatScreen.Chat;
                             break;
                         case ChatKeyAction.ToggleShortcuts:
@@ -1094,6 +1327,82 @@ public static class ChatTuiRunner
         return (connection, state);
     }
 
+    private static void HandleMouse(
+        ChatTuiState state,
+        MouseInputEvent mouse,
+        int width,
+        int height)
+    {
+        if (state.Screen != ChatScreen.Chat)
+        {
+            if (mouse.Kind == MouseInputKind.LeftDown)
+            {
+                state.ClearSelection();
+            }
+            return;
+        }
+
+        if (mouse.Kind is MouseInputKind.WheelUp or MouseInputKind.WheelDown)
+        {
+            var interactive = !state.ModelPicker.IsOpen
+                && !MentionPicker.IsOpen(state)
+                && !ChatCommandPalette.IsOpen(state);
+            state.ClearSelection();
+            if (interactive)
+            {
+                state.ScrollTranscript(
+                    mouse.Kind == MouseInputKind.WheelUp ? 1 : -1,
+                    width,
+                    height);
+            }
+            return;
+        }
+
+        switch (mouse.Kind)
+        {
+            case MouseInputKind.LeftDown:
+                state.ClearSelection();
+                if (ChatTuiRenderer.TranscriptViewport(state, width, height) is { } viewport
+                    && viewport.TryMap(mouse.Column, mouse.Row, out var point))
+                {
+                    state.BeginMouseSelection(point.Row, point.Column);
+                }
+                break;
+            case MouseInputKind.Drag:
+                if (!state.MouseSelection.IsDragging)
+                {
+                    break;
+                }
+                if (ChatTuiRenderer.TranscriptViewport(state, width, height) is { } dragViewport
+                    && dragViewport.TryMapClamped(mouse.Column, mouse.Row, out var dragPoint))
+                {
+                    state.ExtendMouseSelection(dragPoint.Row, dragPoint.Column);
+                }
+                break;
+            case MouseInputKind.LeftUp:
+                if (!state.MouseSelection.IsDragging)
+                {
+                    break;
+                }
+                if (ChatTuiRenderer.TranscriptViewport(state, width, height) is { } upViewport
+                    && upViewport.TryMapClamped(mouse.Column, mouse.Row, out var upPoint))
+                {
+                    state.EndMouseSelection(upPoint.Row, upPoint.Column);
+                }
+                else
+                {
+                    state.ClearSelection();
+                }
+                break;
+            case MouseInputKind.RightDown:
+                if (state.HasSelection)
+                {
+                    CopySelection(state, width);
+                }
+                break;
+        }
+    }
+
     private static void CopyLastAssistant(ChatTuiState state)
     {
         var text = state.LastAssistantText();
@@ -1108,7 +1417,7 @@ public static class ChatTuiRunner
     private static void CopySelection(ChatTuiState state, int width)
     {
         var text = state.SelectedText(width);
-        if (string.IsNullOrWhiteSpace(text))
+        if (string.IsNullOrEmpty(text))
         {
             state.StatusMessage = ChatTexts.NoSelectionToCopy(state.Language);
         }
@@ -1121,6 +1430,7 @@ public static class ChatTuiRunner
 
     private static void CopyText(ChatTuiState state, string text)
     {
+        text = DiffRender.RedactSensitive(text);
         var lines = text
             .Replace("\r\n", "\n", StringComparison.Ordinal)
             .Replace('\r', '\n')
@@ -1142,6 +1452,7 @@ public static class ChatTuiRunner
             session.Model,
             session.SessionId,
             verbose);
+        state.ReasoningEffort = session.ReasoningEffort;
         state.Settings.SetLanguage(language);
         return state;
     }
@@ -1157,6 +1468,7 @@ public static class ChatTuiRunner
             string.Empty,
             options.Verbose);
         state.Settings.SetLanguage(language);
+        state.WarningCount = 1;
         return state;
     }
 
@@ -1178,6 +1490,9 @@ public static class ChatTuiRunner
             state.SessionId = connection.Session.SessionId;
             state.Provider = connection.Session.Provider;
             state.Model = connection.Session.Model;
+            state.ReasoningEffort = connection.Session.ReasoningEffort;
+            await LoadHomeStatusAsync(connection.Session, state, cancellationToken)
+                .ConfigureAwait(false);
             state.AddInfo(ChatTexts.T(
                 state.Language,
                 $"Connected to {state.Provider}/{state.Model}",
@@ -1417,14 +1732,16 @@ public static class ChatTuiRunner
     private static async Task<Connection> OpenSessionAsync(
         CliOptions options,
         string? sessionId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<string>? progress = null)
     {
         var sessionOptions = CloneWithSession(options, sessionId);
         var presenter = new TuiSessionPresenter(options.AutoApprove);
         var session = await KlSessionClient.StartAsync(
             sessionOptions,
             presenter,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            progress).ConfigureAwait(false);
         return new Connection(session, presenter);
     }
 
@@ -1444,6 +1761,38 @@ public static class ChatTuiRunner
                 state.Language,
                 error.Message));
             return [];
+        }
+    }
+
+    private static async Task LoadHomeStatusAsync(
+        KlSessionClient session,
+        ChatTuiState state,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await RequestCoreAsync(
+                    session,
+                    Protocol.SessionStatus,
+                    new Dictionary<string, object?>
+                    {
+                        ["session_id"] = state.SessionId
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (result.TryGetProperty("sandbox", out var sandbox)
+                && sandbox.ValueKind == JsonValueKind.Object)
+            {
+                var strict = sandbox.TryGetProperty("strict", out var strictValue)
+                    && strictValue.ValueKind == JsonValueKind.True;
+                var backend = GetString(sandbox, "backend");
+                state.WarningCount =
+                    !strict || backend is "policy" or "off" ? 1 : 0;
+            }
+        }
+        catch (Exception error) when (IsCommandError(error))
+        {
+            // Home still works without environment warnings.
         }
     }
 
@@ -1628,12 +1977,14 @@ public static class ChatTuiRunner
                 _previousTreatControlCAsInput = false;
             }
 
+            ConsoleMouseInput.Enable();
             Console.Out.Write("\u001b[?1049h\u001b[?25l\u001b[2J\u001b[H");
             Console.Out.Flush();
         }
 
         public void Dispose()
         {
+            ConsoleMouseInput.Disable();
             try
             {
                 Console.Out.Write("\u001b[?25h\u001b[?1049l");

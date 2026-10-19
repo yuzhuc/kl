@@ -16,6 +16,9 @@ public static class Protocol
     public const string SessionResume = "session.resume";
     public const string SessionHistory = "session.history";
     public const string SessionList = "session.list";
+    public const string SessionStatus = "session.status";
+    public const string SessionRename = "session.rename";
+    public const string SessionDelete = "session.delete";
     public const string TurnStart = "turn.start";
     public const string TurnCancel = "turn.cancel";
     public const string ApprovalRespond = "tool.approval.respond";

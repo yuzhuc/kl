@@ -6,58 +6,195 @@ namespace Kl.Cli.Tests;
 public sealed class ChatTuiTests
 {
     [Fact]
-    public void HomeEnglishSnapshot()
+    public void HomeShowsCodexStyleEmptyState()
     {
         var state = new ChatTuiState();
         var render = ChatTuiRenderer.Render(100, 24, state);
+        var plain = DiffRender.Ansi.Strip(render);
 
         Assert.Contains(
-            "To get started, describe a task or try one of these commands:",
-            render);
-        Assert.Contains(
-            "  /init          create an AGENTS.md file with instructions for KL",
-            render);
-        Assert.Contains(
-            "  /status        show current session configuration",
-            render);
-        Assert.Contains(
-            "  /permissions   choose what KL is allowed to do",
-            render);
-        Assert.Contains(
-            "  /model         choose what model and reasoning effort to use",
-            render);
-        Assert.Contains(
-            "  /review        review changes and find issues",
-            render);
-        Assert.Contains(
-            "  /settings      configure a provider and model",
-            render);
+            plain.Split('\n'),
+            line => line.Trim() == KlBrand.TitleLine);
+        Assert.Contains("/init - create an AGENTS.md file", plain);
+        Assert.Contains("/model - choose what model and reasoning effort to use", plain);
+        Assert.Contains("› Ask KL to do anything", plain);
+        Assert.Contains("? for shortcuts", plain);
+        Assert.DoesNotContain("██╗  ██╗██╗", plain);
     }
 
     [Fact]
-    public void HomeChineseSnapshot()
+    public void HomeChineseUsesLocalizedPromptAndShortcutHint()
     {
         var state = new ChatTuiState();
         state.Settings.SetLanguage(UiLanguage.ChineseSimplified);
         var render = ChatTuiRenderer.Render(100, 24, state);
+        var plain = DiffRender.Ansi.Strip(render);
 
-        Assert.Contains("开始使用：描述一个任务，或尝试以下命令：", render);
-        Assert.Contains("  /init          创建 AGENTS.md 并写入 KL 指令", render);
-        Assert.Contains("  /status        查看当前会话配置", render);
-        Assert.Contains("  /permissions   选择 KL 的权限与审批方式", render);
-        Assert.Contains("  /model         选择模型和推理强度", render);
-        Assert.Contains("  /review        审查当前改动并发现问题", render);
-        Assert.Contains("  /settings      配置 Provider 和模型", render);
+        Assert.Contains("让 KL 做点什么", plain);
+        Assert.Contains("? 快捷键", plain);
     }
 
     [Fact]
-    public void HomeHidesSettingsHintWhenProviderIsConfigured()
+    public void ChatEnglishSnapshot()
     {
-        var state = new ChatTuiState("D:\\work", "openai", "gpt-5", "session-1");
-        var render = ChatTuiRenderer.Render(100, 24, state);
+        var state = new ChatTuiState("D:\\kl");
+        var lines = new List<string>
+        {
+            string.Empty,
+            "  >_ KL (v0.1.0)",
+            "     D:\\kl",
+            string.Empty,
+            "  To get started, describe a task or try one of these commands:",
+            string.Empty,
+            "  /init - create an AGENTS.md file with instructions for KL",
+            "  /status - show current session configuration",
+            "  /permissions - choose what KL is allowed to do",
+            "  /model - choose what model and reasoning effort to use",
+            "  /review - review changes and find issues"
+        };
+        lines.AddRange(Enumerable.Repeat(string.Empty, 10));
+        lines.Add("  › Ask KL to do anything");
+        lines.Add("  no provider configured · D:\\kl");
+        lines.Add("  ← for agents · ? for shortcuts");
 
-        Assert.Contains("To get started", render);
-        Assert.DoesNotContain("configure a provider and model", render);
+        Assert.Equal(string.Join('\n', lines), Snapshot(ChatTuiRenderer.Render(80, 24, state)));
+    }
+
+    [Fact]
+    public void ChatChineseSnapshot()
+    {
+        var state = new ChatTuiState("D:\\kl");
+        state.Settings.SetLanguage(UiLanguage.ChineseSimplified);
+        var lines = new List<string>
+        {
+            string.Empty,
+            "  >_ KL (v0.1.0)",
+            "     D:\\kl",
+            string.Empty,
+            "  开始使用：描述一个任务，或尝试以下命令：",
+            string.Empty,
+            "  /init - 创建 AGENTS.md 并写入 KL 指令",
+            "  /status - 查看当前会话配置",
+            "  /permissions - 选择 KL 的权限与审批方式",
+            "  /model - 选择模型和推理强度",
+            "  /review - 审查当前改动并发现问题"
+        };
+        lines.AddRange(Enumerable.Repeat(string.Empty, 10));
+        lines.Add("  › 让 KL 做点什么，或输入 / 查看命令");
+        lines.Add("  未配置 Provider · D:\\kl");
+        lines.Add("  ← 代理 · ? 快捷键");
+
+        Assert.Equal(string.Join('\n', lines), Snapshot(ChatTuiRenderer.Render(80, 24, state)));
+    }
+
+    [Fact]
+    public void HomeUsesCodexTitleCommandAndPathColors()
+    {
+        var state = new ChatTuiState("D:\\kl", "openai", "gpt-5", "s1")
+        {
+            ReasoningEffort = "high"
+        };
+
+        var render = ChatTuiRenderer.Render(80, 24, state);
+
+        Assert.Contains(
+            DiffRender.Ansi.BoldAccent + ">_" + DiffRender.Ansi.Reset +
+            DiffRender.Ansi.Bold + " KL" + DiffRender.Ansi.Reset +
+            DiffRender.Ansi.Secondary + " (v0.1.0)" + DiffRender.Ansi.Reset,
+            render);
+        Assert.Contains(
+            "     " + DiffRender.Ansi.Path + "D:\\kl" + DiffRender.Ansi.Reset,
+            render);
+        Assert.Contains(
+            DiffRender.Ansi.Bold + "/init" + DiffRender.Ansi.Reset +
+            DiffRender.Ansi.Secondary +
+            " - create an AGENTS.md file with instructions for KL" +
+            DiffRender.Ansi.Reset,
+            render);
+        Assert.Contains(
+            "  " + DiffRender.Ansi.BoldAccent + "openai/gpt-5" +
+            DiffRender.Ansi.Reset + " " + DiffRender.Ansi.Bold + "high" +
+            DiffRender.Ansi.Reset + DiffRender.Ansi.Secondary + " · " +
+            DiffRender.Ansi.Reset + DiffRender.Ansi.Path + "D:\\kl" +
+            DiffRender.Ansi.Reset,
+            render);
+    }
+
+    [Fact]
+    public void HomeAndModelLineAbbreviateUserDirectory()
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var state = new ChatTuiState(home, "openai", "gpt-5", "s1")
+        {
+            ReasoningEffort = "high"
+        };
+
+        var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state));
+
+        Assert.Contains("     ~", plain);
+        Assert.Contains("openai/gpt-5 high · ~", plain);
+    }
+
+    [Fact]
+    public void DefaultReasoningEffortIsHidden()
+    {
+        var state = new ChatTuiState("D:\\kl", "openai", "gpt-5", "s1")
+        {
+            ReasoningEffort = "default"
+        };
+
+        var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state));
+
+        Assert.Contains("openai/gpt-5 · D:\\kl", plain);
+        Assert.DoesNotContain("openai/gpt-5 default", plain);
+    }
+    [Fact]
+    public void ShortcutsPageUsesCodexGroupsAndFooter()
+    {
+        var state = new ChatTuiState("D:\\kl", "openai", "gpt-5", "s1")
+        {
+            Screen = ChatScreen.Shortcuts,
+            ShortcutReturnScreen = ChatScreen.Chat,
+            ReasoningEffort = "high"
+        };
+
+        var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(110, 30, state));
+
+        Assert.Contains("Keyboard shortcuts", plain);
+        Assert.Contains("Compose", plain);
+        Assert.Contains("Session", plain);
+        Assert.Contains("Transcript (open first)", plain);
+        Assert.Contains("/settings customize", plain);
+        Assert.Contains("openai/gpt-5 high · D:\\kl", plain);
+        Assert.EndsWith("? / esc close", plain.Split('\n')[^1].TrimEnd());
+    }
+    [Fact]
+    public void UserMessageUsesBlockFillAndSecondaryTextIsNotDim()
+    {
+        var state = new ChatTuiState();
+        state.Transcript.Add(new TranscriptEntry(TranscriptKind.User, "fix it"));
+
+        var render = ChatTuiRenderer.Render(80, 24, state);
+
+        Assert.Contains(DiffRender.Ansi.UserMessage, render);
+        Assert.Contains(DiffRender.Ansi.BoldAccent, render);
+        Assert.Contains(DiffRender.Ansi.Secondary, render);
+        Assert.DoesNotContain("\u001b[2m", render);
+    }
+
+    [Fact]
+    public void MouseSelectionRendersBlueAndCopiesPlainText()
+    {
+        var state = new ChatTuiState();
+        state.AddInfo("one");
+        state.BeginMouseSelection(0, 0);
+        state.ExtendMouseSelection(0, 2);
+        state.EndMouseSelection(0, 2);
+
+        var render = ChatTuiRenderer.Render(80, 24, state);
+
+        Assert.Contains(DiffRender.Ansi.Selection, render);
+        Assert.Equal("one", state.SelectedText(80));
     }
 
     [Fact]
@@ -68,11 +205,37 @@ public sealed class ChatTuiTests
         var lines = render.Split('\n');
 
         Assert.Equal(24, lines.Length);
-        Assert.Equal(">_ KL (v0.1.0)", lines[0].TrimEnd());
-        Assert.Contains("> Ask KL to do anything", render);
-        Assert.Contains("openai/gpt-5", render.Split('\n')[^1]);
-        Assert.Contains("Ctrl+R reasoning", render.Split('\n')[^1]);
-        Assert.Contains("? shortcuts", render.Split('\n')[^1]);
+        Assert.Equal(">_ KL (v0.1.0)", DiffRender.Ansi.Strip(lines[1]).Trim());
+        Assert.Contains("› Ask KL to do anything", DiffRender.Ansi.Strip(render));
+        Assert.Contains("? for shortcuts", DiffRender.Ansi.Strip(render.Split('\n')[^1]));
+    }
+
+    [Fact]
+    public void ChatFooterReturnsAfterTranscriptStarts()
+    {
+        var state = new ChatTuiState("D:\\work", "openai", "gpt-5", "session-1");
+        state.Transcript.Add(new TranscriptEntry(TranscriptKind.Info, "session started"));
+
+        var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(100, 24, state));
+        var footer = plain.Split('\n')[^1];
+        Assert.Contains("openai/gpt-5", plain);
+        Assert.Contains("Ctrl+R reasoning", footer);
+    }
+
+    [Fact]
+    public void HomeShowsModelEffortAndRightAlignedWarning()
+    {
+        var state = new ChatTuiState("D:\\work", "deepseek", "deepseek-flash", "session-1")
+        {
+            ReasoningEffort = "high",
+            WarningCount = 5
+        };
+
+        var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(100, 24, state));
+        var lines = plain.Split('\n');
+        Assert.Contains("deepseek/deepseek-flash high · D:\\work", plain);
+        Assert.StartsWith("← for agents · ? for shortcuts", lines[^1].TrimStart());
+        Assert.EndsWith("⚠ 5 warnings · f2 to view", lines[^1].TrimEnd());
     }
 
     [Fact]
@@ -174,16 +337,22 @@ public sealed class ChatTuiTests
         };
 
         var render = ChatTuiRenderer.Render(100, 24, state);
+        var plain = DiffRender.Ansi.Strip(render);
 
-        Assert.Contains("D:\\a  1", render);
-        Assert.Contains("› task two", render);
-        Assert.Contains("Task details", render);
-        Assert.Contains("Status: Ready", render);
-        Assert.Contains("Model: p2/m2", render);
-        Assert.Contains("Project: D:\\b", render);
-        Assert.Contains("Prompt: prompt two", render);
-        Assert.Contains("Last: last two", render);
-        Assert.Contains("? shortcuts", render.Split('\n')[^1]);
+        Assert.Contains("D:\\a  1", plain);
+        Assert.Contains("› ○ task two", plain);
+        Assert.Contains("Task details", plain);
+        Assert.Contains("○ Ready", plain);
+        Assert.Contains("Model: p2/m2", plain);
+        Assert.Contains("Project", plain);
+        Assert.Contains("D:\\b", plain);
+        Assert.Contains("Prompt", plain);
+        Assert.Contains("prompt two", plain);
+        Assert.Contains("Last message", plain);
+        Assert.Contains("last two", plain);
+        Assert.Contains(
+            "↑/↓ select",
+            DiffRender.Ansi.Strip(render.Split('\n')[^1]));
     }
 
     [Fact]
@@ -215,14 +384,65 @@ public sealed class ChatTuiTests
 
         Assert.Equal(ChatKeyAction.HistoryUp, ChatKeyMapper.Map(Key(ConsoleKey.UpArrow), state));
         Assert.Equal(ChatKeyAction.HistoryDown, ChatKeyMapper.Map(Key(ConsoleKey.DownArrow), state));
+        Assert.Equal(ChatKeyAction.HistoryDown, ChatKeyMapper.Map(Key(ConsoleKey.J, 'j'), state));
+        Assert.Equal(ChatKeyAction.HistoryUp, ChatKeyMapper.Map(Key(ConsoleKey.K, 'k'), state));
+        Assert.Equal(ChatKeyAction.HistoryPageDown, ChatKeyMapper.Map(Key(ConsoleKey.PageDown), state));
+        Assert.Equal(ChatKeyAction.HistoryPageUp, ChatKeyMapper.Map(Key(ConsoleKey.PageUp), state));
+        Assert.Equal(ChatKeyAction.HistoryHome, ChatKeyMapper.Map(Key(ConsoleKey.Home), state));
+        Assert.Equal(ChatKeyAction.HistoryEnd, ChatKeyMapper.Map(Key(ConsoleKey.End), state));
         Assert.Equal(ChatKeyAction.HistoryOpen, ChatKeyMapper.Map(Key(ConsoleKey.Enter), state));
+        Assert.Equal(ChatKeyAction.HistoryOpen, ChatKeyMapper.Map(Key(ConsoleKey.O, 'o'), state));
         Assert.Equal(ChatKeyAction.HistoryNew, ChatKeyMapper.Map(Key(ConsoleKey.N, 'n'), state));
+        Assert.Equal(
+            ChatKeyAction.HistoryNextGrouping,
+            ChatKeyMapper.Map(Key(ConsoleKey.G, 'g'), state));
+        Assert.Equal(
+            ChatKeyAction.HistoryRename,
+            ChatKeyMapper.Map(Key(ConsoleKey.R, 'r'), state));
+        Assert.Equal(
+            ChatKeyAction.HistoryStop,
+            ChatKeyMapper.Map(Key(ConsoleKey.X, 'x'), state));
+        Assert.Equal(
+            ChatKeyAction.ToggleShortcuts,
+            ChatKeyMapper.Map(Key(ConsoleKey.Oem2, '?'), state));
+        Assert.Equal(
+            ChatKeyAction.HistoryDelete,
+            ChatKeyMapper.Map(Key(ConsoleKey.Delete), state));
+        Assert.Equal(
+            ChatKeyAction.HistoryDelete,
+            ChatKeyMapper.Map(Key(ConsoleKey.Backspace), state));
         Assert.Equal(ChatKeyAction.HistoryNextFilter, ChatKeyMapper.Map(Key(ConsoleKey.Tab, '\t'), state));
         Assert.Equal(
             ChatKeyAction.HistoryPreviousFilter,
             ChatKeyMapper.Map(Key(ConsoleKey.Tab, '\t', shift: true), state));
         Assert.Equal(ChatKeyAction.HistorySearch, ChatKeyMapper.Map(Key(ConsoleKey.Oem2, '/'), state));
+        Assert.Equal(ChatKeyAction.HistorySearch, ChatKeyMapper.Map(Key(ConsoleKey.F3), state));
         Assert.Equal(ChatKeyAction.HistoryBack, ChatKeyMapper.Map(Key(ConsoleKey.Escape), state));
+    }
+
+    [Fact]
+    public void HistoryRenameExposesEditorKeys()
+    {
+        var rename = new ChatTuiState
+        {
+            Screen = ChatScreen.History,
+            HistoryRenaming = true,
+            HistoryRenameInput = "name",
+            HistoryRenameCursor = 4
+        };
+        Assert.Equal(
+            ChatKeyAction.HistoryRenameAccept,
+            ChatKeyMapper.Map(Key(ConsoleKey.Enter), rename));
+        Assert.Equal(
+            ChatKeyAction.HistoryRenameCancel,
+            ChatKeyMapper.Map(Key(ConsoleKey.Escape), rename));
+        Assert.Equal(
+            ChatKeyAction.Insert,
+            ChatKeyMapper.Map(Key(ConsoleKey.X, 'x'), rename));
+        Assert.Equal(
+            ChatKeyAction.Backspace,
+            ChatKeyMapper.Map(Key(ConsoleKey.Backspace), rename));
+
     }
 
     [Fact]
@@ -258,6 +478,13 @@ public sealed class ChatTuiTests
         var active = new ChatTuiState { IsTurnActive = true };
         Assert.Equal(CtrlCAction.Cancel, ChatTuiRunner.ResolveCtrlC(active, hasConnection: true));
 
+        active.ExtendSelection(-1, 4);
+        Assert.True(active.HasSelection);
+        Assert.Equal(
+            CtrlCAction.CopySelection,
+            ChatTuiRunner.ResolveCtrlC(active, hasConnection: true));
+
+        active.ClearSelection();
         active.IsTurnActive = false;
         active.ExtendSelection(-1, 4);
         Assert.True(active.HasSelection);
@@ -596,6 +823,79 @@ public sealed class ChatTuiTests
         Assert.Equal("old answer", state.Transcript[0].Text);
         Assert.Equal("new answer", state.Transcript[1].Text);
     }
+
+    [Theory]
+    [InlineData(40)]
+    [InlineData(60)]
+    [InlineData(80)]
+    [InlineData(120)]
+    public void ChatAnsiDoesNotAffectLayoutWidth(int width)
+    {
+        var state = new ChatTuiState("D:\\kl", "openai", "gpt-5", "s1")
+        {
+            ReasoningEffort = "high"
+        };
+        state.Settings.SetLanguage(UiLanguage.ChineseSimplified);
+        state.Transcript.Add(new TranscriptEntry(
+            TranscriptKind.User,
+            "请修复一个很长的中文任务，确保消息块在窄终端中正确换行。"));
+        state.Transcript.Add(new TranscriptEntry(TranscriptKind.Assistant, "完成。"));
+        state.Transcript.Add(new TranscriptEntry(TranscriptKind.Tool, "[ok] shell: exit 0"));
+        state.Transcript.Add(new TranscriptEntry(TranscriptKind.Diff, "-old\n+new"));
+        state.Transcript.Add(new TranscriptEntry(TranscriptKind.Error, "示例错误"));
+
+        var render = ChatTuiRenderer.Render(width, 24, state);
+
+        Assert.Contains("\u001b[", render);
+        Assert.Equal(24, render.Split('\n').Length);
+        Assert.All(render.Split('\n'), line =>
+            Assert.True(DiffRender.Ansi.VisibleWidth(line) <= width));
+    }
+
+    [Theory]
+    [InlineData(40)]
+    [InlineData(60)]
+    [InlineData(80)]
+    [InlineData(120)]
+    public void ShortcutsPageFitsWidth(int width)
+    {
+        var state = new ChatTuiState("D:\\kl", "openai", "gpt-5", "s1")
+        {
+            Screen = ChatScreen.Shortcuts,
+            ShortcutReturnScreen = ChatScreen.Chat
+        };
+
+        var render = ChatTuiRenderer.Render(width, 24, state);
+
+        Assert.All(render.Split('\n'), line =>
+            Assert.True(DiffRender.Ansi.VisibleWidth(line) <= width));
+    }
+    [Theory]
+    [InlineData(40)]
+    [InlineData(60)]
+    [InlineData(80)]
+    [InlineData(120)]
+    public void HomeFitsWidth(int width)
+    {
+        var state = new ChatTuiState();
+        state.Settings.SetLanguage(UiLanguage.ChineseSimplified);
+
+        var render = ChatTuiRenderer.Render(width, 24, state);
+
+        Assert.Contains(
+            "/init - 创建 AGENTS.md 并写入 KL 指令",
+            DiffRender.Ansi.Strip(render));
+        Assert.All(render.Split('\n'), line =>
+            Assert.True(DiffRender.Ansi.VisibleWidth(line) <= width));
+    }
+
+    private static string Snapshot(string render) =>
+        string.Join(
+            '\n',
+            DiffRender.Ansi.Strip(render)
+                .Replace("\r", string.Empty, StringComparison.Ordinal)
+                .Split('\n')
+                .Select(line => line.TrimEnd()));
 
     private static ConsoleKeyInfo Key(
         ConsoleKey key,

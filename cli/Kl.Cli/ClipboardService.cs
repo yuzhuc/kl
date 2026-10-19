@@ -15,9 +15,23 @@ public static class ClipboardService
             return false;
         }
 
-        return OperatingSystem.IsWindows()
-            ? TryClipExe(text, out error)
-            : TryOsc52(text, out error);
+        if (!OperatingSystem.IsWindows())
+        {
+            return TryOsc52(text, out error);
+        }
+
+        if (TryClipExe(text, out var nativeError))
+        {
+            return true;
+        }
+        if (TryOsc52(text, out var oscError))
+        {
+            return true;
+        }
+        error = string.IsNullOrEmpty(oscError)
+            ? nativeError
+            : $"{nativeError}; OSC 52: {oscError}";
+        return false;
     }
 
     private static bool TryClipExe(string text, out string error)
