@@ -1712,7 +1712,13 @@ impl Core {
                 cancel: thread_cancel.clone(),
             };
             let mut history = history;
-            let result = if is_deep {
+            let user_event = sink.emit(CoreEvent::UserMessage {
+                turn_id: thread_turn.clone(),
+                text: prompt.clone(),
+            });
+            let result = if let Err(error) = user_event {
+                Err(error)
+            } else if is_deep {
                 DeepTurn {
                     router,
                     settings: agent_settings,
@@ -3746,6 +3752,45 @@ max_iterations = 2
                 "missing {expected}; got {rules:?}"
             );
         }
+    }
+
+    #[test]
+    fn turn_start_records_one_user_message_before_the_agent_starts() {
+        let temp = tempfile::tempdir().unwrap();
+        let config = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let (mut core, _) = new_test_core(config, home.path());
+        core.handshaken = true;
+        let created = core
+            .session_create(json!({"workspace": temp.path().to_string_lossy()}))
+            .unwrap();
+        let session_id = created["session_id"].as_str().unwrap().to_owned();
+
+        core.turn_start(json!({"session_id": session_id, "prompt": "hello"}))
+            .unwrap();
+        wait_for_threads(&mut core);
+
+        let events = core.store.read_events(&session_id).unwrap();
+        let user_messages: Vec<_> = events
+            .iter()
+            .filter_map(|stored| match &stored.event {
+                CoreEvent::UserMessage { turn_id, text } => Some((stored.seq, turn_id, text)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(user_messages.len(), 1);
+        assert_eq!(user_messages[0].2, "hello");
+        let started_seq = events
+            .iter()
+            .find(|stored| {
+                matches!(
+                    &stored.event,
+                    CoreEvent::TurnStarted { turn_id } if turn_id == user_messages[0].1
+                )
+            })
+            .map(|stored| stored.seq)
+            .expect("matching turn.started event");
+        assert!(user_messages[0].0 < started_seq);
     }
 
     #[test]
