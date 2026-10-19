@@ -211,6 +211,10 @@ public static class DiffRender
                         {
                             activeStyle.Append(sequence);
                         }
+                        if (!inSelection)
+                        {
+                            builder.Append(sequence);
+                        }
                         index = sequenceEnd;
                         continue;
                     }
@@ -230,9 +234,6 @@ public static class DiffRender
                 {
                     builder.Append(Reset);
                     inSelection = false;
-                }
-                if (!selected)
-                {
                     builder.Append(activeStyle);
                 }
                 builder.Append(element);

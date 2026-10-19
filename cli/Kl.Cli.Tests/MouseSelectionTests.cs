@@ -69,6 +69,16 @@ public sealed class MouseSelectionTests
     }
 
     [Fact]
+    public void SelectionDoesNotLeakColorPastAnsiReset()
+    {
+        var line = "plain \u001b[34mblue\u001b[0m tail";
+        var highlighted = DiffRender.Ansi.ApplySelection(line, 0, 5);
+
+        Assert.Contains("e\u001b[0m tail", highlighted);
+        Assert.DoesNotContain("\u001b[34m tail", highlighted);
+        Assert.EndsWith(DiffRender.Ansi.Reset, highlighted);
+    }
+    [Fact]
     public void ViewportMapsOnlyTranscriptRowsAndClampsDrag()
     {
         var viewport = new TranscriptViewport(3, 10, ["one", "two"]);

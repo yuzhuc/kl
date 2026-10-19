@@ -479,6 +479,19 @@ public sealed class ChatTuiTests
     }
 
     [Fact]
+    public void VisiblePromptIsNotDuplicatedByStickyHeader()
+    {
+        var state = new ChatTuiState();
+        state.Transcript.Add(new TranscriptEntry(TranscriptKind.User, "hi"));
+        state.Transcript.Add(new TranscriptEntry(TranscriptKind.Assistant, "hello"));
+
+        var lines = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state))
+            .Split('\n');
+
+        Assert.Equal(1, lines.Count(line => line.Contains("> hi", StringComparison.Ordinal)));
+        Assert.StartsWith("> hi", lines[0].TrimStart());
+    }
+    [Fact]
     public void ScrolledChatPinsTruncatedUserPrompt()
     {
         var state = new ChatTuiState("D:\\kl", "openai", "gpt-5", "s1");
@@ -816,18 +829,54 @@ public sealed class ChatTuiTests
             state.Transcript,
             entry => entry.Kind == TranscriptKind.Reasoning);
         Assert.Equal("secret", reasoning.Text);
-        var hidden = ChatTuiRenderer.Render(100, 24, state);
-        Assert.Contains("Thinking… (Ctrl+R to show)", hidden);
+        var hidden = DiffRender.Ansi.Strip(
+            ChatTuiRenderer.Render(100, 24, state));
+        Assert.Contains("▸ Thinking… (Ctrl+R to show)", hidden);
         Assert.DoesNotContain("secret", hidden);
 
         state.ToggleReasoning();
-        var visible = ChatTuiRenderer.Render(100, 24, state);
-        Assert.Contains("Thinking… secret", visible);
+        var visible = DiffRender.Ansi.Strip(
+            ChatTuiRenderer.Render(100, 24, state));
+        Assert.Contains("▾ Thinking…", visible);
+        Assert.Contains("  secret", visible);
+        Assert.DoesNotContain("Thinking… secret", visible);
+        var headerRow = visible.Split('\n')
+            .Select(line => line.TrimEnd())
+            .ToList()
+            .FindIndex(line => line.Contains("▾ Thinking…", StringComparison.Ordinal));
+        Assert.True(headerRow >= 0);
+        Assert.True(ChatTuiRenderer.ToggleTranscriptItemAt(state, 100, 24, headerRow));
+        Assert.Contains(
+            "▸ Thinking… (Ctrl+R to show)",
+            DiffRender.Ansi.Strip(ChatTuiRenderer.Render(100, 24, state)));
 
         state.ToggleReasoning();
-        Assert.Contains(
-            "Thinking… (Ctrl+R to show)",
+        state.CompleteReasoning();
+        var completed = DiffRender.Ansi.Strip(
             ChatTuiRenderer.Render(100, 24, state));
+        Assert.Contains("▾ Done thinking", completed);
+        Assert.Contains("  secret", completed);
+    }
+
+    [Fact]
+    public void AssistantDeltaCompletesChineseReasoning()
+    {
+        var state = new ChatTuiState();
+        state.Settings.SetLanguage(UiLanguage.ChineseSimplified);
+        state.Apply(new SessionEvent(SessionEventKind.TurnStarted));
+        state.Apply(new SessionEvent(
+            SessionEventKind.ReasoningDelta,
+            Text: "先检查文件"));
+        state.Apply(new SessionEvent(
+            SessionEventKind.AssistantDelta,
+            Text: "已经完成"));
+
+        var reasoning = Assert.Single(
+            state.Transcript,
+            entry => entry.Kind == TranscriptKind.Reasoning);
+        Assert.True(reasoning.IsComplete);
+        var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(100, 24, state));
+        Assert.Contains("▸ 完成思考（Ctrl+R 显示）", plain);
     }
 
     [Fact]

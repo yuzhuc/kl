@@ -216,7 +216,7 @@ public static class ChatTuiRenderer
         var lines = new List<string>();
         var toggles = new List<TranscriptToggle?>();
         var prompts = new List<UserPromptSpan>();
-        var hiddenReasoningShown = false;
+
 
         void Add(TranscriptLine line)
         {
@@ -254,30 +254,39 @@ public static class ChatTuiRenderer
             }
             if (entry.Kind == TranscriptKind.Reasoning)
             {
+                var title = entry.IsComplete
+                    ? ChatTexts.T(language, "Done thinking", "完成思考")
+                    : ChatTexts.T(language, "Thinking…", "思考中…");
+                var marker = state.ReasoningVisible ? "▾" : "▸";
+                var suffix = state.ReasoningVisible
+                    ? string.Empty
+                    : ChatTexts.T(language, " (Ctrl+R to show)", "（Ctrl+R 显示）");
+                var header = ColorLines(
+                    WrapPlain($"{marker} {title}{suffix}", width),
+                    DiffRender.Ansi.Dim);
+                for (var index = 0; index < header.Count; index++)
+                {
+                    Add(new TranscriptLine(
+                        header[index],
+                        index == 0
+                            ? new TranscriptToggle("reasoning", TranscriptToggleKind.Reasoning)
+                            : null));
+                }
                 if (!state.ReasoningVisible)
                 {
-                    if (hiddenReasoningShown)
-                    {
-                        continue;
-                    }
-                    hiddenReasoningShown = true;
-                    var hidden = ColorLines(
-                        WrapPlain(ChatTexts.ThinkingHidden(language), width),
-                        DiffRender.Ansi.Dim);
-                    for (var index = 0; index < hidden.Count; index++)
-                    {
-                        Add(new TranscriptLine(
-                            hidden[index],
-                            index == 0
-                                ? new TranscriptToggle("reasoning", TranscriptToggleKind.Reasoning)
-                                : null));
-                    }
                     continue;
                 }
 
-                AddPlain(ColorLines(
-                    WrapPlain(ChatTexts.ThinkingLabel(language) + entry.Text, width),
-                    DiffRender.Ansi.Dim));
+                var contentWidth = Math.Max(1, width - 2);
+                foreach (var contentLine in WrapPlain(entry.Text, contentWidth))
+                {
+                    Add(new TranscriptLine(contentLine.Length == 0
+                        ? string.Empty
+                        : DiffRender.Ansi.Dim +
+                            "  " +
+                            contentLine +
+                            DiffRender.Ansi.Reset));
+                }
                 continue;
             }
 
@@ -404,7 +413,10 @@ public static class ChatTuiRenderer
         UserPromptSpan? prompt = layout.Prompts.LastOrDefault(
             candidate => candidate.Start <= start);
         var contentHeight = bodyHeight;
-        if (prompt is not null && bodyHeight > 1)
+        var promptVisible = prompt is not null
+            && prompt.Start >= start
+            && prompt.Start < start + bodyHeight;
+        if (prompt is not null && !promptVisible && bodyHeight > 1)
         {
             contentHeight = bodyHeight - 1;
             start = Math.Max(0, lines.Count - contentHeight - scroll);
@@ -419,7 +431,9 @@ public static class ChatTuiRenderer
             .Take(contentHeight)
             .ToList();
         return new ChatTranscriptWindow(
-            prompt is null ? null : RenderStickyPrompt(prompt.Text, width),
+            prompt is null || promptVisible
+                ? null
+                : RenderStickyPrompt(prompt.Text, width),
             start,
             contentHeight,
             visible,
