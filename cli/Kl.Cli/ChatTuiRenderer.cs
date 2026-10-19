@@ -1540,15 +1540,81 @@ public static class ChatTuiRenderer
 
         var maximum = Math.Max(0, count - visible);
         var start = Math.Clamp(currentScroll, 0, maximum);
-        if (selected < start)
+        var margin = visible >= 3 ? 1 : 0;
+        if (selected < start + margin)
         {
-            start = selected;
+            start = selected - margin;
         }
-        else if (selected >= start + visible)
+        else if (selected > start + visible - 1 - margin)
         {
-            start = selected - visible + 1;
+            start = selected - visible + 1 + margin;
         }
         return Math.Clamp(start, 0, maximum);
+    }
+    public static bool TryClickPopupItemAt(
+        ChatTuiState state,
+        int width,
+        int height,
+        int screenRow)
+    {
+        if (state.Screen != ChatScreen.Chat)
+        {
+            return false;
+        }
+
+        width = Math.Max(20, width);
+        height = Math.Max(8, height);
+        var showHeader = IsHome(state);
+        var topMargin = showHeader ? 1 : 0;
+        var inputHeight = ComposerHeight(state, width, height);
+        var bodyHeight = Math.Max(
+            1,
+            height - topMargin - (showHeader ? 2 : 0) -
+            inputHeight - 1 - 1);
+        var bodyTop = topMargin + (showHeader ? 2 : 0);
+
+        if (ChatCommandPalette.IsOpen(state))
+        {
+            var overlay = RenderCommandPalette(state, width, bodyHeight);
+            var local = screenRow - (bodyTop + bodyHeight - overlay.Count);
+            if (local < 0 || local >= overlay.Count)
+            {
+                return false;
+            }
+            var matches = ChatCommandPalette.Matches(state.Input);
+            var index = state.CommandPaletteScroll + local;
+            if (index < 0 || index >= matches.Count)
+            {
+                return false;
+            }
+            state.CommandPaletteSelection = index;
+            state.Input = matches[index].Name + " ";
+            state.Cursor = state.Input.Length;
+            state.DismissCommandPalette();
+            return true;
+        }
+
+        if (MentionPicker.IsOpen(state))
+        {
+            var overlay = RenderMentionPicker(state, width, bodyHeight);
+            var local = screenRow - (bodyTop + bodyHeight - overlay.Count);
+            var availableRows = Math.Min(
+                MentionPicker.MaxVisible,
+                Math.Max(0, bodyHeight - 9));
+            var itemRow = local - 7;
+            var index = state.MentionPicker.Scroll + itemRow;
+            if (itemRow < 0
+                || itemRow >= availableRows
+                || index < 0
+                || index >= state.MentionPicker.Matches.Count)
+            {
+                return false;
+            }
+            state.MentionPicker.Selection = index;
+            return MentionPicker.Accept(state);
+        }
+
+        return false;
     }
     private static List<string> RenderCommandPalette(
         ChatTuiState state,

@@ -200,7 +200,7 @@ public sealed class ChatCommandPaletteTests
         Assert.Equal(bottomRow - 1, upwardRow);
     }
     [Fact]
-    public void MovingDownPinsHighlightToLastVisibleRow()
+    public void MovingDownScrollsAtSecondToLastVisibleRow()
     {
         var state = new ChatTuiState { Input = "/", Cursor = 1 };
         var lines = ChatTuiRenderer.CommandPaletteLines(state, 100);
@@ -212,8 +212,22 @@ public sealed class ChatCommandPaletteTests
 
         var selectedRow = lines.FindIndex(line =>
             line.StartsWith(DiffRender.Ansi.Inverse + "› ", StringComparison.Ordinal));
-        Assert.Equal(ChatCommandPalette.MaxVisible - 1, selectedRow);
-        Assert.Equal(1, state.CommandPaletteScroll);
+        Assert.Equal(ChatCommandPalette.MaxVisible - 2, selectedRow);
+        Assert.Equal(2, state.CommandPaletteScroll);
+    }
+    [Fact]
+    public void ClickingACommandPaletteItemFillsTheComposer()
+    {
+        var state = new ChatTuiState { Input = "/", Cursor = 1 };
+        var lines = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state))
+            .Split('\n');
+        var row = Enumerable.Range(0, lines.Length)
+            .Last(index => lines[index].Contains("/model", StringComparison.Ordinal));
+
+        Assert.True(ChatTuiRenderer.TryClickPopupItemAt(state, 80, 24, row));
+        Assert.Equal("/model ", state.Input);
+        Assert.Equal(state.Input.Length, state.Cursor);
+        Assert.False(ChatCommandPalette.IsOpen(state));
     }
     [Fact]
     public void UpDownControlPAndControlNCycleSelection()

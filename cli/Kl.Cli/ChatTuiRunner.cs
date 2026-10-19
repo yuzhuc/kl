@@ -1387,6 +1387,15 @@ public static class ChatTuiRunner
         switch (mouse.Kind)
         {
             case MouseInputKind.LeftDown:
+                if (ChatTuiRenderer.TryClickPopupItemAt(
+                        state,
+                        width,
+                        height,
+                        mouse.Row))
+                {
+                    state.ClearSelection();
+                    break;
+                }
                 if (ChatTuiRenderer.TryPlaceComposerCursorAt(
                         state,
                         width,
