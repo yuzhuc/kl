@@ -62,7 +62,7 @@ public static class ChatTuiRunner
                 SplashScreen.Update(
                     CanUseTui,
                     ChatTexts.StartupStage(language, "loading-transcript"));
-                await LoadTranscriptAsync(connection.Session, state, cancellationToken)
+                await LoadTranscriptAsync(connection.Session, options, state, cancellationToken)
                     .ConfigureAwait(false);
                 SplashScreen.Update(
                     CanUseTui,
@@ -93,6 +93,7 @@ public static class ChatTuiRunner
             var lastWidth = 0;
             var lastHeight = 0;
             var blinkSince = Environment.TickCount64;
+            string[]? lastFrame = null;
             while (!exit)
             {
                 var changed = false;
@@ -119,6 +120,7 @@ public static class ChatTuiRunner
                     state.CursorVisible = cursorVisible;
                     dirty = true;
                 }
+                var clearBeforeRender = forceClear;
                 if (forceClear)
                 {
                     Console.Out.Write("\u001b[0m\u001b[2J\u001b[H");
@@ -133,7 +135,17 @@ public static class ChatTuiRunner
                         lastWidth,
                         lastHeight))
                 {
-                    RenderFrame(width, height, state);
+                    var fullRedraw = clearBeforeRender
+                        || lastFrame is null
+                        || lastWidth == 0
+                        || width != lastWidth
+                        || height != lastHeight;
+                    lastFrame = RenderFrame(
+                        width,
+                        height,
+                        state,
+                        lastFrame,
+                        fullRedraw);
                     dirty = false;
                     lastWidth = width;
                     lastHeight = height;
@@ -662,6 +674,7 @@ public static class ChatTuiRunner
                                     currentLanguage);
                                 await LoadTranscriptAsync(
                                     connection.Session,
+                                    options,
                                     state,
                                     cancellationToken).ConfigureAwait(false);
                                 state.History = await LoadHistoryAsync(
@@ -697,6 +710,7 @@ public static class ChatTuiRunner
                                     newSessionLanguage);
                                 await LoadTranscriptAsync(
                                     connection.Session,
+                                    options,
                                     state,
                                     cancellationToken).ConfigureAwait(false);
                                 state.History = await LoadHistoryAsync(
@@ -1290,6 +1304,7 @@ public static class ChatTuiRunner
             state = NewState(connection.Session, options.Verbose, language);
             await LoadTranscriptAsync(
                 connection.Session,
+                options,
                 state,
                 cancellationToken).ConfigureAwait(false);
             state.History = await LoadHistoryAsync(connection.Session, state)
@@ -1341,6 +1356,7 @@ public static class ChatTuiRunner
             state = NewState(connection.Session, options.Verbose, language);
             await LoadTranscriptAsync(
                 connection.Session,
+                options,
                 state,
                 cancellationToken).ConfigureAwait(false);
             state.History = await LoadHistoryAsync(connection.Session, state)
@@ -1421,6 +1437,16 @@ public static class ChatTuiRunner
                         mouse.Row))
                 {
                     state.ClearSelection();
+                    break;
+                }
+                if (ChatTuiRenderer.TranscriptViewport(state, width, height) is { } headerViewport
+                    && headerViewport.TryGetHeaderTarget(mouse.Row, out var headerLine))
+                {
+                    ChatTuiRenderer.ScrollToTranscriptLine(
+                        state,
+                        width,
+                        height,
+                        headerLine);
                     break;
                 }
                 if (ChatTuiRenderer.ToggleTranscriptItemAt(
@@ -1879,6 +1905,7 @@ public static class ChatTuiRunner
 
     private static async Task LoadTranscriptAsync(
         KlSessionClient session,
+        CliOptions options,
         ChatTuiState state,
         CancellationToken cancellationToken)
     {
@@ -1886,7 +1913,11 @@ public static class ChatTuiRunner
         {
             var result = await session.HistoryAsync(20, cancellationToken)
                 .ConfigureAwait(false);
-            state.AddHistory(ChatTuiState.ParseHistory(result));
+            var reasoning = await LoadReasoningAsync(
+                options,
+                session.SessionId,
+                cancellationToken).ConfigureAwait(false);
+            state.AddHistory(ChatTuiState.ParseHistory(result), reasoning);
         }
         catch (Exception error)
             when (error is JsonRpcException or IOException or InvalidOperationException)
@@ -1894,6 +1925,33 @@ public static class ChatTuiRunner
             state.AddError(ChatTexts.HistoryUnavailable(
                 state.Language,
                 error.Message));
+        }
+    }
+
+    private static async Task<IReadOnlyList<HistoryReasoning>> LoadReasoningAsync(
+        CliOptions options,
+        string sessionId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var path = Path.Combine(
+                SettingsTuiRunner.HomePath(options),
+                "sessions",
+                sessionId,
+                "events.jsonl");
+            if (!File.Exists(path))
+            {
+                return [];
+            }
+            var lines = await File.ReadAllLinesAsync(path, cancellationToken)
+                .ConfigureAwait(false);
+            return ChatTuiState.ParseReasoningEvents(lines);
+        }
+        catch (Exception error)
+            when (error is IOException or UnauthorizedAccessException)
+        {
+            return [];
         }
     }
 
@@ -1963,12 +2021,55 @@ public static class ChatTuiRunner
             allow ? "已发送审批：允许" : "已发送审批：拒绝");
     }
 
-    private static void RenderFrame(int width, int height, ChatTuiState state)
+    public static string BuildFrameUpdate(
+        IReadOnlyList<string> previous,
+        IReadOnlyList<string> current)
     {
-        var frame = ChatTuiRenderer.Render(width, height, state)
-            .Replace("\n", Environment.NewLine, StringComparison.Ordinal);
-        Console.Out.Write("\u001b[H" + frame + "\u001b[0J");
+        var builder = new System.Text.StringBuilder();
+        for (var row = 0; row < current.Count; row++)
+        {
+            if (row < previous.Count
+                && string.Equals(previous[row], current[row], StringComparison.Ordinal))
+            {
+                continue;
+            }
+            builder.Append("\u001b[")
+                .Append(row + 1)
+                .Append(";1H")
+                .Append(current[row])
+                .Append("\u001b[0K");
+        }
+        for (var row = current.Count; row < previous.Count; row++)
+        {
+            builder.Append("\u001b[")
+                .Append(row + 1)
+                .Append(";1H\u001b[0K");
+        }
+        return builder.ToString();
+    }
+
+    private static string[] RenderFrame(
+        int width,
+        int height,
+        ChatTuiState state,
+        string[]? previous,
+        bool fullRedraw)
+    {
+        var frame = ChatTuiRenderer.Render(width, height, state);
+        var lines = frame.Split('\n');
+        if (fullRedraw || previous is null)
+        {
+            Console.Out.Write(
+                "\u001b[H" +
+                frame.Replace("\n", Environment.NewLine, StringComparison.Ordinal) +
+                "\u001b[0J");
+        }
+        else
+        {
+            Console.Out.Write(BuildFrameUpdate(previous, lines));
+        }
         Console.Out.Flush();
+        return lines;
     }
 
     private static string GetString(JsonElement element, string name) =>

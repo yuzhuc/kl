@@ -177,6 +177,23 @@ public static class ChatTuiRenderer
             column);
         return true;
     }
+    public static void ScrollToTranscriptLine(
+        ChatTuiState state,
+        int width,
+        int height,
+        int targetLine)
+    {
+        width = Math.Max(20, width);
+        height = Math.Max(8, height);
+        var bodyHeight = Math.Max(1, height - 2 - ComposerHeight(state, width, height));
+        var total = TranscriptLines(state, width).Count;
+        var maximum = Math.Max(0, total - bodyHeight);
+        state.TranscriptScroll = Math.Clamp(
+            total - bodyHeight - targetLine,
+            0,
+            maximum);
+        state.ClearSelection();
+    }
     public static int ComposerHeight(ChatTuiState state, int width, int height)
     {
         var (lines, _) = BuildComposerDisplay(state, width);
@@ -213,7 +230,8 @@ public static class ChatTuiRenderer
         return new TranscriptViewport(
             window.Header is null ? 0 : 1,
             window.Start,
-            window.Visible);
+            window.Visible,
+            window.HeaderLine);
     }
 
     public static bool ToggleTranscriptItemAt(
@@ -251,7 +269,33 @@ public static class ChatTuiRenderer
             return false;
         }
         state.ToggleTranscriptItem(toggle.Key);
+        if (toggle.Kind == TranscriptToggleKind.Reasoning)
+        {
+            KeepTranscriptStart(state, width, bodyHeight, window.Start);
+        }
         return true;
+    }
+
+    private static void KeepTranscriptStart(
+        ChatTuiState state,
+        int width,
+        int bodyHeight,
+        int targetStart)
+    {
+        var layout = BuildTranscriptLayout(state, width);
+        var maximum = Math.Max(0, layout.Lines.Count - bodyHeight);
+        state.TranscriptScroll = Math.Clamp(
+            layout.Lines.Count - bodyHeight - targetStart,
+            0,
+            maximum);
+        var window = BuildChatTranscriptWindow(state, width, bodyHeight, layout);
+        if (window.Start != targetStart)
+        {
+            state.TranscriptScroll = Math.Clamp(
+                state.TranscriptScroll + window.Start - targetStart,
+                0,
+                maximum);
+        }
     }
     public static List<string> TranscriptLines(ChatTuiState state, int width) =>
         BuildTranscriptLayout(state, width).Lines;
@@ -301,26 +345,25 @@ public static class ChatTuiRenderer
             }
             if (entry.Kind == TranscriptKind.Reasoning)
             {
-                var title = entry.IsComplete
-                    ? ChatTexts.T(language, "Done thinking", "完成思考")
-                    : ChatTexts.T(language, "Thinking…", "思考中…");
                 var key = ChatTuiState.ReasoningItemKey(entryIndex);
                 var expanded = state.IsTranscriptItemExpanded(key);
                 var marker = expanded ? "▾" : "▸";
-                var suffix = expanded
-                    ? string.Empty
-                    : ChatTexts.T(language, " (Ctrl+R to show)", "（Ctrl+R 显示）");
-                var header = ColorLines(
-                    WrapPlain($"{marker} {title}{suffix}", width),
-                    DiffRender.Ansi.Dim);
-                for (var index = 0; index < header.Count; index++)
+                var headerText = marker;
+                if (entry.IsComplete)
                 {
-                    Add(new TranscriptLine(
-                        header[index],
-                        index == 0
-                            ? new TranscriptToggle(key, TranscriptToggleKind.Reasoning)
-                            : null));
+                    headerText += " " + ChatTexts.T(language, "Done thinking", "完成思考");
                 }
+                else
+                {
+                    var preview = ReasoningPreview(entry.Text, Math.Max(1, width - 2));
+                    if (preview.Length > 0)
+                    {
+                        headerText += " " + preview;
+                    }
+                }
+                Add(new TranscriptLine(
+                    DiffRender.Ansi.Dim + headerText + DiffRender.Ansi.Reset,
+                    new TranscriptToggle(key, TranscriptToggleKind.Reasoning)));
                 if (!expanded)
                 {
                     continue;
@@ -334,7 +377,8 @@ public static class ChatTuiRenderer
                         : DiffRender.Ansi.Dim +
                             "  " +
                             contentLine +
-                            DiffRender.Ansi.Reset));
+                            DiffRender.Ansi.Reset,
+                        new TranscriptToggle(key, TranscriptToggleKind.Reasoning)));
                 }
                 continue;
             }
@@ -460,16 +504,14 @@ public static class ChatTuiRenderer
         var scroll = Math.Clamp(state.TranscriptScroll, 0, maximum);
         var start = Math.Max(0, lines.Count - bodyHeight - scroll);
         UserPromptSpan? prompt = layout.Prompts.LastOrDefault(
-            candidate => candidate.Start <= start);
+            candidate => candidate.Start < start);
         var contentHeight = bodyHeight;
-        var promptVisible = prompt is not null
-            && prompt.Start >= start
-            && prompt.Start < start + bodyHeight;
-        if (prompt is not null && !promptVisible && bodyHeight > 1)
+        if (prompt is not null && bodyHeight > 1)
         {
             contentHeight = bodyHeight - 1;
             start = Math.Max(0, lines.Count - contentHeight - scroll);
-            prompt = layout.Prompts.LastOrDefault(candidate => candidate.Start <= start) ?? prompt;
+            prompt = layout.Prompts.LastOrDefault(
+                candidate => candidate.Start < start) ?? prompt;
         }
         var visible = lines
             .Skip(start)
@@ -480,13 +522,24 @@ public static class ChatTuiRenderer
             .Take(contentHeight)
             .ToList();
         return new ChatTranscriptWindow(
-            prompt is null || promptVisible
-                ? null
-                : RenderStickyPrompt(prompt.Text, width),
+            prompt is null ? null : RenderStickyPrompt(prompt.Text, width),
             start,
             contentHeight,
             visible,
-            toggles);
+            toggles,
+            prompt?.Start);
+    }
+
+    private static string ReasoningPreview(string text, int width)
+    {
+        var normalized = (text ?? string.Empty)
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n');
+        var lastLine = normalized
+            .Split('\n')
+            .LastOrDefault(line => !string.IsNullOrWhiteSpace(line))
+            ?? string.Empty;
+        return DisplayText.TailToWidth(lastLine.Trim(), width);
     }
 
     private static string RenderStickyPrompt(string text, int width)
@@ -535,7 +588,8 @@ public static class ChatTuiRenderer
         int Start,
         int VisibleHeight,
         List<string> Visible,
-        List<TranscriptToggle?> Toggles);
+        List<TranscriptToggle?> Toggles,
+        int? HeaderLine);
 
     private static List<string> RenderHome(ChatTuiState state, int width)
     {

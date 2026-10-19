@@ -46,6 +46,29 @@ public static class DisplayText
         return builder.ToString();
     }
 
+    public static string TailToWidth(string? text, int maxWidth)
+    {
+        if (string.IsNullOrEmpty(text) || maxWidth <= 0)
+        {
+            return string.Empty;
+        }
+
+        var elements = Elements(text);
+        var start = elements.Count;
+        var used = 0;
+        for (var index = elements.Count - 1; index >= 0; index--)
+        {
+            var width = ElementWidth(elements[index]);
+            if (used + width > maxWidth)
+            {
+                break;
+            }
+            used += width;
+            start = index;
+        }
+        return string.Concat(elements[start..]);
+    }
+
     public static string Ellipsize(string? text, int maxWidth)
     {
         if (string.IsNullOrEmpty(text) || maxWidth <= 0)
