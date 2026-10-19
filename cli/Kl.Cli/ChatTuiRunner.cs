@@ -772,10 +772,30 @@ public static class ChatTuiRunner
                             }
                             break;
                         case ChatKeyAction.ScrollUp:
-                            state.ScrollTranscript(1, width, height);
+                            if (state.Screen == ChatScreen.Chat
+                                && ChatTuiRenderer.CanScrollInput(state, width, height))
+                            {
+                                state.SetInputScroll(
+                                    ChatTuiRenderer.CurrentInputScroll(state, width, height) - 1,
+                                    ChatTuiRenderer.MaxInputScroll(state, width, height));
+                            }
+                            else
+                            {
+                                state.ScrollTranscript(1, width, height);
+                            }
                             break;
                         case ChatKeyAction.ScrollDown:
-                            state.ScrollTranscript(-1, width, height);
+                            if (state.Screen == ChatScreen.Chat
+                                && ChatTuiRenderer.CanScrollInput(state, width, height))
+                            {
+                                state.SetInputScroll(
+                                    ChatTuiRenderer.CurrentInputScroll(state, width, height) + 1,
+                                    ChatTuiRenderer.MaxInputScroll(state, width, height));
+                            }
+                            else
+                            {
+                                state.ScrollTranscript(-1, width, height);
+                            }
                             break;
                         case ChatKeyAction.ApprovalAllow:
                             ResolveApproval(

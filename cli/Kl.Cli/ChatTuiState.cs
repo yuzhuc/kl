@@ -158,6 +158,8 @@ public sealed class ChatTuiState
     public bool Verbose { get; init; }
     public string Input { get; set; } = string.Empty;
     public int Cursor { get; set; }
+    public int InputScroll { get; private set; }
+    public bool InputScrollManual { get; private set; }
     public List<TranscriptEntry> Transcript { get; } = [];
     public int TranscriptScroll { get; set; }
     public bool IsTurnActive { get; set; }
@@ -198,6 +200,7 @@ public sealed class ChatTuiState
 
     public void Insert(char character)
     {
+        ResetInputScroll();
         Input = Input.Insert(Math.Clamp(Cursor, 0, Input.Length), character.ToString());
         Cursor = Math.Clamp(Cursor + 1, 0, Input.Length);
         ResetCommandPalette();
@@ -206,6 +209,7 @@ public sealed class ChatTuiState
 
     public void Backspace()
     {
+        ResetInputScroll();
         if (Cursor <= 0)
         {
             return;
@@ -218,6 +222,7 @@ public sealed class ChatTuiState
 
     public void Delete()
     {
+        ResetInputScroll();
         if (Cursor >= Input.Length)
         {
             return;
@@ -229,24 +234,28 @@ public sealed class ChatTuiState
 
     public void MoveCursorLeft()
     {
+        ResetInputScroll();
         Cursor = Math.Max(0, Cursor - 1);
         Kl.Cli.MentionPicker.Update(this);
     }
 
     public void MoveCursorRight()
     {
+        ResetInputScroll();
         Cursor = Math.Min(Input.Length, Cursor + 1);
         Kl.Cli.MentionPicker.Update(this);
     }
 
     public void MoveCursorHome()
     {
+        ResetInputScroll();
         Cursor = 0;
         Kl.Cli.MentionPicker.Update(this);
     }
 
     public void MoveCursorEnd()
     {
+        ResetInputScroll();
         Cursor = Input.Length;
         Kl.Cli.MentionPicker.Update(this);
     }
@@ -255,12 +264,24 @@ public sealed class ChatTuiState
 
     public void ClearInput()
     {
+        ResetInputScroll();
         Input = string.Empty;
         Cursor = 0;
         ResetCommandPalette();
         Kl.Cli.MentionPicker.Update(this);
     }
 
+    public void ResetInputScroll()
+    {
+        InputScroll = 0;
+        InputScrollManual = false;
+    }
+
+    public void SetInputScroll(int value, int maximum)
+    {
+        InputScroll = Math.Clamp(value, 0, Math.Max(0, maximum));
+        InputScrollManual = true;
+    }
     public void ToggleReasoning() => ReasoningVisible = !ReasoningVisible;
 
     public HistoryView GetHistoryView() =>

@@ -104,6 +104,22 @@ public static class ChatTuiRenderer
             TranscriptLines(state, Math.Max(20, width)).Count - bodyHeight);
     }
 
+    public static bool CanScrollInput(ChatTuiState state, int width, int height) =>
+        MaxInputScroll(state, width, height) > 0;
+
+    public static int MaxInputScroll(ChatTuiState state, int width, int height)
+    {
+        var (lines, _) = BuildComposerDisplay(state, width);
+        var visible = Math.Min(lines.Count, ComposerTextRowLimit(height));
+        return Math.Max(0, lines.Count - visible);
+    }
+
+    public static int CurrentInputScroll(ChatTuiState state, int width, int height)
+    {
+        var (lines, cursorRow) = BuildComposerDisplay(state, width);
+        var visible = Math.Min(lines.Count, ComposerTextRowLimit(height));
+        return EffectiveInputScroll(state, lines.Count, cursorRow, visible);
+    }
     public static int ComposerHeight(ChatTuiState state, int width, int height)
     {
         var (lines, _) = BuildComposerDisplay(state, width);
@@ -280,9 +296,10 @@ public static class ChatTuiRenderer
     private static string RenderHeaderPath(ChatTuiState state, int width)
     {
         var path = DisplayWorkspacePath(state);
+        var (_, pathColor) = ContextColors(state);
         var available = Math.Max(1, width - 5);
         return DiffRender.Ansi.Fit(
-            "     " + DiffRender.Ansi.Path +
+            "     " + pathColor +
             DisplayText.Ellipsize(path, available) + DiffRender.Ansi.Reset,
             width);
     }
@@ -809,14 +826,31 @@ public static class ChatTuiRenderer
             ? ChatTexts.UntitledTask(language)
             : session.Task.Trim();
 
-    private static string TaskTitleColor(string sessionId)
+    private static string TaskTitleColor(string sessionId) =>
+        TaskTitleColors[StableColorIndex(sessionId)];
+
+    private static (string ModelColor, string PathColor) ContextColors(ChatTuiState state)
+    {
+        var model = string.IsNullOrWhiteSpace(state.Provider)
+            ? "no provider configured"
+            : $"{state.Provider}/{state.Model}";
+        var modelIndex = StableColorIndex(model);
+        var pathIndex = StableColorIndex(DisplayWorkspacePath(state));
+        if (pathIndex == modelIndex)
+        {
+            pathIndex = (pathIndex + 1) % TaskTitleColors.Length;
+        }
+        return (TaskTitleColors[modelIndex], TaskTitleColors[pathIndex]);
+    }
+
+    private static int StableColorIndex(string value)
     {
         var hash = 14695981039346656037UL;
-        foreach (var character in sessionId)
+        foreach (var character in value)
         {
             hash = (hash ^ (byte)character) * 1099511628211UL;
         }
-        return TaskTitleColors[(int)(hash % (ulong)TaskTitleColors.Length)];
+        return (int)(hash % (ulong)TaskTitleColors.Length);
     }
 
     private static string WorkspaceLabel(string workspace) =>
@@ -1299,35 +1333,22 @@ public static class ChatTuiRenderer
     {
         var (lines, cursorRow) = BuildComposerDisplay(state, width);
         var visible = Math.Min(lines.Count, ComposerTextRowLimit(height));
-        var maxScroll = Math.Max(0, lines.Count - visible);
-        var scroll = Math.Clamp(cursorRow - visible + 1, 0, maxScroll);
-        if (cursorRow < scroll)
-        {
-            scroll = cursorRow;
-        }
+        var scroll = EffectiveInputScroll(state, lines.Count, cursorRow, visible);
 
-        var rows = new List<string>(visible + 2)
-        {
-            DiffRender.Ansi.ComposerBackground + new string(' ', width) + DiffRender.Ansi.Reset
-        };
+        var rule = DiffRender.Ansi.Secondary + new string('─', width) + DiffRender.Ansi.Reset;
+        var rows = new List<string>(visible + 2) { rule };
         for (var row = 0; row < visible; row++)
         {
             var index = scroll + row;
             var prefix = index == 0
-                ? "  " + DiffRender.Ansi.Bold + "›" + DiffRender.Ansi.Reset +
-                    DiffRender.Ansi.ComposerBackground + " "
-                : DiffRender.Ansi.ComposerBackground + "    ";
+                ? "  " + DiffRender.Ansi.Bold + "›" + DiffRender.Ansi.Reset + " "
+                : "    ";
             var content = state.Input.Length == 0
-                ? DiffRender.Ansi.Secondary + lines[index] +
-                    DiffRender.Ansi.ComposerBackground
-                : DiffRender.Ansi.Composer + lines[index];
-            rows.Add(
-                DiffRender.Ansi.ComposerBackground +
-                DiffRender.Ansi.Fit(prefix + content, width) +
-                DiffRender.Ansi.Reset);
+                ? DiffRender.Ansi.Secondary + lines[index] + DiffRender.Ansi.Reset
+                : lines[index];
+            rows.Add(DiffRender.Ansi.Fit(prefix + content, width));
         }
-        rows.Add(
-            DiffRender.Ansi.ComposerBackground + new string(' ', width) + DiffRender.Ansi.Reset);
+        rows.Add(rule);
         return rows;
     }
 
@@ -1362,6 +1383,21 @@ public static class ChatTuiRenderer
         return lines.Count == 0 ? new List<string> { string.Empty } : lines;
     }
 
+    private static int EffectiveInputScroll(
+        ChatTuiState state,
+        int lineCount,
+        int cursorRow,
+        int visible)
+    {
+        var maximum = Math.Max(0, lineCount - visible);
+        if (state.InputScrollManual)
+        {
+            return Math.Clamp(state.InputScroll, 0, maximum);
+        }
+
+        var scroll = Math.Clamp(cursorRow - visible + 1, 0, maximum);
+        return cursorRow < scroll ? cursorRow : scroll;
+    }
     private static int ComposerTextRowLimit(int height) =>
         Math.Clamp(height - 8, 1, 6);
 
@@ -1375,11 +1411,12 @@ public static class ChatTuiRenderer
                 ? string.Empty
                 : state.ReasoningEffort;
         var path = DisplayWorkspacePath(state);
-        var baseLine = "  " + DiffRender.Ansi.Bold + model +
+        var (modelColor, pathColor) = ContextColors(state);
+        var baseLine = "  " + modelColor + DiffRender.Ansi.Bold + model +
             DiffRender.Ansi.Reset;
         if (effort.Length > 0)
         {
-            baseLine += " " + DiffRender.Ansi.Cyan + effort + DiffRender.Ansi.Reset;
+            baseLine += " " + modelColor + effort + DiffRender.Ansi.Reset;
         }
         baseLine += DiffRender.Ansi.Secondary + " · " + DiffRender.Ansi.Reset;
         var remaining = width - DiffRender.Ansi.VisibleWidth(baseLine);
@@ -1388,7 +1425,7 @@ public static class ChatTuiRenderer
             : string.Empty;
         if (pathText.Length > 0)
         {
-            baseLine += DiffRender.Ansi.Path + pathText + DiffRender.Ansi.Reset;
+            baseLine += pathColor + pathText + DiffRender.Ansi.Reset;
         }
         return DiffRender.Ansi.Fit(baseLine, width);
     }
