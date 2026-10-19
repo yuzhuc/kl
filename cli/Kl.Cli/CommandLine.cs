@@ -107,7 +107,7 @@ public static class CommandLine
                     break;
                 case "--agent":
                     options.Agent = Next(args, ref i, arg);
-                    if (options.Agent is not ("build" or "plan" or "explore" or "review" or "verify" or "deep"))
+                    if (!ChatCommandPalette.IsValidAgentPreset(options.Agent))
                     {
                         throw new ArgumentException($"unknown agent preset: {options.Agent}");
                     }

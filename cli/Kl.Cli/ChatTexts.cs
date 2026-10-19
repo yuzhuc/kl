@@ -113,6 +113,24 @@ public static class ChatTexts
     public static string ModelDefaultSet(UiLanguage language, string provider, string model) =>
         T(language, $"default model: {provider}/{model}", $"默认模型：{provider}/{model}");
 
+    public static string AgentCurrent(UiLanguage language, string agent) =>
+        T(language, $"current agent preset: {agent}", $"当前 Agent preset：{agent}");
+
+    public static string AgentAvailable(UiLanguage language, string presets) =>
+        T(language, $"available presets: {presets}", $"可用 preset：{presets}");
+
+    public static string AgentSet(UiLanguage language, string agent) =>
+        T(language, $"agent preset set to {agent}", $"已切换 Agent preset：{agent}");
+
+    public static string UnknownAgent(
+        UiLanguage language,
+        string preset,
+        string presets) =>
+        T(
+            language,
+            $"unknown agent preset '{preset}'. available: {presets}",
+            $"未知 Agent preset '{preset}'。可用：{presets}");
+
     public static string SessionStatusTitle(UiLanguage language) =>
         T(language, "Session", "会话");
 

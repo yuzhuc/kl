@@ -147,13 +147,15 @@ public sealed class ChatTuiState
         string provider = "",
         string model = "",
         string sessionId = "",
-        bool verbose = false)
+        bool verbose = false,
+        string agent = "build")
     {
         Workspace = workspace;
         Provider = provider;
         Model = model;
         SessionId = sessionId;
         Verbose = verbose;
+        Agent = agent;
     }
 
     public ChatScreen Screen { get; set; } = ChatScreen.Chat;
@@ -161,6 +163,7 @@ public sealed class ChatTuiState
     public string Workspace { get; init; }
     public string Provider { get; set; }
     public string Model { get; set; }
+    public string Agent { get; set; } = "build";
     public string ReasoningEffort { get; set; } = string.Empty;
     public int WarningCount { get; set; }
     public string SessionId { get; set; }

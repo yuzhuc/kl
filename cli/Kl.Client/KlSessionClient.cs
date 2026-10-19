@@ -52,6 +52,8 @@ public sealed class KlSessionClient : IAsyncDisposable
     public string ReasoningEffort { get; }
     public int MessageCount { get; }
 
+    public void SetAgent(string? agent) => _sessionOptions.Agent = agent;
+
     public static async Task<KlSessionClient> StartAsync(
         KlClientOptions clientOptions,
         KlSessionOptions sessionOptions,

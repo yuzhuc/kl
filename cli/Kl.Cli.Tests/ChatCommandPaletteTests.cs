@@ -12,7 +12,7 @@ public sealed class ChatCommandPaletteTests
         state.Insert('/');
 
         Assert.True(ChatCommandPalette.IsOpen(state));
-        Assert.Equal(12, ChatCommandPalette.Matches(state.Input).Count);
+        Assert.Equal(13, ChatCommandPalette.Matches(state.Input).Count);
         Assert.Equal("/init", ChatCommandPalette.Selected(state)?.Name);
 
         var lines = ChatTuiRenderer.CommandPaletteLines(state, 100);
@@ -82,6 +82,39 @@ public sealed class ChatCommandPaletteTests
         Assert.Contains("/status", english);
         Assert.Contains("show current session configuration", english);
         Assert.DoesNotContain("查看当前会话配置", english);
+    }
+
+    [Fact]
+    public void AgentCommandSharesPresetDefinitionsAndValidation()
+    {
+        var command = ChatCommandPalette.FindExact("/agent");
+        Assert.NotNull(command);
+        Assert.Equal(ChatCommandKind.Agent, command!.Kind);
+        Assert.Contains("agent preset", command.EnglishDescription);
+        Assert.Contains("Agent preset", command.ChineseDescription);
+        Assert.Equal(
+            new[] { "build", "plan", "explore", "review", "verify", "deep" },
+            ChatCommandPalette.AgentPresets);
+        Assert.True(ChatCommandPalette.IsValidAgentPreset("deep"));
+        Assert.False(ChatCommandPalette.IsValidAgentPreset("nope"));
+        Assert.False(ChatCommandPalette.IsValidAgentPreset(null));
+    }
+
+    [Theory]
+    [InlineData("/agent", true, null)]
+    [InlineData("/agent plan", true, "plan")]
+    [InlineData(" /agent   deep ", true, "deep")]
+    [InlineData("/agent nope", true, "nope")]
+    [InlineData("/agents plan", false, null)]
+    public void AgentCommandParserAcceptsOptionalPreset(
+        string input,
+        bool expectedMatch,
+        string? expectedPreset)
+    {
+        Assert.Equal(
+            expectedMatch,
+            ChatTuiRunner.TryParseAgentCommand(input, out var preset));
+        Assert.Equal(expectedPreset, preset);
     }
 
     [Fact]
@@ -246,7 +279,7 @@ public sealed class ChatCommandPaletteTests
 
         ChatCommandPalette.MoveSelection(state, -1);
         Assert.Equal(
-            "/exit",
+            "/agent",
             ChatCommandPalette.Selected(state)?.Name);
 
         ChatCommandPalette.MoveSelection(state, 1);
