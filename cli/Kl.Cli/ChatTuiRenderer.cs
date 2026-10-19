@@ -325,11 +325,9 @@ public static class ChatTuiRenderer
                 var key = ChatTuiState.ReasoningItemKey(entryIndex);
                 var expanded = state.IsTranscriptItemExpanded(key);
                 var marker = expanded ? "▾" : "▸";
-                var suffix = expanded
-                    ? string.Empty
-                    : ChatTexts.T(language, " (Ctrl+R to show)", "（Ctrl+R 显示）");
+
                 var header = ColorLines(
-                    WrapPlain($"{marker} {title}{suffix}", width),
+                    WrapPlain($"{marker} {title}", width),
                     DiffRender.Ansi.Dim);
                 for (var index = 0; index < header.Count; index++)
                 {

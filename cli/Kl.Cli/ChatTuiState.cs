@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 
 namespace Kl.Cli;
@@ -99,6 +100,8 @@ public sealed record HistorySession(
     string? Prompt,
     string? LastMessage,
     string? ReasoningEffort = null);
+
+public sealed record HistoryReasoning(long StartSeq, long EndSeq, string Text);
 
 public sealed record HistoryMessage(
     string Role,
@@ -588,19 +591,45 @@ public sealed class ChatTuiState
     public void AddError(string text) =>
         Transcript.Add(new TranscriptEntry(TranscriptKind.Error, text));
 
-    public void AddHistory(IEnumerable<HistoryMessage> messages)
+    public void AddHistory(
+        IEnumerable<HistoryMessage> messages,
+        IReadOnlyList<HistoryReasoning>? reasoning = null)
     {
+        var emittedReasoning = new HashSet<long>();
+        void AddReasoning(long? seq)
+        {
+            if (reasoning is null || seq is null)
+            {
+                return;
+            }
+            var turn = reasoning.FirstOrDefault(item =>
+                seq.Value >= item.StartSeq && seq.Value <= item.EndSeq);
+            if (turn is null
+                || string.IsNullOrWhiteSpace(turn.Text)
+                || !emittedReasoning.Add(turn.StartSeq))
+            {
+                return;
+            }
+            Transcript.Add(new TranscriptEntry(
+                TranscriptKind.Reasoning,
+                turn.Text,
+                IsComplete: true));
+        }
+
         foreach (var message in messages)
         {
             switch (message.Role)
             {
                 case "user" when !string.IsNullOrWhiteSpace(message.Text):
                     Transcript.Add(new TranscriptEntry(TranscriptKind.User, message.Text));
+                    AddReasoning(message.Seq);
                     break;
                 case "assistant" when !string.IsNullOrWhiteSpace(message.Text):
+                    AddReasoning(message.Seq);
                     Transcript.Add(new TranscriptEntry(TranscriptKind.Assistant, message.Text));
                     break;
                 case "tool":
+                    AddReasoning(message.Seq);
                     var tool = message.ToolDisplay();
                     if (!string.IsNullOrWhiteSpace(tool))
                     {
@@ -808,6 +837,88 @@ public sealed class ChatTuiState
         ClearSelection();
         var maximum = ChatTuiRenderer.MaxTranscriptScroll(this, width, height);
         TranscriptScroll = Math.Clamp(TranscriptScroll + delta, 0, maximum);
+    }
+
+    public static List<HistoryReasoning> ParseReasoningEvents(IEnumerable<string> lines)
+    {
+        var turns = new List<HistoryReasoning>();
+        long? start = null;
+        var text = new StringBuilder();
+        var separateNext = false;
+        void Finish(long end)
+        {
+            if (start is { } startSeq && text.Length > 0)
+            {
+                turns.Add(new HistoryReasoning(startSeq, end, text.ToString().Trim()));
+            }
+            start = null;
+            text.Clear();
+            separateNext = false;
+        }
+
+        foreach (var line in lines)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+            JsonDocument document;
+            try
+            {
+                document = JsonDocument.Parse(line);
+            }
+            catch (JsonException)
+            {
+                continue;
+            }
+            using (document)
+            {
+                var root = document.RootElement;
+                if (!root.TryGetProperty("seq", out var seqValue)
+                    || !seqValue.TryGetInt64(out var seq)
+                    || !root.TryGetProperty("event", out var stored)
+                    || stored.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+                switch (GetString(stored, "type"))
+                {
+                    case "turn.started":
+                        Finish(seq - 1);
+                        start = seq;
+                        break;
+                    case "turn.reasoning":
+                        if (start is null)
+                        {
+                            break;
+                        }
+                        if (separateNext && text.Length > 0)
+                        {
+                            text.Append('\n');
+                        }
+                        text.Append(stored.TryGetProperty("data", out var data)
+                            ? GetString(data, "text")
+                            : string.Empty);
+                        separateNext = false;
+                        break;
+                    case "turn.completed":
+                    case "turn.failed":
+                        Finish(seq);
+                        break;
+                    default:
+                        if (start is not null && text.Length > 0)
+                        {
+                            separateNext = true;
+                        }
+                        break;
+                }
+            }
+        }
+        if (start is not null)
+        {
+            Finish(long.MaxValue);
+        }
+        return turns;
     }
 
     public static List<HistoryMessage> ParseHistory(JsonElement result)

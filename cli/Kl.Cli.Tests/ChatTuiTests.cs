@@ -1049,7 +1049,8 @@ public sealed class ChatTuiTests
         Assert.Equal("secret", reasoning.Text);
         var hidden = DiffRender.Ansi.Strip(
             ChatTuiRenderer.Render(100, 24, state));
-        Assert.Contains("▸ Thinking… (Ctrl+R to show)", hidden);
+        Assert.Contains("▸ Thinking…", hidden);
+        Assert.DoesNotContain("Ctrl+R to show", hidden);
         Assert.DoesNotContain("secret", hidden);
 
         state.ToggleReasoning();
@@ -1065,7 +1066,7 @@ public sealed class ChatTuiTests
         Assert.True(headerRow >= 0);
         Assert.True(ChatTuiRenderer.ToggleTranscriptItemAt(state, 100, 24, headerRow));
         Assert.Contains(
-            "▸ Thinking… (Ctrl+R to show)",
+            "▸ Thinking…",
             DiffRender.Ansi.Strip(ChatTuiRenderer.Render(100, 24, state)));
 
         state.ToggleReasoning();
@@ -1131,7 +1132,8 @@ public sealed class ChatTuiTests
             entry => entry.Kind == TranscriptKind.Reasoning);
         Assert.True(reasoning.IsComplete);
         var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(100, 24, state));
-        Assert.Contains("▸ 完成思考（Ctrl+R 显示）", plain);
+        Assert.Contains("▸ 完成思考", plain);
+        Assert.DoesNotContain("Ctrl+R 显示", plain);
     }
 
     [Fact]

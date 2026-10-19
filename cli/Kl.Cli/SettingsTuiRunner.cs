@@ -124,7 +124,7 @@ public static class SettingsTuiRunner
             .ConfigureAwait(false);
     }
 
-    private static string HomePath(CliOptions options)
+    internal static string HomePath(CliOptions options)
     {
         var home = options.HomePath;
         if (string.IsNullOrWhiteSpace(home))

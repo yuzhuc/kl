@@ -62,7 +62,7 @@ public static class ChatTuiRunner
                 SplashScreen.Update(
                     CanUseTui,
                     ChatTexts.StartupStage(language, "loading-transcript"));
-                await LoadTranscriptAsync(connection.Session, state, cancellationToken)
+                await LoadTranscriptAsync(connection.Session, options, state, cancellationToken)
                     .ConfigureAwait(false);
                 SplashScreen.Update(
                     CanUseTui,
@@ -674,6 +674,7 @@ public static class ChatTuiRunner
                                     currentLanguage);
                                 await LoadTranscriptAsync(
                                     connection.Session,
+                                    options,
                                     state,
                                     cancellationToken).ConfigureAwait(false);
                                 state.History = await LoadHistoryAsync(
@@ -709,6 +710,7 @@ public static class ChatTuiRunner
                                     newSessionLanguage);
                                 await LoadTranscriptAsync(
                                     connection.Session,
+                                    options,
                                     state,
                                     cancellationToken).ConfigureAwait(false);
                                 state.History = await LoadHistoryAsync(
@@ -1302,6 +1304,7 @@ public static class ChatTuiRunner
             state = NewState(connection.Session, options.Verbose, language);
             await LoadTranscriptAsync(
                 connection.Session,
+                options,
                 state,
                 cancellationToken).ConfigureAwait(false);
             state.History = await LoadHistoryAsync(connection.Session, state)
@@ -1353,6 +1356,7 @@ public static class ChatTuiRunner
             state = NewState(connection.Session, options.Verbose, language);
             await LoadTranscriptAsync(
                 connection.Session,
+                options,
                 state,
                 cancellationToken).ConfigureAwait(false);
             state.History = await LoadHistoryAsync(connection.Session, state)
@@ -1901,6 +1905,7 @@ public static class ChatTuiRunner
 
     private static async Task LoadTranscriptAsync(
         KlSessionClient session,
+        CliOptions options,
         ChatTuiState state,
         CancellationToken cancellationToken)
     {
@@ -1908,7 +1913,11 @@ public static class ChatTuiRunner
         {
             var result = await session.HistoryAsync(20, cancellationToken)
                 .ConfigureAwait(false);
-            state.AddHistory(ChatTuiState.ParseHistory(result));
+            var reasoning = await LoadReasoningAsync(
+                options,
+                session.SessionId,
+                cancellationToken).ConfigureAwait(false);
+            state.AddHistory(ChatTuiState.ParseHistory(result), reasoning);
         }
         catch (Exception error)
             when (error is JsonRpcException or IOException or InvalidOperationException)
@@ -1916,6 +1925,33 @@ public static class ChatTuiRunner
             state.AddError(ChatTexts.HistoryUnavailable(
                 state.Language,
                 error.Message));
+        }
+    }
+
+    private static async Task<IReadOnlyList<HistoryReasoning>> LoadReasoningAsync(
+        CliOptions options,
+        string sessionId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var path = Path.Combine(
+                SettingsTuiRunner.HomePath(options),
+                "sessions",
+                sessionId,
+                "events.jsonl");
+            if (!File.Exists(path))
+            {
+                return [];
+            }
+            var lines = await File.ReadAllLinesAsync(path, cancellationToken)
+                .ConfigureAwait(false);
+            return ChatTuiState.ParseReasoningEvents(lines);
+        }
+        catch (Exception error)
+            when (error is IOException or UnauthorizedAccessException)
+        {
+            return [];
         }
     }
 

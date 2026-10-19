@@ -83,6 +83,49 @@ public sealed class ResumeHistoryTests
         }
     }
 
+    [Fact]
+    public void PersistedReasoningIsRestoredWithItsTurn()
+    {
+        var messages = new List<HistoryMessage>
+        {
+            new("user", "old prompt", "", 2, null, null, null),
+            new("assistant", "old answer", "", 5, null, null, null),
+            new("user", "second prompt", "", 7, null, null, null),
+            new("assistant", "second answer", "", 9, null, null, null)
+        };
+        var lines = new[]
+        {
+            """{"seq":2,"event":{"type":"turn.started","data":{"turn_id":"t1"}}}""",
+            """{"seq":3,"event":{"type":"turn.reasoning","data":{"turn_id":"t1","text":"Check"}}}""",
+            """{"seq":4,"event":{"type":"turn.reasoning","data":{"turn_id":"t1","text":" files."}}}""",
+            """{"seq":5,"event":{"type":"turn.delta","data":{"turn_id":"t1","text":"old answer"}}}""",
+            """{"seq":6,"event":{"type":"turn.completed","data":{"turn_id":"t1"}}}""",
+            """{"seq":7,"event":{"type":"turn.started","data":{"turn_id":"t2"}}}""",
+            """{"seq":8,"event":{"type":"turn.delta","data":{"turn_id":"t2","text":"second answer"}}}""",
+            """{"seq":9,"event":{"type":"turn.completed","data":{"turn_id":"t2"}}}"""
+        };
+
+        var state = new ChatTuiState();
+        state.AddHistory(messages, ChatTuiState.ParseReasoningEvents(lines));
+
+        Assert.Collection(
+            state.Transcript,
+            entry => Assert.Equal(TranscriptKind.User, entry.Kind),
+            entry =>
+            {
+                Assert.Equal(TranscriptKind.Reasoning, entry.Kind);
+                Assert.Equal("Check files.", entry.Text);
+                Assert.True(entry.IsComplete);
+            },
+            entry => Assert.Equal(TranscriptKind.Assistant, entry.Kind),
+            entry => Assert.Equal(TranscriptKind.User, entry.Kind),
+            entry => Assert.Equal(TranscriptKind.Assistant, entry.Kind));
+
+        var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(100, 24, state));
+        Assert.Contains("▸ Done thinking", plain);
+        Assert.DoesNotContain("Ctrl+R to show", plain);
+    }
+
     private sealed class SilentPresenter : ISessionPresenter
     {
         public ValueTask OnEventAsync(
