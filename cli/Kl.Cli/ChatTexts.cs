@@ -23,11 +23,6 @@ public static class ChatTexts
     public static string DiffTitle(UiLanguage language) =>
         T(language, "[diff]", "[差异]");
 
-    public static string ThinkingLabel(UiLanguage language) =>
-        T(language, "▾ Thinking… ", "▾ 思考中… ");
-
-    public static string ThinkingHidden(UiLanguage language) =>
-        T(language, "▸ Thinking… (Ctrl+R to show)", "▸ 思考中…（Ctrl+R 显示）");
 
     public static string ApprovalTool(UiLanguage language) =>
         T(language, "tool", "工具");

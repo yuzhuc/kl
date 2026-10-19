@@ -85,7 +85,7 @@ public enum ChatKeyAction
     ModelPickerClose
 }
 
-public sealed record TranscriptEntry(TranscriptKind Kind, string Text);
+public sealed record TranscriptEntry(TranscriptKind Kind, string Text, bool IsComplete = false);
 
 public sealed record HistorySession(
     string SessionId,
@@ -263,6 +263,17 @@ public sealed class ChatTuiState
         Kl.Cli.MentionPicker.Update(this);
     }
 
+    public void CompleteReasoning()
+    {
+        for (var index = 0; index < Transcript.Count; index++)
+        {
+            if (Transcript[index].Kind == TranscriptKind.Reasoning
+                && !Transcript[index].IsComplete)
+            {
+                Transcript[index] = Transcript[index] with { IsComplete = true };
+            }
+        }
+    }
     public void ToggleReasoning() => ReasoningVisible = !ReasoningVisible;
 
     public bool IsTranscriptItemExpanded(string key) =>
@@ -586,6 +597,12 @@ public sealed class ChatTuiState
                 {
                     break;
                 }
+                if (!AssistantStarted
+                    || (Transcript.Count > 0
+                        && Transcript[^1].Kind == TranscriptKind.Reasoning))
+                {
+                    CompleteReasoning();
+                }
                 if (AssistantStarted
                     && Transcript.Count > 0
                     && Transcript[^1].Kind == TranscriptKind.Assistant)
@@ -613,7 +630,8 @@ public sealed class ChatTuiState
                 {
                     Transcript[^1] = Transcript[^1] with
                     {
-                        Text = Transcript[^1].Text + sessionEvent.Text
+                        Text = Transcript[^1].Text + sessionEvent.Text,
+                        IsComplete = false
                     };
                 }
                 else
@@ -624,6 +642,7 @@ public sealed class ChatTuiState
                 }
                 break;
             case SessionEventKind.ToolStarted:
+                CompleteReasoning();
                 Transcript.Add(new TranscriptEntry(
                     TranscriptKind.Tool,
                     $"{sessionEvent.Name} {sessionEvent.Args}".Trim()));
@@ -653,6 +672,7 @@ public sealed class ChatTuiState
                 }
                 break;
             case SessionEventKind.ApprovalRequested:
+                CompleteReasoning();
                 PendingApprovalId = sessionEvent.ApprovalId;
                 Transcript.Add(new TranscriptEntry(
                     TranscriptKind.Approval,
@@ -714,6 +734,7 @@ public sealed class ChatTuiState
 
     private void FinishTurn(string? status, string? text, bool failed)
     {
+        CompleteReasoning();
         if (failed)
         {
             if (!string.IsNullOrWhiteSpace(text))

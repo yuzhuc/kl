@@ -217,6 +217,76 @@ public sealed class ChatTuiTests
     }
 
     [Fact]
+    public void ComposerClickMovesCursorAcrossLines()
+    {
+        var state = new ChatTuiState
+        {
+            Input = "abc\ndef",
+            Cursor = 7
+        };
+        var lines = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state))
+            .Split('\n');
+        var firstRow = Array.FindIndex(
+            lines,
+            line => line.Contains("abc", StringComparison.Ordinal));
+        var secondRow = Array.FindIndex(
+            lines,
+            line => line.Contains("def|", StringComparison.Ordinal));
+        Assert.True(firstRow >= 0);
+        Assert.True(secondRow >= 0);
+
+        Assert.True(ChatTuiRenderer.TryPlaceComposerCursorAt(
+            state, 80, 24, 4, firstRow));
+        Assert.Equal(2, state.Cursor);
+
+        Assert.True(ChatTuiRenderer.TryPlaceComposerCursorAt(
+            state, 80, 24, 2, secondRow));
+        Assert.Equal(4, state.Cursor);
+    }
+
+    [Fact]
+    public void ComposerClickMapsSoftWrappedLines()
+    {
+        var state = new ChatTuiState
+        {
+            Input = new string('a', 35) + "bcdef",
+            Cursor = 40
+        };
+        var lines = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(40, 24, state))
+            .Split('\n');
+        var wrappedRow = Array.FindIndex(
+            lines,
+            line => line.Contains("bcdef|", StringComparison.Ordinal));
+        Assert.True(wrappedRow >= 0);
+
+        Assert.True(ChatTuiRenderer.TryPlaceComposerCursorAt(
+            state, 40, 24, 4, wrappedRow));
+        Assert.Equal(37, state.Cursor);
+    }
+    [Fact]
+    public void ComposerClickAccountsForTheRenderedCursorGlyph()
+    {
+        var state = new ChatTuiState
+        {
+            Input = "abcd",
+            Cursor = 2
+        };
+        var lines = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state))
+            .Split('\n');
+        var row = Array.FindIndex(
+            lines,
+            line => line.Contains("ab|cd", StringComparison.Ordinal));
+        Assert.True(row >= 0);
+
+        Assert.True(ChatTuiRenderer.TryPlaceComposerCursorAt(
+            state, 80, 24, 4, row));
+        Assert.Equal(2, state.Cursor);
+
+        Assert.True(ChatTuiRenderer.TryPlaceComposerCursorAt(
+            state, 80, 24, 6, row));
+        Assert.Equal(3, state.Cursor);
+    }
+    [Fact]
     public void LongMultilineInputCapsHeightAndFollowsCursor()
     {
         var state = new ChatTuiState();
@@ -478,6 +548,19 @@ public sealed class ChatTuiTests
         Assert.DoesNotContain("line-39", render);
     }
 
+    [Fact]
+    public void VisiblePromptIsNotDuplicatedByStickyHeader()
+    {
+        var state = new ChatTuiState();
+        state.Transcript.Add(new TranscriptEntry(TranscriptKind.User, "hi"));
+        state.Transcript.Add(new TranscriptEntry(TranscriptKind.Assistant, "hello"));
+
+        var lines = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state))
+            .Split('\n');
+
+        Assert.Equal(1, lines.Count(line => line.Contains("> hi", StringComparison.Ordinal)));
+        Assert.StartsWith("> hi", lines[0].TrimStart());
+    }
     [Fact]
     public void ScrolledChatPinsTruncatedUserPrompt()
     {
@@ -816,18 +899,54 @@ public sealed class ChatTuiTests
             state.Transcript,
             entry => entry.Kind == TranscriptKind.Reasoning);
         Assert.Equal("secret", reasoning.Text);
-        var hidden = ChatTuiRenderer.Render(100, 24, state);
-        Assert.Contains("Thinking… (Ctrl+R to show)", hidden);
+        var hidden = DiffRender.Ansi.Strip(
+            ChatTuiRenderer.Render(100, 24, state));
+        Assert.Contains("▸ Thinking… (Ctrl+R to show)", hidden);
         Assert.DoesNotContain("secret", hidden);
 
         state.ToggleReasoning();
-        var visible = ChatTuiRenderer.Render(100, 24, state);
-        Assert.Contains("Thinking… secret", visible);
+        var visible = DiffRender.Ansi.Strip(
+            ChatTuiRenderer.Render(100, 24, state));
+        Assert.Contains("▾ Thinking…", visible);
+        Assert.Contains("  secret", visible);
+        Assert.DoesNotContain("Thinking… secret", visible);
+        var headerRow = visible.Split('\n')
+            .Select(line => line.TrimEnd())
+            .ToList()
+            .FindIndex(line => line.Contains("▾ Thinking…", StringComparison.Ordinal));
+        Assert.True(headerRow >= 0);
+        Assert.True(ChatTuiRenderer.ToggleTranscriptItemAt(state, 100, 24, headerRow));
+        Assert.Contains(
+            "▸ Thinking… (Ctrl+R to show)",
+            DiffRender.Ansi.Strip(ChatTuiRenderer.Render(100, 24, state)));
 
         state.ToggleReasoning();
-        Assert.Contains(
-            "Thinking… (Ctrl+R to show)",
+        state.CompleteReasoning();
+        var completed = DiffRender.Ansi.Strip(
             ChatTuiRenderer.Render(100, 24, state));
+        Assert.Contains("▾ Done thinking", completed);
+        Assert.Contains("  secret", completed);
+    }
+
+    [Fact]
+    public void AssistantDeltaCompletesChineseReasoning()
+    {
+        var state = new ChatTuiState();
+        state.Settings.SetLanguage(UiLanguage.ChineseSimplified);
+        state.Apply(new SessionEvent(SessionEventKind.TurnStarted));
+        state.Apply(new SessionEvent(
+            SessionEventKind.ReasoningDelta,
+            Text: "先检查文件"));
+        state.Apply(new SessionEvent(
+            SessionEventKind.AssistantDelta,
+            Text: "已经完成"));
+
+        var reasoning = Assert.Single(
+            state.Transcript,
+            entry => entry.Kind == TranscriptKind.Reasoning);
+        Assert.True(reasoning.IsComplete);
+        var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(100, 24, state));
+        Assert.Contains("▸ 完成思考（Ctrl+R 显示）", plain);
     }
 
     [Fact]
@@ -858,7 +977,8 @@ public sealed class ChatTuiTests
         var state = new ChatTuiState();
         state.Transcript.Add(new TranscriptEntry(
             TranscriptKind.Assistant,
-            "# Heading\n- first **bold** and `code`\n> quoted\n---"));
+            "# Heading\n- first **bold** and `code`\n" +
+            "1. numbered\nSee [OpenAI](https://openai.com)\n> quoted\n---"));
 
         var render = ChatTuiRenderer.Render(80, 24, state);
         var plain = DiffRender.Ansi.Strip(render);
@@ -866,6 +986,9 @@ public sealed class ChatTuiTests
         Assert.Contains("• Heading", plain);
         Assert.DoesNotContain("# Heading", plain);
         Assert.Contains("• first bold and code", plain);
+        Assert.Contains("1. numbered", plain);
+        Assert.Contains("See OpenAI", plain);
+        Assert.DoesNotContain("https://", plain);
         Assert.DoesNotContain("**", plain);
         Assert.DoesNotContain("`", plain);
         Assert.Contains("│ quoted", plain);
@@ -873,6 +996,28 @@ public sealed class ChatTuiTests
         Assert.Contains(DiffRender.Ansi.Bold, render);
         Assert.Contains(DiffRender.Ansi.Cyan, render);
         Assert.Contains(DiffRender.Ansi.Secondary, render);
+        Assert.Contains(DiffRender.Ansi.Underline, render);
+    }
+    [Fact]
+    public void AssistantRendersMarkdownTable()
+    {
+        var state = new ChatTuiState();
+        state.Transcript.Add(new TranscriptEntry(
+            TranscriptKind.Assistant,
+            "Intro\n| Name | Value |\n| --- | --- |\n" +
+            "| alpha | 1 |\n| beta-long | 2 |"));
+
+        var render = ChatTuiRenderer.Render(60, 24, state);
+        var plain = DiffRender.Ansi.Strip(render);
+
+        Assert.Contains("│ Name", plain);
+        Assert.Contains("├", plain);
+        Assert.Contains("alpha", plain);
+        Assert.Contains("beta-long", plain);
+        Assert.DoesNotContain("| --- |", plain);
+        Assert.All(
+            render.Split('\n'),
+            line => Assert.True(DiffRender.Ansi.VisibleWidth(line) <= 60));
     }
     [Fact]
     public void DiffLinesAreColoredByKind()
@@ -1072,6 +1217,51 @@ public sealed class ChatTuiTests
         Assert.DoesNotContain("super-secret", plain);
     }
     [Fact]
+    public void ConsecutiveExplorationToolsCollapseIntoAGroup()
+    {
+        var state = new ChatTuiState();
+        state.Transcript.Add(new TranscriptEntry(
+            TranscriptKind.Tool,
+            "read_file {\"path\":\"a.txt\"}"));
+        state.Transcript.Add(new TranscriptEntry(
+            TranscriptKind.Tool,
+            "search_files {\"query\":\"needle\"}"));
+        state.Transcript.Add(new TranscriptEntry(
+            TranscriptKind.Tool,
+            "list_dir ."));
+
+        var collapsed = DiffRender.Ansi.Strip(
+            ChatTuiRenderer.Render(80, 24, state));
+        Assert.Contains("▸ Explored", collapsed);
+        Assert.Contains("  └ read_file", collapsed);
+        Assert.Contains("search_files", collapsed);
+        Assert.DoesNotContain("• Ran", collapsed);
+
+        state.ToggleTranscriptItem("toolgroup:0");
+        var expanded = DiffRender.Ansi.Strip(
+            ChatTuiRenderer.Render(80, 24, state));
+        Assert.Contains("▾ Explored", expanded);
+        Assert.Contains("• Ran read_file", expanded);
+    }
+
+    [Fact]
+    public void SingleOrNonExplorationToolsKeepCommandRows()
+    {
+        var state = new ChatTuiState();
+        state.Transcript.Add(new TranscriptEntry(
+            TranscriptKind.Tool,
+            "read_file {\"path\":\"a.txt\"}"));
+        state.Transcript.Add(new TranscriptEntry(
+            TranscriptKind.Tool,
+            "shell cargo test"));
+
+        var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state));
+
+        Assert.DoesNotContain("Explored", plain);
+        Assert.Contains("• Ran read_file", plain);
+        Assert.Contains("• Ran shell cargo test", plain);
+    }
+    [Fact]
     public void ParsesMissingHistoryFieldsAsEmpty()
     {
         using var document = JsonDocument.Parse(
@@ -1189,7 +1379,10 @@ public sealed class ChatTuiTests
         state.Transcript.Add(new TranscriptEntry(TranscriptKind.Reasoning, "先分析问题。"));
         state.Transcript.Add(new TranscriptEntry(
             TranscriptKind.Assistant,
-            "完成。\n## 标题\n- **重点** 与 `代码`\n> 引用\n```csharp\nvar answer = 42;\n```"));
+            "完成。\n## 标题\n- **重点** 与 `代码`\n" +
+            "1. 第一项\n见 [链接](https://example.com)\n> 引用\n" +
+            "| A | B |\n| --- | --- |\n| one | two |\n" +
+            "```csharp\nvar answer = 42;\n```"));
         state.Transcript.Add(new TranscriptEntry(TranscriptKind.Tool, "[ok] shell: exit 0"));
         state.Transcript.Add(new TranscriptEntry(TranscriptKind.Diff, "-old\n+new"));
         state.Transcript.Add(new TranscriptEntry(TranscriptKind.Error, "示例错误"));
