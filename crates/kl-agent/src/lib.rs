@@ -826,15 +826,39 @@ fn join_worker(worker: &mut Option<std::thread::JoinHandle<()>>, timeout: Durati
         std::thread::sleep(Duration::from_millis(20));
     }
 }
+const AGENTS_MD_LIMIT: usize = 16 * 1024;
+
 fn system_prompt(workspace: &std::path::Path) -> String {
-    format!(
+    let mut prompt = format!(
         "You are KL, a terminal coding agent. Work only inside the workspace at {}.\n\
          Inspect before editing. Use read_file, grep and glob to gather evidence; use edit_file \
          for exact replacements and write_file for new files. Use shell for builds/tests and git \
          for repository operations. Keep changes minimal, match existing style, and verify with \
          tests when practical. Never claim success without evidence.",
         workspace.display()
-    )
+    );
+    let agents_path = workspace.join("AGENTS.md");
+    let Ok(metadata) = std::fs::symlink_metadata(&agents_path) else {
+        return prompt;
+    };
+    if !metadata.file_type().is_file() {
+        return prompt;
+    }
+    let Ok(mut content) = std::fs::read_to_string(&agents_path) else {
+        return prompt;
+    };
+    if content.len() > AGENTS_MD_LIMIT {
+        let mut end = AGENTS_MD_LIMIT;
+        while !content.is_char_boundary(end) {
+            end -= 1;
+        }
+        content.truncate(end);
+        content.push_str("\n[AGENTS.md truncated]");
+    }
+    prompt.push_str("\n\nProject instructions from AGENTS.md:\n");
+    prompt.push_str(&content);
+    prompt.push('\n');
+    prompt
 }
 
 fn result_payload(ok: bool, summary: &str, output: &str, diff: Option<&str>) -> String {
@@ -1077,6 +1101,40 @@ mod tests {
             compact_threshold,
             max_output_tokens,
         )
+    }
+
+    #[test]
+    fn system_prompt_includes_agents_md() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("AGENTS.md"), "Use tabs.\n").unwrap();
+
+        let prompt = system_prompt(temp.path());
+
+        assert!(prompt.contains("Project instructions from AGENTS.md:\nUse tabs.\n"));
+    }
+
+    #[test]
+    fn system_prompt_ignores_missing_agents_md() {
+        let temp = tempfile::tempdir().unwrap();
+
+        let prompt = system_prompt(temp.path());
+
+        assert!(!prompt.contains("Project instructions from AGENTS.md"));
+    }
+
+    #[test]
+    fn system_prompt_truncates_agents_md_at_char_boundary() {
+        let temp = tempfile::tempdir().unwrap();
+        let content = format!("{}é", "a".repeat(AGENTS_MD_LIMIT - 1));
+        std::fs::write(temp.path().join("AGENTS.md"), content).unwrap();
+
+        let prompt = system_prompt(temp.path());
+
+        let expected = format!(
+            "{}\n[AGENTS.md truncated]\n",
+            "a".repeat(AGENTS_MD_LIMIT - 1)
+        );
+        assert!(prompt.ends_with(&expected));
     }
 
     fn test_agent(provider: Arc<dyn Provider>, metadata: ModelMetadata) -> Agent {
