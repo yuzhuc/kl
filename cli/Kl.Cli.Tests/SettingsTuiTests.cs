@@ -741,6 +741,54 @@ public sealed class SettingsTuiTests
     }
 
     [Fact]
+    public void SkillsGroupShowsReadOnlyListAndError()
+    {
+        var state = new SettingsTuiState();
+        state.Load(ParseSnapshot(
+            TwoModelProviderList(),
+            ConfigWithProvider(enabled: true)) with
+        {
+            Skills =
+            [
+                new SettingsSkill("alpha", "Alpha description"),
+                new SettingsSkill("beta", "Beta description")
+            ],
+            SkillsError = "skill.list failed: boom"
+        });
+        for (var index = 0; index < 3; index++)
+        {
+            state.HandleKey(Key(ConsoleKey.DownArrow));
+        }
+        state.HandleKey(Key(ConsoleKey.Tab, '\t'));
+
+        Assert.Equal(SettingsGroup.Skills, state.Group);
+        var render = SettingsTuiRenderer.Render(100, 24, state);
+        Assert.Contains("Skills unavailable: skill.list failed: boom", render);
+        Assert.Contains("alpha", render);
+        Assert.Contains("Alpha description", render);
+        Assert.Contains("beta", render);
+    }
+
+    [Fact]
+    public void SnapshotParsesSkillsList()
+    {
+        using var providers = JsonDocument.Parse(TwoModelProviderList());
+        using var config = JsonDocument.Parse(ConfigWithProvider(enabled: true));
+        using var skills = JsonDocument.Parse(
+            "{ \"skills\": [ { \"name\": \"zeta\", \"description\": \"Zeta description\" }, " +
+            "{ \"name\": \"alpha\", \"description\": \"Alpha description\" }, " +
+            "{ \"description\": \"missing name\" } ] }");
+
+        var snapshot = SettingsSnapshot.FromJson(
+            providers.RootElement,
+            config.RootElement,
+            skillList: skills.RootElement);
+
+        Assert.Equal(["alpha", "zeta"], snapshot.Skills.Select(skill => skill.Name));
+        Assert.Equal("Alpha description", snapshot.Skills[0].Description);
+    }
+
+    [Fact]
     public void ConfigGroupTogglesLanguageAndRendersChinese()
     {
         var state = new SettingsTuiState();

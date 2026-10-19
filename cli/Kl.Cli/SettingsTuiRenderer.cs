@@ -82,6 +82,10 @@ public static class SettingsTuiRenderer
         {
             return RenderAgent(state);
         }
+        if (state.Group == SettingsGroup.Skills)
+        {
+            return RenderSkills(state);
+        }
         if (state.Group != SettingsGroup.Model)
         {
             return ([SettingsTexts.Group(state.Group, state.Language)], -1);
@@ -443,6 +447,29 @@ public static class SettingsTuiRenderer
             lines.Add($"    max_output_tokens={model.MaxOutputTokens}");
         }
         return (lines, selectedLine);
+    }
+
+    private static (List<string> Lines, int SelectedLine) RenderSkills(
+        SettingsTuiState state)
+    {
+        var lines = new List<string>();
+        if (!string.IsNullOrWhiteSpace(state.Snapshot.SkillsError))
+        {
+            lines.Add(SettingsTexts.SkillsError(
+                state.Language,
+                state.Snapshot.SkillsError));
+        }
+        lines.Add(SettingsTexts.SkillsTitle(state.Language));
+        if (state.Snapshot.Skills.Count == 0)
+        {
+            lines.Add(SettingsTexts.SkillsEmpty(state.Language));
+            return (lines, -1);
+        }
+        foreach (var skill in state.Snapshot.Skills)
+        {
+            lines.Add("  " + skill.Name + "  " + skill.Description);
+        }
+        return (lines, -1);
     }
 
     private static (List<string> Lines, int SelectedLine) RenderPluginList(
