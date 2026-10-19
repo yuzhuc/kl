@@ -2203,6 +2203,7 @@ public static class ChatTuiRenderer
         var heading = false;
         var quote = false;
         var bullet = false;
+        var ordered = false;
         var marker = string.Empty;
         var hashes = 0;
         while (hashes < body.Length && body[hashes] == '#')
@@ -2230,6 +2231,23 @@ public static class ChatTuiRenderer
             marker = label.Length > 0 ? string.Empty : "• ";
             body = body[2..];
         }
+        else
+        {
+            var digits = 0;
+            while (digits < body.Length && char.IsAsciiDigit(body[digits]))
+            {
+                digits++;
+            }
+            if (digits > 0
+                && digits + 1 < body.Length
+                && body[digits] == '.'
+                && body[digits + 1] == ' ')
+            {
+                ordered = true;
+                marker = body[..(digits + 2)];
+                body = body[(digits + 2)..];
+            }
+        }
 
         var plain = label + indent + marker + body;
         var rendered = new List<TranscriptLine>();
@@ -2256,6 +2274,18 @@ public static class ChatTuiRenderer
                         "•" +
                         DiffRender.Ansi.Reset +
                         text[(markerIndex + 1)..];
+                }
+            }
+            else if (ordered)
+            {
+                var markerIndex = text.IndexOf(marker, StringComparison.Ordinal);
+                if (markerIndex >= 0)
+                {
+                    text = text[..markerIndex] +
+                        DiffRender.Ansi.Accent +
+                        marker +
+                        DiffRender.Ansi.Reset +
+                        text[(markerIndex + marker.Length)..];
                 }
             }
             rendered.Add(new TranscriptLine(text));
@@ -2292,6 +2322,21 @@ public static class ChatTuiRenderer
                     builder.Append(text, index + 2, end - index - 2);
                     builder.Append(DiffRender.Ansi.Reset);
                     index = end + 2;
+                    continue;
+                }
+            }
+            if (text[index] == '[')
+            {
+                var labelEnd = text.IndexOf("](", index + 1, StringComparison.Ordinal);
+                var linkEnd = labelEnd >= 0
+                    ? text.IndexOf(')', labelEnd + 2)
+                    : -1;
+                if (labelEnd > index + 1 && linkEnd > labelEnd + 2)
+                {
+                    builder.Append(DiffRender.Ansi.Underline);
+                    builder.Append(text, index + 1, labelEnd - index - 1);
+                    builder.Append(DiffRender.Ansi.Reset);
+                    index = linkEnd + 1;
                     continue;
                 }
             }

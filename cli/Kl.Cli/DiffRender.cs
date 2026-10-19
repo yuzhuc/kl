@@ -86,6 +86,7 @@ public static class DiffRender
         public const string Cyan = "\u001b[36m";
         public const string Inverse = "\u001b[7m";
         public const string Bold = "\u001b[1m";
+        public const string Underline = "\u001b[4m";
         public const string ResetForeground = "\u001b[39m";
         // Codex TUI palette.
         public const string Accent = "\u001b[38;2;99;168;248m";

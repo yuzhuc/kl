@@ -858,7 +858,8 @@ public sealed class ChatTuiTests
         var state = new ChatTuiState();
         state.Transcript.Add(new TranscriptEntry(
             TranscriptKind.Assistant,
-            "# Heading\n- first **bold** and `code`\n> quoted\n---"));
+            "# Heading\n- first **bold** and `code`\n" +
+            "1. numbered\nSee [OpenAI](https://openai.com)\n> quoted\n---"));
 
         var render = ChatTuiRenderer.Render(80, 24, state);
         var plain = DiffRender.Ansi.Strip(render);
@@ -866,6 +867,9 @@ public sealed class ChatTuiTests
         Assert.Contains("• Heading", plain);
         Assert.DoesNotContain("# Heading", plain);
         Assert.Contains("• first bold and code", plain);
+        Assert.Contains("1. numbered", plain);
+        Assert.Contains("See OpenAI", plain);
+        Assert.DoesNotContain("https://", plain);
         Assert.DoesNotContain("**", plain);
         Assert.DoesNotContain("`", plain);
         Assert.Contains("│ quoted", plain);
@@ -873,6 +877,7 @@ public sealed class ChatTuiTests
         Assert.Contains(DiffRender.Ansi.Bold, render);
         Assert.Contains(DiffRender.Ansi.Cyan, render);
         Assert.Contains(DiffRender.Ansi.Secondary, render);
+        Assert.Contains(DiffRender.Ansi.Underline, render);
     }
     [Fact]
     public void DiffLinesAreColoredByKind()
@@ -1189,7 +1194,9 @@ public sealed class ChatTuiTests
         state.Transcript.Add(new TranscriptEntry(TranscriptKind.Reasoning, "先分析问题。"));
         state.Transcript.Add(new TranscriptEntry(
             TranscriptKind.Assistant,
-            "完成。\n## 标题\n- **重点** 与 `代码`\n> 引用\n```csharp\nvar answer = 42;\n```"));
+            "完成。\n## 标题\n- **重点** 与 `代码`\n" +
+            "1. 第一项\n见 [链接](https://example.com)\n> 引用\n" +
+            "```csharp\nvar answer = 42;\n```"));
         state.Transcript.Add(new TranscriptEntry(TranscriptKind.Tool, "[ok] shell: exit 0"));
         state.Transcript.Add(new TranscriptEntry(TranscriptKind.Diff, "-old\n+new"));
         state.Transcript.Add(new TranscriptEntry(TranscriptKind.Error, "示例错误"));
