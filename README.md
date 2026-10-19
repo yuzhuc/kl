@@ -160,7 +160,7 @@ If no provider is configured, `kl` still opens the chat page and shows a hint to
 From the chat input, enter `/settings` or `/设置` to open the settings page. `/agent` shows or switches the active agent preset, `/skills` lists discovered skills, and `/mcp` lists registered MCP tools.
 The page uses a two-column layout: Model, Agent, Plugins, Skills and Config on
 the left, and the selected group on the right. Model, Plugins and Config are
-implemented; Agent exposes permission/reasoning settings, and Skills is a read-only placeholder. Use `/agent` in chat to switch the active preset. Use Up/Down to move,
+implemented; Agent exposes permission/reasoning settings, Skills lists discovered skills, and `/agent` switches the active preset. Use Up/Down to move,
 Tab/Shift+Tab to switch columns, Enter to edit or confirm, Esc to return,
 Ctrl+S to save, and F2 to save and exit.
 
