@@ -5,6 +5,7 @@
 //! approval responses.
 
 mod config;
+mod mcp;
 mod skills;
 
 pub use config::{
@@ -892,6 +893,12 @@ impl Core {
             home: context.home.clone(),
         }));
         register_plugin_adapters(&plugin_host, &router, &tools);
+        // shortcut: MCP startup handshake is capped at 10s; tool calls still use the agent timeout.
+        register_mcp_tools(
+            &context.home,
+            &tools,
+            Duration::from_secs(config.agent.command_timeout_secs.clamp(1, 10)),
+        );
         let store = Arc::new(SessionStore::new(context.home.join("sessions"))?);
         let audit = Arc::new(AuditLog::open(
             context.home.join("audit"),
@@ -2316,6 +2323,36 @@ fn register_plugin_adapters(
                     tools.register(Arc::new(tool));
                 }
             }
+        }
+    }
+}
+
+fn register_mcp_tools(home: &Path, tools: &Arc<ToolRegistry>, timeout: Duration) {
+    let config = match mcp::load_config(home) {
+        Ok(config) => config,
+        Err(error) => {
+            eprintln!(
+                "mcp: cannot read {}: {error}",
+                home.join("mcp.toml").display()
+            );
+            return;
+        }
+    };
+    for (name, server) in config.enabled_servers() {
+        let client = match mcp::McpClient::connect(server, timeout) {
+            Ok(client) => Arc::new(client),
+            Err(error) => {
+                eprintln!("mcp: server {name} unavailable: {error}");
+                continue;
+            }
+        };
+        match client.list_tools() {
+            Ok(specs) => {
+                for spec in specs {
+                    tools.register(Arc::new(mcp::McpTool::new(name, spec, client.clone())));
+                }
+            }
+            Err(error) => eprintln!("mcp: server {name} tools/list failed: {error}"),
         }
     }
 }
