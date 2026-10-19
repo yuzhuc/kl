@@ -123,6 +123,59 @@ public static class ChatTuiRenderer
             column);
         return true;
     }
+    public static bool TryPlaceComposerCursorAt(
+        ChatTuiState state,
+        int width,
+        int height,
+        int screenColumn,
+        int screenRow)
+    {
+        if (state.Screen != ChatScreen.Chat)
+        {
+            return false;
+        }
+
+        width = Math.Max(20, width);
+        height = Math.Max(8, height);
+        var inputHeight = ComposerHeight(state, width, height);
+        var top = height - 2 - inputHeight;
+        var localRow = screenRow - (top + 1);
+        if (localRow < 0)
+        {
+            return false;
+        }
+
+        var (lines, cursorRow) = BuildComposerDisplay(state, width);
+        var visible = Math.Min(lines.Count, ComposerTextRowLimit(height));
+        if (localRow >= visible)
+        {
+            return false;
+        }
+        var maximum = Math.Max(0, lines.Count - visible);
+        var scroll = Math.Clamp(cursorRow - visible + 1, 0, maximum);
+        if (cursorRow < scroll)
+        {
+            scroll = cursorRow;
+        }
+        var lineIndex = Math.Clamp(scroll + localRow, 0, lines.Count - 1);
+        var contentWidth = Math.Max(1, width - 5);
+        var ranges = WrapComposerRanges(state.Input, contentWidth);
+        lineIndex = Math.Min(lineIndex, ranges.Count - 1);
+        var range = ranges[lineIndex];
+        var column = Math.Max(0, screenColumn - 2);
+        var (renderedCursorRow, renderedCursorColumn) =
+            LocateComposerCursor(state.Input, ranges, state.Cursor);
+        if (lineIndex == renderedCursorRow && column > renderedCursorColumn)
+        {
+            column--;
+        }
+        state.Cursor = IndexAtVisualColumn(
+            state.Input,
+            range.Start,
+            range.End,
+            column);
+        return true;
+    }
     public static int ComposerHeight(ChatTuiState state, int width, int height)
     {
         var (lines, _) = BuildComposerDisplay(state, width);

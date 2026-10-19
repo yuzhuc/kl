@@ -217,6 +217,76 @@ public sealed class ChatTuiTests
     }
 
     [Fact]
+    public void ComposerClickMovesCursorAcrossLines()
+    {
+        var state = new ChatTuiState
+        {
+            Input = "abc\ndef",
+            Cursor = 7
+        };
+        var lines = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state))
+            .Split('\n');
+        var firstRow = Array.FindIndex(
+            lines,
+            line => line.Contains("abc", StringComparison.Ordinal));
+        var secondRow = Array.FindIndex(
+            lines,
+            line => line.Contains("def|", StringComparison.Ordinal));
+        Assert.True(firstRow >= 0);
+        Assert.True(secondRow >= 0);
+
+        Assert.True(ChatTuiRenderer.TryPlaceComposerCursorAt(
+            state, 80, 24, 4, firstRow));
+        Assert.Equal(2, state.Cursor);
+
+        Assert.True(ChatTuiRenderer.TryPlaceComposerCursorAt(
+            state, 80, 24, 2, secondRow));
+        Assert.Equal(4, state.Cursor);
+    }
+
+    [Fact]
+    public void ComposerClickMapsSoftWrappedLines()
+    {
+        var state = new ChatTuiState
+        {
+            Input = new string('a', 35) + "bcdef",
+            Cursor = 40
+        };
+        var lines = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(40, 24, state))
+            .Split('\n');
+        var wrappedRow = Array.FindIndex(
+            lines,
+            line => line.Contains("bcdef|", StringComparison.Ordinal));
+        Assert.True(wrappedRow >= 0);
+
+        Assert.True(ChatTuiRenderer.TryPlaceComposerCursorAt(
+            state, 40, 24, 4, wrappedRow));
+        Assert.Equal(37, state.Cursor);
+    }
+    [Fact]
+    public void ComposerClickAccountsForTheRenderedCursorGlyph()
+    {
+        var state = new ChatTuiState
+        {
+            Input = "abcd",
+            Cursor = 2
+        };
+        var lines = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state))
+            .Split('\n');
+        var row = Array.FindIndex(
+            lines,
+            line => line.Contains("ab|cd", StringComparison.Ordinal));
+        Assert.True(row >= 0);
+
+        Assert.True(ChatTuiRenderer.TryPlaceComposerCursorAt(
+            state, 80, 24, 4, row));
+        Assert.Equal(2, state.Cursor);
+
+        Assert.True(ChatTuiRenderer.TryPlaceComposerCursorAt(
+            state, 80, 24, 6, row));
+        Assert.Equal(3, state.Cursor);
+    }
+    [Fact]
     public void LongMultilineInputCapsHeightAndFollowsCursor()
     {
         var state = new ChatTuiState();

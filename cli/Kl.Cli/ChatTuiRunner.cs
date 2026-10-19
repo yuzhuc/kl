@@ -1380,6 +1380,16 @@ public static class ChatTuiRunner
         switch (mouse.Kind)
         {
             case MouseInputKind.LeftDown:
+                if (ChatTuiRenderer.TryPlaceComposerCursorAt(
+                        state,
+                        width,
+                        height,
+                        mouse.Column,
+                        mouse.Row))
+                {
+                    state.ClearSelection();
+                    break;
+                }
                 if (ChatTuiRenderer.ToggleTranscriptItemAt(
                         state,
                         width,
