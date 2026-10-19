@@ -429,6 +429,24 @@ public sealed class HistoryViewTests
         Assert.Contains("…", plain);
     }
     [Fact]
+    public void WorkspaceGroupCenterTruncatesLongPaths()
+    {
+        var workspace = "D:\\" + new string('a', 80) + "\\project";
+        var state = new ChatTuiState
+        {
+            Screen = ChatScreen.History,
+            HistorySelection = 0,
+            History = [Session("s1", workspace, "ready", "long path")]
+        };
+
+        var lines = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(60, 24, state))
+            .Split('\n');
+        var groupLine = lines.First(line => line.Contains("D:\\aaa", StringComparison.Ordinal));
+
+        Assert.Contains("…", groupLine);
+        Assert.Contains("project  1", groupLine);
+    }
+    [Fact]
     public void HistoryShowsScrollIndicatorsForLongLists()
     {
         var state = new ChatTuiState

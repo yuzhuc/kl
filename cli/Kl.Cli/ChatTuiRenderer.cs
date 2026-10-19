@@ -723,11 +723,17 @@ public static class ChatTuiRenderer
                 groupLines.Add(string.Empty);
             }
             firstGroup = false;
+            var groupLabel = HistoryGroupLabel(view, group, language);
+            var groupCount = group.Tasks.Count.ToString(CultureInfo.InvariantCulture);
+            var groupLabelWidth = Math.Max(
+                1,
+                width - DisplayText.Width(groupCount) - 2);
+            groupLabel = view.Grouping == HistoryGrouping.Workspace
+                ? CenterEllipsize(groupLabel, groupLabelWidth)
+                : DisplayText.Ellipsize(groupLabel, groupLabelWidth);
             groupLines.Add(
                 DiffRender.Ansi.Dim +
-                DiffRender.Ansi.Fit(
-                    HistoryGroupLabel(view, group, language) + "  " + group.Tasks.Count,
-                    width) +
+                DiffRender.Ansi.Fit(groupLabel + "  " + groupCount, width) +
                 DiffRender.Ansi.Reset);
             foreach (var task in group.Tasks)
             {
@@ -1054,6 +1060,26 @@ public static class ChatTuiRenderer
             DiffRender.Ansi.Reset;
     }
 
+    private static string CenterEllipsize(string text, int width)
+    {
+        if (width <= 0)
+        {
+            return string.Empty;
+        }
+        if (DisplayText.Width(text) <= width)
+        {
+            return text;
+        }
+        if (width == 1)
+        {
+            return "…";
+        }
+        var leftWidth = (width - 1) / 2;
+        var rightWidth = width - 1 - leftWidth;
+        return DisplayText.SliceToWidth(text, 0, leftWidth) +
+            "…" +
+            TailToWidth(text, rightWidth);
+    }
     private static string TailToWidth(string text, int width)
     {
         if (DisplayText.Width(text) <= width)
