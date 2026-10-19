@@ -903,6 +903,21 @@ public sealed class ChatTuiTests
     }
 
     [Fact]
+    public void DiffPreviewUsesFilePathAndStats()
+    {
+        var state = new ChatTuiState();
+        state.Transcript.Add(new TranscriptEntry(
+            TranscriptKind.Diff,
+            "--- a/src/a.cs\n+++ b/src/a.cs\n@@ hunk\n-old\n+new"));
+
+        var collapsed = ChatTuiRenderer.TranscriptLines(state, 100);
+
+        Assert.Contains(
+            "[diff] src/a.cs · +1 -1",
+            DiffRender.Ansi.Strip(collapsed[0]),
+            StringComparison.Ordinal);
+    }
+    [Fact]
     public void ApprovalCardRedactsSecretsAndHighlightsChoices()
     {
         var state = new ChatTuiState();

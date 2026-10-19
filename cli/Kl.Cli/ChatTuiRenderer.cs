@@ -2330,7 +2330,29 @@ public static class ChatTuiRenderer
         var count = rawLines.Length == 1
             ? ChatTexts.T(language, "1 line", "1 行")
             : ChatTexts.T(language, $"{rawLines.Length} lines", $"{rawLines.Length} 行");
-        var heading = $"{ChatTexts.DiffTitle(language)} · +{added} -{removed} · {count}";
+        var files = rawLines
+            .Where(line => line.StartsWith("+++ ", StringComparison.Ordinal))
+            .Select(line => line[4..].Trim().Split('\t')[0])
+            .Where(path => path.Length > 0
+                && !path.Equals("/dev/null", StringComparison.Ordinal))
+            .Select(path => path.StartsWith("b/", StringComparison.Ordinal)
+                ? path[2..]
+                : path)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        var subject = files.Count switch
+        {
+            1 => files[0],
+            > 1 => ChatTexts.T(
+                language,
+                $"{files.Count} files",
+                $"{files.Count} 个文件"),
+            _ => string.Empty
+        };
+        var stats = $"+{added} -{removed}";
+        var heading = subject.Length > 0
+            ? $"{ChatTexts.DiffTitle(language)} {subject} · {stats}"
+            : $"{ChatTexts.DiffTitle(language)} · {stats} · {count}";
         var result = new List<TranscriptLine>
         {
             new(
