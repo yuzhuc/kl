@@ -2235,11 +2235,8 @@ impl Core {
     fn skill_get(&mut self, params: Value) -> Result<Value, RpcError> {
         let params: SkillGetParams = parse_params(params, methods::SKILL_GET)?;
         let workspace = self.session_workspace(&params.session_id)?;
-        let policy = PolicyEngine::new(&workspace, self.effective_policy_config())
-            .map_err(|error| rpc_error(error_codes::INVALID_PARAMS, error.to_string()))?;
         let content =
-            skills::load_body(&self.context.home, &workspace, &policy, &params.name, false)
-                .map_err(skill_error)?;
+            skills::load_body(&self.context.home, &workspace, &params.name).map_err(skill_error)?;
         to_value(SkillGetResult {
             name: params.name,
             content,
@@ -4100,7 +4097,7 @@ max_iterations = 2
     }
 
     #[test]
-    fn skill_rpc_does_not_bypass_outside_workspace_policy() {
+    fn skill_rpc_loads_home_skill_body() {
         let temp = tempfile::tempdir().unwrap();
         let workspace = temp.path().join("workspace");
         std::fs::create_dir_all(&workspace).unwrap();
@@ -4123,11 +4120,11 @@ max_iterations = 2
         let list = core.skill_list(json!({"session_id": session_id})).unwrap();
         assert_eq!(list["skills"][0]["name"], "global");
 
-        let denied = core
+        let loaded = core
             .skill_get(json!({"session_id": session_id, "name": "global"}))
-            .unwrap_err();
-        assert_eq!(denied.code, error_codes::POLICY_DENIED);
-        assert!(denied.message.contains("outside the workspace"));
+            .unwrap();
+        assert_eq!(loaded["name"], "global");
+        assert_eq!(loaded["content"], "GLOBAL BODY\n");
     }
 
     #[test]
