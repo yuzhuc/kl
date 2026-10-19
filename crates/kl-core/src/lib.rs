@@ -5,6 +5,7 @@
 //! approval responses.
 
 mod config;
+mod skills;
 
 pub use config::{
     AgentPreset, Config, ConfigError, ProviderCatalog, QualityMode, RoleSettings,
@@ -887,6 +888,9 @@ impl Core {
             router.mark_disabled(disabled);
         }
         let tools = Arc::new(ToolRegistry::builtin());
+        tools.register(Arc::new(skills::SkillTool {
+            home: context.home.clone(),
+        }));
         register_plugin_adapters(&plugin_host, &router, &tools);
         let store = Arc::new(SessionStore::new(context.home.join("sessions"))?);
         let audit = Arc::new(AuditLog::open(
@@ -1661,6 +1665,8 @@ impl Core {
             (metadata, workspace, state.messages.clone(), provider)
         };
 
+        let skills_summary =
+            skills::summary_prompt(&skills::discover(&self.context.home, Path::new(&workspace)));
         let policy = Arc::new(
             PolicyEngine::new(PathBuf::from(&workspace), self.effective_policy_config())
                 .map_err(|error| rpc_error(error_codes::INVALID_PARAMS, error.to_string()))?,
@@ -1749,7 +1755,7 @@ impl Core {
                     base_turn_id: thread_turn.clone(),
                     default_provider: thread_metadata.provider.clone(),
                     default_model: thread_metadata.model.clone(),
-                    task: format!("{prompt_prefix}{prompt}"),
+                    task: format!("{skills_summary}{prompt_prefix}{prompt}"),
                     workspace: PathBuf::from(&workspace),
                     tool_access,
                 }
@@ -1764,7 +1770,7 @@ impl Core {
                     audit,
                     agent_config,
                 );
-                let prompt = format!("{prompt_prefix}{prompt}");
+                let prompt = format!("{skills_summary}{prompt_prefix}{prompt}");
                 let prompt = if quality == QualityMode::Fast {
                     format!("Work quickly and keep the response concise.\n{prompt}")
                 } else {
@@ -3880,6 +3886,42 @@ max_iterations = 2
         let first = history["messages"][0]["text"].as_str().unwrap();
         assert!(first.starts_with(AgentPreset::Plan.prompt_prefix()));
         assert!(first.ends_with("hello"));
+    }
+
+    #[test]
+    fn turn_start_prepends_discovered_skill_summaries() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = temp.path().join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let config = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let skill = home.path().join("skills").join("alpha");
+        std::fs::create_dir_all(&skill).unwrap();
+        std::fs::write(
+            skill.join("SKILL.md"),
+            "---\nname: alpha\ndescription: Alpha description\n---\nSECRET BODY\n",
+        )
+        .unwrap();
+        let (mut core, _) = new_test_core(config, home.path());
+        core.handshaken = true;
+        let created = core
+            .session_create(json!({"workspace": workspace.to_string_lossy()}))
+            .unwrap();
+        let session_id = created["session_id"].as_str().unwrap().to_owned();
+        core.turn_start(json!({
+            "session_id": session_id,
+            "prompt": "hello"
+        }))
+        .unwrap();
+        wait_for_threads(&mut core);
+        let history = core
+            .session_history(json!({"session_id": session_id}))
+            .unwrap();
+        let first = history["messages"][0]["text"].as_str().unwrap();
+        assert!(first.starts_with("alpha: Alpha description\n"));
+        assert!(first.ends_with("hello"));
+        assert_eq!(first.matches("Alpha description").count(), 1);
+        assert!(!first.contains("SECRET BODY"));
     }
 
     #[test]
