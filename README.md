@@ -137,12 +137,15 @@ without `.sha256` files.
 The current release matrix is:
 
 ```text
-Windows: win-x64, win-x86, win-arm64
+Windows: win-x64, win-arm64
 Linux:   linux-x64, linux-arm64
-macOS:   osx-x64, osx-arm64
+macOS:   osx-arm64
 ```
 
-The final RID list is still pending.
+The RID list is final: adding or removing a RID requires an ADR. See
+[`docs/adr/0011-release-rid-matrix.md`](docs/adr/0011-release-rid-matrix.md)
+and the release matrix in
+[`docs/architecture/overview.md`](docs/architecture/overview.md).
 
 ## Known gaps
 

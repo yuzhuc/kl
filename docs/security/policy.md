@@ -85,4 +85,4 @@ source of truth; SQLite is a query index.
 
 - Real provider/MCP live smoke still requires credentials or a local server.
 - MCP servers use the Core startup workspace, not a per-session workspace.
-- The final release RID list is not yet fixed.
+- The release RID list is fixed; adding a RID requires an ADR.

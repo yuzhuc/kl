@@ -124,6 +124,45 @@ const CHECKS = [
       ].filter(Boolean);
     },
   },
+  {
+    id: "release-matrix",
+    description: "The release RID matrix is identical in the workflow, README and packer",
+    failures(read) {
+      const workflow = read(".github/workflows/release.yml");
+      const readme = read("README.md");
+      const packer = read("scripts/package-format.mjs");
+      if (workflow === undefined || readme === undefined || packer === undefined) {
+        return ["release matrix: file is missing"];
+      }
+      const ridPattern = /\b(?:win|linux|osx)-[a-z0-9]+\b/g;
+      const workflowRids = [...workflow.matchAll(/^\s+(?:- )?rid: (\S+)$/gm)].map((match) => match[1]);
+      const readmeBlock = readme.match(/current release matrix is:[\s\S]*?```text([\s\S]*?)```/);
+      const readmeRids = readmeBlock === null ? [] : [...readmeBlock[1].matchAll(ridPattern)].map((m) => m[0]);
+      const packerRids = [...packer.matchAll(/^\s+"([a-z0-9-]+)": \{ kind:/gm)].map((match) => match[1]);
+      const problems = [];
+      for (const [label, rids] of [
+        [".github/workflows/release.yml", workflowRids],
+        ["README.md", readmeRids],
+        ["scripts/package-format.mjs", packerRids],
+      ]) {
+        if (rids.length === 0) problems.push(`${label}: expected a release RID list`);
+      }
+      const unique = (rids) => [...new Set(rids)].sort();
+      const expected = unique(workflowRids);
+      if (expected.length > 0) {
+        for (const [label, rids] of [
+          ["README.md", readmeRids],
+          ["scripts/package-format.mjs", packerRids],
+        ]) {
+          const actual = unique(rids);
+          if (actual.join(",") !== expected.join(",")) {
+            problems.push(`${label}: expected RIDs [${expected.join(", ")}], found [${actual.join(", ")}]`);
+          }
+        }
+      }
+      return problems;
+    },
+  },
 ];
 
 export function checkDocs(read) {
