@@ -5,8 +5,9 @@ use kl_audit::{AuditRecord, AuditSink};
 use kl_policy::{Effect, PolicyEngine, ToolAccess};
 use kl_protocol::{ApprovalDecision, CoreEvent};
 use kl_provider::{
-    CancellationToken, ChatEvent, ChatMessage, ChatOutcome, ChatRequest, ModelMetadata, Provider,
-    ProviderError, ProviderErrorKind, Role, ToolCall, ToolDefinition, Usage,
+    CancellationToken, ChatEvent, ChatMessage, ChatOutcome, ChatRequest, ContentPart,
+    ModelMetadata, Provider, ProviderError, ProviderErrorKind, Role, ToolCall, ToolDefinition,
+    Usage,
 };
 use kl_sandbox::SandboxManager;
 use kl_tools::{PolicyRequest, ToolContext, ToolError, ToolRegistry};
@@ -982,6 +983,9 @@ fn error_payload(message: &str) -> String {
 const MESSAGE_OVERHEAD_TOKENS: u64 = 8;
 const COMPACTION_MARKER_PREFIX: &str = "[KL context compacted: omitted ";
 const COMPACTION_MARKER_SUFFIX: &str = " older message(s)]";
+const TOOL_PRUNE_MARKER_PREFIX: &str = "[KL tool result pruned: ";
+const TOOL_PRUNE_MARKER_SUFFIX: &str = " chars]";
+const TOOL_PRUNE_THRESHOLD: usize = 2 * 1024;
 
 fn effective_context_budget(metadata: &ModelMetadata) -> u64 {
     let window = u64::from(metadata.context_window);
@@ -1006,11 +1010,24 @@ fn compact_history(
         .iter()
         .filter_map(compaction_omitted)
         .fold(0usize, usize::saturating_add);
-    let conversation = history
+    let mut conversation = history
         .iter()
         .filter(|message| message.role != Role::System && compaction_omitted(message).is_none())
         .cloned()
         .collect::<Vec<_>>();
+    let mut pruned = Vec::with_capacity(systems.len() + conversation.len());
+    pruned.extend(systems.iter().cloned());
+    pruned.extend(conversation.iter().cloned());
+    if estimate_history_tokens(system, tools, &pruned) < budget {
+        return Some(pruned);
+    }
+    prune_tool_results(&mut conversation);
+    pruned.clear();
+    pruned.extend(systems.iter().cloned());
+    pruned.extend(conversation.iter().cloned());
+    if estimate_history_tokens(system, tools, &pruned) < budget {
+        return Some(pruned);
+    }
     let round_starts = conversation
         .iter()
         .enumerate()
@@ -1040,6 +1057,21 @@ fn estimate_history_tokens(system: &str, tools: &[ToolDefinition], history: &[Ch
     request.system = system.to_owned();
     request.tools = tools.to_vec();
     estimate_context_tokens(&request)
+}
+
+fn prune_tool_results(conversation: &mut [ChatMessage]) {
+    for message in conversation {
+        if message.role != Role::Tool {
+            continue;
+        }
+        let length = message.text().chars().count();
+        if length <= TOOL_PRUNE_THRESHOLD {
+            continue;
+        }
+        message.content = vec![ContentPart::Text(format!(
+            "{TOOL_PRUNE_MARKER_PREFIX}{length}{TOOL_PRUNE_MARKER_SUFFIX}"
+        ))];
+    }
 }
 
 fn compaction_marker(omitted: usize) -> ChatMessage {
@@ -1709,6 +1741,42 @@ mod tests {
                 .filter(|message| message.role == Role::Tool)
                 .count(),
             1
+        );
+    }
+
+    #[test]
+    fn large_tool_results_are_pruned_before_dropping_rounds() {
+        let call = ToolCall {
+            id: "old-call".to_owned(),
+            name: "read_file".to_owned(),
+            arguments: "{\"path\":\"old.txt\"}".to_owned(),
+        };
+        let history = vec![
+            ChatMessage::system("persistent system"),
+            ChatMessage::user("old request"),
+            ChatMessage::assistant_with_text("", vec![call]),
+            ChatMessage::tool("old-call", "x".repeat(5000)),
+            ChatMessage::assistant_with_text("old answer", Vec::new()),
+            ChatMessage::user("latest request"),
+        ];
+        let mut expected = history.clone();
+        expected[3].content = vec![ContentPart::Text(format!(
+            "{TOOL_PRUNE_MARKER_PREFIX}5000{TOOL_PRUNE_MARKER_SUFFIX}"
+        ))];
+        let budget = estimate_history_tokens("", &[], &expected).saturating_add(1);
+
+        let compacted = compact_history(&history, "", &[], budget).unwrap();
+
+        assert_eq!(compacted, expected);
+        assert!(
+            compacted
+                .iter()
+                .all(|message| compaction_omitted(message).is_none())
+        );
+        assert!(
+            compacted
+                .iter()
+                .any(|message| message.text().contains(TOOL_PRUNE_MARKER_PREFIX))
         );
     }
 
