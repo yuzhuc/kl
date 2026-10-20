@@ -1,3 +1,5 @@
+# Release RID matrix (final): win-x64, win-arm64, linux-x64, linux-arm64,
+# osx-arm64. Adding or removing a RID requires an ADR.
 name: release
 
 on:
@@ -64,9 +66,6 @@ jobs:
           - rid: win-x64
             rust: x86_64-pc-windows-msvc
             msvc_arch: amd64
-          - rid: win-x86
-            rust: i686-pc-windows-msvc
-            msvc_arch: x86
           - rid: win-arm64
             rust: aarch64-pc-windows-msvc
             msvc_arch: amd64_arm64
@@ -99,7 +98,7 @@ jobs:
         run: node scripts/package.mjs --rid ${{ matrix.rid }} --rust-target ${{ matrix.rust }}
       - name: Verify package
         run: node scripts/verify-package.mjs --rid ${{ matrix.rid }}
-      - if: matrix.rid == 'win-x64' || matrix.rid == 'win-x86'
+      - if: matrix.rid == 'win-x64'
         name: Smoke test
         run: dist\${{ matrix.rid }}\kl.exe --version
       - uses: actions/upload-artifact@v4
@@ -164,9 +163,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
-            rid: osx-x64
-            rust: x86_64-apple-darwin
           - os: macos-14
             rid: osx-arm64
             rust: aarch64-apple-darwin

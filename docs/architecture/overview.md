@@ -114,6 +114,21 @@ commands use the same sandbox manager.
 terminal rendering and input. The GUI must reuse `Kl.Client` and the same
 session/events, not copy the agent loop or tool execution.
 
+## Release
+
+Releases are built only from pushes to `main` and are tagged `v<version>-relN`.
+The runtime identifier matrix is final:
+
+| Platform | RIDs |
+|---|---|
+| Windows | win-x64, win-arm64 |
+| Linux | linux-x64, linux-arm64 |
+| macOS | osx-arm64 |
+
+`scripts/package-format.mjs` accepts only these RIDs and verifies that the
+packaged binaries really match them. Adding or removing a RID requires an ADR
+([`../adr/0011-release-rid-matrix.md`](../adr/0011-release-rid-matrix.md)).
+
 ## Known gaps
 
 - Full GUI MVP.

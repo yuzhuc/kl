@@ -1,14 +1,14 @@
 import { closeSync, openSync, readSync } from "node:fs";
 
-// Every RID the release workflow is allowed to ship. A package must contain
-// binaries that really match its RID, so the layout is checked at pack time.
+// Every RID the release workflow is allowed to ship. This list is final:
+// win-x64, win-arm64, linux-x64, linux-arm64, osx-arm64. Adding or removing
+// a RID requires an ADR. A package must contain binaries that really match
+// its RID, so the layout is checked at pack time.
 const RID_LAYOUT = {
   "win-x64": { kind: "pe", machine: 0x8664, ext: ".zip", exe: "kl.exe", core: "kl-core.exe" },
-  "win-x86": { kind: "pe", machine: 0x014c, ext: ".zip", exe: "kl.exe", core: "kl-core.exe" },
   "win-arm64": { kind: "pe", machine: 0xaa64, ext: ".zip", exe: "kl.exe", core: "kl-core.exe" },
   "linux-x64": { kind: "elf", machine: 0x003e, ext: ".tar.gz", exe: "kl", core: "kl-core" },
   "linux-arm64": { kind: "elf", machine: 0x00b7, ext: ".tar.gz", exe: "kl", core: "kl-core" },
-  "osx-x64": { kind: "macho", cpu: 0x01000007, ext: ".tar.gz", exe: "kl", core: "kl-core" },
   "osx-arm64": { kind: "macho", cpu: 0x0100000c, ext: ".tar.gz", exe: "kl", core: "kl-core" },
 };
 
