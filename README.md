@@ -80,6 +80,28 @@ kl run "fix the failing test" --agent verify
 - Git
 - No Python is required or used.
 
+## Cross-platform packages
+
+`scripts/package.mjs` builds one RID at a time:
+
+```powershell
+node scripts/package.mjs --rid win-x64 --rust-target x86_64-pc-windows-msvc
+node scripts/package.mjs --rid linux-arm64 --rust-target aarch64-unknown-linux-musl --zig
+```
+
+The release workflow builds:
+
+```text
+Windows: win-x64, win-x86, win-arm64
+Linux:   linux-x64, linux-arm64, linux-arm
+macOS:   osx-x64, osx-arm64
+```
+
+Linux cross-builds use `cargo-zigbuild`; macOS packages are unsigned. `linux-x86`
+and 32-bit macOS are not supported by the current .NET 10 apphost. `kl` remains
+framework-dependent and needs .NET 10 Runtime on the target machine; `kl-core`
+is self-contained.
+
 ## Build and test
 
 Cross-platform JavaScript:

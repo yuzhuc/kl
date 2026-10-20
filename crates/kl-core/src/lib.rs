@@ -3639,7 +3639,12 @@ max_iterations = 2
 
         let status = core.session_status(json!({})).unwrap();
         assert_eq!(status["session_id"], session_id);
-        assert_eq!(status["workspace"], workspace.to_string_lossy().as_ref());
+        let expected_workspace = std::fs::canonicalize(&workspace).unwrap();
+        let expected_text = expected_workspace.to_string_lossy();
+        let expected_text = expected_text
+            .strip_prefix(r"\\?\")
+            .unwrap_or(expected_text.as_ref());
+        assert_eq!(status["workspace"], expected_text);
         assert_eq!(status["provider"], "scripted");
         assert_eq!(status["model"], "scripted");
         assert_eq!(status["context_window"], 8192);

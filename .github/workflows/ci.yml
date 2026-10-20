@@ -23,6 +23,8 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Rust clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Build sandbox runner
+        run: cargo build -p kl-sandbox --bins
       - name: Rust tests
         run: cargo test --workspace
       - name: Rust build

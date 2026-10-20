@@ -1,0 +1,82 @@
+name: release
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    name: ${{ matrix.rid }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            rust: x86_64-pc-windows-msvc
+          - os: windows-latest
+            rid: win-x86
+            rust: i686-pc-windows-msvc
+          - os: windows-latest
+            rid: win-arm64
+            rust: aarch64-pc-windows-msvc
+          - os: ubuntu-latest
+            rid: linux-x64
+            rust: x86_64-unknown-linux-musl
+            zig: true
+          - os: ubuntu-latest
+            rid: linux-arm64
+            rust: aarch64-unknown-linux-musl
+            zig: true
+          - os: ubuntu-latest
+            rid: linux-arm
+            rust: armv7-unknown-linux-musleabihf
+            zig: true
+          - os: macos-13
+            rid: osx-x64
+            rust: x86_64-apple-darwin
+          - os: macos-14
+            rid: osx-arm64
+            rust: aarch64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - if: matrix.zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.15.2
+      - if: matrix.zig
+        run: cargo install cargo-zigbuild --locked
+      - name: Package
+        run: node scripts/package.mjs --rid ${{ matrix.rid }} --rust-target ${{ matrix.rust }} ${{ matrix.zig && '--zig' || '' }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kl-${{ matrix.rid }}
+          path: dist/kl-${{ matrix.rid }}.*
+          if-no-files-found: error
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*

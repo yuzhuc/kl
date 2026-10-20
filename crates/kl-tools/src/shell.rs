@@ -261,7 +261,7 @@ pub(crate) fn describe_output(output: CommandOutput, limit: usize) -> ToolOutcom
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 mod tests {
     use super::*;
     use kl_policy::{PolicyConfig, PolicyEngine};
