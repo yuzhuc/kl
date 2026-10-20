@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { assertBinaryFormat, layoutFor, sha256File } from "./package-format.mjs";
+import { assertBinaryFormat, layoutFor } from "./package-format.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -69,8 +69,6 @@ if (rid.startsWith("win")) {
 assertBinaryFormat(path.join(output, layout.exe), rid);
 assertBinaryFormat(path.join(output, layout.core), rid);
 
-const digest = await sha256File(archive);
-const checksum = `${archive}.sha256`;
-writeFileSync(checksum, `${digest}  ${path.basename(archive)}\n`);
+rmSync(`${archive}.sha256`, { force: true });
 
-console.log(`\nPackaged ${output}\nArchive ${archive}\nChecksum ${checksum}`);
+console.log(`\nPackaged ${output}\nArchive ${archive}`);

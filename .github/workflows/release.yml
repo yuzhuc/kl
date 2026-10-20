@@ -1,15 +1,63 @@
 name: release
 
 on:
-  workflow_dispatch:
   push:
-    tags: ["v*"]
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+      series: ${{ steps.version.outputs.series }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: version
+        name: Resolve release tag
+        shell: bash
+        run: |
+          version="$(awk '/^\[workspace.package\]/{found=1; next} found && /^version *=/{gsub(/[" ]/, "", $3); print $3; exit}' Cargo.toml)"
+          if [ -z "$version" ]; then
+            echo "cannot read workspace version from Cargo.toml" >&2
+            exit 1
+          fi
+          git fetch --tags --force
+          base="v${version}"
+          if git rev-parse -q --verify "refs/tags/${base}" >/dev/null; then
+            max=0
+            for existing in $(git tag --list "${base}-rs*"); do
+              n="${existing##*-rs}"
+              case "$n" in
+                ''|*[!0-9]*) continue ;;
+              esac
+              if [ "$n" -gt "$max" ]; then max="$n"; fi
+            done
+            tag="${base}-rs$((max + 1))"
+          else
+            tag="${base}"
+          fi
+          major_minor="$(printf '%s' "$version" | awk -F. '{print $1 "." $2}')"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "series=v${major_minor}." >> "$GITHUB_OUTPUT"
+      - name: Create tag at this commit
+        shell: bash
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "${TAG}"
+          git push origin "refs/tags/${TAG}"
+
   windows:
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -62,6 +110,7 @@ jobs:
           if-no-files-found: error
 
   linux:
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -111,6 +160,7 @@ jobs:
           if-no-files-found: error
 
   macos:
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -152,8 +202,8 @@ jobs:
           if-no-files-found: error
 
   publish:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows, linux, macos]
+    if: needs.windows.result == 'success' && needs.linux.result == 'success' && needs.macos.result == 'success'
+    needs: [prepare, windows, linux, macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -162,4 +212,45 @@ jobs:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: ${{ needs.prepare.outputs.tag }}
+          generate_release_notes: true
           files: artifacts/*
+
+  cleanup:
+    needs: [prepare, publish]
+    if: needs.publish.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      KEEP_PREFIX: ${{ needs.prepare.outputs.series }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Delete releases outside the current version series
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release list --limit 1000 --json tagName --jq '.[].tagName' |
+          while IFS= read -r tag; do
+            [ -z "$tag" ] && continue
+            case "$tag" in
+              "${KEEP_PREFIX}"*) echo "keep release $tag" ;;
+              *) echo "delete release $tag"; gh release delete "$tag" --yes --cleanup-tag ;;
+            esac
+          done
+      - name: Delete tags outside the current version series
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          git tag --list 'v*' | while IFS= read -r tag; do
+            [ -z "$tag" ] && continue
+            case "$tag" in
+              "${KEEP_PREFIX}"*) ;;
+              *) echo "delete tag $tag"; git push origin "refs/tags/$tag" --delete || true ;;
+            esac
+          done

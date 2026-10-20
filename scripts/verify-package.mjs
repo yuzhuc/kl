@@ -1,8 +1,8 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { assertBinaryFormat, layoutFor, sha256File } from "./package-format.mjs";
+import { assertBinaryFormat, layoutFor } from "./package-format.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -20,7 +20,6 @@ if (!rid) throw new Error("usage: node scripts/verify-package.mjs --rid <rid> [-
 const layout = layoutFor(rid);
 const output = path.resolve(root, option("--output", path.join("dist", rid)));
 const archive = path.join(root, "dist", `kl-${rid}${layout.ext}`);
-const checksum = `${archive}.sha256`;
 const problems = [];
 
 function requireFile(file, label) {
@@ -31,11 +30,7 @@ function requireFile(file, label) {
   return true;
 }
 
-if (requireFile(archive, "archive") && requireFile(checksum, "checksum file")) {
-  const expected = readFileSync(checksum, "utf8").trim().split(/\s+/)[0];
-  const actual = await sha256File(archive);
-  if (expected !== actual) problems.push(`checksum mismatch for ${archive}: ${expected} != ${actual}`);
-}
+requireFile(archive, "archive");
 
 for (const [file, label] of [
   [path.join(output, layout.exe), "cli executable"],
