@@ -4,6 +4,7 @@
 mod diff;
 mod files;
 mod jobs;
+mod memory;
 mod pty;
 mod search;
 mod shell;
@@ -11,6 +12,7 @@ mod worktree;
 
 pub use files::{EditFileTool, ReadFileTool, WriteFileTool};
 pub use jobs::JobTool;
+pub use memory::MemoryTool;
 pub use search::{GlobTool, GrepTool};
 pub use shell::{GitTool, ShellTool};
 pub use worktree::WorktreeTool;
@@ -166,6 +168,7 @@ impl ToolRegistry {
             Arc::new(GitTool),
             Arc::new(WorktreeTool),
             Arc::new(JobTool::new()),
+            Arc::new(MemoryTool),
         ];
         Self {
             tools: RwLock::new(
@@ -285,6 +288,24 @@ mod tests {
         let job = registry.get("job").unwrap();
         assert!(job.read_only(&json!({"action": "status", "job_id": "job-1"})));
         assert!(job.read_only(&json!({"action": "list"})));
+
+        let memory = registry.get("memory").unwrap();
+        for args in [
+            json!({"action": "list"}),
+            json!({"action": "read", "name": "notes.md"}),
+        ] {
+            assert!(memory.read_only(&args), "{args}");
+            assert!(memory.concurrency_safe(&args), "{args}");
+            assert!(!memory.destructive(&args), "{args}");
+        }
+        for args in [
+            json!({"action": "write", "name": "notes.md", "content": "x"}),
+            json!({"action": "delete", "name": "notes.md"}),
+        ] {
+            assert!(!memory.read_only(&args), "{args}");
+            assert!(!memory.concurrency_safe(&args), "{args}");
+            assert!(memory.destructive(&args), "{args}");
+        }
 
         for name in ["write_file", "edit_file", "shell", "git", "worktree", "job"] {
             let tool = registry.get(name).unwrap();
