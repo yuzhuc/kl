@@ -113,11 +113,14 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          cargo test --workspace 2>&1 | tee rust-tests.log
+          cargo test --workspace --no-fail-fast 2>&1 | tee rust-tests.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
-            grep -E "FAILED|panicked at|assertion.*failed" rust-tests.log | head -30 | while IFS= read -r line; do
+            grep -E "FAILED|panicked at|assertion|error:|error\[|test result: FAILED" rust-tests.log | head -40 | while IFS= read -r line; do
               echo "::error title=rust test::$line"
+            done
+            tail -n 20 rust-tests.log | while IFS= read -r line; do
+              echo "::error title=rust tail::$line"
             done
           fi
           exit "$status"
