@@ -2,8 +2,9 @@
 //!
 //! The AppContainer token has no filesystem access outside the ACL roots
 //! granted here. The kill-on-close job object keeps descendants attached to
-//! the same lifetime. Network capabilities are deliberately not granted; full
-//! network isolation is not claimed because it is not verified by this build.
+//! the same lifetime. Network capabilities are deliberately not granted, so
+//! the OS denies network access; loopback TCP denial is verified by the
+//! `appcontainer_network` integration test.
 
 use crate::{
     SandboxBackend, SandboxCapabilities, SandboxConfig, SandboxError, SandboxPolicy, SandboxProbe,

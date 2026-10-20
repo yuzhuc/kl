@@ -205,9 +205,9 @@ See `schemas/protocol/v1/`, `schemas/plugin/manifest-v1.schema.json` and
 
 ## Deliberate gaps
 
-- Windows has AppContainer filesystem and child-process isolation. Network
-  isolation is not verified; the policy allowlist remains active. Linux and
-  macOS report an unimplemented OS backend and strict mode fails closed.
+- Windows has AppContainer filesystem, child-process, and network isolation;
+  the policy allowlist remains active. Linux and macOS report an unimplemented
+  OS backend and strict mode fails closed.
 - WASM tool plugins are implemented; WASM providers are not.
 - PTY is not implemented. Background jobs are process-local and are not
   persisted across Core restarts.
