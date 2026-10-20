@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone)]
 pub struct AgentConfig {
@@ -38,6 +38,39 @@ impl Default for AgentConfig {
             max_total_tokens: 0,
             tool_access: ToolAccess::Full,
         }
+    }
+}
+
+/// Retry policy for transient provider failures.
+#[derive(Debug, Clone, Copy)]
+struct RetryPolicy {
+    /// Provider attempts per request, including the first one.
+    max_attempts: u32,
+    /// Nominal wait before the second attempt; every further wait doubles it.
+    base_delay: Duration,
+}
+
+impl Default for RetryPolicy {
+    fn default() -> Self {
+        Self {
+            max_attempts: 3,
+            base_delay: Duration::from_millis(250),
+        }
+    }
+}
+
+impl RetryPolicy {
+    /// Nominal cap of the wait before the attempt that follows `retry`
+    /// retries (0-based).
+    fn cap(&self, retry: u32) -> Duration {
+        self.base_delay.saturating_mul(1u32 << retry.min(16))
+    }
+
+    /// Wait before the attempt that follows `retry` retries (0-based). Equal
+    /// jitter spreads retries out while staying under the nominal delay.
+    fn delay(&self, retry: u32) -> Duration {
+        let cap = self.cap(retry);
+        cap / 2 + jitter(cap / 2)
     }
 }
 
@@ -135,6 +168,7 @@ pub struct Agent {
     sandbox: Arc<SandboxManager>,
     audit: Arc<dyn AuditSink>,
     config: AgentConfig,
+    retry: RetryPolicy,
     system_prompt: String,
 }
 
@@ -157,6 +191,7 @@ impl Agent {
             sandbox,
             audit,
             config,
+            retry: RetryPolicy::default(),
             system_prompt,
         }
     }
@@ -388,10 +423,17 @@ impl Agent {
         let provider = self.provider.clone();
         let token = CancellationToken::from_arc(cancel.clone());
         let worker_token = token.clone();
+        let retry = self.retry;
         let mut worker = Some(std::thread::spawn(move || {
-            let result = provider.stream_chat(&request, &worker_token, &mut |event| {
-                let _ = sender.send(ProviderMessage::Event(event));
-            });
+            let result = stream_with_retry(
+                provider.as_ref(),
+                &request,
+                &worker_token,
+                &retry,
+                &mut |event| {
+                    let _ = sender.send(ProviderMessage::Event(event));
+                },
+            );
             let _ = sender.send(ProviderMessage::Done(result));
         }));
 
@@ -925,6 +967,90 @@ fn join_worker(worker: &mut Option<std::thread::JoinHandle<()>>, timeout: Durati
         std::thread::sleep(Duration::from_millis(20));
     }
 }
+
+/// Runs one provider attempt and retries transient failures with exponential
+/// backoff. A retry is skipped once the attempt streamed a delta, so a
+/// partially delivered answer is never duplicated.
+fn stream_with_retry(
+    provider: &dyn Provider,
+    request: &ChatRequest,
+    cancel: &CancellationToken,
+    policy: &RetryPolicy,
+    on_event: &mut dyn FnMut(ChatEvent),
+) -> Result<ChatOutcome, ProviderError> {
+    let mut attempt = 0u32;
+    loop {
+        let mut emitted_delta = false;
+        let result = {
+            let mut forward = |event: ChatEvent| {
+                if is_delta(&event) {
+                    emitted_delta = true;
+                }
+                on_event(event);
+            };
+            provider.stream_chat(request, cancel, &mut forward)
+        };
+
+        let error = match result {
+            Ok(outcome) => return Ok(outcome),
+            Err(error) => error,
+        };
+        // A streamed delta is already on its way to the sink, so retrying
+        // would duplicate output.
+        if emitted_delta
+            || !error.retryable
+            || error.kind == ProviderErrorKind::Cancelled
+            || attempt + 1 >= policy.max_attempts
+        {
+            return Err(error);
+        }
+        if !sleep_cancellable(cancel, policy.delay(attempt)) {
+            return Err(ProviderError::cancelled());
+        }
+        attempt += 1;
+    }
+}
+
+/// True for events that carry model output to the sink.
+fn is_delta(event: &ChatEvent) -> bool {
+    matches!(
+        event,
+        ChatEvent::TextDelta(_) | ChatEvent::ReasoningDelta(_) | ChatEvent::ToolCallDelta { .. }
+    )
+}
+
+/// Sleeps for `total`, returning false as soon as the wait is cancelled.
+fn sleep_cancellable(cancel: &CancellationToken, total: Duration) -> bool {
+    let deadline = Instant::now() + total;
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return !cancel.is_cancelled();
+        }
+        if cancel.is_cancelled() {
+            return false;
+        }
+        std::thread::sleep(remaining.min(Duration::from_millis(20)));
+    }
+}
+
+/// Random wait in `[0, cap]`.
+fn jitter(cap: Duration) -> Duration {
+    let span = cap.as_nanos() as u64;
+    if span == 0 {
+        return Duration::ZERO;
+    }
+    let mut state = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_nanos() as u64)
+        .unwrap_or(0x9E37_79B9_7F4A_7C15);
+    // xorshift64 keeps the jitter cheap and dependency-free.
+    state ^= state << 13;
+    state ^= state >> 7;
+    state ^= state << 17;
+    Duration::from_nanos(state % span)
+}
+
 const AGENTS_MD_LIMIT: usize = 16 * 1024;
 
 fn system_prompt(workspace: &std::path::Path) -> String {
@@ -2281,6 +2407,159 @@ mod tests {
                 if message.contains("provider boom"))
         }));
     }
+
+    /// Agent whose provider retries back off almost immediately.
+    fn retrying_agent(provider: Arc<dyn Provider>, base_delay: Duration) -> Agent {
+        let mut agent = test_agent(provider, metadata());
+        agent.retry = RetryPolicy {
+            max_attempts: 3,
+            base_delay,
+        };
+        agent
+    }
+
+    fn run_once(agent: &Agent, sink: &RecordingSink) -> Result<TurnResult, AgentError> {
+        let mut history = Vec::new();
+        agent.run_turn(
+            "session",
+            "turn",
+            "hello",
+            &mut history,
+            Arc::new(AtomicBool::new(false)),
+            sink,
+            &Gate(ApprovalDecision::Allow),
+        )
+    }
+
+    #[test]
+    fn retries_retryable_provider_error_until_success() {
+        let scripted = Arc::new(
+            ScriptedProvider::from_json(
+                "scripted",
+                r#"[{"error":{"kind":"rate_limit","message":"slow down"}},
+                    {"error":{"kind":"server","message":"boom"}},
+                    {"text":"recovered"}]"#,
+            )
+            .unwrap(),
+        );
+        let provider: Arc<dyn Provider> = scripted.clone();
+        let agent = retrying_agent(provider, Duration::from_millis(1));
+        let sink = RecordingSink::default();
+
+        let result = run_once(&agent, &sink).unwrap();
+
+        assert_eq!(result.text, "recovered");
+        assert_eq!(scripted.call_count(), 3);
+        let events = sink.events.lock().unwrap();
+        let deltas: Vec<&str> = events
+            .iter()
+            .filter_map(|event| match event {
+                CoreEvent::TurnDelta { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(deltas, vec!["recovered"]);
+    }
+
+    #[test]
+    fn does_not_retry_non_retryable_provider_error() {
+        let scripted = Arc::new(
+            ScriptedProvider::from_json(
+                "scripted",
+                r#"[{"error":{"kind":"invalid_response","message":"bad payload"}},
+                    {"text":"never reached"}]"#,
+            )
+            .unwrap(),
+        );
+        let provider: Arc<dyn Provider> = scripted.clone();
+        let agent = retrying_agent(provider, Duration::from_millis(1));
+        let sink = RecordingSink::default();
+
+        let error = run_once(&agent, &sink).unwrap_err();
+
+        assert!(matches!(error, AgentError::Provider(_)));
+        assert_eq!(scripted.call_count(), 1);
+    }
+
+    #[test]
+    fn does_not_retry_cancelled_provider_error() {
+        let scripted = Arc::new(
+            ScriptedProvider::from_json(
+                "scripted",
+                r#"[{"error":{"kind":"cancelled","message":"stopped"}},
+                    {"text":"never reached"}]"#,
+            )
+            .unwrap(),
+        );
+        let provider: Arc<dyn Provider> = scripted.clone();
+        let agent = retrying_agent(provider, Duration::from_millis(1));
+        let sink = RecordingSink::default();
+
+        let result = run_once(&agent, &sink).unwrap();
+
+        assert_eq!(result.status, TurnStatus::Cancelled);
+        assert_eq!(scripted.call_count(), 1);
+    }
+
+    #[test]
+    fn does_not_retry_after_a_delta_was_streamed() {
+        let scripted = Arc::new(
+            ScriptedProvider::from_json(
+                "scripted",
+                r#"[{"text":"partial","error":{"kind":"server","message":"boom"}},
+                    {"text":"never reached"}]"#,
+            )
+            .unwrap(),
+        );
+        let provider: Arc<dyn Provider> = scripted.clone();
+        let agent = retrying_agent(provider, Duration::from_millis(1));
+        let sink = RecordingSink::default();
+
+        let error = run_once(&agent, &sink).unwrap_err();
+
+        assert!(matches!(error, AgentError::Provider(_)));
+        assert_eq!(scripted.call_count(), 1);
+    }
+
+    #[test]
+    fn cancellation_interrupts_retry_backoff() {
+        let scripted = Arc::new(
+            ScriptedProvider::from_json(
+                "scripted",
+                r#"[{"error":{"kind":"rate_limit","message":"slow down"}}]"#,
+            )
+            .unwrap(),
+        );
+        let provider: Arc<dyn Provider> = scripted.clone();
+        let agent = retrying_agent(provider, Duration::from_secs(10));
+        let sink = RecordingSink::default();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let cancel_for_thread = cancel.clone();
+        let started = Instant::now();
+        let handle = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(50));
+            cancel_for_thread.store(true, Ordering::Relaxed);
+        });
+        let mut history = Vec::new();
+
+        let result = agent
+            .run_turn(
+                "session",
+                "turn",
+                "hello",
+                &mut history,
+                cancel,
+                &sink,
+                &Gate(ApprovalDecision::Allow),
+            )
+            .unwrap();
+
+        handle.join().unwrap();
+        assert_eq!(result.status, TurnStatus::Cancelled);
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert_eq!(scripted.call_count(), 1);
+    }
+
     #[test]
     fn oversized_tool_batch_fails_before_execution() {
         let temp = tempfile::tempdir().unwrap();
