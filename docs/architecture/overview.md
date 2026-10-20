@@ -116,7 +116,7 @@ session/events, not copy the agent loop or tool execution.
 
 ## Release
 
-Releases are built only from pushes to `main` and are tagged `v<version>-relN`.
+Releases are built only from pushes to `main` and are tagged `v<version>-rcN`.
 The runtime identifier matrix is final:
 
 | Platform | RIDs |
