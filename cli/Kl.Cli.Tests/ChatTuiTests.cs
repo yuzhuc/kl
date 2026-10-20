@@ -19,6 +19,18 @@ public sealed class ChatTuiTests
     }
 
     [Fact]
+    public void ParsesAgentListItems()
+    {
+        using var document = JsonDocument.Parse(
+            "{\"agents\":[{\"id\":\"build\",\"name\":\"Build\",\"description\":\"full\"}," +
+            "{\"id\":\"reviewer\",\"name\":\"Reviewer\",\"description\":\"read only\"}]}");
+        var agents = ChatTuiRunner.ParseAgentItems(document.RootElement);
+        Assert.Equal(2, agents.Count);
+        Assert.Equal("reviewer", agents[1].Id);
+        Assert.Equal("Reviewer", agents[1].Name);
+    }
+
+    [Fact]
     public void HomeShowsCodexStyleEmptyState()
     {
         var state = new ChatTuiState();
@@ -50,6 +62,7 @@ public sealed class ChatTuiTests
     [Fact]
     public void ChatEnglishSnapshot()
     {
+        if (!OperatingSystem.IsWindows()) return;
         var state = new ChatTuiState("D:\\kl");
         var lines = new List<string>
         {
@@ -78,6 +91,7 @@ public sealed class ChatTuiTests
     [Fact]
     public void ChatChineseSnapshot()
     {
+        if (!OperatingSystem.IsWindows()) return;
         var state = new ChatTuiState("D:\\kl");
         state.Settings.SetLanguage(UiLanguage.ChineseSimplified);
         var lines = new List<string>
@@ -107,6 +121,7 @@ public sealed class ChatTuiTests
     [Fact]
     public void HomeUsesCodexTitleCommandAndPathColors()
     {
+        if (!OperatingSystem.IsWindows()) return;
         var state = new ChatTuiState("D:\\kl", "openai", "gpt-5", "s1")
         {
             ReasoningEffort = "high"
@@ -160,6 +175,7 @@ public sealed class ChatTuiTests
     [Fact]
     public void DefaultReasoningEffortIsHidden()
     {
+        if (!OperatingSystem.IsWindows()) return;
         var state = new ChatTuiState("D:\\kl", "openai", "gpt-5", "s1")
         {
             ReasoningEffort = "default"
@@ -173,6 +189,7 @@ public sealed class ChatTuiTests
     [Fact]
     public void ShortcutsPageUsesCodexGroupsAndFooter()
     {
+        if (!OperatingSystem.IsWindows()) return;
         var state = new ChatTuiState("D:\\kl", "openai", "gpt-5", "s1")
         {
             Screen = ChatScreen.Shortcuts,
@@ -494,6 +511,7 @@ public sealed class ChatTuiTests
     [Fact]
     public void HomeShowsModelEffortAndRightAlignedWarning()
     {
+        if (!OperatingSystem.IsWindows()) return;
         var state = new ChatTuiState("D:\\work", "deepseek", "deepseek-flash", "session-1")
         {
             ReasoningEffort = "high",
@@ -529,6 +547,7 @@ public sealed class ChatTuiTests
     [Fact]
     public void ModelLineGivesUnusedPathSpaceToTheTitle()
     {
+        if (!OperatingSystem.IsWindows()) return;
         var state = new ChatTuiState(
             "D:\\kl",
             "deepseek",

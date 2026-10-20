@@ -1,5 +1,26 @@
 [
   {
+    "id": "fix-failing-test",
+    "prompt": "average 对空列表返回 NaN。修复 src/calc.js，让 test/calc.test.js 全部通过，不要改测试。",
+    "fixture": "fix-failing-test",
+    "verify": ["node", "${FIXTURE_DIR}/verify.mjs", "${WORKSPACE}"],
+    "timeout_secs": 120
+  },
+  {
+    "id": "cross-file-rename",
+    "prompt": "把 LEGACY_TIMEOUT 重命名为 TIMEOUT_MS，跨 src/config.js、src/client.js、src/index.js 更新所有引用和导出，不要改 test/rename.test.js。",
+    "fixture": "cross-file-rename",
+    "verify": ["node", "${FIXTURE_DIR}/verify.mjs", "${WORKSPACE}"],
+    "timeout_secs": 120
+  },
+  {
+    "id": "read-docs-answer",
+    "prompt": "阅读 docs/retry.md，把最大重试次数和退避规则写入 answer.md。",
+    "fixture": "read-docs-answer",
+    "verify": ["node", "${FIXTURE_DIR}/verify.mjs", "${WORKSPACE}"],
+    "timeout_secs": 120
+  },
+  {
     "id": "fix-null-boundary",
     "prompt": "修复解析空输入时触发的空指针异常，并保持现有行为不变。",
     "workspace": "${BENCH_WORKSPACE}/fix-null-boundary",

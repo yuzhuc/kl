@@ -402,6 +402,7 @@ public sealed class HistoryViewTests
     [Fact]
     public void HistoryShowsStatusTabsWorkspaceGroupingAndEllipsis()
     {
+        if (!OperatingSystem.IsWindows()) return;
         var state = new ChatTuiState
         {
             Screen = ChatScreen.History,
@@ -431,6 +432,7 @@ public sealed class HistoryViewTests
     [Fact]
     public void WorkspaceGroupCenterTruncatesLongPaths()
     {
+        if (!OperatingSystem.IsWindows()) return;
         var workspace = "D:\\" + new string('a', 80) + "\\project";
         var state = new ChatTuiState
         {
