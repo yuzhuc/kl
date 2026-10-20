@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-17T19:58:41.0486203Z",
+  "generated_at": "2026-10-20T12:24:30.1143126Z",
   "note": "Live fixtures are written only when the real provider call succeeds. Skips are recorded as pending, never fabricated.",
   "providers": {
     "openai-chat": {
@@ -17,5 +17,11 @@
       "reason": "OPENAI_API_KEY is not set",
       "fixture": null
     }
+  },
+  "mcp": {
+    "status": "pending",
+    "reason": "no enabled MCP server in C:\\Users\\21220\\.kl\\mcp.toml",
+    "fixture": null,
+    "servers": []
   }
 }

@@ -45,25 +45,60 @@ function Invoke-LiveProvider {
     }
 }
 
-$results = [ordered]@{
+function Invoke-LiveMcp {
+    param([string]$OutputFile)
+
+    Write-Host "== live smoke: mcp =="
+    $output = & cargo run -q -p kl-core --example mcp_smoke -- `
+        --out $OutputFile 2>&1
+    $output | ForEach-Object { Write-Host $_ }
+
+    $record = $output | ForEach-Object {
+        $text = "$_"
+        if (-not $text.TrimStart().StartsWith("{")) { return }
+        try { $text | ConvertFrom-Json } catch { return }
+    } | Select-Object -Last 1
+    if ($null -eq $record) {
+        return [ordered]@{
+            status = "failed"
+            reason = "MCP smoke produced no status record"
+            fixture = $null
+            servers = @()
+        }
+    }
+
+    return [ordered]@{
+        status = $record.status
+        reason = $record.reason
+        fixture = if ($record.status -eq "ok") { (Resolve-Path -LiteralPath $OutputFile).Path } else { $null }
+        servers = $record.servers
+    }
+}
+
+$providers = [ordered]@{
     "openai-chat" = Invoke-LiveProvider -Name "openai-chat" -KeyVariable "OPENAI_API_KEY" -OutputFile (Join-Path $fixtureDir "openai-chat-live.json")
     "anthropic" = Invoke-LiveProvider -Name "anthropic" -KeyVariable "ANTHROPIC_API_KEY" -OutputFile (Join-Path $fixtureDir "anthropic-live.json")
     "openai-responses" = Invoke-LiveProvider -Name "openai-responses" -KeyVariable "OPENAI_API_KEY" -OutputFile (Join-Path $fixtureDir "openai-responses-live.json")
 }
+$mcp = Invoke-LiveMcp -OutputFile (Join-Path $fixtureDir "mcp-live.json")
 
 $status = [ordered]@{
     generated_at = (Get-Date).ToUniversalTime().ToString("o")
     note = "Live fixtures are written only when the real provider call succeeds. Skips are recorded as pending, never fabricated."
-    providers = $results
+    providers = $providers
+    mcp = $mcp
 }
 [IO.File]::WriteAllText($statusPath, ($status | ConvertTo-Json -Depth 6), (New-Object System.Text.UTF8Encoding $false))
 Write-Host "status: $statusPath"
 
-$failed = @($results.Values | Where-Object { $_.status -eq "failed" })
+$failed = @($providers.Values | Where-Object { $_.status -eq "failed" })
+if ($mcp.status -eq "failed") {
+    $failed += $mcp
+}
 if ($failed.Count -gt 0) {
     exit 1
 }
-$pending = @($results.Values | Where-Object { $_.status -eq "pending" })
-if ($pending.Count -eq $results.Count) {
-    Write-Host "Live provider smoke is pending: set OPENAI_API_KEY and/or ANTHROPIC_API_KEY, then rerun this script."
+$pending = @($providers.Values | Where-Object { $_.status -eq "pending" })
+if ($pending.Count -eq $providers.Count -and $mcp.status -eq "pending") {
+    Write-Host "Live smoke is pending: set OPENAI_API_KEY and/or ANTHROPIC_API_KEY, configure an MCP server in ~/.kl/mcp.toml, then rerun this script."
 }
