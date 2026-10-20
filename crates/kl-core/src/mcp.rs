@@ -1,11 +1,12 @@
+use kl_exec::CommandSpec;
 use kl_policy::Action;
+use kl_sandbox::{SandboxChild, SandboxError, SandboxManager, SandboxPolicy};
 use kl_tools::{PolicyRequest, Tool, ToolContext, ToolError, ToolOutcome, ToolSource};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -61,6 +62,8 @@ pub enum McpError {
     Server(String),
     #[error("invalid mcp response: {0}")]
     Protocol(String),
+    #[error("mcp sandbox error: {0}")]
+    Sandbox(String),
 }
 
 struct Io {
@@ -71,18 +74,23 @@ struct Io {
 
 pub struct McpClient {
     io: Mutex<Io>,
-    child: Mutex<Option<Child>>,
+    child: Mutex<Option<SandboxChild>>,
     timeout: Duration,
 }
 
 impl McpClient {
-    pub fn connect(config: &McpServerConfig, timeout: Duration) -> Result<Self, McpError> {
-        let mut child = Command::new(&config.command)
-            .args(&config.args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()?;
+    pub fn connect(
+        config: &McpServerConfig,
+        timeout: Duration,
+        sandbox: &SandboxManager,
+        policy: &SandboxPolicy,
+    ) -> Result<Self, McpError> {
+        let spec = CommandSpec::new(
+            &config.command,
+            config.args.clone(),
+            policy.workspace.clone(),
+        );
+        let mut child = sandbox.spawn(&spec, policy).map_err(sandbox_error)?;
         let stdin = child
             .stdin
             .take()
@@ -91,6 +99,13 @@ impl McpClient {
             .stdout
             .take()
             .ok_or_else(|| McpError::Io(std::io::Error::other("mcp stdout unavailable")))?;
+        // The sandbox backends always pipe stderr; drain it so a chatty server
+        // cannot fill the pipe and block on its own writes.
+        if let Some(mut stderr) = child.stderr.take() {
+            std::thread::spawn(move || {
+                let _ = std::io::copy(&mut stderr, &mut std::io::sink());
+            });
+        }
         let (sender, lines) = mpsc::channel();
         std::thread::spawn(move || {
             for line in BufReader::new(stdout).lines() {
@@ -231,6 +246,13 @@ impl Drop for McpClient {
     }
 }
 
+fn sandbox_error(error: SandboxError) -> McpError {
+    match error {
+        SandboxError::Io(error) => McpError::Io(error),
+        other => McpError::Sandbox(other.to_string()),
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct McpToolSpec {
     pub name: String,
@@ -348,8 +370,34 @@ fn sanitize(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
     use std::sync::mpsc::{Receiver, Sender};
     use std::thread::JoinHandle;
+
+    fn fake_server_binary() -> PathBuf {
+        option_env!("CARGO_BIN_EXE_fake_mcp_server")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                let exe = std::env::current_exe().expect("test executable path");
+                let debug = exe
+                    .parent()
+                    .and_then(Path::parent)
+                    .expect("debug directory");
+                debug.join(if cfg!(windows) {
+                    "fake_mcp_server.exe"
+                } else {
+                    "fake_mcp_server"
+                })
+            })
+    }
+
+    fn fake_server_config() -> McpServerConfig {
+        McpServerConfig {
+            command: fake_server_binary().to_string_lossy().into_owned(),
+            args: Vec::new(),
+            enabled: true,
+        }
+    }
 
     struct LineWriter {
         sender: Sender<String>,
@@ -504,6 +552,53 @@ enabled = false
         assert_eq!(result["content"][0]["text"], "hello");
         drop(client);
         handle.join().unwrap();
+    }
+
+    #[test]
+    fn client_connects_through_the_policy_backend() {
+        let workspace = tempfile::tempdir().unwrap();
+        let manager = kl_sandbox::SandboxManager::policy_only();
+        let policy = kl_sandbox::SandboxPolicy::workspace(workspace.path());
+        let client = McpClient::connect(
+            &fake_server_config(),
+            Duration::from_secs(10),
+            &manager,
+            &policy,
+        )
+        .unwrap();
+        let specs = client.list_tools().unwrap();
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].name, "echo");
+        let result = client
+            .call_tool("echo", &json!({"text": "hi"}), Duration::from_secs(10))
+            .unwrap();
+        assert_eq!(result["content"][0]["text"], "hello");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn client_connects_through_the_strict_backend() {
+        let workspace = tempfile::tempdir().unwrap();
+        let manager = kl_sandbox::SandboxManager::probe(&kl_sandbox::SandboxConfig {
+            mode: kl_sandbox::SandboxMode::Strict,
+            backend: kl_sandbox::SandboxBackendKind::AppContainer,
+            ..kl_sandbox::SandboxConfig::default()
+        });
+        if !manager.status().available {
+            eprintln!("AppContainer unavailable: {}", manager.status().detail);
+            return;
+        }
+        let policy = kl_sandbox::SandboxPolicy::workspace(workspace.path());
+        let client = McpClient::connect(
+            &fake_server_config(),
+            Duration::from_secs(10),
+            &manager,
+            &policy,
+        )
+        .unwrap();
+        let specs = client.list_tools().unwrap();
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].name, "echo");
     }
 
     #[test]

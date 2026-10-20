@@ -78,7 +78,9 @@ and body size is capped.
 `tools/list` and `tools/call`, registers discovered tools as
 `mcp__<server>__<tool>`, and routes them through Policy, Approval, Audit and
 the ToolPipeline. Startup failures are isolated per server. MCP `isError` 
-responses are surfaced as tool failures.
+responses are surfaced as tool failures. Server processes are started through
+the active sandbox backend, so they run under the same policy and OS
+isolation as every other tool.
 
 ## Hooks
 
