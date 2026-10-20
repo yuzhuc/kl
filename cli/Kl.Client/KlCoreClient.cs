@@ -165,6 +165,14 @@ public sealed class KlCoreClient : IAsyncDisposable
             },
             cancellationToken);
 
+    public Task<JsonElement> ForkSessionAsync(
+        string sessionId,
+        CancellationToken cancellationToken = default) =>
+        RequestAsync(
+            Protocol.SessionFork,
+            new Dictionary<string, object?> { ["session_id"] = sessionId },
+            cancellationToken);
+
     public Task<JsonElement> DeleteSessionAsync(
         string sessionId,
         CancellationToken cancellationToken = default) =>
