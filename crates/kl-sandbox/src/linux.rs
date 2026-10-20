@@ -115,24 +115,9 @@ pub(crate) fn launcher_args(spec: &CommandSpec, policy: &SandboxPolicy) -> Vec<O
             ]);
         }
     }
-    for path in &policy.deny_paths {
-        let Ok(metadata) = std::fs::symlink_metadata(path) else {
-            continue;
-        };
-        if metadata.is_dir() {
-            args.extend([
-                "--tmpfs".into(),
-                path.clone().into_os_string(),
-                "--remount-ro".into(),
-                path.clone().into_os_string(),
-            ]);
-        } else {
-            args.extend([
-                "--ro-bind".into(),
-                "/dev/null".into(),
-                path.clone().into_os_string(),
-            ]);
-        }
+    let home_masks = sensitive_home_paths();
+    for path in policy.deny_paths.iter().chain(home_masks.iter()) {
+        mask_path(&mut args, path);
     }
     args.push("--chdir".into());
     args.push(spec.cwd.clone().into_os_string());
@@ -140,6 +125,50 @@ pub(crate) fn launcher_args(spec: &CommandSpec, policy: &SandboxPolicy) -> Vec<O
     args.push(spec.program.clone().into());
     args.extend(spec.args.iter().map(OsString::from));
     args
+}
+
+/// Credential locations outside the workspace that a full-read host mount
+/// would otherwise expose to sandboxed commands.
+fn sensitive_home_paths() -> Vec<PathBuf> {
+    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
+        return Vec::new();
+    };
+    [
+        ".ssh",
+        ".aws",
+        ".gnupg",
+        ".kube",
+        ".docker/config.json",
+        ".git-credentials",
+        ".netrc",
+        ".npmrc",
+        ".pypirc",
+        ".kl",
+    ]
+    .into_iter()
+    .map(|name| home.join(name))
+    .filter(|path| path.exists())
+    .collect()
+}
+
+fn mask_path(args: &mut Vec<OsString>, path: &Path) {
+    let Ok(metadata) = std::fs::symlink_metadata(path) else {
+        return;
+    };
+    if metadata.is_dir() {
+        args.extend([
+            "--tmpfs".into(),
+            path.to_path_buf().into_os_string(),
+            "--remount-ro".into(),
+            path.to_path_buf().into_os_string(),
+        ]);
+    } else {
+        args.extend([
+            "--ro-bind".into(),
+            "/dev/null".into(),
+            path.to_path_buf().into_os_string(),
+        ]);
+    }
 }
 
 pub(crate) fn find_bwrap() -> Option<PathBuf> {
