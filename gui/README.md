@@ -4,7 +4,7 @@ Avalonia-based graphical client for KL.
 
 This is currently an initialization scaffold: it opens a minimal window and
 does not yet implement chat, history, diff, approvals or settings. The full GUI
-MVP will reuse `tui/Kl.Client` and the same JSON-RPC session/event contract as
+MVP will reuse `sdk/Kl.Client` and the same JSON-RPC session/event contract as
 the TUI.
 
 Run:

@@ -15,7 +15,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Kl.Tui\Kl.Tui.csproj" />
-    <ProjectReference Include="..\Kl.Client\Kl.Client.csproj" />
+    <ProjectReference Include="..\..\sdk\Kl.Client\Kl.Client.csproj" />
   </ItemGroup>
 
   <ItemGroup>

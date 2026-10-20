@@ -4,8 +4,9 @@
 
 ```text
 crates/       Rust core and capability crates
-tui/          C# terminal client, tests and shared client
+tui/          C# terminal client and tests
 gui/          C# Avalonia GUI scaffold
+sdk/          reusable C# client library
 schemas/      protocol and plugin schemas
 benchmarks/   acceptance tasks and fixtures
 scripts/      package, benchmark and live-smoke scripts
@@ -38,10 +39,10 @@ Generated output such as `target/`, `bin/`, `obj/` and `dist/` is ignored.
 
 | Project | Responsibility |
 |---|---|
-| `tui/Kl.Client` | JSON-RPC connection, session client, DTOs and core locator |
 | `tui/Kl.Tui` | Terminal UI, command parsing, rendering and approvals; assembly name `kl` |
 | `tui/Kl.Tui.Tests` | TUI, protocol contract and core integration tests |
 | `gui/Kl.Gui` | Avalonia GUI scaffold; not yet an MVP |
+| `sdk/Kl.Client` | JSON-RPC connection, session client, DTOs and core locator |
 
 The TUI and GUI should share `Kl.Client`; neither owns an agent loop.
 
