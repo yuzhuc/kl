@@ -92,10 +92,9 @@ node scripts/package.mjs --rid linux-arm64 --rust-target aarch64-unknown-linux-m
 The release workflow builds:
 
 ```text
-Windows: win-x64, win-x86, win-arm64
-Linux:   linux-x64, linux-arm64, linux-arm
-Linux musl: linux-musl-x64, linux-musl-arm64, linux-musl-arm
-macOS:   osx-x64, osx-arm64
+Windows: win-x64, win-arm64, win-x86
+Linux:   linux-x64, linux-arm64
+macOS:   osx-arm64, osx-x64
 ```
 
 Linux cross-builds use `cargo-zigbuild`; macOS packages are unsigned.

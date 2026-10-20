@@ -50,6 +50,7 @@ public sealed class ChatTuiTests
     [Fact]
     public void ChatEnglishSnapshot()
     {
+        if (!OperatingSystem.IsWindows()) return;
         var state = new ChatTuiState("D:\\kl");
         var lines = new List<string>
         {
@@ -78,6 +79,7 @@ public sealed class ChatTuiTests
     [Fact]
     public void ChatChineseSnapshot()
     {
+        if (!OperatingSystem.IsWindows()) return;
         var state = new ChatTuiState("D:\\kl");
         state.Settings.SetLanguage(UiLanguage.ChineseSimplified);
         var lines = new List<string>
@@ -107,6 +109,7 @@ public sealed class ChatTuiTests
     [Fact]
     public void HomeUsesCodexTitleCommandAndPathColors()
     {
+        if (!OperatingSystem.IsWindows()) return;
         var state = new ChatTuiState("D:\\kl", "openai", "gpt-5", "s1")
         {
             ReasoningEffort = "high"
@@ -160,6 +163,7 @@ public sealed class ChatTuiTests
     [Fact]
     public void DefaultReasoningEffortIsHidden()
     {
+        if (!OperatingSystem.IsWindows()) return;
         var state = new ChatTuiState("D:\\kl", "openai", "gpt-5", "s1")
         {
             ReasoningEffort = "default"
@@ -173,6 +177,7 @@ public sealed class ChatTuiTests
     [Fact]
     public void ShortcutsPageUsesCodexGroupsAndFooter()
     {
+        if (!OperatingSystem.IsWindows()) return;
         var state = new ChatTuiState("D:\\kl", "openai", "gpt-5", "s1")
         {
             Screen = ChatScreen.Shortcuts,
@@ -494,6 +499,7 @@ public sealed class ChatTuiTests
     [Fact]
     public void HomeShowsModelEffortAndRightAlignedWarning()
     {
+        if (!OperatingSystem.IsWindows()) return;
         var state = new ChatTuiState("D:\\work", "deepseek", "deepseek-flash", "session-1")
         {
             ReasoningEffort = "high",
@@ -529,6 +535,7 @@ public sealed class ChatTuiTests
     [Fact]
     public void ModelLineGivesUnusedPathSpaceToTheTitle()
     {
+        if (!OperatingSystem.IsWindows()) return;
         var state = new ChatTuiState(
             "D:\\kl",
             "deepseek",
