@@ -5,7 +5,7 @@
 
 ## Context
 
-The MVP needs a simple, debuggable process boundary between the CLI and the
+The MVP needs a simple, debuggable process boundary between the TUI and the
 core. A future daemon may use Unix domain sockets or Named Pipes.
 
 ## Decision
