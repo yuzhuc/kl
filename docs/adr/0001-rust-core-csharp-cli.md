@@ -1,4 +1,4 @@
-# ADR 0001: Rust core and C#/.NET terminal client
+# ADR 0001: Rust core and C#/.NET TUI
 
 - Status: accepted
 - Date: 2026-10-17
@@ -23,8 +23,8 @@ build scripts.
 ## Consequences
 
 - Tool and policy changes are centralized in the trusted core.
-- The CLI can later be replaced by another client without changing the core.
-- Packaging must ship `kl-core` next to the CLI; `kl doctor` diagnoses a missing
+- The TUI can later be replaced by another client without changing the core.
+- Packaging must ship `kl-core` next to the TUI; `kl doctor` diagnoses a missing
   or incompatible binary.
 - A protocol version handshake is mandatory, so the two sides can evolve
   independently.

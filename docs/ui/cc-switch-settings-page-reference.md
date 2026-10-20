@@ -1,5 +1,8 @@
 # CC-Switch CLI 设置页与供应商页参考
 
+> Status: external settings-page reference, not a KL implementation specification. Current KL settings code lives in `tui/Kl.Tui/SettingsTui*.cs`.
+
+
 > 参考对象：`SaladDay/cc-switch-cli`  
 > 用途：为 KL 的 CMD/TUI 设置页提供布局与交互参考  
 > 日期：2026-10-18  

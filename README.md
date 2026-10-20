@@ -1,623 +1,163 @@
 # KL
 
-KL is a provider-neutral coding agent with a Rust trusted core and a C#/.NET
-terminal client. It does not use a Python runtime or Python build scripts.
+KL is a local-first AI coding agent with a Rust trusted core and C# clients.
 
-Status: **stage 0-3.5, Codex-style terminal UI, built-in agent presets,
-workspace skills, MCP stdio tools, trusted hooks, sequential subagent,
-worktree tool, workspace-scoped memory tool, provider retry/backoff, shared C# client library and benchmark harness implemented**.
-The GUI scaffold lives in `gui/Kl.Gui`; the full GUI MVP is future work. Live external Provider and MCP smoke are pending
-until credentials or local servers are supplied; see
-`tests/fixtures/providers/live-smoke.status.json`.
+- **Core:** Rust, JSON-RPC 2.0 over stdio, provider-neutral agent loop.
+- **TUI:** C# terminal client in `tui/Kl.Tui`.
+- **GUI:** Avalonia scaffold in `gui/Kl.Gui` (MVP still under construction).
+- **Shared client:** `tui/Kl.Client`, used by the TUI and intended for the GUI.
+
+The project does not use Python and is designed around local execution,
+explicit approvals and auditable tool calls.
+
+## Status
+
+The core, TUI, security model, extension layer and release pipeline are
+implemented. The GUI is initialized but not yet a complete client. Real
+provider/MCP live smoke still needs credentials or a configured local server.
 
 ## Architecture
 
 ```text
-kl (C#/.NET)  -- JSON-RPC 2.0 over stdio -->  kl-core (Rust)
-                                              agent loop
-                                              provider router
-                                              tools + policy + approvals
-                                              sessions + audit
-                                              review pipeline
-                                              quality-mode stages
+TUI (tui/Kl.Tui)     GUI (gui/Kl.Gui)     Headless/CI
+        \                  |                  /
+         \             Kl.Client             /
+          \                |                /
+           +------- JSON-RPC / stdio -------+
+                            |
+                     Rust Core (kl-core)
+              Protocol / Session / Events / Audit
+              Agent / Tools / Policy / Sandbox
+              Skills / Hooks / MCP / Plugins
 ```
 
-- `crates/kl-protocol` — wire envelopes, version negotiation, events, stable
-  error codes.
-- `crates/kl-core` — stdio server, config, sessions, approvals, provider
-  assembly, agent presets, workspace skills, MCP, hooks and subagent.
-- `crates/kl-agent` — provider-neutral agent loop.
-- `crates/kl-provider` — OpenAI Chat Completions, Anthropic Messages, OpenAI
-  Responses and a deterministic scripted provider for offline tests/demos.
-- `crates/kl-tools` — `read_file`, `write_file`, `edit_file`, `grep`, `glob`,
-  `shell`, `git`, `skill`, `worktree`, `job`.
-- `crates/kl-review` — deterministic diff context, local/security rules,
-  secret and dependency scans, runtime-audit findings, optional LLM review,
-  deduplication and confidence thresholds.
-- `crates/kl-policy` — workspace containment, sensitive paths, dangerous
-  command denial, approval effects.
-- `crates/kl-audit` — rotated append-only JSONL audit plus SQLite query index.
-- `crates/kl-store` — session metadata, message projection and event log.
-- `crates/kl-index` — shallow repository index (file metadata, Rust/C#/TypeScript
-  symbols, test selection) used as deep-mode hints.
-- `crates/kl-sandbox` — unified sandbox boundary with Windows AppContainer +
-  kill-on-close Job Object, Linux `bubblewrap` and macOS Seatbelt backends,
-  strict-mode fail-closed, MXC probing and the `kl-sandbox-runner`
-  clean-environment launcher.
-- `crates/kl-plugin-host` — manifest v1, sidecar JSON-RPC supervisor, health
-  checks, drain, hot swap and capability checks.
-- `crates/kl-exec` — process execution with timeout, cancellation and bounded
-  output.
-- `tui/Kl.Tui` — command parsing, process lifecycle, streaming UI, diff and
-  approval prompts.
-- `tui/Kl.Client` — reusable protocol DTOs, JSON-RPC client, session client and
-  core locator for future GUI clients.
-- `schemas/protocol/v1` and `tests/fixtures/protocol` — shared contract.
-- `benchmarks/` and `scripts/benchmark.mjs` — 23-task acceptance harness.
+The Core owns sessions, events, policy, sandboxing, audit and tool execution.
+Clients never call a model or execute a tool directly. See
+[`docs/architecture/overview.md`](docs/architecture/overview.md).
 
-## Agent workflows and extensions
+## Repository layout
 
-```powershell
-kl run "inspect the failing test" --agent plan
-kl run "fix the failing test" --agent verify
-```
-
-- Built-in agents: `build`, `plan`, `explore`, `review`, `verify`, `deep`.
-- Custom agent presets: `~/.kl/agents/<id>.toml` with `id`, `name` and `policy`
-  required, plus optional `description`, `system`, `max_iterations`, `provider`
-  and `model`. A custom preset replaces the built-in preset with the same id;
-  `deep` always keeps the built-in staged pipeline.
-- Skills: `~/.kl/skills/<name>/SKILL.md` or `.kl/skills/<name>/SKILL.md`; only
-  the name and description enter the prompt, the body loads through `skill`.
-- MCP: `~/.kl/mcp.toml` with `[servers.<id>] command`, `args`, `enabled`.
-- Hooks: `~/.kl/hooks.toml` with trusted local `pre_tool` / `post_tool` shell
-  commands. Hooks can deny or fail a call; they never grant permissions.
-- Worktrees: the `worktree` tool creates isolated trees under
-  `.kl/worktrees/<name>`.
-- Jobs: the `job` tool starts, inspects and stops sandboxed background
-  commands for the lifetime of the Core process.
-- Subagent: the read-only `subagent` tool runs a focused child agent without
-  recursive subagent calls.
+| Path | Purpose |
+|---|---|
+| `crates/` | Rust core and capability crates |
+| `tui/Kl.Tui` | C# terminal client |
+| `tui/Kl.Tui.Tests` | TUI and protocol contract tests |
+| `tui/Kl.Client` | reusable C# JSON-RPC/session client |
+| `gui/Kl.Gui` | Avalonia GUI scaffold |
+| `schemas/` | protocol and plugin JSON schemas |
+| `benchmarks/` | acceptance tasks and fixtures |
+| `scripts/` | package, benchmark and live-smoke scripts |
+| `docs/` | architecture, security, ADR and API docs |
 
 ## Prerequisites
 
-- Rust 1.85+ (edition 2024; tested with 1.99)
-- .NET SDK 10
-- Node.js 22+ (for JS build scripts)
+- Rust stable (see `rust-toolchain.toml`)
+- .NET 10 SDK
+- Node.js 22+ for repository scripts
 - Git
-- No Python is required or used.
 
-## Cross-platform packages
+Release bundles are self-contained: users need neither the .NET runtime nor
+the Rust toolchain. Source builds need both SDKs.
 
-`scripts/package.mjs` builds one RID at a time:
-
-```powershell
-node scripts/package.mjs --rid win-x64 --rust-target x86_64-pc-windows-msvc
-node scripts/package.mjs --rid linux-arm64 --rust-target aarch64-unknown-linux-musl --zig
-```
-
-The release workflow builds:
-
-```text
-Windows: win-x64, win-arm64, win-x86
-Linux:   linux-x64, linux-arm64
-macOS:   osx-arm64, osx-x64
-```
-
-Linux cross-builds use `cargo-zigbuild`; macOS packages are unsigned.
-`linux-x86`, Windows ARM32 and 32-bit macOS are not supported by the current
-Rust/.NET toolchains. Release bundles are self-contained: `kl` carries its own
-.NET 10 runtime and `kl-core` is a native executable, so the target machine needs
-neither the .NET runtime nor the Rust toolchain.
-
-Releases are built only from pushes to `main`. The workflow reads the workspace
-version from `Cargo.toml` and creates `v<version>-rel1`, `v<version>-rel2`,
-and so on; every release carries the suffix, starting at `rel1`. Only archives
-are published, without `.sha256` files. Releases and tags are retained for the
-current `v<major>.<minor>.` series; when the major or minor version changes, all
-releases and tags from the previous series are deleted.
-
-## Build and test
-
-Cross-platform JavaScript:
-
-```sh
-node scripts/build.mjs
-```
-
-PowerShell wrapper:
+## Build and run
 
 ```powershell
-pwsh scripts/build.ps1
+cargo build --release -p kl-core
+dotnet build tui/Kl.Tui/Kl.Tui.csproj
 ```
 
-Docs check (asserts the current facts documented in this README):
-
-```sh
-node scripts/check-docs.mjs
-```
-
-Manual:
+Common TUI commands:
 
 ```powershell
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-cargo build --workspace
-dotnet build kl.sln
-dotnet test kl.sln --no-build
+dotnet run --project tui/Kl.Tui -- doctor
+dotnet run --project tui/Kl.Tui -- run "fix the failing test" --workspace . --yes
+dotnet run --project tui/Kl.Tui -- chat --workspace .
+dotnet run --project tui/Kl.Tui -- resume
+dotnet run --project tui/Kl.Tui -- review --workspace .
 ```
 
-`dotnet test` includes a live test that launches `target/debug/kl-core.exe`, so
-build the Rust core first.
-
-## Run
+The GUI scaffold can be started with:
 
 ```powershell
-# handshake + core/environment diagnostics
-.\tui\Kl.Tui\bin\Debug\net10.0\kl.exe doctor
-
-# one task in the current workspace
-.\tui\Kl.Tui\bin\Debug\net10.0\kl.exe run "fix the failing test" --workspace . --yes
-
-# interactive session
-.\tui\Kl.Tui\bin\Debug\net10.0\kl.exe chat --workspace . --yes
-
-# list/resume sessions
-.\tui\Kl.Tui\bin\Debug\net10.0\kl.exe resume
-.\tui\Kl.Tui\bin\Debug\net10.0\kl.exe resume <session-id> --yes
-
-# review the current diff; strict shows low-confidence findings
-.\tui\Kl.Tui\bin\Debug\net10.0\kl.exe review --workspace . --strict
-
-# deep quality mode
-.\tui\Kl.Tui\bin\Debug\net10.0\kl.exe run "fix the failing test" --quality deep --workspace . --yes
-
-# providers, audit, redacted config
-.\tui\Kl.Tui\bin\Debug\net10.0\kl.exe provider list
-.\tui\Kl.Tui\bin\Debug\net10.0\kl.exe audit 20
-.\tui\Kl.Tui\bin\Debug\net10.0\kl.exe config
+dotnet run --project gui/Kl.Gui
 ```
 
-The TUI binary locates `kl-core` next to itself, via `KL_CORE_PATH`, or by walking up
-to `target/debug` / `target/release`.
+It currently opens a minimal Avalonia window; the full GUI MVP is future work.
 
-## Terminal chat page
+## Main capabilities
 
-`kl` and `kl chat` open a full-screen chat page when stdin and stdout are
-interactive. The page keeps user/assistant messages, tool calls, approvals,
-diffs and errors in a scrollable transcript. Enter sends, Ctrl+C cancels the
-current turn (or exits when idle), Left on an empty input opens history, Up/Down
-scrolls, and `?` shows shortcuts. The history page groups sessions by workspace
-by default and supports `g` grouping cycles, `j`/`k` or Up/Down, PageUp/PageDown,
-Home/End, `o` or Enter to resume, `n` for a new session, `r` rename, `x` stop
-the running task, Backspace/Delete (confirmed twice) to remove a session, Tab
-filters, `/` or F3 search, `?` for the in-page help popup and Esc to return.
-When a session is resumed, directly or from the history page, the chat page
-replays the most recent visible user, assistant and tool summaries before
-accepting input. Live turn events continue from the new turn and are not
-replayed twice.
-
-If no provider is configured, `kl` still opens the chat page and shows a hint to use `/settings`. After a provider and default model are saved, the chat page creates a session automatically without restarting.
-
-From the chat input, enter `/settings` or `/设置` to open the settings page. `/agent` shows or switches the active agent preset, `/skills` lists discovered skills, and `/mcp` lists registered MCP tools.
-The page uses a two-column layout: Model, Agent, Plugins, Skills and Config on
-the left, and the selected group on the right. Model, Plugins and Config are
-implemented; Agent exposes permission/reasoning settings, Skills lists discovered skills, and `/agent` switches the active preset. Use Up/Down to move,
-Tab/Shift+Tab to switch columns, Enter to edit or confirm, Esc to return,
-Ctrl+S to save, and F2 to save and exit.
-
-The Model group lists providers with enabled, key, model-count and protocol
-status, plus model metadata. It can add or edit providers, toggle a provider
-with Space, add or edit models, and set the default provider/model with Enter
-on a model row. Base address mode expands the default
-`https://opencode.ai/zen/go/v1` (or the entered base) into
-`/chat/completions`, `/messages` and `/responses` before writing the provider
-TOML. Full mode writes the three complete URLs exactly as entered. API keys use
-masked input and `provider.set_api_key` to write
-`credentials/<id>.key`; they are never written to provider TOML or echoed.
-Disabled providers hide their models until they are enabled again. In the model
-editor, Ctrl+S saves the model and its provider; F2 saves everything and returns
-to the chat page.
-
-The Config group currently exposes the settings-page language. Enter or Space
-toggles between English and Simplified Chinese. The choice is stored in
-`~/.kl/ui.json` and reused on the next launch; switching language redraws only
-the settings page, without restarting the core or reloading providers and
-plugins. The layout measures terminal display columns, so CJK characters and
-full-width punctuation take two columns and are truncated or padded instead of
-wrapping.
-
-The Plugins group reads `plugin.list` and shows each plugin's id, version, kind,
-enabled state, health and detail. Selecting a plugin shows its basic metadata
-and the most recent host-provided error detail; raw manifest parameters and
-credentials are not rendered. Use `e` to enable, `d` to disable, `r` to reload,
-or Space to toggle, then press the same key again or Enter to confirm. Esc
-cancels a pending confirmation. The list is reloaded after every successful
-action, so a disabled plugin immediately shows its new state. Installation stays
-in the existing command: `kl plugin install <path>`.
-
-Redirected or non-interactive runs automatically fall back to the plain-text
-prompt. `/settings` in that mode prints a hint instead of being sent to the
-model. `kl run` always uses the existing non-interactive output.
+- Provider-neutral agent loop with `build`, `plan`, `explore`, `review`,
+  `verify` and `deep` presets.
+- Built-in file, search, shell, git, worktree, job, subagent and workspace
+  memory tools.
+- Unified tool pipeline: validation, hooks, policy, approval, sandbox,
+  execution, result bounds, audit and events.
+- Windows AppContainer, Linux bubblewrap and macOS Seatbelt sandboxes.
+- MCP server processes start through the active `SandboxManager`.
+- Persistent sessions with event projection, resume, fork and approval rules.
+- Layered context compaction and a 23-task acceptance harness.
+- Skills, hooks, sidecar/WASM plugins and Ed25519 plugin integrity checks.
+- Shell commands support `tty=true`; `tty=true` uses portable-pty where the sandbox backend supports it.
+- Transient provider retry with exponential backoff and cancellation.
 
 ## Configuration
 
-Default path: `~/.kl/config.toml` (override with `--config` or `KL_CONFIG`).
-Environment overrides: `KL_HOME` (sessions/audit) and `KL_CORE_PATH`.
+KL reads user configuration from `~/.kl/`:
 
-The global file selects the default provider/model and switches each provider
-on or off. Each enabled provider is loaded from its own file; a disabled
-provider file is never read.
+- `config.toml` — providers, models, agent, policy, sandbox and review settings.
+- `credentials/<provider>.key` — provider API keys.
+- `agents/*.toml` — custom agent presets.
+- `skills/` — user-level skills.
+- `mcp.toml` — enabled MCP stdio servers.
 
-`~/.kl/config.toml`:
+Workspace-level `AGENTS.md`, `.kl/memory/` and project skills are also
+discovered. See [`docs/security/policy.md`](docs/security/policy.md) for the
+permission model.
 
-```toml
-[agent]
-provider = "opencode"
-model = "gpt-5-responses"
-quality = "balanced"          # fast | balanced | deep
-max_iterations = 12
-max_tool_output_bytes = 32768
-command_timeout_secs = 120
-approval_timeout_secs = 180
-deep_max_stages = 5
-deep_max_tool_calls = 48
-deep_token_budget = 120000
-deep_timeout_secs = 900
+## Sandbox and security
 
-# Optional role-specific overrides for deep mode. Unset values inherit the
-# default provider/model; a failed override falls back to the default route.
-[agent.roles.explorer]
-provider = "opencode"
-model = "gpt-5-responses"
+- `strict` mode requires a real OS backend and fails closed when unavailable.
+- Windows uses AppContainer with filesystem, child-process and loopback network
+  isolation.
+- Linux uses `bubblewrap` with read-only host mounts, writable workspace roots and
+  an isolated network namespace when network access is denied.
+- macOS uses a deny-by-default Seatbelt profile through `sandbox-exec`.
+- Shell commands and MCP servers run through the same sandbox boundary.
+- High-risk actions require approval. A decision can be `allow`, `deny`, or
+  `allow for this session` (`allow_session`); session rules are persisted in
+  session state.
 
-[agent.roles.reviewer]
-provider = "opencode"
-model = "gpt-5-responses"
+## Release
 
-[policy]
-auto_approve_edits = false
-auto_approve_shell = false
-auto_approve_plugins = false
-allow_outside_workspace = false
-allow_sensitive_reads = false
-network_allowlist = []       # empty = no shell URL restriction
-env_allowlist = []           # empty = inherit shell environment
+Releases are built only from pushes to `main`. The workflow reads the workspace
+version, creates `v<version>-rel1` and then `-rel2`, `-rel3`, and so on. It
+retains only the current `v<major>.<minor>.` series and publishes archives
+without `.sha256` files.
 
-[sandbox]
-mode = "policy"              # policy | strict | off
-backend = "auto"             # auto | appcontainer | mxc | policy | off
-probe_timeout_ms = 1500
+The current release matrix is:
 
-[audit]
-rotate_bytes = 10485760
-keep_files = 5
-
-[providers.opencode]
-enabled = true
-path = "providers/opencode.toml"
-
-[providers.disabled-example]
-enabled = false
-path = "providers/does-not-matter.toml"
+```text
+Windows: win-x64, win-x86, win-arm64
+Linux:   linux-x64, linux-arm64
+macOS:   osx-x64, osx-arm64
 ```
 
-`~/.kl/providers/opencode.toml`:
+The final RID list is still pending.
 
-```toml
-# Optional environment override. The normal key location is
-# ~/.kl/credentials/<id>.key; provider TOML never stores the key.
-api_key_env = "OPENCODE_API_KEY"
+## Known gaps
 
-[protocols]
-openai-chat = "https://gateway.example/v1/chat/completions"
-anthropic = "https://gateway.example/v1/messages"
-openai-responses = "https://gateway.example/v1/responses"
+- Real Provider/MCP live smoke requires credentials or a local MCP server.
+- GUI MVP, provider cost/cache, model-summary compaction, web tools, memory
+  prompt injection and session rewind/revert are not complete.
+- MCP servers start in the Core startup workspace, not a per-session workspace.
+- PTY under Windows AppContainer fails closed because that backend cannot be
+  wrapped by an external PTY runner.
+- The repository split into GUI/SDK/plugin repositories has not started.
 
-[[models]]
-id = "gpt-5-chat"
-protocol = "openai-chat"
-context_window = 128000
-compact_threshold = 0.8
-max_output_tokens = 4096
+## Documentation
 
-[[models]]
-id = "claude-native"
-protocol = "anthropic"
-context_window = 200000
-compact_threshold = 0.75
-max_output_tokens = 8192
-
-[[models]]
-id = "gpt-5-responses"
-protocol = "openai-responses"
-context_window = 256000
-compact_threshold = 0.9
-max_output_tokens = 16384
-url = "https://gateway.example/custom/responses" # optional exact override
-```
-
-Keys live in `~/.kl/credentials/<id>.key`. `api_key_env` remains an optional
-environment override; when set and present it wins over the credential file.
-New configuration commands never write a key into provider TOML. Legacy inline
-`api_key` values are still read for compatibility and are always redacted.
-
-Configure once, then start with `kl chat`:
-
-```powershell
-.\\tui\\Kl.Tui\\bin\\Debug\\net10.0\\kl.exe provider add
-.\\tui\\Kl.Tui\\bin\\Debug\\net10.0\\kl.exe auth set <provider>
-.\\tui\\Kl.Tui\\bin\\Debug\\net10.0\\kl.exe provider enable <id>
-.\\tui\\Kl.Tui\\bin\\Debug\\net10.0\\kl.exe provider disable <id>
-.\\tui\\Kl.Tui\\bin\\Debug\\net10.0\\kl.exe model list
-.\\tui\\Kl.Tui\\bin\\Debug\\net10.0\\kl.exe model select
-```
-
-Provider and model writes are performed by the Rust core. Unknown TOML fields
-are preserved, files are replaced atomically, and failed writes do not leave
-half-written configuration. `provider.list` shows `enabled`, `key_configured`,
-availability and the complete URL. A disabled provider contributes no models;
-selecting it or using it as the disabled default returns a clear error rather
-than silently switching.
-
-Each model is bound to one native protocol adapter. The configured URL (model
-override or `[protocols]` entry) is used exactly as the complete request URL.
-KL does not probe protocols, convert between OpenAI Chat, Anthropic and
-OpenAI Responses, or append fixed path prefixes. `--provider` and `--model`
-select exactly one route.
-
-`context_window`, `compact_threshold` (0.0-1.0) and `max_output_tokens` are
-validated and passed to the agent. `config.get`, logs and audit records never
-include the key value.
-
-For offline tests and demos, the deterministic scripted provider is enabled
-only through the agent settings:
-
-```toml
-[agent]
-provider = "scripted"
-model = "scripted"
-scripted_path = "script.json"
-scripted_sequential = true      # keep the script cursor across deep stages
-```
-
-`policy.env_allowlist` switches shell/git execution to a clean environment plus
-only the listed variables. `policy.network_allowlist` validates URLs found in
-shell commands and denies hosts outside the list. Empty lists preserve the
-previous inherit/no-URL-check behavior.
-
-`[sandbox]` controls process isolation. `policy` uses the policy engine only.
-`strict` requires a real OS backend and fails closed if it is unavailable. On
-Windows, `backend = "appcontainer"` (or `auto` in strict mode) runs shell, git
-and sidecar processes through an AppContainer token and a kill-on-close Job
-Object. A `kl-sandbox-runner` helper clears the inherited environment before
-starting the target process, so plugin environment allowlists remain effective.
-On Linux, strict mode wraps commands in `bubblewrap` (install the `bubblewrap`
-package); the host is read-only, writable roots are rebound, and commands run in
-fresh user/PID/IPC/UTS namespaces with an isolated network namespace when the
-policy denies network. Set `KL_BWRAP_PATH` to use a specific launcher. On macOS,
-strict mode uses `/usr/bin/sandbox-exec` with a deny-by-default Seatbelt
-profile. MXC is probed explicitly; an unavailable launcher is reported and never
-silently treated as an OS sandbox. `kl doctor` shows the backend, strict mode,
-probe result, capability matrix and MXC status.
-
-`[audit]` controls raw JSONL rotation. `kl audit` queries the SQLite index while
-the rotated `events*.jsonl` files remain the source of truth.
-
-## Automated review
-
-`kl review` is separate from `kl audit`. `kl audit` remains the runtime tool
-audit log. `kl review` inspects code changes and supports:
-
-```powershell
-kl review                         # standard review of the working-tree diff
-kl review --base origin/main     # review changes since a git ref
-kl review --strict               # keep low-confidence findings
-kl review --mode quick           # quick | standard | strict
-```
-
-The pipeline collects `git diff`, scans dangerous patterns, secrets, wildcard
-dependencies and missing tests, performs cross-file risk checks, proposes
-Rust/.NET verification commands, converts runtime audit denies and sandbox
-violations into findings, and optionally calls the configured provider for a
-structured diff review. Findings are deduplicated and sorted by severity.
-`--strict` never silently hides low-confidence items; they are marked
-`LOW-CONFIDENCE`. The deterministic fixture
-`tests/fixtures/review-repo` is used by Rust tests and the CLI demo:
-
-```powershell
-pwsh scripts/demo-review.ps1
-```
-
-## Quality modes
-
-`fast`, `balanced` and `deep` are selected with `--quality` or
-`[agent].quality`. The default is `balanced`, which preserves the existing
-single-turn behavior. `deep` runs explicit ordinary agent turns:
-
-```
-explorer -> planner -> implementer -> reviewer -> verifier
-```
-
-All stages share session history and use the existing `ProviderRouter`; there
-is no new provider protocol or cross-protocol conversion. Each stage inherits
-the default provider/model, with optional `[agent.roles.<stage>]` overrides.
-Deep mode is bounded by stage count, total tool calls, token usage reported by
-the provider, and a wall-clock watchdog. Cancellation is honored between and
-during stages. Explorer/planner/reviewer/verifier failures are recorded and do
-not discard a successful implementation; implementer failure stops the turn.
-Reviewer and verifier prompts require file:line evidence, and the verifier is
-instructed to verify only and not expand the change. The deep turn also
-fingerprints the workspace before review and fails if reviewer/verifier changes
-it.
-
-## Offline end-to-end demo
-
-This proves a real read → edit → test loop without network or API keys:
-
-```powershell
-pwsh scripts/demo-e2e.ps1
-```
-
-It copies `examples/e2e-demo-template` to `target/e2e-demo`, runs the scripted
-provider through the real core and CLI, verifies that `src/lib.rs` changed and
-that `cargo test` exited 0, then prints audit records.
-
-The policy demo shows deny behavior:
-
-```powershell
-pwsh scripts/demo-policy.ps1
-```
-
-It asks for `rm -rf /` and a path outside the workspace; both are denied even
-with `--yes`, and both produce audit records with `decision: "deny"`.
-
-The sidecar plugin demo installs v1, executes it, hot-upgrades to v2, executes
-again, lists plugins and prints the audit tail:
-
-```powershell
-pwsh scripts/demo-plugin.ps1
-```
-
-Live Provider and MCP smoke (requires real keys and a configured MCP server):
-
-```powershell
-pwsh scripts/live-smoke.ps1
-```
-
-The script exercises the three native protocols (`openai-chat`, `anthropic`
-and `openai-responses`) and, when `~/.kl/mcp.toml` configures an enabled
-server, the real MCP stdio handshake through `kl-core`. Without keys it writes
-`tests/fixtures/providers/live-smoke.status.json` as `pending`; it never
-fabricates a live success fixture.
-
-## Packaging
-
-Default repository-local output:
-
-```powershell
-pwsh scripts/package.ps1 -Runtime win-x64
-```
-
-This publishes the TUI bundle self-contained and copies the release `kl-core`
-and schemas next to it into `dist/<rid>/`. See `docs/adr/0004-packaging.md`.
-
-Local machine output under `E:\kl`:
-
-```powershell
-pwsh scripts/build-local.ps1
-```
-
-`build-local.ps1` keeps the normal build scripts unchanged and calls
-`package.ps1 -OutputDir E:\kl`. Close running `kl` processes before repackaging
-so `E:\kl\kl.exe` and `E:\kl\kl.dll` are not locked.
-
-## Sidecar plugins
-
-Build the fake sidecar and install an example:
-
-```powershell
-cargo build -p kl-plugin-host
-kl plugin install plugins/examples/fake-tool --home D:\kl-home
-kl plugin list --home D:\kl-home
-```
-
-Plugin manifests are v1 sidecar manifests. The host verifies the capability
-token, health-checks a new process before traffic switching, drains in-flight
-requests, and keeps the old version on health/startup failure. The new process
-is isolated from the core process and only inherits explicitly granted
-environment variables. See `docs/plugin-api/README.md` and
-`schemas/plugin/manifest-v1.schema.json`.
-
-Protocol methods: `plugin.list`, `plugin.install`, `plugin.reload`,
-`plugin.enable`, `plugin.disable`.
-
-## Security model
-
-- All file and command access goes through `kl-core`.
-- `read` inside the workspace is allowed; edits, shell, mutating git and
-  sensitive paths ask; dangerous commands and out-of-workspace paths are
-  denied.
-- `--yes` only auto-approves `ask` decisions; it cannot override `deny`.
-- Shell/git can be confined to an environment allowlist; shell URLs are checked
-  against a network allowlist when one is configured.
-- Every tool call writes one raw JSONL audit record and one SQLite index row.
-- Plugin permissions are checked before tool execution; plugin processes get a
-  clean environment plus only granted variables. See
-  `docs/security/policy.md` for protocol-level and OS-level limitations.
-
-## Protocol
-
-`docs/architecture/overview.md` describes the flow. The wire contract is in
-`schemas/protocol/v1/*.json`; the same fixtures are asserted by Rust contract
-tests and .NET contract tests. Every envelope carries `kl_protocol: 1`, and the
-handshake negotiates the supported version range.
-
-Core methods: `kl.handshake`, `kl.ping`, `kl.doctor`, `session.create`,
-`session.resume`, `session.history`, `session.list`, `turn.start`,
-`turn.cancel`, `tool.approval.respond`, `provider.list`, `provider.upsert`,
-`provider.set_api_key`, `provider.set_enabled`, `config.set_default_model`,
-`plugin.list`, `plugin.install`, `plugin.reload`, `plugin.enable`,
-`plugin.disable`, `audit.tail`, `review.run`, `config.get`. `turn.start`
-accepts an optional `quality` value (`fast`, `balanced`, `deep`).
-
-`session.history` takes `session_id` and an optional `limit` (default 20) and
-returns the last N visible entries in chronological order. Each entry has
-`role`, `text`, optional `timestamp`/`seq`, and an optional sanitized `tool`
-summary. Raw tool arguments, tool output/diff bodies, audit internals and
-provider credentials are not returned.
-
-Events: `session.created`, `turn.started`, `turn.delta`, `turn.reasoning`,
-`tool.started`, `tool.output`, `tool.approval.requested`,
-`tool.approval.resolved`, `tool.completed`, `sandbox.violation`, `audit.recorded`,
-`turn.completed`, `turn.failed`.
-
-## Limitations / known gaps
-
-- Windows AppContainer enforces workspace filesystem, child-process and
-  loopback network isolation; the network test runs a probe both outside and
-  inside the sandbox. The policy network allowlist remains active. Linux uses
-  `bubblewrap` (read-only host, rebound writable roots, fresh user/PID/IPC/UTS
-  namespaces and an isolated network namespace when the policy denies network);
-  macOS uses a deny-by-default Seatbelt profile through
-  `/usr/bin/sandbox-exec`. An unavailable launcher is reported and never
-  silently treated as OS isolation.
-- MCP server processes start through the active `SandboxManager`, not a bare
-  `Command::new`. Shell `tty=true` uses portable-pty; PTY under Windows
-  AppContainer fails closed because that backend cannot be wrapped as a
-  command line. Concurrency-safe tool calls run in parallel (max 4 workers).
-- Approval supports one-shot allow/deny and “allow for this session”; the rule
-  is persisted in session state and reloaded with the session. `session.fork`
-  copies messages and approval rules into an independent session.
-- Protecting sensitive paths on Windows removes the AppContainer ACE and makes
-  that DACL protected. This is persistent ACL hardening of those paths.
-- Strict git execution requires the git installation root to be ACL-grantable.
-  If it is on a volume whose root cannot be granted, the git tool fails closed
-  with an explicit sandbox error.
-- WASM tool plugins are implemented; WASM providers are not.
-- Deep quality mode is explicit orchestration of five ordinary agent turns, not
-  a separate multi-agent runtime. The repository index is a shallow hint source
-  (file metadata, Rust/C#/TypeScript symbols, test selection) appended to the
-  explorer and planner prompts; it is not a symbol graph or a language server.
-- Reviewer/verifier workspace edits are detected by a fingerprint guard and fail
-  the deep turn; prompts also prohibit edits. Shell/edit approvals remain the
-  hard policy boundary.
-- Provider cancellation uses a `CancellationToken` that interrupts the streaming
-  read loop; the worker is joined within two seconds and the connection is
-  dropped.
-- Live OpenAI Chat, Anthropic and OpenAI Responses smoke is pending because no
-  API keys were available in the implementation environment. The offline mock
-  SSE conformance tests pass for all three protocols. Use
-  `scripts/live-smoke.ps1` when keys and a real MCP server are available.
-- `session.fork` is available from the TUI as `/fork`; it creates an
-  independent session with the same messages and approval rules.
-- The workspace-scoped `memory` tool stores Markdown notes under
-  `.kl/memory`; memory is not yet injected into the system prompt and there is
-  no `/memory` command. GUI and repository splitting are deferred.
-- The release workflow builds seven RIDs; the final RID list is still pending.
-  Release artifacts retain only the current `v<major>.<minor>.` series. Live
-  MCP smoke runs only when a stdio server is configured in `~/.kl/mcp.toml`.
-
-Next stage entry point: real provider/MCP live smoke with credentials, provider
-cost/caching, web tools, and session rewind/revert.
+- [`docs/architecture/overview.md`](docs/architecture/overview.md)
+- [`docs/project-structure.md`](docs/project-structure.md)
+- [`docs/security/policy.md`](docs/security/policy.md)
+- [`docs/plugin-api/README.md`](docs/plugin-api/README.md)
+- [`docs/adr/`](docs/adr/)

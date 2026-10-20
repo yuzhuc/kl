@@ -1,233 +1,126 @@
 # KL architecture
 
-```text
-C# terminal client (kl)
-  command parsing, streaming renderer, diff, approval prompt
-        |
-        | JSON-RPC 2.0 over stdio (newline-delimited)
-        v
-Rust trusted core (kl-core)
-  Emitter + JSON-RPC loop
-  ProviderRouter (per-model: OpenAI Chat, Anthropic, OpenAI Responses;
-                   scripted and sidecar plugins for offline/plugin routes)
-  Agent loop (provider-neutral)
-  AgentPreset (build/plan/explore/review/verify/deep)
-  SkillCatalog + SkillTool
-  McpClient + MCP tools
-  HookRunner + HookedTool
-  SubagentTool (read-only, sequential)
-  JobTool (sandboxed background commands)
-  ToolRegistry (built-ins + memory + sidecar/WASM + MCP + worktree)
-  PolicyEngine (path/command/git/network/env/plugin/approval)
-  SandboxManager (policy/AppContainer backends, strict probing, MXC status)
-  PluginHost (manifest v1, sidecar supervisor, health, drain, hot swap)
-  AuditLog (rotated JSONL + SQLite index)
-  SessionStore (session.json, state.json, events.jsonl)
-  ReviewPipeline (git diff, local/security rules, optional LLM review)
-  QualityModes (fast/balanced; deep: explorer -> planner -> implementer ->
-                reviewer -> verifier)
-  RepoIndex (gitignore-aware files, shallow symbols, diff query, test selection)
-```
-
-## Request lifecycle
-
-1. The client launches `kl-core` and sends `kl.handshake` with its supported
-   protocol versions.
-2. The core picks the highest common version and rejects incompatible clients
-   with `-32001`.
-3. `session.create` validates the workspace, resolves the provider and model,
-   creates a session directory and emits `session.created`.
-4. `turn.start` returns a `turn_id` immediately and runs the agent on a worker
-   thread so the request loop can still accept `turn.cancel` and
-   `tool.approval.respond`.
-5. Provider streaming runs on a detached worker; the agent polls it every
-   100 ms. `turn.cancel` returns the turn promptly, and the provider sees the
-   cancellation flag at its next stream event/read.
-6. Every agent event is appended to `events.jsonl` and sent as an `event`
-   notification with an increasing per-session `seq`.
-7. Tool calls require an `allow`, `ask` or `deny` policy decision. `ask` blocks
-   the worker until the client responds or the approval timeout expires.
-8. One audit record is written for every tool call, including denied and
-   invalid calls. AuditLog appends raw JSONL and inserts a SQLite index row.
-9. At the end of a turn the projected message list is written to `state.json`.
-10. `review.run` is a separate synchronous method: it collects the diff,
-    runs deterministic rules and optional model review, converts runtime audit
-    denies/sandbox violations into findings, then applies the selected
-    confidence threshold.
-
-## Agent presets
-
-`turn.start` accepts an optional `agent` value. `build`, `plan`, `explore`,
-`review`, `verify` and `deep` map to preset tool access. `plan`, `explore` and
-`review` are read-only; `verify` is verify-only; `deep` keeps the five-stage
-quality pipeline. A global read-only/verify-only policy cannot be escalated by
-a preset.
-
-## Skills
-
-Skills are discovered from `~/.kl/skills/<name>/SKILL.md` and
-`<workspace>/.kl/skills/<name>/SKILL.md`. Only name and description enter the
-prompt; the `skill` tool loads the body on demand. Skill bodies are treated as
-untrusted context and never execute commands automatically. `~/.kl/skills` and
-`<workspace>/.kl/skills` are trusted skill roots; discovery rejects symlinks
-and body size is capped.
-
-## MCP
-
-`~/.kl/mcp.toml` configures stdio MCP servers. KL performs `initialize`,
-`tools/list` and `tools/call`, registers discovered tools as
-`mcp__<server>__<tool>`, and routes them through Policy, Approval, Audit and
-the ToolPipeline. Startup failures are isolated per server. MCP `isError` 
-responses are surfaced as tool failures. Server processes are started through
-the active sandbox backend, so they run under the same policy and OS
-isolation as every other tool.
-
-## Hooks
-
-`~/.kl/hooks.toml` contains trusted local shell hooks for `pre_tool` and
-`post_tool`. Hooks can deny or fail a call but cannot grant permissions.
-Hook output is bounded and timed out; hooks are trusted configuration, not a
-sandbox boundary.
-
-## Subagent and worktree
-
-The read-only `subagent` tool runs a sequential child agent with a copied tool
-set that excludes `subagent`, preventing recursion. It uses the default
-provider/model and records child tool calls in the shared audit log.
-
-The `worktree` tool creates, lists and removes detached Git worktrees under
-`.kl/worktrees/<name>`. It uses GitRead/GitWrite policy actions and the
-sandboxed command runner.
-## Quality modes
-
-`turn.start` accepts an optional `quality` value. `fast` and `balanced` are one
-ordinary agent turn; `deep` runs five ordinary turns in order: explorer,
-planner, implementer, reviewer, verifier. Each stage uses the existing
-`ProviderRouter` and shared session history. Deep mode stops on cancellation,
-stage/tool/token/time limits, and keeps stage outputs as evidence in the final
-turn text. Reviewer and verifier prompts require file:line evidence; the verifier is
-instructed not to modify or expand the change. Reviewer stages use
-`ToolAccess::ReadOnly` and verifier stages use `ToolAccess::VerifyOnly`. The
-existing `PolicyEngine` denies edits, writes, shell writes, git writes and
-plugins before tool execution; verifier shell is restricted to a test/build/
-lint and read-only git allowlist. A workspace fingerprint taken before review
-is retained as a second defense against out-of-band changes.
-
-## Repository index
-
-deep mode builds a lightweight repository index before the explorer stage.
-kl-index discovers files through git ls-files --cached --others
---exclude-standard, so ignored directories such as target and node_modules are
-excluded. It records repo-relative paths, canonical language names, line counts,
-modification times, and shallow symbols for Rust, C# and TypeScript; all other
-languages are file-level only. Queries support path, symbol, language, recent
-modification, and git-changed filters. Changed files are mapped to
-same-directory or same-module tests when possible; otherwise the selected
-project test command is reported as a fallback.
-
-The index is cached as versioned JSON under ~/.kl/cache/repo-index (or
-KL_INDEX_CACHE_DIR), never in the workspace. A path/size/modification-time
-manifest invalidates stale entries and rebuilds them. Cache failures do not
-block deep mode. Only explorer and planner prompts receive the bounded index
-summary; reviewer and verifier prompts and their read-only tool accesses are
-unchanged. The index is an orientation hint, not a semantic model or LSP.
-
-## Automated review
-
-`kl review` is intentionally separate from `kl audit`. The review pipeline
-collects `git diff` plus untracked files, scans changed lines and full files,
-and merges deterministic findings with runtime audit denies/sandbox violations
-and optional structured LLM findings. `quick`, `standard` and `strict` control
-the confidence threshold; strict includes low-confidence findings and marks
-them. The optional review-model call is bounded by `review_timeout_secs` and a
-cancellation token; timeout or cancellation returns an
-`llm-review-unavailable` finding instead of blocking the request. The same
-pipeline is exercised by deterministic fixture repositories.
-
-## Agent loop
+## Process model
 
 ```text
-turn.started
-  -> model call (streamed text/reasoning, cancellation-aware)
-  -> tool call(s) (policy -> approval -> execute -> audit)
-  -> model call again with tool results
-  -> turn.completed / turn.failed / cancelled
+TUI (tui/Kl.Tui)     GUI (gui/Kl.Gui)     Headless/CI
+        \                  |                  /
+         \             Kl.Client             /
+          \                |                /
+           +------- JSON-RPC / stdio -------+
+                            |
+                     Rust core (kl-core)
+              Emitter + JSON-RPC loop
+              ProviderRouter + Agent runtime
+              SessionStore + EventHub
+              PolicyEngine + SandboxManager
+              ToolRegistry + AuditLog
+              Skills / Hooks / MCP / Plugins
 ```
 
-Each configured model is bound to one protocol adapter. The adapter is the
-only place that knows its native wire format: OpenAI Chat Completions,
-Anthropic Messages or OpenAI Responses. The configured URL is used exactly as
-provided; KL never detects or converts between protocols and never appends a
-fixed path prefix. The agent only sees `ChatRequest`, `ChatEvent` and
-`ChatMessage`. Sidecar providers implement the same neutral trait.
+The Rust core is the only process that executes tools, calls providers, writes
+sessions or evaluates policy. The TUI, GUI and headless clients are protocol
+clients.
 
-The agent loop is an explicit `TurnState::{Model, Tools}` state machine.
-Completion, cancellation, provider/tool failure and the maximum-iteration limit
-are terminal transitions; no provider name is inspected by the loop.
+## Repository boundaries
 
-## Plugin lifecycle
-
-```text
-install/reload
-  -> validate manifest v1
-  -> spawn new sidecar with clean env + capability token
-  -> handshake (token + API version)
-  -> health check
-  -> switch active pointer (adapters resolve by plugin id)
-  -> drain old in-flight requests
-  -> stop old process
-```
-
-A failed handshake/health keeps the old active process. Plugin tool calls are
-permission-checked by the host before the sidecar is invoked.
-
-## Storage
-
-`~/.kl/` by default, overridable with `KL_HOME` or `--home`:
-
-```text
-config.toml                          global provider switches/defaults
-providers/<id>.toml                 protocol URLs and model catalog
-credentials/<id>.key                 API key material
-sessions/<session-id>/session.json   metadata
-sessions/<session-id>/state.json     message projection
-sessions/<session-id>/events.jsonl   append-only event log
-audit/events.jsonl                   active raw audit log
-audit/events-*.jsonl                 rotated raw audit archives
-audit/audit.sqlite                   audit query index
-plugins/installed/<id>/...           sidecar versions and current pointer
-```
+| Layer | Responsibility |
+|---|---|
+| `kl-protocol` | Wire envelopes, events, errors, DTOs and stable constants |
+| `kl-core` | Server, sessions, agent orchestration, RPC and extension wiring |
+| `kl-agent` | Provider-neutral turn loop, tool dispatch and compaction |
+| `kl-provider` | OpenAI Chat, Anthropic, Responses and scripted/plugin routes |
+| `kl-tools` | Built-in tools and the unified tool contract |
+| `kl-policy` | Action/resource evaluation and stage-scoped access |
+| `kl-sandbox` | OS sandbox backends, probing and launch helpers |
+| `kl-store` | Session metadata, state projection and event log |
+| `kl-audit` | Rotated JSONL audit plus SQLite query index |
+| `kl-review` | Diff, security and optional LLM review pipeline |
+| `kl-index` | Shallow repository symbols and test selection hints |
+| `kl-plugin-host` | Sidecar/WASM plugin supervision and integrity checks |
+| `Kl.Client` | C# JSON-RPC/session client used by TUI and GUI |
+| `Kl.Tui` | Terminal UI, rendering, input and approval presentation |
+| `Kl.Gui` | Avalonia shell; currently a scaffold |
 
 ## Protocol
 
-See `schemas/protocol/v1/`, `schemas/plugin/manifest-v1.schema.json` and
-`tests/fixtures/protocol/`. The same fixtures are parsed by Rust
-(`crates/kl-protocol/tests/contract.rs`) and .NET
-(`tui/Kl.Tui.Tests/ProtocolContractTests.cs`).
+- One JSON-RPC 2.0 message per line over stdio.
+- `kl.handshake` negotiates the protocol version before session/turn methods.
+- `kl.ping` and `kl.doctor` work before the handshake for diagnostics.
+- Core events are notifications with `method: "event"` and a per-session
+  monotonically increasing `seq`.
+- `schemas/protocol/v1` is the contract; Rust and .NET tests consume the same
+  fixtures under `tests/fixtures/protocol`.
 
-## Deliberate gaps
+Representative methods: `session.create`, `session.resume`, `session.fork`,
+`session.history`, `session.compact`, `turn.start`, `turn.cancel`,
+`tool.approval.respond`, `provider.*`, `skill.*`, `mcp.list`, `plugin.*`,
+`review.run`, `audit.tail`.
 
-- Windows has AppContainer filesystem, child-process and verified loopback
-  network isolation; the policy allowlist remains active. Linux uses bubblewrap
-  and macOS uses Seatbelt; strict mode fails closed when the launcher is
-  unavailable.
-- WASM tool plugins are implemented; WASM providers are not.
-- Shell PTY is implemented (`tty=true`) through portable-pty. PTY under Windows
-  AppContainer fails closed. Background jobs are process-local and are not
-  persisted across Core restarts.
-- MCP server processes start through the active sandbox. Approval supports a
-  persisted “allow for this session” rule. Concurrency-safe tool calls run in
-  parallel with a four-worker cap.
-- Deep mode is five ordinary agent turns, not a separate agent runtime. The
-  repository index is a shallow symbol/test-selection hint source, not a
-  language server or full symbol graph.
-- Reviewer/verifier edits are denied at the tool-policy boundary; a workspace
-  fingerprint remains as a second defense. Policy approvals remain the hard
-  boundary for `Full` stages.
-- No UDS/Named Pipe transport; the transport boundary is ready for one.
-- Live Provider and real MCP server smoke remain pending until credentials or
-  local servers are supplied.
-- The GUI scaffold lives in `gui/Kl.Gui`; `tui/Kl.Client` is
-  the reusable C# client boundary for it.
-- `kl review` can run without a provider; in that case local findings remain
-  and a `llm-review-unavailable` low-confidence finding is emitted.
+## Tool pipeline
+
+Every tool call follows the same path:
+
+```text
+validate -> pre-hook -> policy -> approval -> sandbox
+  -> execute -> post-hook -> bounded result -> audit -> event
+```
+
+Tool metadata includes read-only/destructive flags, concurrency safety,
+validation, result limits and source. Concurrency-safe calls may run in
+parallel; mutating calls remain ordered. Result bodies are bounded before they
+enter session history.
+
+## Sessions and events
+
+- `session.json` stores metadata.
+- `state.json` stores the message projection.
+- `events.jsonl` is the append-only source of truth.
+- Missing or empty state can be reconstructed from events.
+- Sessions support resume, fork, rename, delete and history queries.
+- Approval `allow_session` rules are stored with the session and survive reload.
+- Layered compaction first prunes large tool results, then drops older rounds.
+
+## Sandbox
+
+`sandbox.mode = "policy"` is the default. `strict` requires a real OS backend
+and fails closed if it is unavailable.
+
+| Platform | Backend |
+|---|---|
+| Windows | AppContainer token, filesystem grants, kill-on-close Job Object, loopback network verification |
+| Linux | bubblewrap, read-only host, writable roots, user/PID/IPC/UTS and optional network namespaces |
+| macOS | deny-by-default Seatbelt profile via `/usr/bin/sandbox-exec` |
+
+Shell PTY is implemented through portable-pty where an external PTY can wrap
+the backend; Windows AppContainer fails closed. MCP stdio servers and shell
+commands use the same sandbox manager.
+
+## Extensions
+
+- **Skills:** discovered from trusted home/workspace roots; summaries are
+  injected, bodies load on demand.
+- **Hooks:** trusted pre/post tool hooks can deny and write audit records.
+- **MCP:** stdio servers, tool registration, `isError` mapping and sandboxed
+  server processes.
+- **Plugins:** manifest v1 sidecar and WASM tools, optional Ed25519 integrity
+  checks and hot reload.
+- **Review/deep:** reviewer and verifier use stage-scoped tool access and a
+  workspace fingerprint guard.
+
+## GUI/TUI reuse
+
+`Kl.Client` owns the C# protocol connection and session API. The TUI adds
+terminal rendering and input. The GUI must reuse `Kl.Client` and the same
+session/events, not copy the agent loop or tool execution.
+
+## Known gaps
+
+- Full GUI MVP.
+- Real provider/MCP live smoke with credentials.
+- Provider cost/cache and `/cost`.
+- Model-summary compaction.
+- Web tools, memory prompt injection and `/memory`.
+- Session rewind/revert and MCP resources/OAuth.
+- Per-session MCP workspace.
+- Repository split.
