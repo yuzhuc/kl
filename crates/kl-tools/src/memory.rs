@@ -87,8 +87,8 @@ impl Tool for MemoryTool {
         let action = parse_action(args)?;
         Ok(PolicyRequest {
             action: match action {
-                MemoryAction::Write => Action::Edit,
-                MemoryAction::List | MemoryAction::Read | MemoryAction::Delete => Action::Read,
+                MemoryAction::Write | MemoryAction::Delete => Action::Edit,
+                MemoryAction::List | MemoryAction::Read => Action::Read,
             },
             resource: match action {
                 MemoryAction::List => MEMORY_DIR.to_owned(),
@@ -463,7 +463,7 @@ mod tests {
                 .action,
             Action::Edit
         );
-        for action in ["list", "read", "delete"] {
+        for action in ["list", "read"] {
             let args = json!({"action": action, "name": "a.md"});
             assert_eq!(
                 tool.policy_request(&args).unwrap().action,
@@ -471,6 +471,12 @@ mod tests {
                 "{action}"
             );
         }
+        assert_eq!(
+            tool.policy_request(&json!({"action": "delete", "name": "a.md"}))
+                .unwrap()
+                .action,
+            Action::Edit
+        );
         for action in ["list", "read"] {
             let args = json!({"action": action, "name": "a.md"});
             assert!(tool.read_only(&args), "{action}");
