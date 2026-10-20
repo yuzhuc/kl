@@ -97,6 +97,7 @@ impl SandboxBackend for SeatbeltBackend {
 /// Full sandbox-exec argv, including the wrapped program.
 pub(crate) fn launcher_args(spec: &CommandSpec, policy: &SandboxPolicy) -> Vec<OsString> {
     let mut args = vec![OsString::from("-p"), OsString::from(profile(policy))];
+    args.push("--".into());
     args.push(spec.program.clone().into());
     args.extend(spec.args.iter().map(OsString::from));
     args
@@ -115,7 +116,23 @@ pub(crate) fn profile(policy: &SandboxPolicy) -> String {
 (allow ipc-posix-shm-read-data ipc-posix-shm-write-create ipc-posix-shm-write-unlink)
 (allow pseudo-tty)
 (allow file-ioctl)
-(allow file-read-metadata)
+(allow file-read-metadata file-test-existence)
+(allow file-map-executable
+  (subpath "/System")
+  (subpath "/usr")
+  (subpath "/bin")
+  (subpath "/sbin")
+  (subpath "/Library")
+  (subpath "/opt")
+  (subpath "/usr/local"))
+(allow file-read* (literal "/"))
+(allow file-read* file-test-existence
+  (literal "/etc")
+  (literal "/tmp")
+  (literal "/var")
+  (literal "/dev/autofs_nowait"))
+(allow iokit-open (iokit-registry-entry-class "RootDomainUserClient"))
+(allow system-mac-syscall (mac-policy-name "vnguard"))
 "#,
     );
     for root in PLATFORM_READ_ROOTS {
@@ -202,11 +219,13 @@ fn is_executable(path: &Path) -> bool {
 
 fn run_probe(timeout: Duration) -> Result<(), String> {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
+    let policy = SandboxPolicy::workspace(cwd.clone());
     let mut spec = CommandSpec::new(
         SEATBELT,
         vec![
             "-p".to_owned(),
-            "(version 1)(deny default)(allow process-exec)(allow file-read*)".to_owned(),
+            profile(&policy),
+            "--".to_owned(),
             "/usr/bin/true".to_owned(),
         ],
         cwd,
