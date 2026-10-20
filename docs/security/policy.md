@@ -15,6 +15,9 @@ Every tool request is evaluated as `action + resource -> effect`:
 | deny | dangerous command/path | always deny |
 
 `ask` is resolved by the client. `deny` cannot be overridden with `--yes`.
+The client can answer `allow`, `allow_session` or `deny`; `allow_session`
+persists a tool+resource rule in session state so the same request is
+auto-allowed after reload.
 
 ## Stage-scoped tool access
 
@@ -75,8 +78,16 @@ processes with an AppContainer token and a kill-on-close Job Object. A
 `kl-sandbox-runner` helper clears the inherited environment before launching
 the target. Workspace roots are granted explicitly; sensitive paths are
 protected by removing the AppContainer ACE and setting a protected DACL.
-Network isolation is not claimed as verified, and the policy network allowlist
-remains active. The runner binary must be shipped next to `kl-core`.
+Loopback network isolation is verified by a probe run both outside and inside
+AppContainer; the policy network allowlist remains active. The runner binary
+must be shipped next to `kl-core`.
+
+Linux strict mode uses `bubblewrap` with a read-only host, rebound writable
+roots, fresh user/PID/IPC/UTS namespaces and an isolated network namespace when
+the policy denies network. macOS strict mode uses a deny-by-default Seatbelt
+profile through `/usr/bin/sandbox-exec`. MCP server processes and shell
+`tty=true` commands also start through the active sandbox; AppContainer PTY is
+rejected rather than running unsandboxed.
 
 The MXC probe detects the external `MXC launcher: enumerate MXC volume Z:`
 failure. In non-strict mode KL reports an explicit policy-only fallback; in

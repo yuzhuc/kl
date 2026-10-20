@@ -207,14 +207,20 @@ See `schemas/protocol/v1/`, `schemas/plugin/manifest-v1.schema.json` and
 
 ## Deliberate gaps
 
-- Windows has AppContainer filesystem, child-process, and network isolation;
-  the policy allowlist remains active. Linux and macOS report an unimplemented
-  OS backend and strict mode fails closed.
+- Windows has AppContainer filesystem, child-process and verified loopback
+  network isolation; the policy allowlist remains active. Linux uses bubblewrap
+  and macOS uses Seatbelt; strict mode fails closed when the launcher is
+  unavailable.
 - WASM tool plugins are implemented; WASM providers are not.
-- PTY is not implemented. Background jobs are process-local and are not
+- Shell PTY is implemented (`tty=true`) through portable-pty. PTY under Windows
+  AppContainer fails closed. Background jobs are process-local and are not
   persisted across Core restarts.
-- Deep mode is five ordinary agent turns, not a separate agent runtime.
-  Repository symbol indexing is not implemented.
+- MCP server processes start through the active sandbox. Approval supports a
+  persisted “allow for this session” rule. Concurrency-safe tool calls run in
+  parallel with a four-worker cap.
+- Deep mode is five ordinary agent turns, not a separate agent runtime. The
+  repository index is a shallow symbol/test-selection hint source, not a
+  language server or full symbol graph.
 - Reviewer/verifier edits are denied at the tool-policy boundary; a workspace
   fingerprint remains as a second defense. Policy approvals remain the hard
   boundary for `Full` stages.

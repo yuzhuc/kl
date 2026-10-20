@@ -53,7 +53,7 @@ kl (C#/.NET)  -- JSON-RPC 2.0 over stdio -->  kl-core (Rust)
 - `cli/Kl.Client` — reusable protocol DTOs, JSON-RPC client, session client and
   core locator for future desktop clients.
 - `schemas/protocol/v1` and `tests/fixtures/protocol` — shared contract.
-- `benchmarks/` and `scripts/benchmark.mjs` — 20-task acceptance harness.
+- `benchmarks/` and `scripts/benchmark.mjs` — 23-task acceptance harness.
 
 ## Agent workflows and extensions
 
@@ -567,16 +567,23 @@ Events: `session.created`, `turn.started`, `turn.delta`, `turn.reasoning`,
 `tool.approval.resolved`, `tool.completed`, `sandbox.violation`, `audit.recorded`,
 `turn.completed`, `turn.failed`.
 
-## Limitations / next stage
+## Limitations / known gaps
 
-- Windows AppContainer enforces workspace filesystem isolation and child-process
-  containment. Network isolation is not claimed as verified; the policy
-  allowlist remains active. Linux and macOS now use real OS backends instead of
-  an unimplemented placeholder: `bubblewrap` on Linux (read-only host, rebound
-  writable roots, fresh user/PID/IPC/UTS namespaces and an isolated network
-  namespace when the policy denies network) and a deny-by-default Seatbelt
-  profile through `/usr/bin/sandbox-exec` on macOS. An unavailable launcher is
-  reported and never silently treated as OS isolation.
+- Windows AppContainer enforces workspace filesystem, child-process and
+  loopback network isolation; the network test runs a probe both outside and
+  inside the sandbox. The policy network allowlist remains active. Linux uses
+  `bubblewrap` (read-only host, rebound writable roots, fresh user/PID/IPC/UTS
+  namespaces and an isolated network namespace when the policy denies network);
+  macOS uses a deny-by-default Seatbelt profile through
+  `/usr/bin/sandbox-exec`. An unavailable launcher is reported and never
+  silently treated as OS isolation.
+- MCP server processes start through the active `SandboxManager`, not a bare
+  `Command::new`. Shell `tty=true` uses portable-pty; PTY under Windows
+  AppContainer fails closed because that backend cannot be wrapped as a
+  command line. Concurrency-safe tool calls run in parallel (max 4 workers).
+- Approval supports one-shot allow/deny and “allow for this session”; the rule
+  is persisted in session state and reloaded with the session. `session.fork`
+  copies messages and approval rules into an independent session.
 - Protecting sensitive paths on Windows removes the AppContainer ACE and makes
   that DACL protected. This is persistent ACL hardening of those paths.
 - Strict git execution requires the git installation root to be ACL-grantable.
@@ -595,7 +602,12 @@ Events: `session.created`, `turn.started`, `turn.delta`, `turn.reasoning`,
   dropped.
 - Live OpenAI Chat, Anthropic and OpenAI Responses smoke is pending because no
   API keys were available in the implementation environment. The offline mock
-  SSE conformance tests pass for all three protocols. Live MCP smoke runs only
+  SSE conformance tests pass for all three protocols. Use
+  `scripts/live-smoke.ps1` when keys and a real MCP server are available.
+- `session.fork` exists as an RPC and C# client method, but there is no TUI
+  `/fork` command yet. Desktop GUI and repository splitting are deferred.
+- The release workflow still builds seven RIDs; the final retention list has
+  not been chosen. Live MCP smoke runs only
   when a stdio server is configured in `~/.kl/mcp.toml`.
 
 Next stage entry point: add PTY, verified network isolation, real MCP server
