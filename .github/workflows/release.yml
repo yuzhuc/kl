@@ -217,9 +217,15 @@ jobs:
         run: |
           set -euo pipefail
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" artifacts/* --clobber
+            if ! output="$(gh release upload "$TAG" artifacts/* --clobber 2>&1)"; then
+              echo "::error title=release upload::${output}"
+              exit 1
+            fi
           else
-            gh release create "$TAG" artifacts/* --generate-notes --title "$TAG"
+            if ! output="$(gh release create "$TAG" artifacts/* --title "$TAG" --notes "KL $TAG" 2>&1)"; then
+              echo "::error title=release create::${output}"
+              exit 1
+            fi
           fi
 
   cleanup:
