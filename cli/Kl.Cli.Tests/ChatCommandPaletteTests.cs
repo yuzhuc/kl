@@ -294,7 +294,7 @@ public sealed class ChatCommandPaletteTests
 
         ChatCommandPalette.MoveSelection(state, -1);
         Assert.Equal(
-            "/mcp",
+            "/fork",
             ChatCommandPalette.Selected(state)?.Name);
 
         ChatCommandPalette.MoveSelection(state, 1);
