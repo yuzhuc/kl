@@ -110,7 +110,20 @@ jobs:
       - name: Build sandbox runner
         run: cargo build -p kl-sandbox --bins
       - name: Rust tests
-        run: cargo test --workspace
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --workspace --no-fail-fast 2>&1 | tee rust-tests.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            grep -E "FAILED|panicked at|assertion|error:|error\[|test result: FAILED" rust-tests.log | head -40 | while IFS= read -r line; do
+              echo "::error title=rust test::$line"
+            done
+            tail -n 20 rust-tests.log | while IFS= read -r line; do
+              echo "::error title=rust tail::$line"
+            done
+          fi
+          exit "$status"
       - name: OS sandbox integration
         env:
           KL_REQUIRE_OS_SANDBOX: "1"
