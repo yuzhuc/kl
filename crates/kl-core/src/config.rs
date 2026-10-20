@@ -114,6 +114,28 @@ impl AgentPreset {
         }
     }
 
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Build => "Build",
+            Self::Plan => "Plan",
+            Self::Explore => "Explore",
+            Self::Review => "Review",
+            Self::Verify => "Verify",
+            Self::Deep => "Deep",
+        }
+    }
+
+    pub fn description(self) -> &'static str {
+        match self {
+            Self::Build => "Implements tasks with full tool access.",
+            Self::Plan => "Plans work without changing files.",
+            Self::Explore => "Explores the workspace and reports findings.",
+            Self::Review => "Reviews the current changes and reports issues.",
+            Self::Verify => "Runs non-mutating checks and reports results.",
+            Self::Deep => "Runs the staged deep pipeline.",
+        }
+    }
+
     pub fn tool_access(self) -> ToolAccess {
         match self {
             Self::Build | Self::Deep => ToolAccess::Full,

@@ -107,9 +107,9 @@ public static class CommandLine
                     break;
                 case "--agent":
                     options.Agent = Next(args, ref i, arg);
-                    if (!ChatCommandPalette.IsValidAgentPreset(options.Agent))
+                    if (string.IsNullOrWhiteSpace(options.Agent))
                     {
-                        throw new ArgumentException($"unknown agent preset: {options.Agent}");
+                        throw new ArgumentException("--agent requires an id");
                     }
                     break;
                 case "--yes":

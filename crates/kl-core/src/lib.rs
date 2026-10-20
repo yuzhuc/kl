@@ -4,12 +4,14 @@
 //! work runs on a thread so the request loop can keep serving cancellation and
 //! approval responses.
 
+mod agents;
 mod config;
 mod hooks;
 mod mcp;
 mod skills;
 mod subagent;
 
+pub use agents::AgentProfile;
 pub use config::{
     AgentPreset, Config, ConfigError, ProviderCatalog, QualityMode, RoleSettings,
     config_set_default_model, provider_set_api_key, provider_set_enabled, provider_upsert,
@@ -26,22 +28,22 @@ use kl_plugin_host::{
 };
 use kl_policy::{PolicyEngine, PolicyError, ToolAccess};
 use kl_protocol::{
-    AgentConfigResult, AgentConfigSetParams, ApprovalDecision, ApprovalMode, ApprovalRespondParams,
-    AuditTailParams, CORE_NAME, CORE_VERSION, CoreEvent, DefaultModelResult, DoctorCheck,
-    DoctorResult, EventNotification, HandshakeParams, HandshakeResult, IncomingMessage,
-    MIN_PROTOCOL_VERSION, McpListResult, McpToolInfo, PROTOCOL_VERSION, PermissionsResult,
-    PermissionsSetParams, PingParams, PingResult, PluginIdParams, PluginInstallParams,
-    PluginListResult, ProviderEnabledResult, ProviderKeyResult, ProviderListResult,
-    ProviderModelSummary, ProviderSetApiKeyParams, ProviderSetEnabledParams, ProviderUpsertParams,
-    ProviderUpsertResult, RequestId, ReviewFinding, ReviewResult, ReviewRunParams, RpcError,
-    SandboxCapabilitiesSummary, SandboxSummary, SessionCompactParams, SessionCompactResult,
-    SessionCreateParams, SessionDeleteParams, SessionDeleteResult, SessionHistoryEntry,
-    SessionHistoryParams, SessionHistoryResult, SessionHistoryToolSummary, SessionInfo,
-    SessionListResult, SessionRenameParams, SessionResumeParams, SessionStatusParams,
-    SessionStatusResult, SetDefaultModelParams, SkillGetParams, SkillGetResult, SkillInfo,
-    SkillListParams, SkillListResult, TurnCancelParams, TurnCancelResult, TurnStartParams,
-    TurnStartResult, WorkspaceInitParams, WorkspaceInitResult, error_codes, failure,
-    failure_with_data, methods, negotiate, success, validate_envelope,
+    AgentConfigResult, AgentConfigSetParams, AgentInfo, AgentListResult, ApprovalDecision,
+    ApprovalMode, ApprovalRespondParams, AuditTailParams, CORE_NAME, CORE_VERSION, CoreEvent,
+    DefaultModelResult, DoctorCheck, DoctorResult, EventNotification, HandshakeParams,
+    HandshakeResult, IncomingMessage, MIN_PROTOCOL_VERSION, McpListResult, McpToolInfo,
+    PROTOCOL_VERSION, PermissionsResult, PermissionsSetParams, PingParams, PingResult,
+    PluginIdParams, PluginInstallParams, PluginListResult, ProviderEnabledResult,
+    ProviderKeyResult, ProviderListResult, ProviderModelSummary, ProviderSetApiKeyParams,
+    ProviderSetEnabledParams, ProviderUpsertParams, ProviderUpsertResult, RequestId, ReviewFinding,
+    ReviewResult, ReviewRunParams, RpcError, SandboxCapabilitiesSummary, SandboxSummary,
+    SessionCompactParams, SessionCompactResult, SessionCreateParams, SessionDeleteParams,
+    SessionDeleteResult, SessionHistoryEntry, SessionHistoryParams, SessionHistoryResult,
+    SessionHistoryToolSummary, SessionInfo, SessionListResult, SessionRenameParams,
+    SessionResumeParams, SessionStatusParams, SessionStatusResult, SetDefaultModelParams,
+    SkillGetParams, SkillGetResult, SkillInfo, SkillListParams, SkillListResult, TurnCancelParams,
+    TurnCancelResult, TurnStartParams, TurnStartResult, WorkspaceInitParams, WorkspaceInitResult,
+    error_codes, failure, failure_with_data, methods, negotiate, success, validate_envelope,
 };
 use kl_provider::{
     AnthropicAdapter, BoundProvider, CancellationToken, ChatEvent, ChatMessage, ChatOutcome,
@@ -857,6 +859,7 @@ fn set_turn_state(
 struct Core {
     context: ServerContext,
     config: Config,
+    agent_profiles: Vec<AgentProfile>,
     catalog: ProviderCatalog,
     router: ProviderRouter,
     tools: Arc<ToolRegistry>,
@@ -877,6 +880,7 @@ impl Core {
     fn new(context: ServerContext, emitter: Emitter) -> Result<Self, CoreError> {
         std::fs::create_dir_all(&context.home)?;
         let config = Config::load(&context.config_path)?;
+        let agent_profiles = agents::load(&context.home);
         let hook_config =
             hooks::HookConfig::load(&context.home.join("hooks.toml")).map_err(CoreError::Hook)?;
         let sandbox = Arc::new(SandboxManager::probe(&config.sandbox));
@@ -939,6 +943,7 @@ impl Core {
         Ok(Self {
             context,
             config,
+            agent_profiles,
             catalog,
             router,
             tools,
@@ -1046,6 +1051,7 @@ impl Core {
             methods::WORKSPACE_INIT => self.workspace_init(params),
             methods::AGENT_CONFIG_GET => self.agent_config_get(),
             methods::AGENT_CONFIG_SET => self.agent_config_set(params),
+            methods::AGENT_LIST => self.agent_list(),
             methods::SKILL_LIST => self.skill_list(params),
             methods::SKILL_GET => self.skill_get(params),
             methods::MCP_LIST => self.mcp_list(),
@@ -1665,17 +1671,21 @@ impl Core {
             })?,
             None => self.config.agent.quality,
         };
-        let agent_preset = match params.agent.as_deref() {
-            Some(raw) => AgentPreset::parse(raw).ok_or_else(|| {
+        let default_agent = if quality == QualityMode::Deep {
+            agents::DEEP_ID
+        } else {
+            AgentPreset::Build.as_str()
+        };
+        let requested_agent = params.agent.as_deref().unwrap_or(default_agent);
+        let profile = agents::find(&self.agent_profiles, requested_agent)
+            .cloned()
+            .ok_or_else(|| {
                 rpc_error(
                     error_codes::INVALID_PARAMS,
-                    format!("unknown agent preset: {raw}"),
+                    format!("unknown agent preset: {requested_agent}"),
                 )
-            })?,
-            None if quality == QualityMode::Deep => AgentPreset::Deep,
-            None => AgentPreset::Build,
-        };
-        if agent_preset == AgentPreset::Deep {
+            })?;
+        if profile.id == agents::DEEP_ID {
             quality = QualityMode::Deep;
         }
         let turn_id = uuid::Uuid::new_v4().to_string();
@@ -1702,10 +1712,12 @@ impl Core {
             let provider_id = params
                 .provider
                 .clone()
+                .or_else(|| profile.provider.clone())
                 .unwrap_or_else(|| state.meta.provider.clone());
             let requested_model = params
                 .model
                 .clone()
+                .or_else(|| profile.model.clone())
                 .or_else(|| (provider_id == state.meta.provider).then(|| state.meta.model.clone()));
             let (provider, metadata) = self
                 .router
@@ -1759,17 +1771,21 @@ impl Core {
         let router = self.router.clone();
         let agent_settings = self.config.agent.clone();
         let global_tool_access = self.tool_access();
-        let tool_access = capped_tool_access(global_tool_access, agent_preset);
+        let tool_access = capped_tool_access(global_tool_access, profile.policy);
         let agent_config = AgentConfig {
-            max_iterations: self.config.agent.max_iterations.max(1),
+            max_iterations: profile
+                .max_iterations
+                .unwrap_or(self.config.agent.max_iterations)
+                .max(1),
             max_tool_calls_per_turn: 32,
             max_tool_output_bytes: self.config.agent.max_tool_output_bytes,
             command_timeout: Duration::from_secs(self.config.agent.command_timeout_secs.max(1)),
             max_total_tokens: 0,
             tool_access,
         };
-        let is_deep = quality == QualityMode::Deep;
-        let prompt_prefix = agent_preset.prompt_prefix();
+        let is_deep = profile.id == agents::DEEP_ID;
+        let prompt_prefix = profile.prompt_prefix.clone();
+        let system_prompt = profile.system.clone().unwrap_or_default();
 
         let thread_session = session_id.clone();
         let thread_turn = turn_id.clone();
@@ -1823,7 +1839,8 @@ impl Core {
                     sandbox,
                     audit,
                     agent_config,
-                );
+                )
+                .with_system_prompt(&system_prompt);
                 let prompt = format!("{skills_summary}{prompt_prefix}{prompt}");
                 let prompt = if quality == QualityMode::Fast {
                     format!("Work quickly and keep the response concise.\n{prompt}")
@@ -2217,6 +2234,22 @@ impl Core {
             .map_err(config_write_error)?;
         self.config.agent.reasoning_effort = params.reasoning_effort;
         self.agent_config_get()
+    }
+
+    fn agent_list(&self) -> Result<Value, RpcError> {
+        let agents = self
+            .agent_profiles
+            .iter()
+            .map(|profile| AgentInfo {
+                id: profile.id.clone(),
+                name: profile.name.clone(),
+                description: profile.description.clone(),
+                policy: agents::policy_label(profile.policy).to_owned(),
+                source: profile.source.clone(),
+                built_in: profile.built_in,
+            })
+            .collect();
+        to_value(AgentListResult { agents })
     }
 
     fn skill_list(&mut self, params: Value) -> Result<Value, RpcError> {
@@ -2897,9 +2930,9 @@ fn store_error(error: StoreError) -> RpcError {
     }
 }
 
-fn capped_tool_access(global: ToolAccess, preset: AgentPreset) -> ToolAccess {
+fn capped_tool_access(global: ToolAccess, preset: ToolAccess) -> ToolAccess {
     if global == ToolAccess::Full {
-        preset.tool_access()
+        preset
     } else {
         global
     }
@@ -3985,20 +4018,44 @@ max_iterations = 2
     #[test]
     fn agent_preset_defaults_and_tool_access_are_bounded() {
         assert_eq!(
-            capped_tool_access(ToolAccess::Full, AgentPreset::Plan),
+            capped_tool_access(ToolAccess::Full, AgentPreset::Plan.tool_access()),
             ToolAccess::ReadOnly
         );
         assert_eq!(
-            capped_tool_access(ToolAccess::Full, AgentPreset::Verify),
+            capped_tool_access(ToolAccess::Full, AgentPreset::Verify.tool_access()),
             ToolAccess::VerifyOnly
         );
         assert_eq!(
-            capped_tool_access(ToolAccess::ReadOnly, AgentPreset::Build),
+            capped_tool_access(ToolAccess::ReadOnly, AgentPreset::Build.tool_access()),
             ToolAccess::ReadOnly
         );
         assert_eq!(
-            capped_tool_access(ToolAccess::ReadOnly, AgentPreset::Deep),
+            capped_tool_access(ToolAccess::ReadOnly, AgentPreset::Deep.tool_access()),
             ToolAccess::ReadOnly
+        );
+    }
+
+    #[test]
+    fn agent_list_includes_custom_profiles() {
+        let temp = tempfile::tempdir().unwrap();
+        let config = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(home.path().join("agents")).unwrap();
+        std::fs::write(
+            home.path().join("agents/reviewer.toml"),
+            "id = \"reviewer\"\nname = \"Reviewer\"\ndescription = \"strict\"\npolicy = \"read-only\"\n",
+        )
+        .unwrap();
+        let (core, _) = new_test_core(config, home.path());
+        let list = core.agent_list().unwrap();
+        let agents = list["agents"].as_array().unwrap();
+        assert!(agents.iter().any(|agent| agent["id"] == "reviewer"
+            && agent["policy"] == "read-only"
+            && agent["built_in"] == false));
+        assert!(
+            agents
+                .iter()
+                .any(|agent| agent["id"] == "deep" && agent["built_in"] == true)
         );
     }
 

@@ -14,6 +14,8 @@ public enum CtrlCAction
 
 public sealed record ChatExtensionItem(string Name, string Description);
 
+public sealed record ChatAgentItem(string Id, string Name, string Description);
+
 public static class ChatTuiRunner
 {
     public static bool CanUseTui =>
@@ -43,6 +45,31 @@ public static class ChatTuiRunner
                 continue;
             }
             items.Add(new ChatExtensionItem(name, GetString(value, "description")));
+        }
+        return items;
+    }
+
+    public static IReadOnlyList<ChatAgentItem> ParseAgentItems(JsonElement result)
+    {
+        var items = new List<ChatAgentItem>();
+        if (!result.TryGetProperty("agents", out var values)
+            || values.ValueKind != JsonValueKind.Array)
+        {
+            return items;
+        }
+
+        foreach (var value in values.EnumerateArray())
+        {
+            var id = GetString(value, "id");
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                continue;
+            }
+            var name = GetString(value, "name");
+            items.Add(new ChatAgentItem(
+                id,
+                string.IsNullOrWhiteSpace(name) ? id : name,
+                GetString(value, "description")));
         }
         return items;
     }
@@ -504,19 +531,31 @@ public static class ChatTuiRunner
                             {
                                 if (agentPreset is null)
                                 {
-                                    ShowAgentPresets(state);
-                                }
-                                else if (!ChatCommandPalette.IsValidAgentPreset(agentPreset))
-                                {
-                                    state.AddError(ChatTexts.UnknownAgent(
-                                        state.Language,
-                                        agentPreset,
-                                        string.Join(", ", ChatCommandPalette.AgentPresets)));
-                                    state.ClearInput();
+                                    await ShowAgentPresetsAsync(
+                                            state,
+                                            connection,
+                                            cancellationToken)
+                                        .ConfigureAwait(false);
                                 }
                                 else
                                 {
-                                    ApplyAgentPreset(options, state, connection, agentPreset);
+                                    var agents = await LoadAgentItemsAsync(
+                                            connection,
+                                            cancellationToken)
+                                        .ConfigureAwait(false);
+                                    if (!agents.Any(agent =>
+                                            agent.Id.Equals(agentPreset, StringComparison.OrdinalIgnoreCase)))
+                                    {
+                                        state.AddError(ChatTexts.UnknownAgent(
+                                            state.Language,
+                                            agentPreset,
+                                            string.Join(", ", agents.Select(agent => agent.Id))));
+                                        state.ClearInput();
+                                    }
+                                    else
+                                    {
+                                        ApplyAgentPreset(options, state, connection, agentPreset);
+                                    }
                                 }
                                 break;
                             }
@@ -999,7 +1038,8 @@ public static class ChatTuiRunner
                     cancellationToken).ConfigureAwait(false);
                 break;
             case ChatCommandKind.Agent:
-                ShowAgentPresets(state);
+                await ShowAgentPresetsAsync(state, connection, cancellationToken)
+                    .ConfigureAwait(false);
                 break;
             case ChatCommandKind.Skills:
                 await RunSkillsAsync(state, connection, cancellationToken)
@@ -1066,14 +1106,50 @@ public static class ChatTuiRunner
         return new CommandResult(connection, state, Exit: false);
     }
 
-    private static void ShowAgentPresets(ChatTuiState state)
+    private static async Task ShowAgentPresetsAsync(
+        ChatTuiState state,
+        Connection? connection,
+        CancellationToken cancellationToken)
     {
+        var agents = await LoadAgentItemsAsync(connection, cancellationToken)
+            .ConfigureAwait(false);
         state.AddInfo(ChatTexts.AgentCurrent(state.Language, state.Agent));
         state.AddInfo(ChatTexts.AgentAvailable(
             state.Language,
-            string.Join(", ", ChatCommandPalette.AgentPresets)));
+            string.Join(", ", agents.Select(agent => agent.Id))));
         state.ClearInput();
     }
+
+    private static async Task<IReadOnlyList<ChatAgentItem>> LoadAgentItemsAsync(
+        Connection? connection,
+        CancellationToken cancellationToken)
+    {
+        if (connection is null)
+        {
+            return FallbackAgentItems();
+        }
+
+        try
+        {
+            var result = await RequestCoreAsync(
+                    connection.Session,
+                    "agent.list",
+                    null,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            var items = ParseAgentItems(result);
+            return items.Count > 0 ? items : FallbackAgentItems();
+        }
+        catch (Exception error) when (IsCommandError(error))
+        {
+            return FallbackAgentItems();
+        }
+    }
+
+    private static IReadOnlyList<ChatAgentItem> FallbackAgentItems() =>
+        ChatCommandPalette.AgentPresets
+            .Select(id => new ChatAgentItem(id, id, string.Empty))
+            .ToList();
 
     private static void ApplyAgentPreset(
         CliOptions options,

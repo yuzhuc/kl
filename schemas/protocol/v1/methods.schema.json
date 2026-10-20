@@ -352,7 +352,7 @@
         "provider": { "type": "string" },
         "model": { "type": "string" },
         "quality": { "enum": ["fast", "balanced", "deep"] },
-        "agent": { "enum": ["build", "plan", "explore", "review", "verify", "deep"] }
+        "agent": { "type": "string", "minLength": 1 }
       },
       "additionalProperties": false
     },
@@ -569,6 +569,27 @@
       "required": ["reasoning_effort"],
       "properties": {
         "reasoning_effort": { "$ref": "#/$defs/reasoningEffort" }
+      },
+      "additionalProperties": false
+    },
+    "agentInfo": {
+      "type": "object",
+      "required": ["id", "name", "description", "policy", "source", "built_in"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "policy": { "enum": ["full", "read-only", "verify-only"] },
+        "source": { "type": "string" },
+        "built_in": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "agentListResult": {
+      "type": "object",
+      "required": ["agents"],
+      "properties": {
+        "agents": { "type": "array", "items": { "$ref": "#/$defs/agentInfo" } }
       },
       "additionalProperties": false
     },
