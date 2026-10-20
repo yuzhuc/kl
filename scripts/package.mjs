@@ -43,7 +43,7 @@ run("dotnet", [
   "cli/Kl.Cli/Kl.Cli.csproj",
   "-c", "Release",
   "-r", rid,
-  "--self-contained", "false",
+  "--self-contained", "true",
   "-o", output,
 ]);
 

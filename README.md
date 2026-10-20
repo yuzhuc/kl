@@ -99,8 +99,9 @@ macOS:   osx-arm64, osx-x64
 
 Linux cross-builds use `cargo-zigbuild`; macOS packages are unsigned.
 `linux-x86`, Windows ARM32 and 32-bit macOS are not supported by the current
-Rust/.NET toolchains. `kl` remains framework-dependent and needs .NET 10
-Runtime on the target machine; `kl-core` is self-contained.
+Rust/.NET toolchains. Release bundles are self-contained: `kl` carries its own
+.NET 10 runtime and `kl-core` is a native executable, so the target machine needs
+neither the .NET runtime nor the Rust toolchain.
 
 ## Build and test
 

@@ -20,7 +20,7 @@ New-Item -ItemType Directory -Force -Path $output | Out-Null
 dotnet publish "cli\Kl.Cli\Kl.Cli.csproj" `
     -c $Configuration `
     -r $Runtime `
-    --self-contained false `
+    --self-contained true `
     -o $output
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
 
