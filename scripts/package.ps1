@@ -17,7 +17,7 @@ $output = if ([string]::IsNullOrWhiteSpace($OutputDir)) {
     [System.IO.Path]::GetFullPath($OutputDir)
 }
 New-Item -ItemType Directory -Force -Path $output | Out-Null
-dotnet publish "cli\Kl.Cli\Kl.Cli.csproj" `
+dotnet publish "tui\Kl.Tui\Kl.Tui.csproj" `
     -c $Configuration `
     -r $Runtime `
     --self-contained true `

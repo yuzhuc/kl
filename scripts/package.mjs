@@ -40,7 +40,7 @@ mkdirSync(output, { recursive: true });
 run("cargo", [useZig ? "zigbuild" : "build", "--release", "--target", rustTarget, "-p", "kl-core"]);
 run("dotnet", [
   "publish",
-  "cli/Kl.Cli/Kl.Cli.csproj",
+  "tui/Kl.Tui/Kl.Tui.csproj",
   "-c", "Release",
   "-r", rid,
   "--self-contained", "true",

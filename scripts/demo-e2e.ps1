@@ -22,7 +22,7 @@ if (Test-Path -LiteralPath $demo) {
 New-Item -ItemType Directory -Path $demo | Out-Null
 Copy-Item -Path (Join-Path $root "examples\e2e-demo-template\*") -Destination $demo -Recurse -Force
 
-$kl = Join-Path $root "cli\Kl.Cli\bin\Debug\net10.0\kl.exe"
+$kl = Join-Path $root "tui\Kl.Tui\bin\Debug\net10.0\kl.exe"
 $config = Join-Path $demo "kl.toml"
 $klHome = Join-Path $demo ".kl"
 

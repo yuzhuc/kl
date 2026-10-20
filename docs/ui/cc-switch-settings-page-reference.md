@@ -19,22 +19,22 @@
 
 主要代码位置：
 
-- `src-tauri/src/cli/tui/mod.rs`
-- `src-tauri/src/cli/tui/ui.rs`
-- `src-tauri/src/cli/tui/ui/providers.rs`
-- `src-tauri/src/cli/tui/form.rs`
-- `src-tauri/src/cli/tui/route.rs`
-- `src-tauri/src/cli/tui/help.rs`
+- `src-tauri/src/tui/tui/mod.rs`
+- `src-tauri/src/tui/tui/ui.rs`
+- `src-tauri/src/tui/tui/ui/providers.rs`
+- `src-tauri/src/tui/tui/form.rs`
+- `src-tauri/src/tui/tui/route.rs`
+- `src-tauri/src/tui/tui/help.rs`
 - `src-tauri/src/provider.rs`
 
 参考链接：
 
 - <https://github.com/SaladDay/cc-switch-cli>
-- <https://github.com/SaladDay/cc-switch-cli/blob/main/CLAUDE.md>
-- <https://github.com/SaladDay/cc-switch-cli/blob/main/src-tauri/src/cli/tui/ui.rs>
-- <https://github.com/SaladDay/cc-switch-cli/blob/main/src-tauri/src/cli/tui/ui/providers.rs>
-- <https://github.com/SaladDay/cc-switch-cli/blob/main/src-tauri/src/cli/tui/form.rs>
-- <https://github.com/SaladDay/cc-switch-cli/blob/main/src-tauri/src/provider.rs>
+- <https://github.com/SaladDay/cc-switch-tui/blob/main/CLAUDE.md>
+- <https://github.com/SaladDay/cc-switch-tui/blob/main/src-tauri/src/tui/tui/ui.rs>
+- <https://github.com/SaladDay/cc-switch-tui/blob/main/src-tauri/src/tui/tui/ui/providers.rs>
+- <https://github.com/SaladDay/cc-switch-tui/blob/main/src-tauri/src/tui/tui/form.rs>
+- <https://github.com/SaladDay/cc-switch-tui/blob/main/src-tauri/src/provider.rs>
 
 ---
 
@@ -560,8 +560,8 @@ KL 建议：
 
 建议只改 C# CLI 与测试：
 
-- `cli/Kl.Cli/`：设置页状态、渲染、输入处理、表单；
-- `cli/Kl.Cli.Tests/`：布局、URL 展开、字段校验、快捷键、resize；
+- `tui/Kl.Tui/`：设置页状态、渲染、输入处理、表单；
+- `tui/Kl.Tui.Tests/`：布局、URL 展开、字段校验、快捷键、resize；
 - 复用现有 Core 方法：
   - `provider.list`
   - `provider.upsert`

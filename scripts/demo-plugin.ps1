@@ -94,7 +94,7 @@ function New-ProviderSource {
     return $source
 }
 
-$kl = Join-Path $root "cli\Kl.Cli\bin\Debug\net10.0\kl.exe"
+$kl = Join-Path $root "tui\Kl.Tui\bin\Debug\net10.0\kl.exe"
 $klHome = Join-Path $base "home"
 $configPath = Join-Path $base "kl.toml"
 $workspace = Join-Path $base "workspace"

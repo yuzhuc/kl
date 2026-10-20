@@ -14,7 +14,7 @@ build scripts.
 
 - The Rust workspace under `crates/` is the only execution core.
 - The `kl-core` binary speaks JSON-RPC 2.0 over stdio.
-- The C#/.NET project under `cli/Kl.Cli` is a thin terminal client. It starts
+- The C#/.NET project under `tui/Kl.Tui` is a thin terminal client. It starts
   `kl-core`, performs the version handshake, streams events and sends approval
   decisions. It never calls a model or executes a tool directly.
 - The shared wire types live in `crates/kl-protocol`; both Rust and .NET tests

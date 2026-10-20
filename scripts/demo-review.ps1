@@ -19,8 +19,8 @@ git -C $demo -c user.email=review@example.test -c user.name=review commit -m bas
 Copy-Item -Path (Join-Path $root 'tests/fixtures/review-repo/changed/*') -Destination $demo -Recurse -Force
 
 cargo build -p kl-core --manifest-path (Join-Path $root 'Cargo.toml') | Out-Null
-dotnet build (Join-Path $root 'cli/Kl.Cli/Kl.Cli.csproj') --no-restore | Out-Null
-$cli = Join-Path $root 'cli/Kl.Cli/bin/Debug/net10.0/kl.dll'
+dotnet build (Join-Path $root 'tui/Kl.Tui/Kl.Tui.csproj') --no-restore | Out-Null
+$cli = Join-Path $root 'tui/Kl.Tui/bin/Debug/net10.0/kl.dll'
 $reviewArgs = @('review', '--workspace', $demo, '--strict', '--home', $reviewHome)
 $output = & dotnet $cli @reviewArgs 2>&1
 $exit = $LASTEXITCODE

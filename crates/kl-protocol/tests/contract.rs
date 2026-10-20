@@ -33,7 +33,7 @@ fn handshake_request_matches_shared_contract() {
     assert_eq!(message.method.as_deref(), Some(methods::HANDSHAKE));
 
     let params: HandshakeParams = serde_json::from_value(message.params).unwrap();
-    assert_eq!(params.client_name, "kl-cli");
+    assert_eq!(params.client_name, "kl-tui");
     assert_eq!(params.protocol_versions, vec![1]);
     assert_eq!(
         serde_json::to_value(params).unwrap()["client_version"],

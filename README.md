@@ -6,7 +6,7 @@ terminal client. It does not use a Python runtime or Python build scripts.
 Status: **stage 0-3.5, Codex-style terminal UI, built-in agent presets,
 workspace skills, MCP stdio tools, trusted hooks, sequential subagent,
 worktree tool, workspace-scoped memory tool, provider retry/backoff, shared C# client library and benchmark harness implemented**.
-Desktop GUI is future work. Live external Provider and MCP smoke are pending
+The GUI scaffold lives in `gui/Kl.Gui`; the full GUI MVP is future work. Live external Provider and MCP smoke are pending
 until credentials or local servers are supplied; see
 `tests/fixtures/providers/live-smoke.status.json`.
 
@@ -48,10 +48,10 @@ kl (C#/.NET)  -- JSON-RPC 2.0 over stdio -->  kl-core (Rust)
   checks, drain, hot swap and capability checks.
 - `crates/kl-exec` — process execution with timeout, cancellation and bounded
   output.
-- `cli/Kl.Cli` — command parsing, process lifecycle, streaming UI, diff and
+- `tui/Kl.Tui` — command parsing, process lifecycle, streaming UI, diff and
   approval prompts.
-- `cli/Kl.Client` — reusable protocol DTOs, JSON-RPC client, session client and
-  core locator for future desktop clients.
+- `tui/Kl.Client` — reusable protocol DTOs, JSON-RPC client, session client and
+  core locator for future GUI clients.
 - `schemas/protocol/v1` and `tests/fixtures/protocol` — shared contract.
 - `benchmarks/` and `scripts/benchmark.mjs` — 23-task acceptance harness.
 
@@ -155,31 +155,31 @@ build the Rust core first.
 
 ```powershell
 # handshake + core/environment diagnostics
-.\cli\Kl.Cli\bin\Debug\net10.0\kl.exe doctor
+.\tui\Kl.Tui\bin\Debug\net10.0\kl.exe doctor
 
 # one task in the current workspace
-.\cli\Kl.Cli\bin\Debug\net10.0\kl.exe run "fix the failing test" --workspace . --yes
+.\tui\Kl.Tui\bin\Debug\net10.0\kl.exe run "fix the failing test" --workspace . --yes
 
 # interactive session
-.\cli\Kl.Cli\bin\Debug\net10.0\kl.exe chat --workspace . --yes
+.\tui\Kl.Tui\bin\Debug\net10.0\kl.exe chat --workspace . --yes
 
 # list/resume sessions
-.\cli\Kl.Cli\bin\Debug\net10.0\kl.exe resume
-.\cli\Kl.Cli\bin\Debug\net10.0\kl.exe resume <session-id> --yes
+.\tui\Kl.Tui\bin\Debug\net10.0\kl.exe resume
+.\tui\Kl.Tui\bin\Debug\net10.0\kl.exe resume <session-id> --yes
 
 # review the current diff; strict shows low-confidence findings
-.\cli\Kl.Cli\bin\Debug\net10.0\kl.exe review --workspace . --strict
+.\tui\Kl.Tui\bin\Debug\net10.0\kl.exe review --workspace . --strict
 
 # deep quality mode
-.\cli\Kl.Cli\bin\Debug\net10.0\kl.exe run "fix the failing test" --quality deep --workspace . --yes
+.\tui\Kl.Tui\bin\Debug\net10.0\kl.exe run "fix the failing test" --quality deep --workspace . --yes
 
 # providers, audit, redacted config
-.\cli\Kl.Cli\bin\Debug\net10.0\kl.exe provider list
-.\cli\Kl.Cli\bin\Debug\net10.0\kl.exe audit 20
-.\cli\Kl.Cli\bin\Debug\net10.0\kl.exe config
+.\tui\Kl.Tui\bin\Debug\net10.0\kl.exe provider list
+.\tui\Kl.Tui\bin\Debug\net10.0\kl.exe audit 20
+.\tui\Kl.Tui\bin\Debug\net10.0\kl.exe config
 ```
 
-The CLI locates `kl-core` next to itself, via `KL_CORE_PATH`, or by walking up
+The TUI binary locates `kl-core` next to itself, via `KL_CORE_PATH`, or by walking up
 to `target/debug` / `target/release`.
 
 ## Terminal chat page
@@ -346,12 +346,12 @@ New configuration commands never write a key into provider TOML. Legacy inline
 Configure once, then start with `kl chat`:
 
 ```powershell
-.\\cli\\Kl.Cli\\bin\\Debug\\net10.0\\kl.exe provider add
-.\\cli\\Kl.Cli\\bin\\Debug\\net10.0\\kl.exe auth set <provider>
-.\\cli\\Kl.Cli\\bin\\Debug\\net10.0\\kl.exe provider enable <id>
-.\\cli\\Kl.Cli\\bin\\Debug\\net10.0\\kl.exe provider disable <id>
-.\\cli\\Kl.Cli\\bin\\Debug\\net10.0\\kl.exe model list
-.\\cli\\Kl.Cli\\bin\\Debug\\net10.0\\kl.exe model select
+.\\tui\\Kl.Tui\\bin\\Debug\\net10.0\\kl.exe provider add
+.\\tui\\Kl.Tui\\bin\\Debug\\net10.0\\kl.exe auth set <provider>
+.\\tui\\Kl.Tui\\bin\\Debug\\net10.0\\kl.exe provider enable <id>
+.\\tui\\Kl.Tui\\bin\\Debug\\net10.0\\kl.exe provider disable <id>
+.\\tui\\Kl.Tui\\bin\\Debug\\net10.0\\kl.exe model list
+.\\tui\\Kl.Tui\\bin\\Debug\\net10.0\\kl.exe model select
 ```
 
 Provider and model writes are performed by the Rust core. Unknown TOML fields
@@ -500,7 +500,7 @@ Default repository-local output:
 pwsh scripts/package.ps1 -Runtime win-x64
 ```
 
-This publishes the CLI framework-dependently and copies the release `kl-core`
+This publishes the TUI bundle self-contained and copies the release `kl-core`
 and schemas next to it into `dist/<rid>/`. See `docs/adr/0004-packaging.md`.
 
 Local machine output under `E:\kl`:
@@ -614,7 +614,7 @@ Events: `session.created`, `turn.started`, `turn.delta`, `turn.reasoning`,
   independent session with the same messages and approval rules.
 - The workspace-scoped `memory` tool stores Markdown notes under
   `.kl/memory`; memory is not yet injected into the system prompt and there is
-  no `/memory` command. Desktop GUI and repository splitting are deferred.
+  no `/memory` command. GUI and repository splitting are deferred.
 - The release workflow builds seven RIDs; the final RID list is still pending.
   Release artifacts retain only the current `v<major>.<minor>.` series. Live
   MCP smoke runs only when a stdio server is configured in `~/.kl/mcp.toml`.
