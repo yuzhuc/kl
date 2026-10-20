@@ -61,10 +61,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
+    let workspace = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let sandbox = kl_sandbox::SandboxManager::policy_only();
+    let policy = kl_sandbox::SandboxPolicy::workspace(&workspace);
     let mut reports = Vec::new();
     let mut failed = 0usize;
     for (name, server) in servers {
-        let client = match McpClient::connect(server, Duration::from_secs(10)) {
+        let client = match McpClient::connect(server, Duration::from_secs(10), &sandbox, &policy) {
             Ok(client) => client,
             Err(error) => {
                 failed += 1;
