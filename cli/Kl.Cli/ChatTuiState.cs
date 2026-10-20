@@ -73,6 +73,7 @@ public enum ChatKeyAction
     ScrollUp,
     ScrollDown,
     ApprovalAllow,
+    ApprovalAllowSession,
     ApprovalDeny,
     SelectUp,
     SelectDown,
@@ -1284,6 +1285,7 @@ public static class ChatKeyMapper
             return key.KeyChar switch
             {
                 'a' or 'A' or 'y' or 'Y' => ChatKeyAction.ApprovalAllow,
+                's' or 'S' => ChatKeyAction.ApprovalAllowSession,
                 'd' or 'D' or 'n' or 'N' => ChatKeyAction.ApprovalDeny,
                 _ => ChatKeyAction.None
             };

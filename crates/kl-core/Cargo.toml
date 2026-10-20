@@ -14,12 +14,17 @@ path = "src/lib.rs"
 name = "kl-core"
 path = "src/main.rs"
 
+[[bin]]
+name = "fake_mcp_server"
+path = "src/bin/fake_mcp_server.rs"
+
 [dependencies]
 kl-protocol = { path = "../kl-protocol" }
 kl-agent = { path = "../kl-agent" }
 kl-audit = { path = "../kl-audit" }
 kl-policy = { path = "../kl-policy" }
 kl-provider = { path = "../kl-provider" }
+kl-exec = { path = "../kl-exec" }
 kl-store = { path = "../kl-store" }
 kl-tools = { path = "../kl-tools" }
 kl-sandbox = { path = "../kl-sandbox" }

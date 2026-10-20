@@ -14,3 +14,5 @@ benchmarks/.workspaces/
 benchmarks/results/
 !crates/kl-sandbox/src/bin/
 !crates/kl-sandbox/src/bin/kl-sandbox-runner.rs
+!crates/kl-core/src/bin/
+!crates/kl-core/src/bin/fake_mcp_server.rs

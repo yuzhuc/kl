@@ -22,6 +22,7 @@ public static class Protocol
     public const string TurnStart = "turn.start";
     public const string TurnCancel = "turn.cancel";
     public const string ApprovalRespond = "tool.approval.respond";
+    public const string SessionFork = "session.fork";
     public const string ProviderList = "provider.list";
     public const string ProviderUpsert = "provider.upsert";
     public const string ProviderSetApiKey = "provider.set_api_key";

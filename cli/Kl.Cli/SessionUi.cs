@@ -96,12 +96,12 @@ public sealed class PlainTextSessionPresenter : ISessionPresenter
         text.Length <= limit ? text : text[..limit] + "...";
 }
 
-public sealed class TuiSessionPresenter : ISessionPresenter
+public sealed class TuiSessionPresenter : ISessionPresenter, ISessionApprovalDecisionPresenter
 {
     private readonly Channel<SessionEvent> _events =
         Channel.CreateUnbounded<SessionEvent>(
             new UnboundedChannelOptions { SingleReader = true });
-    private readonly ConcurrentDictionary<string, TaskCompletionSource<bool>> _approvals = new();
+    private readonly ConcurrentDictionary<string, TaskCompletionSource<string>> _approvals = new();
     private readonly bool _autoApprove;
 
     public TuiSessionPresenter(bool autoApprove)
@@ -124,6 +124,15 @@ public sealed class TuiSessionPresenter : ISessionPresenter
         ApprovalRequestEvent request,
         CancellationToken cancellationToken)
     {
+        var decision = await RequestApprovalDecisionAsync(request, cancellationToken)
+            .ConfigureAwait(false);
+        return decision is "allow" or "allow_session";
+    }
+
+    public async ValueTask<string> RequestApprovalDecisionAsync(
+        ApprovalRequestEvent request,
+        CancellationToken cancellationToken)
+    {
         Publish(new SessionEvent(
             SessionEventKind.ApprovalRequested,
             Name: request.Name,
@@ -135,10 +144,10 @@ public sealed class TuiSessionPresenter : ISessionPresenter
 
         if (_autoApprove)
         {
-            return true;
+            return "allow";
         }
 
-        var completion = new TaskCompletionSource<bool>(
+        var completion = new TaskCompletionSource<string>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         _approvals[request.ApprovalId] = completion;
         try
@@ -147,7 +156,7 @@ public sealed class TuiSessionPresenter : ISessionPresenter
         }
         catch (OperationCanceledException)
         {
-            return false;
+            return "deny";
         }
         finally
         {
@@ -155,13 +164,16 @@ public sealed class TuiSessionPresenter : ISessionPresenter
         }
     }
 
-    public bool ResolveApproval(string approvalId, bool allow)
+    public bool ResolveApproval(string approvalId, bool allow) =>
+        ResolveApprovalDecision(approvalId, allow ? "allow" : "deny");
+
+    public bool ResolveApprovalDecision(string approvalId, string decision)
     {
         if (!_approvals.TryGetValue(approvalId, out var completion))
         {
             return false;
         }
 
-        return completion.TrySetResult(allow);
+        return completion.TrySetResult(decision);
     }
 }
