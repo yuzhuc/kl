@@ -50,6 +50,8 @@ jobs:
         run: Add-Content $env:GITHUB_PATH "C:\Program Files\LLVM\bin"
       - name: Package
         run: node scripts/package.mjs --rid ${{ matrix.rid }} --rust-target ${{ matrix.rust }}
+      - name: Verify package
+        run: node scripts/verify-package.mjs --rid ${{ matrix.rid }}
       - if: matrix.rid == 'win-x64' || matrix.rid == 'win-x86'
         name: Smoke test
         run: dist\${{ matrix.rid }}\kl.exe --version
@@ -97,6 +99,8 @@ jobs:
           fi
       - name: Package
         run: node scripts/package.mjs --rid ${{ matrix.rid }} --rust-target ${{ matrix.rust }} --zig
+      - name: Verify package
+        run: node scripts/verify-package.mjs --rid ${{ matrix.rid }}
       - if: matrix.rid == 'linux-x64'
         name: Smoke test
         run: dist/${{ matrix.rid }}/kl --version
@@ -111,7 +115,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-13
+          - os: macos-14
             rid: osx-x64
             rust: x86_64-apple-darwin
           - os: macos-14
@@ -136,7 +140,10 @@ jobs:
           shared-key: release-${{ matrix.rid }}
       - name: Package
         run: node scripts/package.mjs --rid ${{ matrix.rid }} --rust-target ${{ matrix.rust }}
-      - name: Smoke test
+      - name: Verify package
+        run: node scripts/verify-package.mjs --rid ${{ matrix.rid }}
+      - if: matrix.rid == 'osx-arm64'
+        name: Smoke test
         run: dist/${{ matrix.rid }}/kl --version
       - uses: actions/upload-artifact@v4
         with:
