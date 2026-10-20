@@ -110,6 +110,12 @@ Rust/.NET toolchains. Release bundles are self-contained: `kl` carries its own
 .NET 10 runtime and `kl-core` is a native executable, so the target machine needs
 neither the .NET runtime nor the Rust toolchain.
 
+Releases are built only from pushes to `main`. The workflow reads the workspace
+version from `Cargo.toml`, creates `v<version>` (or the next `-rsN` suffix when
+that tag already exists), and publishes only archives, without `.sha256` files.
+Older releases and tags outside the current `v<major>.<minor>.` series are
+deleted after a successful publish.
+
 ## Build and test
 
 Cross-platform JavaScript:
