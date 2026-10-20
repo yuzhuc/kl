@@ -7,8 +7,8 @@
 //! `appcontainer_network` integration test.
 
 use crate::{
-    SandboxBackend, SandboxCapabilities, SandboxConfig, SandboxError, SandboxPolicy, SandboxProbe,
-    SandboxRequest, enforce_policy, path_key,
+    SandboxBackend, SandboxCapabilities, SandboxConfig, SandboxError, SandboxLauncher,
+    SandboxPolicy, SandboxProbe, SandboxRequest, enforce_policy, path_key,
 };
 use kl_exec::CommandSpec;
 use serde::Serialize;
@@ -144,6 +144,20 @@ impl SandboxBackend for AppContainerBackend {
         let mut child = launch(&runner_spec, sid)?;
         child.cleanup_dirs.push(config_dir);
         Ok(crate::SandboxChild::from_app_container(child))
+    }
+
+    /// AppContainer isolation needs a helper process that creates the token
+    /// and the job object, so it cannot be expressed as a command line for
+    /// an external runner. Fail closed rather than dropping the isolation.
+    fn launcher(
+        &self,
+        _spec: &CommandSpec,
+        _policy: &SandboxPolicy,
+    ) -> Result<SandboxLauncher, SandboxError> {
+        Err(SandboxError::Unavailable(
+            "the AppContainer sandbox backend cannot be launched through a pseudo-terminal"
+                .to_owned(),
+        ))
     }
     fn enforce(
         &self,

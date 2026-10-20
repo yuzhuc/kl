@@ -5,8 +5,8 @@
 //! network syscalls are denied unless the policy allows them.
 
 use crate::{
-    SandboxBackend, SandboxCapabilities, SandboxChild, SandboxConfig, SandboxError, SandboxPolicy,
-    SandboxProbe, SandboxRequest, enforce_policy, spawn_wrapped,
+    SandboxBackend, SandboxCapabilities, SandboxChild, SandboxConfig, SandboxError,
+    SandboxLauncher, SandboxPolicy, SandboxProbe, SandboxRequest, enforce_policy, spawn_wrapped,
 };
 use kl_exec::CommandSpec;
 use std::ffi::OsString;
@@ -83,6 +83,22 @@ impl SandboxBackend for SeatbeltBackend {
             )));
         }
         spawn_wrapped(spec, SEATBELT, launcher_args(spec, policy))
+    }
+
+    fn launcher(
+        &self,
+        spec: &CommandSpec,
+        policy: &SandboxPolicy,
+    ) -> Result<SandboxLauncher, SandboxError> {
+        if !is_executable(Path::new(SEATBELT)) {
+            return Err(SandboxError::Unavailable(format!(
+                "{SEATBELT} is missing or not executable"
+            )));
+        }
+        let mut launcher = SandboxLauncher::from_spec(spec);
+        launcher.program = OsString::from(SEATBELT);
+        launcher.args = launcher_args(spec, policy);
+        Ok(launcher)
     }
 
     fn enforce(
