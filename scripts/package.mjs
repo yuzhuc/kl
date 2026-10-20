@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { assertBinaryFormat, layoutFor } from "./package-format.mjs";
+import { assertBinaryFormat, isDiagnosticFile, layoutFor } from "./package-format.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -44,8 +44,14 @@ run("dotnet", [
   "-c", "Release",
   "-r", rid,
   "--self-contained", "true",
+  "-p:DebugType=None",
+  "-p:DebugSymbols=false",
   "-o", output,
 ]);
+
+for (const name of readdirSync(output)) {
+  if (isDiagnosticFile(name)) rmSync(path.join(output, name), { force: true });
+}
 
 const coreName = layout.core;
 const core = path.join(cargoTarget, rustTarget, "release", coreName);
@@ -61,9 +67,9 @@ if (!rid.startsWith("win")) {
 }
 
 if (rid.startsWith("win")) {
-  run("tar", ["-a", "-c", "-f", archive, "-C", output, "."]);
+  run("tar", ["-a", "-c", "-f", archive, "-C", output, ...readdirSync(output).sort()]);
 } else {
-  run("tar", ["-czf", archive, "-C", output, "."]);
+  run("tar", ["-czf", archive, "-C", output, ...readdirSync(output).sort()]);
 }
 
 assertBinaryFormat(path.join(output, layout.exe), rid);

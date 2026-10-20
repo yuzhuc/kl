@@ -1,8 +1,9 @@
+import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { assertBinaryFormat, layoutFor } from "./package-format.mjs";
+import { assertBinaryFormat, isDiagnosticFile, layoutFor } from "./package-format.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -41,6 +42,23 @@ for (const [file, label] of [
     assertBinaryFormat(file, rid);
   } catch (error) {
     problems.push(error.message);
+  }
+}
+
+if (existsSync(archive)) {
+  const listing = spawnSync("tar", ["-tf", archive], { encoding: "utf8" });
+  if (listing.error || listing.status !== 0) {
+    problems.push(`cannot list archive: ${listing.error?.message ?? listing.stderr?.trim()}`);
+  } else {
+    for (const entry of listing.stdout.split("\n").map((line) => line.trim()).filter(Boolean)) {
+      if (entry === "." || entry.startsWith("./")) {
+        problems.push(`archive entry must not use a './' prefix: ${entry}`);
+      }
+      const name = entry.split("/").pop();
+      if (isDiagnosticFile(name)) {
+        problems.push(`archive contains a diagnostic file: ${entry}`);
+      }
+    }
   }
 }
 

@@ -21,8 +21,17 @@ dotnet publish "tui\Kl.Tui\Kl.Tui.csproj" `
     -c $Configuration `
     -r $Runtime `
     --self-contained true `
+    -p:DebugType=None `
+    -p:DebugSymbols=false `
     -o $output
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
+
+# Diagnostics-only runtime files that a self-contained publish copies from the
+# runtime pack. Nothing in the shipped binary needs them.
+$diagnosticPattern = '\.pdb$|\.dbg$|^createdump(\.exe)?$|^Microsoft\.DiaSymReader\.Native\..*\.dll$|^mscordaccore.*\.dll$|^mscordbi.*\.dll$|^sos\.dll$|^libsosplugin|^libmscordaccore|^libmscordbi'
+Get-ChildItem -LiteralPath $output -File |
+    Where-Object { $_.Name -match $diagnosticPattern } |
+    Remove-Item -Force
 
 $coreName = if ($Runtime.StartsWith("win", [StringComparison]::OrdinalIgnoreCase)) {
     "kl-core.exe"

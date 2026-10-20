@@ -28,6 +28,12 @@ Build steps:
 The TUI prefers `kl-core` next to itself and verifies the protocol version with
 the handshake. A mismatched bundle fails early with a clear error.
 
+The archive root holds the bundle entries directly, without a `./` prefix.
+PDB and diagnostic-only runtime files (for example `Microsoft.DiaSymReader.*.dll`,
+`mscordaccore*`, `mscordbi*`, `createdump`, `sos.dll`) are trimmed from the
+publish output. The retained `System.*.dll` files are self-contained runtime
+dependencies and stay in the bundle.
+
 ## Consequences
 
 - No shared native library and no Rust dynamic ABI.
