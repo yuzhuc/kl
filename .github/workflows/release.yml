@@ -35,6 +35,11 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
+          cache: true
+          cache-dependency-path: "**/*.csproj"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-${{ matrix.rid }}
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: ${{ matrix.msvc_arch }}
@@ -75,10 +80,21 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
-      - uses: goto-bus-stop/setup-zig@v2
+          cache: true
+          cache-dependency-path: "**/*.csproj"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-${{ matrix.rid }}
+      - uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
-      - run: cargo install cargo-zigbuild --locked
+          use-cache: true
+          cache-key: ${{ matrix.rid }}
+      - name: Install cargo-zigbuild
+        run: |
+          if ! command -v cargo-zigbuild >/dev/null 2>&1; then
+            cargo install cargo-zigbuild --locked
+          fi
       - name: Package
         run: node scripts/package.mjs --rid ${{ matrix.rid }} --rust-target ${{ matrix.rust }} --zig
       - if: matrix.rid == 'linux-x64'
@@ -113,6 +129,11 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
+          cache: true
+          cache-dependency-path: "**/*.csproj"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-${{ matrix.rid }}
       - name: Package
         run: node scripts/package.mjs --rid ${{ matrix.rid }} --rust-target ${{ matrix.rust }}
       - name: Smoke test

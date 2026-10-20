@@ -17,6 +17,11 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
+          cache: true
+          cache-dependency-path: "**/*.csproj"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-${{ runner.os }}-${{ runner.arch }}
       - name: Rust format
         run: cargo fmt --all -- --check
       - name: Rust clippy
@@ -52,6 +57,11 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
+          cache: true
+          cache-dependency-path: "**/*.csproj"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-${{ runner.os }}-${{ runner.arch }}
       - name: Rust format
         run: cargo fmt --all -- --check
       - name: Rust clippy
@@ -82,6 +92,11 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
+          cache: true
+          cache-dependency-path: "**/*.csproj"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-${{ runner.os }}-${{ runner.arch }}
       - name: Rust format
         run: cargo fmt --all -- --check
       - name: Rust clippy
