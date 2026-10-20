@@ -11,9 +11,9 @@ use kl_provider::{
 use kl_sandbox::SandboxManager;
 use kl_tools::{PolicyRequest, ToolContext, ToolError, ToolRegistry};
 use serde_json::{Value, json};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone)]
@@ -340,7 +340,20 @@ impl Agent {
                     calls,
                     index,
                 } => {
-                    if index >= calls.len() {
+                    if index == 0 && calls.len() > 1 && self.can_parallelize(&calls) {
+                        let results = self.execute_tool_batch(
+                            session_id, turn_id, &calls, &cancel, sink, approvals,
+                        );
+                        for (call, result) in calls.iter().zip(results) {
+                            history.push(ChatMessage::tool(&call.id, result));
+                        }
+                        if cancel.load(Ordering::Relaxed) {
+                            return self.finish_cancelled(turn_id, history, sink, usage);
+                        }
+                        TurnState::Model {
+                            iteration: iteration + 1,
+                        }
+                    } else if index >= calls.len() {
                         TurnState::Model {
                             iteration: iteration + 1,
                         }
@@ -487,6 +500,59 @@ impl Agent {
             text: "Cancelled by user.".to_owned(),
             usage,
         })
+    }
+
+    fn can_parallelize(&self, calls: &[ToolCall]) -> bool {
+        calls.iter().all(|call| {
+            let Ok(args) = serde_json::from_str::<Value>(&call.arguments) else {
+                return false;
+            };
+            self.tools
+                .get(&call.name)
+                .is_some_and(|tool| tool.concurrency_safe(&args))
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn execute_tool_batch(
+        &self,
+        session_id: &str,
+        turn_id: &str,
+        calls: &[ToolCall],
+        cancel: &AtomicBool,
+        sink: &dyn EventSink,
+        approvals: &dyn ApprovalGate,
+    ) -> Vec<String> {
+        const MAX_WORKERS: usize = 4;
+        let results: Vec<Mutex<Option<String>>> =
+            (0..calls.len()).map(|_| Mutex::new(None)).collect();
+        let next = std::sync::atomic::AtomicUsize::new(0);
+        std::thread::scope(|scope| {
+            for _ in 0..calls.len().min(MAX_WORKERS) {
+                scope.spawn(|| {
+                    loop {
+                        let index = next.fetch_add(1, Ordering::Relaxed);
+                        let Some(call) = calls.get(index) else {
+                            break;
+                        };
+                        let result = self
+                            .execute_tool_call(session_id, turn_id, call, cancel, sink, approvals);
+                        *results[index]
+                            .lock()
+                            .unwrap_or_else(|error| error.into_inner()) = Some(result);
+                    }
+                });
+            }
+        });
+        results
+            .into_iter()
+            .map(|result| {
+                result
+                    .into_inner()
+                    .unwrap_or_else(|error| error.into_inner())
+                    .unwrap_or_else(|| error_payload("parallel tool did not run"))
+            })
+            .collect()
     }
 
     #[allow(clippy::too_many_arguments)]
