@@ -94,10 +94,10 @@ public sealed class CommandLineTests
     }
 
     [Fact]
-    public void RejectsUnknownAgentPreset()
+    public void AcceptsCustomAgentPreset()
     {
-        Assert.Throws<ArgumentException>(() =>
-            CommandLine.Parse(["run", "task", "--agent", "turbo"]));
+        var options = CommandLine.Parse(["run", "task", "--agent", "custom-reviewer"]);
+        Assert.Equal("custom-reviewer", options.Agent);
     }
 
     [Fact]

@@ -164,6 +164,17 @@ impl Agent {
         &self.metadata
     }
 
+    /// Appends extra instructions to the system prompt.
+    pub fn with_system_prompt(mut self, extra: &str) -> Self {
+        let extra = extra.trim();
+        if !extra.is_empty() {
+            self.system_prompt.push_str("\n\n");
+            self.system_prompt.push_str(extra);
+            self.system_prompt.push('\n');
+        }
+        self
+    }
+
     pub fn compact_history(&self, history: &[ChatMessage]) -> Result<CompactionResult, AgentError> {
         let request = self.request_for(history);
         if !history.iter().any(|message| message.role == Role::User) {

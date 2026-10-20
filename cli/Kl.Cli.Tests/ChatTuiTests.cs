@@ -19,6 +19,18 @@ public sealed class ChatTuiTests
     }
 
     [Fact]
+    public void ParsesAgentListItems()
+    {
+        using var document = JsonDocument.Parse(
+            "{\"agents\":[{\"id\":\"build\",\"name\":\"Build\",\"description\":\"full\"}," +
+            "{\"id\":\"reviewer\",\"name\":\"Reviewer\",\"description\":\"read only\"}]}");
+        var agents = ChatTuiRunner.ParseAgentItems(document.RootElement);
+        Assert.Equal(2, agents.Count);
+        Assert.Equal("reviewer", agents[1].Id);
+        Assert.Equal("Reviewer", agents[1].Name);
+    }
+
+    [Fact]
     public void HomeShowsCodexStyleEmptyState()
     {
         var state = new ChatTuiState();

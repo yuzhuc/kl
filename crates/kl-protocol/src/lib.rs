@@ -52,6 +52,7 @@ pub mod methods {
     pub const SKILL_LIST: &str = "skill.list";
     pub const SKILL_GET: &str = "skill.get";
     pub const MCP_LIST: &str = "mcp.list";
+    pub const AGENT_LIST: &str = "agent.list";
     pub const PLUGIN_LIST: &str = "plugin.list";
     pub const PLUGIN_INSTALL: &str = "plugin.install";
     pub const PLUGIN_RELOAD: &str = "plugin.reload";
@@ -632,6 +633,23 @@ pub struct McpToolInfo {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct McpListResult {
     pub tools: Vec<McpToolInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AgentInfo {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    /// Tool access ceiling: `full`, `read-only` or `verify-only`.
+    pub policy: String,
+    /// `builtin` for the built-in presets, otherwise the source file name.
+    pub source: String,
+    pub built_in: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AgentListResult {
+    pub agents: Vec<AgentInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
