@@ -5,7 +5,7 @@ KL is a local-first AI coding agent with a Rust trusted core and C# clients.
 - **Core:** Rust, JSON-RPC 2.0 over stdio, provider-neutral agent loop.
 - **TUI:** C# terminal client in `tui/Kl.Tui`.
 - **GUI:** Avalonia scaffold in `gui/Kl.Gui` (MVP still under construction).
-- **Shared client:** `tui/Kl.Client`, used by the TUI and intended for the GUI.
+- **Shared client:** `sdk/Kl.Client`, used by the TUI and intended for the GUI.
 
 The project does not use Python and is designed around local execution,
 explicit approvals and auditable tool calls.
@@ -42,8 +42,8 @@ Clients never call a model or execute a tool directly. See
 | `crates/` | Rust core and capability crates |
 | `tui/Kl.Tui` | C# terminal client |
 | `tui/Kl.Tui.Tests` | TUI and protocol contract tests |
-| `tui/Kl.Client` | reusable C# JSON-RPC/session client |
 | `gui/Kl.Gui` | Avalonia GUI scaffold |
+| `sdk/Kl.Client` | reusable C# JSON-RPC/session client |
 | `schemas/` | protocol and plugin JSON schemas |
 | `benchmarks/` | acceptance tasks and fixtures |
 | `scripts/` | package, benchmark and live-smoke scripts |
