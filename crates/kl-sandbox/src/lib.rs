@@ -180,6 +180,37 @@ pub struct SandboxPolicy {
     pub allow_network: bool,
 }
 
+/// A command line that an external runner (a pseudo-terminal, for example)
+/// can spawn directly, with the backend isolation already applied.
+#[derive(Debug, Clone)]
+pub struct SandboxLauncher {
+    pub program: OsString,
+    pub args: Vec<OsString>,
+    pub cwd: PathBuf,
+    pub env: Vec<(OsString, OsString)>,
+    pub clear_env: bool,
+}
+
+impl SandboxLauncher {
+    pub(crate) fn from_spec(spec: &CommandSpec) -> Self {
+        Self {
+            program: OsString::from(spec.program.as_str()),
+            args: spec
+                .args
+                .iter()
+                .map(|arg| OsString::from(arg.as_str()))
+                .collect(),
+            cwd: spec.cwd.clone(),
+            env: spec
+                .env
+                .iter()
+                .map(|(key, value)| (OsString::from(key.as_str()), OsString::from(value.as_str())))
+                .collect(),
+            clear_env: spec.clear_env,
+        }
+    }
+}
+
 impl SandboxPolicy {
     pub fn workspace(workspace: impl Into<PathBuf>) -> Self {
         let workspace = workspace.into();
@@ -308,6 +339,23 @@ pub trait SandboxBackend: Send + Sync {
     -> Result<(), SandboxError>;
     fn grant(&self, _policy: &SandboxPolicy) -> Result<(), SandboxError> {
         Ok(())
+    }
+
+    /// Returns the command line that runs `spec` under this backend's
+    /// isolation, for runners that spawn the process themselves.
+    ///
+    /// Backends that cannot be expressed as a plain command line (Windows
+    /// AppContainer needs a helper process and a security token) fail closed
+    /// here instead of running the command unisolated.
+    fn launcher(
+        &self,
+        _spec: &CommandSpec,
+        _policy: &SandboxPolicy,
+    ) -> Result<SandboxLauncher, SandboxError> {
+        Err(SandboxError::Unavailable(format!(
+            "the {} sandbox backend cannot be launched by an external runner",
+            self.name()
+        )))
     }
 }
 
@@ -560,6 +608,18 @@ impl SandboxManager {
     ) -> Result<SandboxChild, SandboxError> {
         self.ensure_process_execution()?;
         self.backend.spawn(spec, policy)
+    }
+
+    /// Returns the command line that runs `spec` under the active backend,
+    /// so a caller that owns the process (a pseudo-terminal, for example)
+    /// can spawn the same isolated command.
+    pub fn launcher(
+        &self,
+        spec: &CommandSpec,
+        policy: &SandboxPolicy,
+    ) -> Result<SandboxLauncher, SandboxError> {
+        self.ensure_process_execution()?;
+        self.backend.launcher(spec, policy)
     }
 
     pub fn run(
@@ -827,6 +887,14 @@ impl SandboxBackend for PolicyBackend {
         _policy: &SandboxPolicy,
     ) -> Result<SandboxChild, SandboxError> {
         spawn_wrapped(spec, &spec.program, &spec.args)
+    }
+
+    fn launcher(
+        &self,
+        spec: &CommandSpec,
+        _policy: &SandboxPolicy,
+    ) -> Result<SandboxLauncher, SandboxError> {
+        Ok(SandboxLauncher::from_spec(spec))
     }
 
     fn enforce(

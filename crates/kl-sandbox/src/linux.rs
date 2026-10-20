@@ -5,8 +5,8 @@
 //! get a fresh network namespace with only loopback.
 
 use crate::{
-    SandboxBackend, SandboxCapabilities, SandboxChild, SandboxConfig, SandboxError, SandboxPolicy,
-    SandboxProbe, SandboxRequest, enforce_policy, spawn_wrapped,
+    SandboxBackend, SandboxCapabilities, SandboxChild, SandboxConfig, SandboxError,
+    SandboxLauncher, SandboxPolicy, SandboxProbe, SandboxRequest, enforce_policy, spawn_wrapped,
 };
 use kl_exec::CommandSpec;
 use std::ffi::OsString;
@@ -66,6 +66,22 @@ impl SandboxBackend for BubblewrapBackend {
             )
         })?;
         spawn_wrapped(spec, &bwrap, launcher_args(spec, policy))
+    }
+
+    fn launcher(
+        &self,
+        spec: &CommandSpec,
+        policy: &SandboxPolicy,
+    ) -> Result<SandboxLauncher, SandboxError> {
+        let bwrap = find_bwrap().ok_or_else(|| {
+            SandboxError::Unavailable(
+                "bubblewrap not found on PATH; set KL_BWRAP_PATH or install bubblewrap".to_owned(),
+            )
+        })?;
+        let mut launcher = SandboxLauncher::from_spec(spec);
+        launcher.program = bwrap.into_os_string();
+        launcher.args = launcher_args(spec, policy);
+        Ok(launcher)
     }
 
     fn enforce(

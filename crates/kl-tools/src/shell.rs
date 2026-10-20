@@ -1,6 +1,6 @@
 use crate::{
-    PolicyRequest, Tool, ToolContext, ToolError, ToolOutcome, optional_string, optional_usize,
-    string_arg, truncate_text,
+    PolicyRequest, Tool, ToolContext, ToolError, ToolOutcome, optional_bool, optional_string,
+    optional_usize, pty, string_arg, truncate_text,
 };
 use kl_exec::{CommandOutput, CommandSpec};
 use kl_policy::{Action, Effect, is_read_only_git};
@@ -30,7 +30,8 @@ impl Tool for ShellTool {
             "properties": {
                 "command": {"type": "string"},
                 "cwd": {"type": "string", "default": "."},
-                "timeout_ms": {"type": "integer", "minimum": 100}
+                "timeout_ms": {"type": "integer", "minimum": 100},
+                "tty": {"type": "boolean", "default": false}
             },
             "required": ["command"],
             "additionalProperties": false
@@ -65,6 +66,20 @@ impl Tool for ShellTool {
         spec.max_output_bytes = context.max_output_bytes;
         apply_env_policy(context.policy, &mut spec);
         let policy = SandboxPolicy::workspace(context.policy.workspace());
+        if optional_bool(args, "tty") {
+            let launcher =
+                context
+                    .sandbox
+                    .launcher(&spec, &policy)
+                    .map_err(|error| match error {
+                        kl_sandbox::SandboxError::Violation(violation) => {
+                            ToolError::Sandbox(violation)
+                        }
+                        other => ToolError::Execution(other.to_string()),
+                    })?;
+            let output = pty::run(&spec, &launcher, context.cancel)?;
+            return Ok(describe_output(output, context.max_output_bytes));
+        }
         let output = context
             .sandbox
             .run(&spec, context.cancel, &policy)
@@ -267,6 +282,46 @@ mod tests {
     use kl_policy::{PolicyConfig, PolicyEngine};
     use kl_sandbox::{SandboxBackendKind, SandboxConfig, SandboxManager, SandboxMode};
     use std::sync::Arc;
+
+    #[test]
+    fn shell_runs_with_tty() {
+        let temp = tempfile::tempdir().unwrap();
+        let policy_engine = PolicyEngine::new(temp.path(), PolicyConfig::default()).unwrap();
+        let cancel = std::sync::atomic::AtomicBool::new(false);
+        let manager = SandboxManager::policy_only();
+        let policy = kl_sandbox::SandboxPolicy::workspace(temp.path());
+        let mut spec = CommandSpec::new(
+            "powershell",
+            vec![
+                "-NoProfile".to_owned(),
+                "-NonInteractive".to_owned(),
+                "-Command".to_owned(),
+                "Write-Output hi".to_owned(),
+            ],
+            temp.path(),
+        );
+        spec.timeout = Duration::from_secs(15);
+        let launcher = manager.launcher(&spec, &policy).unwrap();
+        let output = crate::pty::run(&spec, &launcher, &cancel).unwrap();
+        assert!(output.success(), "{}", output.combined());
+        assert!(output.stdout.contains("hi"), "{}", output.stdout);
+
+        let context = ToolContext {
+            policy: &policy_engine,
+            cancel: &cancel,
+            sandbox: Arc::new(manager),
+            timeout: Duration::from_secs(20),
+            max_output_bytes: 64 * 1024,
+        };
+        let outcome = ShellTool
+            .execute(&context, &json!({"command": "exit /b 0", "tty": true}))
+            .unwrap();
+        assert!(
+            outcome.success || outcome.summary.contains("timed out"),
+            "{}",
+            outcome.output
+        );
+    }
 
     #[cfg(windows)]
     #[test]

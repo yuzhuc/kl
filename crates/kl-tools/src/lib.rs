@@ -4,6 +4,7 @@
 mod diff;
 mod files;
 mod jobs;
+mod pty;
 mod search;
 mod shell;
 mod worktree;
