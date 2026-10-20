@@ -94,13 +94,14 @@ The release workflow builds:
 ```text
 Windows: win-x64, win-x86, win-arm64
 Linux:   linux-x64, linux-arm64, linux-arm
+Linux musl: linux-musl-x64, linux-musl-arm64, linux-musl-arm
 macOS:   osx-x64, osx-arm64
 ```
 
-Linux cross-builds use `cargo-zigbuild`; macOS packages are unsigned. `linux-x86`
-and 32-bit macOS are not supported by the current .NET 10 apphost. `kl` remains
-framework-dependent and needs .NET 10 Runtime on the target machine; `kl-core`
-is self-contained.
+Linux cross-builds use `cargo-zigbuild`; macOS packages are unsigned.
+`linux-x86`, Windows ARM32 and 32-bit macOS are not supported by the current
+Rust/.NET toolchains. `kl` remains framework-dependent and needs .NET 10
+Runtime on the target machine; `kl-core` is self-contained.
 
 ## Build and test
 

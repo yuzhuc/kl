@@ -18,12 +18,15 @@ jobs:
           - os: windows-latest
             rid: win-x64
             rust: x86_64-pc-windows-msvc
+            msvc_arch: amd64
           - os: windows-latest
             rid: win-x86
             rust: i686-pc-windows-msvc
+            msvc_arch: x86
           - os: windows-latest
             rid: win-arm64
             rust: aarch64-pc-windows-msvc
+            msvc_arch: amd64_arm64
           - os: ubuntu-latest
             rid: linux-x64
             rust: x86_64-unknown-linux-musl
@@ -34,6 +37,18 @@ jobs:
             zig: true
           - os: ubuntu-latest
             rid: linux-arm
+            rust: armv7-unknown-linux-musleabihf
+            zig: true
+          - os: ubuntu-latest
+            rid: linux-musl-x64
+            rust: x86_64-unknown-linux-musl
+            zig: true
+          - os: ubuntu-latest
+            rid: linux-musl-arm64
+            rust: aarch64-unknown-linux-musl
+            zig: true
+          - os: ubuntu-latest
+            rid: linux-musl-arm
             rust: armv7-unknown-linux-musleabihf
             zig: true
           - os: macos-13
@@ -54,6 +69,15 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
+      - if: matrix.msvc_arch
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.msvc_arch }}
+      - if: matrix.rid == 'win-arm64'
+        run: choco install llvm -y --no-progress
+      - if: matrix.rid == 'win-arm64'
+        shell: pwsh
+        run: Add-Content $env:GITHUB_PATH "C:\Program Files\LLVM\bin"
       - if: matrix.zig
         uses: goto-bus-stop/setup-zig@v2
         with:
