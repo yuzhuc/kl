@@ -3,14 +3,12 @@ name: ci
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -34,14 +32,67 @@ jobs:
       - name: .NET tests
         run: dotnet test kl.sln --no-build
       - name: Windows end-to-end demo
-        if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/demo-e2e.ps1
       - name: Windows policy demo
-        if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/demo-policy.ps1
       - name: Windows plugin hot-upgrade demo
-        if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/demo-plugin.ps1
+
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Rust format
+        run: cargo fmt --all -- --check
+      - name: Rust clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Build sandbox runner
+        run: cargo build -p kl-sandbox --bins
+      - name: Rust tests
+        run: cargo test --workspace
+      - name: Rust build
+        run: cargo build --workspace
+      - name: .NET build
+        run: dotnet build kl.sln
+      - name: .NET tests
+        run: dotnet test kl.sln --no-build
+
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-13, macos-14]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Rust format
+        run: cargo fmt --all -- --check
+      - name: Rust clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Build sandbox runner
+        run: cargo build -p kl-sandbox --bins
+      - name: Rust tests
+        run: cargo test --workspace
+      - name: Rust build
+        run: cargo build --workspace
+      - name: .NET build
+        run: dotnet build kl.sln
+      - name: .NET tests
+        run: dotnet test kl.sln --no-build
