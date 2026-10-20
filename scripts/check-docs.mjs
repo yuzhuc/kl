@@ -66,7 +66,7 @@ const CHECKS = [
       return [
         must(read, "README.md", /allow for this session/, "the session approval note"),
         must(read, "docs/security/policy.md", /`allow_session`/, "the allow_session decision"),
-        must(read, "cli/Kl.Cli/SessionUi.cs", /allow_session/, "the allow_session decision"),
+        must(read, "tui/Kl.Tui/SessionUi.cs", /allow_session/, "the allow_session decision"),
       ].filter(Boolean);
     },
   },

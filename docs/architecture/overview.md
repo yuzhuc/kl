@@ -203,7 +203,7 @@ plugins/installed/<id>/...           sidecar versions and current pointer
 See `schemas/protocol/v1/`, `schemas/plugin/manifest-v1.schema.json` and
 `tests/fixtures/protocol/`. The same fixtures are parsed by Rust
 (`crates/kl-protocol/tests/contract.rs`) and .NET
-(`cli/Kl.Cli.Tests/ProtocolContractTests.cs`).
+(`tui/Kl.Tui.Tests/ProtocolContractTests.cs`).
 
 ## Deliberate gaps
 
@@ -227,7 +227,7 @@ See `schemas/protocol/v1/`, `schemas/plugin/manifest-v1.schema.json` and
 - No UDS/Named Pipe transport; the transport boundary is ready for one.
 - Live Provider and real MCP server smoke remain pending until credentials or
   local servers are supplied.
-- The graphical desktop client is not in this repository; `cli/Kl.Client` is
+- The GUI scaffold lives in `gui/Kl.Gui`; `tui/Kl.Client` is
   the reusable C# client boundary for it.
 - `kl review` can run without a provider; in that case local findings remain
   and a `llm-review-unavailable` low-confidence finding is emitted.

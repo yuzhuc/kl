@@ -3,17 +3,17 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "cli", "cli", "{342A349A-D343-8551-4064-2E2800C39E13}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tui", "tui", "{342A349A-D343-8551-4064-2E2800C39E13}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Kl.Cli", "cli\Kl.Cli\Kl.Cli.csproj", "{EA0AC6D6-7B73-458E-A4EA-58768FF102D7}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Kl.Tui", "tui\Kl.Tui\Kl.Tui.csproj", "{EA0AC6D6-7B73-458E-A4EA-58768FF102D7}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Kl.Cli.Tests", "cli\Kl.Cli.Tests\Kl.Cli.Tests.csproj", "{2CA7A0F6-F278-47B5-BA64-FBF8E5254975}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Kl.Tui.Tests", "tui\Kl.Tui.Tests\Kl.Tui.Tests.csproj", "{2CA7A0F6-F278-47B5-BA64-FBF8E5254975}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Kl.Client", "cli\Kl.Client\Kl.Client.csproj", "{F419B324-DEB3-4E30-85DD-88D555E822B6}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Kl.Client", "tui\Kl.Client\Kl.Client.csproj", "{F419B324-DEB3-4E30-85DD-88D555E822B6}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "desktop", "desktop", "{7A1224A0-F22D-34FF-DE0A-A058FAFFD90C}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "gui", "gui", "{7A1224A0-F22D-34FF-DE0A-A058FAFFD90C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Kl.Desktop", "desktop\Kl.Desktop\Kl.Desktop.csproj", "{3F82D316-372E-4794-8A0E-5DD71F14CB4C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Kl.Gui", "gui\Kl.Gui\Kl.Gui.csproj", "{3F82D316-372E-4794-8A0E-5DD71F14CB4C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

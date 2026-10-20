@@ -69,7 +69,7 @@ Set the workspace root and point `--kl` at the CLI executable:
 $env:BENCH_WORKSPACE = 'D:\benchmark-workspaces'
 node scripts/benchmark.mjs `
   --tasks benchmarks/tasks.json `
-  --kl .\cli\Kl.Cli\bin\Debug\net10.0\kl.exe `
+  --kl .\tui\Kl.Tui\bin\Debug\net10.0\kl.exe `
   --out benchmarks/results/run-001.jsonl
 ```
 

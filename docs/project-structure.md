@@ -24,7 +24,7 @@ kl-core.exe (Rust, 真正的 Agent 运行时)
 | 路径 | 作用 |
 | --- | --- |
 | `Cargo.toml` / `Cargo.lock` | Rust workspace 定义，当前包含 13 个 crate；edition 2024、resolver 3。 |
-| `kl.sln` | .NET 解决方案，包含 `cli/Kl.Cli` 与 `cli/Kl.Cli.Tests`。 |
+| `kl.sln` | .NET 解决方案，包含 `tui/Kl.Tui` 与 `tui/Kl.Tui.Tests`。 |
 | `README.md` | 项目总览、架构图、构建与运行方式。 |
 | `rust-toolchain.toml` | Rust 工具链版本约束。 |
 | `rustfmt.toml` | Rust 格式化配置。 |
@@ -39,7 +39,7 @@ kl-core.exe (Rust, 真正的 Agent 运行时)
 ### `kl-protocol`
 
 协议契约层。定义 JSON-RPC 请求/响应/通知信封、协议版本协商、事件结构、
-稳定错误码和握手信息。C# 侧的 `cli/Kl.Cli/Protocol.cs` 与
+稳定错误码和握手信息。C# 侧的 `tui/Kl.Tui/Protocol.cs` 与
 `schemas/protocol/v1/` 必须与它保持一致。
 
 适合修改：新增 RPC 方法、事件字段、错误码、协议版本。
@@ -144,16 +144,16 @@ stdout/stderr 收集。被 shell 工具、Git 工具和部分测试辅助代码�
 工具插件；负责启动、健康检查、热重载、流量切换、排空、能力检查、
 entrypoint SHA-256 完整性校验与 Ed25519 签名校验。
 
-## C# 终端（`cli/`）
+## C# 终端（`tui/`）
 
-### `cli/Kl.Cli`
+### `tui/Kl.Tui`
 
 终端客户端，负责所有用户交互：
 
 | 文件 | 作用 |
 | --- | --- |
 | `Program.cs` | 入口，分发 `chat`、`run`、`provider`、`plugin`、`review`、`doctor` 等命令。 |
-| `CommandLine.cs` | 命令行参数解析、`CliOptions`。 |
+| `CommandLine.cs` | 命令行参数解析、`TuiOptions`。 |
 | `CoreLocator.cs` | 查找并启动 `kl-core` 可执行文件。 |
 | `JsonRpcConnection.cs` / `JsonLineCodec.cs` | stdio JSON-RPC 连接与逐行编解码。 |
 | `KlCoreClient.cs` | 通用 Core RPC 调用。 |
@@ -171,7 +171,7 @@ entrypoint SHA-256 完整性校验与 Ed25519 签名校验。
 | `ConsoleUi.cs` | 通用控制台输出辅助。 |
 | `Protocol.cs` | 与 Rust 协议层对应的 C# DTO。 |
 
-### `cli/Kl.Cli.Tests`
+### `tui/Kl.Tui.Tests`
 
 xUnit 测试。覆盖参数解析、聊天状态机、设置页渲染、Provider 配置、
 协议 DTO、非交互输出等。当前 .NET 测试是 CLI 行为的主要回归保障。
@@ -254,11 +254,11 @@ xUnit 测试。覆盖参数解析、聊天状态机、设置页渲染、Provider
 | 想做的事情 | 优先查看 |
 | --- | --- |
 | 新增模型协议 | `crates/kl-provider`、`kl-protocol`、`schemas/protocol` |
-| 新增 RPC 方法 | `crates/kl-protocol`、`crates/kl-core/src/lib.rs`、`cli/Kl.Cli/KlCoreClient.cs` |
+| 新增 RPC 方法 | `crates/kl-protocol`、`crates/kl-core/src/lib.rs`、`tui/Kl.Tui/KlCoreClient.cs` |
 | 新增内置工具 | `crates/kl-tools`、`kl-policy`、`kl-protocol` |
 | 调整审批/安全策略 | `crates/kl-policy`、`crates/kl-sandbox` |
-| 改聊天页 UI | `cli/Kl.Cli/ChatTui*.cs` |
-| 改设置页 UI | `cli/Kl.Cli/SettingsTui*.cs`、`SettingsTexts.cs` |
+| 改聊天页 UI | `tui/Kl.Tui/ChatTui*.cs` |
+| 改设置页 UI | `tui/Kl.Tui/SettingsTui*.cs`、`SettingsTexts.cs` |
 | 改 Agent 行为 | `crates/kl-agent`、`crates/kl-core` |
 | 改审查规则 | `crates/kl-review` |
 | 改插件能力 | `crates/kl-plugin-host`、`schemas/plugin`、`docs/plugin-api` |

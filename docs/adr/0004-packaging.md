@@ -21,7 +21,7 @@ schemas/            protocol schemas for tooling/diagnostics
 Build steps:
 
 1. `cargo build --release -p kl-core`
-2. `dotnet publish cli/Kl.Cli -c Release -r <rid> --self-contained false`
+2. `dotnet publish tui/Kl.Tui -c Release -r <rid> --self-contained false`
 3. copy `target/release/kl-core(.exe)` next to the published CLI
 4. optionally publish self-contained/single-file for users without .NET 10
 

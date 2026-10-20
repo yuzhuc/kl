@@ -4,7 +4,7 @@
   "id": 1,
   "method": "kl.handshake",
   "params": {
-    "client_name": "kl-cli",
+    "client_name": "kl-tui",
     "client_version": "0.1.0",
     "protocol_versions": [1],
     "features": ["events"]
