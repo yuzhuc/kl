@@ -36,6 +36,9 @@ public static class ChatTexts
     public static string ApprovalAllow(UiLanguage language) =>
         T(language, "allow", "允许");
 
+    public static string ApprovalAllowSession(UiLanguage language) =>
+        T(language, "allow for session", "本会话允许");
+
     public static string ApprovalDeny(UiLanguage language) =>
         T(language, "deny", "拒绝");
 
@@ -49,7 +52,7 @@ public static class ChatTexts
         T(language, "↑/↓ select  Enter set default  Esc cancel", "↑/↓ 选择  Enter 设为默认  Esc 取消");
 
     public static string ApprovalFooter(UiLanguage language) =>
-        T(language, "[a] allow  [d] deny", "[a] 允许  [d] 拒绝");
+        T(language, "[a] allow  [s] session  [d] deny", "[a] 允许  [s] 本会话允许  [d] 拒绝");
 
     public static string WorkingFooter(UiLanguage language) =>
         T(

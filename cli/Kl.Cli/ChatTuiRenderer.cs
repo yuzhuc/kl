@@ -3105,6 +3105,8 @@ public static class ChatTuiRenderer
         lines.Add(
             "  " + DiffRender.Ansi.BoldGreen + "[a] " +
             ChatTexts.ApprovalAllow(language) + DiffRender.Ansi.Reset +
+            "  " + DiffRender.Ansi.BoldGreen + "[s] " +
+            ChatTexts.ApprovalAllowSession(language) + DiffRender.Ansi.Reset +
             "  " + DiffRender.Ansi.BoldRed + "[d] " +
             ChatTexts.ApprovalDeny(language) + DiffRender.Ansi.Reset);
         return lines;

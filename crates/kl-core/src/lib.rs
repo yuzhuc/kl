@@ -327,8 +327,59 @@ struct CoreApprovalGate {
     cancel: Arc<AtomicBool>,
 }
 
+impl CoreApprovalGate {
+    fn rule_key(request: &ApprovalRequest) -> String {
+        format!("{}:{}", request.tool, request.resource)
+    }
+
+    fn is_remembered(&self, key: &str) -> bool {
+        self.sessions
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .get(&self.session_id)
+            .is_some_and(|state| state.approval_rules.iter().any(|rule| rule == key))
+    }
+
+    fn remember(&self, key: String) {
+        let mut sessions = self
+            .sessions
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let Some(state) = sessions.get_mut(&self.session_id) else {
+            return;
+        };
+        if state.approval_rules.iter().any(|rule| rule == &key) {
+            return;
+        }
+        state.approval_rules.push(key);
+        let data = SessionData {
+            meta: state.meta.clone(),
+            messages: state
+                .messages
+                .iter()
+                .map(|message| serde_json::to_value(message).unwrap_or(Value::Null))
+                .collect(),
+            approval_rules: state.approval_rules.clone(),
+        };
+        let _ = self.hub.store.save(&data);
+    }
+}
+
 impl ApprovalGate for CoreApprovalGate {
     fn request(&self, request: ApprovalRequest) -> ApprovalDecision {
+        let key = Self::rule_key(&request);
+        if self.is_remembered(&key) {
+            let _ = self.hub.emit(
+                &self.session_id,
+                CoreEvent::ToolApprovalResolved {
+                    turn_id: request.turn_id,
+                    call_id: request.call_id,
+                    approval_id: request.approval_id,
+                    decision: ApprovalDecision::Allow,
+                },
+            );
+            return ApprovalDecision::Allow;
+        }
         let _ = set_turn_state(
             &self.sessions,
             &self.hub.store,
@@ -342,16 +393,22 @@ impl ApprovalGate for CoreApprovalGate {
             &self.session_id,
             TURN_STATE_WORKING,
         );
+        let effective = if decision == ApprovalDecision::AllowSession {
+            self.remember(key);
+            ApprovalDecision::Allow
+        } else {
+            decision
+        };
         let _ = self.hub.emit(
             &self.session_id,
             CoreEvent::ToolApprovalResolved {
                 turn_id: request.turn_id,
                 call_id: request.call_id,
                 approval_id: request.approval_id,
-                decision,
+                decision: effective,
             },
         );
-        decision
+        effective
     }
 }
 
@@ -839,6 +896,7 @@ struct SessionState {
     meta: SessionMeta,
     messages: Vec<ChatMessage>,
     active_turn: Option<String>,
+    approval_rules: Vec<String>,
 }
 
 fn set_turn_state(
@@ -1037,6 +1095,7 @@ impl Core {
             methods::SESSION_DELETE => self.session_delete(params),
             methods::SESSION_STATUS => self.session_status(params),
             methods::SESSION_COMPACT => self.session_compact(params),
+            methods::SESSION_FORK => self.session_fork(params),
             methods::TURN_START => self.turn_start(params),
             methods::TURN_CANCEL => self.turn_cancel(params),
             methods::APPROVAL_RESPOND => self.approval_respond(params),
@@ -1312,6 +1371,7 @@ impl Core {
                     meta: data.meta.clone(),
                     messages: Vec::new(),
                     active_turn: None,
+                    approval_rules: data.approval_rules.clone(),
                 },
             );
         }
@@ -1327,6 +1387,28 @@ impl Core {
             0,
             self.config.agent.reasoning_effort.as_str(),
         ))
+    }
+
+    fn session_fork(&mut self, params: Value) -> Result<Value, RpcError> {
+        let params: SessionResumeParams = parse_params(params, "session.fork")?;
+        let source = self.store.load(&params.session_id).map_err(store_error)?;
+        let mut fork = self
+            .store
+            .create(
+                &source.meta.workspace,
+                &source.meta.provider,
+                &source.meta.model,
+                source.meta.reasoning_effort.as_deref().unwrap_or("medium"),
+            )
+            .map_err(store_error)?;
+        fork.messages = source.messages;
+        fork.approval_rules = source.approval_rules;
+        fork.meta.name = source.meta.name.map(|name| format!("{name} (fork)"));
+        self.store.save(&fork).map_err(store_error)?;
+        to_value(json!({
+            "session_id": fork.meta.id,
+            "forked_from": params.session_id,
+        }))
     }
 
     fn session_resume(&mut self, params: Value) -> Result<Value, RpcError> {
@@ -1377,6 +1459,7 @@ impl Core {
                 meta: data.meta,
                 messages,
                 active_turn: None,
+                approval_rules: data.approval_rules,
             },
         );
         drop(sessions);
@@ -1590,6 +1673,7 @@ impl Core {
                     .iter()
                     .map(|message| serde_json::to_value(message).unwrap_or(Value::Null))
                     .collect(),
+                approval_rules: state.approval_rules.clone(),
             };
             self.store.save(&data).map_err(store_error)?;
         }
@@ -1891,6 +1975,7 @@ impl Core {
                             .iter()
                             .map(|message| serde_json::to_value(message).unwrap_or(Value::Null))
                             .collect(),
+                        approval_rules: state.approval_rules.clone(),
                     };
                     let _ = store.save(&data);
                 }

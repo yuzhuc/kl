@@ -929,13 +929,19 @@ public static class ChatTuiRunner
                             ResolveApproval(
                                 connection?.Presenter,
                                 state,
-                                allow: true);
+                                "allow");
+                            break;
+                        case ChatKeyAction.ApprovalAllowSession:
+                            ResolveApproval(
+                                connection?.Presenter,
+                                state,
+                                "allow_session");
                             break;
                         case ChatKeyAction.ApprovalDeny:
                             ResolveApproval(
                                 connection?.Presenter,
                                 state,
-                                allow: false);
+                                "deny");
                             break;
                         case ChatKeyAction.SelectUp:
                             state.ExtendSelection(
@@ -2277,19 +2283,24 @@ public static class ChatTuiRunner
     private static void ResolveApproval(
         TuiSessionPresenter? presenter,
         ChatTuiState state,
-        bool allow)
+        string decision)
     {
         if (state.PendingApprovalId is not { } approvalId)
         {
             return;
         }
 
-        presenter?.ResolveApproval(approvalId, allow);
+        presenter?.ResolveApprovalDecision(approvalId, decision);
         state.PendingApprovalId = null;
         state.StatusMessage = ChatTexts.T(
             state.Language,
-            allow ? "approval sent: allow" : "approval sent: deny",
-            allow ? "已发送审批：允许" : "已发送审批：拒绝");
+            $"approval sent: {decision}",
+            decision switch
+            {
+                "allow_session" => "已发送审批：本会话允许",
+                "allow" => "已发送审批：允许",
+                _ => "已发送审批：拒绝"
+            });
     }
 
     public static string BuildFrameUpdate(

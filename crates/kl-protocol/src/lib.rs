@@ -33,6 +33,7 @@ pub mod methods {
     pub const SESSION_DELETE: &str = "session.delete";
     pub const SESSION_STATUS: &str = "session.status";
     pub const SESSION_COMPACT: &str = "session.compact";
+    pub const SESSION_FORK: &str = "session.fork";
     pub const TURN_START: &str = "turn.start";
     pub const TURN_CANCEL: &str = "turn.cancel";
     pub const APPROVAL_RESPOND: &str = "tool.approval.respond";
@@ -695,6 +696,7 @@ pub struct ApprovalRespondParams {
 #[serde(rename_all = "snake_case")]
 pub enum ApprovalDecision {
     Allow,
+    AllowSession,
     Deny,
 }
 

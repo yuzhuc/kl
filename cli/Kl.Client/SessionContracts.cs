@@ -40,6 +40,13 @@ public sealed record ApprovalRequestEvent(
     string Reason,
     string Args);
 
+public interface ISessionApprovalDecisionPresenter
+{
+    ValueTask<string> RequestApprovalDecisionAsync(
+        ApprovalRequestEvent request,
+        CancellationToken cancellationToken);
+}
+
 public interface ISessionPresenter
 {
     ValueTask OnEventAsync(SessionEvent sessionEvent, CancellationToken cancellationToken);
