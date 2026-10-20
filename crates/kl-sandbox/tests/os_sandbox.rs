@@ -1,5 +1,6 @@
 #![cfg(any(target_os = "linux", target_os = "macos"))]
 
+use kl_exec::CommandOutput;
 use kl_exec::CommandSpec;
 use kl_sandbox::{SandboxBackendKind, SandboxConfig, SandboxManager, SandboxMode, SandboxPolicy};
 use std::path::PathBuf;
@@ -35,18 +36,29 @@ fn strict_manager() -> Option<SandboxManager> {
         backend: SandboxBackendKind::Auto,
         ..SandboxConfig::default()
     });
-    if manager.status().available {
+    let status = manager.status();
+    println!(
+        "sandbox backend={} available={} detail={}",
+        status.backend, status.available, status.detail
+    );
+    if status.available {
         return Some(manager);
     }
-    let detail = manager.status().detail.clone();
+    let detail = status.detail.clone();
     if std::env::var_os("KL_REQUIRE_OS_SANDBOX").is_some() {
+        report("OS sandbox unavailable", &detail);
         panic!("OS sandbox unavailable: {detail}");
     }
     eprintln!("skipping OS sandbox test: {detail}");
     None
 }
 
-fn run(manager: &SandboxManager, script: &str, cwd: PathBuf, policy: &SandboxPolicy) -> i32 {
+fn run(
+    manager: &SandboxManager,
+    script: &str,
+    cwd: PathBuf,
+    policy: &SandboxPolicy,
+) -> CommandOutput {
     let mut spec = CommandSpec::new("/bin/sh", vec!["-c".to_owned(), script.to_owned()], cwd);
     spec.timeout = Duration::from_secs(20);
     spec.clear_env = true;
@@ -54,10 +66,38 @@ fn run(manager: &SandboxManager, script: &str, cwd: PathBuf, policy: &SandboxPol
         "PATH".to_owned(),
         "/usr/bin:/bin:/usr/sbin:/sbin".to_owned(),
     )];
-    let output = manager
+    manager
         .run(&spec, &AtomicBool::new(false), policy)
-        .expect("sandbox run");
-    output.status.unwrap_or(-1)
+        .expect("sandbox run")
+}
+
+fn expect_success(label: &str, output: &CommandOutput) {
+    if !output.success() {
+        fail(label, output);
+    }
+}
+
+fn expect_failure(label: &str, output: &CommandOutput) {
+    if output.success() {
+        fail(label, output);
+    }
+}
+
+fn fail(label: &str, output: &CommandOutput) -> ! {
+    report(
+        label,
+        &format!("status={:?} {}", output.status, output.combined()),
+    );
+    panic!("{label}: status={:?} {}", output.status, output.combined());
+}
+
+/// GitHub only shows annotations without a login on this repository, so put
+/// the failing command output where the run summary can see it.
+fn report(label: &str, detail: &str) {
+    if std::env::var_os("CI").is_some() {
+        let detail = detail.replace('\n', " ");
+        println!("::error title={label}::{detail}");
+    }
 }
 
 #[test]
@@ -69,23 +109,23 @@ fn os_sandbox_allows_workspace_writes_and_blocks_outside_writes() {
     let policy = SandboxPolicy::workspace(workspace.path());
 
     let inside = workspace.path().join("inside.txt");
-    let status = run(
+    let output = run(
         &manager,
         "printf ok > inside.txt",
         workspace.path().to_path_buf(),
         &policy,
     );
-    assert_eq!(status, 0, "workspace write should succeed");
+    expect_success("workspace write", &output);
     assert_eq!(std::fs::read_to_string(&inside).unwrap_or_default(), "ok");
 
     let outside = outside_path();
-    let status = run(
+    let output = run(
         &manager,
         &format!("printf no > {}", outside.display()),
         workspace.path().to_path_buf(),
         &policy,
     );
-    assert_ne!(status, 0, "write outside the sandbox roots must fail");
+    expect_failure("outside write", &output);
     assert!(!outside.exists(), "outside file must not be created");
 }
 
@@ -97,20 +137,20 @@ fn os_sandbox_blocks_network_unless_allowed() {
     let workspace = test_workspace();
     let mut policy = SandboxPolicy::workspace(workspace.path());
     policy.allow_network = false;
-    let blocked = run(
+    let output = run(
         &manager,
         "curl -fsS --max-time 3 http://1.1.1.1/ >/dev/null",
         workspace.path().to_path_buf(),
         &policy,
     );
-    assert_ne!(blocked, 0, "network must be blocked without a grant");
+    expect_failure("network blocked", &output);
 
     policy.allow_network = true;
-    let allowed = run(
+    let output = run(
         &manager,
         "curl -fsS --max-time 3 http://1.1.1.1/ >/dev/null",
         workspace.path().to_path_buf(),
         &policy,
     );
-    assert_eq!(allowed, 0, "network grant should permit outbound traffic");
+    expect_success("network allowed", &output);
 }
