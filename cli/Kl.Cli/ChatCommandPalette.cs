@@ -134,7 +134,13 @@ public static class ChatCommandPalette
             "copy the last assistant message",
             "复制最后一条助手消息",
             ["/copy"],
-            Hidden: true)
+            Hidden: true),
+        new(
+            "/fork",
+            ChatCommandKind.Fork,
+            "fork the current session",
+            "分叉当前会话",
+            ["/fork"])
     ];
 
     public static string Description(
