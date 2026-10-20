@@ -32,18 +32,18 @@ jobs:
           major_minor="$(printf '%s' "$version" | awk -F. '{print $1 "." $2}')"
           base="v${version}"
           max=0
-          remote="$(git ls-remote --tags origin "refs/tags/${base}-rel*")"
+          remote="$(git ls-remote --tags origin "refs/tags/${base}-rc*")"
           while read -r _ ref; do
             [ -z "$ref" ] && continue
             tag="${ref#refs/tags/}"
-            n="${tag##*-rel}"
+            n="${tag##*-rc}"
             case "$n" in
               ''|*[!0-9]*) continue ;;
             esac
             if [ "$n" -gt "$max" ]; then max="$n"; fi
           done <<< "$remote"
-          rel="$((max + 1))"
-          tag="${base}-rel${rel}"
+          rc="$((max + 1))"
+          tag="${base}-rc${rc}"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "series=v${major_minor}." >> "$GITHUB_OUTPUT"
@@ -248,7 +248,7 @@ jobs:
           while IFS= read -r tag; do
             [ -z "$tag" ] && continue
             case "$tag" in
-              "${SERIES}"*-rel*) echo "keep release $tag" ;;
+              "${SERIES}"*-rc*) echo "keep release $tag" ;;
               *) echo "delete release $tag"; gh release delete "$tag" --yes --cleanup-tag ;;
             esac
           done
@@ -260,7 +260,7 @@ jobs:
           git tag --list 'v*' | while IFS= read -r tag; do
             [ -z "$tag" ] && continue
             case "$tag" in
-              "${SERIES}"*-rel*) ;;
+              "${SERIES}"*-rc*) ;;
               *) echo "delete tag $tag"; git push origin "refs/tags/$tag" --delete || true ;;
             esac
           done
@@ -273,7 +273,7 @@ jobs:
           git tag --list 'v*' | while IFS= read -r tag; do
             [ -z "$tag" ] && continue
             case "$tag" in
-              "${SERIES}"*-rel*) ;;
+              "${SERIES}"*-rc*) ;;
               *) continue ;;
             esac
             if grep -Fxq "$tag" <<<"$releases"; then

@@ -60,4 +60,4 @@ The TUI and GUI should share `Kl.Client`; neither owns an agent loop.
 - TUI: `dotnet build tui/Kl.Tui/Kl.Tui.csproj`.
 - GUI: `dotnet build gui/Kl.Gui/Kl.Gui.csproj` once the scaffold is evolved.
 - Packaging: `scripts/package.mjs` builds a self-contained TUI bundle.
-- Release: only `main` pushes, tag `v<version>-relN`, archives only.
+- Release: only `main` pushes, tag `v<version>-rcN`, archives only.

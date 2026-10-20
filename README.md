@@ -130,7 +130,7 @@ permission model.
 ## Release
 
 Releases are built only from pushes to `main`. The workflow reads the workspace
-version, creates `v<version>-rel1` and then `-rel2`, `-rel3`, and so on. It
+version, creates `v<version>-rc1` and then `-rc2`, `-rc3`, and so on. It
 retains only the current `v<major>.<minor>.` series and publishes archives
 without `.sha256` files.
 

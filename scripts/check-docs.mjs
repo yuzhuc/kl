@@ -91,15 +91,15 @@ const CHECKS = [
   },
   {
     id: "release-policy",
-    description: "Releases are built only from main and tagged v<version>-relN",
+    description: "Releases are built only from main and tagged v<version>-rcN",
     failures(read) {
       const problems = [
         must(read, "README.md", /Releases are built only from pushes to `main`/, "the main-only release policy"),
-        must(read, "README.md", /`v<version>-rel1`/, "the v<version>-relN tag scheme"),
+        must(read, "README.md", /`v<version>-rc1`/, "the v<version>-rcN tag scheme"),
         must(read, "README.md", /current `v<major>\.<minor>\.` series/, "the current-series retention rule"),
         mustNot(read, "README.md", /retention list has\s+not been chosen/, "an undecided retention list"),
         must(read, ".github/workflows/release.yml", /branches: \[main\]/, "a main-only push trigger"),
-        must(read, ".github/workflows/release.yml", /-rel\$\{rel\}/, "the -relN tag suffix"),
+        must(read, ".github/workflows/release.yml", /-rc\$\{rc\}/, "the -rcN tag suffix"),
         mustNot(read, ".github/workflows/release.yml", /pull_request/, "pull request triggers"),
         mustNot(read, ".github/workflows/release.yml", /workflow_dispatch/, "manual dispatch triggers"),
       ].filter(Boolean);
