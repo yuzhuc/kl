@@ -2,6 +2,11 @@ name: release
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (blank = v<Cargo workspace version>)"
+        required: false
+        default: ""
   push:
     tags: ["v*"]
 
@@ -9,7 +14,55 @@ permissions:
   contents: write
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: version
+        name: Resolve release tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            tag="${GITHUB_REF_NAME}"
+          else
+            version="$(awk '/^\[workspace.package\]/{found=1; next} found && /^version *=/{gsub(/[" ]/, "", $3); print $3; exit}' Cargo.toml)"
+            tag="${{ inputs.tag }}"
+            if [ -z "$tag" ]; then
+              tag="v${version}"
+            fi
+          fi
+          if [ -z "$tag" ] || [ "$tag" = "v" ]; then
+            echo "cannot resolve a release tag" >&2
+            exit 1
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+      - name: Create tag at this commit
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            current="$(git rev-parse "refs/tags/${TAG}^{commit}")"
+            head="$(git rev-parse HEAD)"
+            if [ "$current" != "$head" ]; then
+              echo "tag ${TAG} already exists at ${current}, not ${head}" >&2
+              exit 1
+            fi
+            echo "tag ${TAG} already exists at HEAD"
+          else
+            git tag "${TAG}"
+            git push origin "refs/tags/${TAG}"
+          fi
+
   windows:
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -62,6 +115,7 @@ jobs:
           if-no-files-found: error
 
   linux:
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -111,6 +165,7 @@ jobs:
           if-no-files-found: error
 
   macos:
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -152,8 +207,8 @@ jobs:
           if-no-files-found: error
 
   publish:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows, linux, macos]
+    if: needs.windows.result == 'success' && needs.linux.result == 'success' && needs.macos.result == 'success'
+    needs: [prepare, windows, linux, macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -162,4 +217,7 @@ jobs:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: ${{ needs.prepare.outputs.tag }}
+          generate_release_notes: true
           files: artifacts/*
