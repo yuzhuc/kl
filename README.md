@@ -38,9 +38,12 @@ kl (C#/.NET)  -- JSON-RPC 2.0 over stdio -->  kl-core (Rust)
   command denial, approval effects.
 - `crates/kl-audit` — rotated append-only JSONL audit plus SQLite query index.
 - `crates/kl-store` — session metadata, message projection and event log.
+- `crates/kl-index` — shallow repository index (file metadata, Rust/C#/TypeScript
+  symbols, test selection) used as deep-mode hints.
 - `crates/kl-sandbox` — unified sandbox boundary with Windows AppContainer +
-  kill-on-close Job Object, strict-mode fail-closed, MXC probing and the
-  `kl-sandbox-runner` clean-environment launcher.
+  kill-on-close Job Object, Linux `bubblewrap` and macOS Seatbelt backends,
+  strict-mode fail-closed, MXC probing and the `kl-sandbox-runner`
+  clean-environment launcher.
 - `crates/kl-plugin-host` — manifest v1, sidecar JSON-RPC supervisor, health
   checks, drain, hot swap and capability checks.
 - `crates/kl-exec` — process execution with timeout, cancellation and bounded
@@ -60,6 +63,10 @@ kl run "fix the failing test" --agent verify
 ```
 
 - Built-in agents: `build`, `plan`, `explore`, `review`, `verify`, `deep`.
+- Custom agent presets: `~/.kl/agents/<id>.toml` with `id`, `name` and `policy`
+  required, plus optional `description`, `system`, `max_iterations`, `provider`
+  and `model`. A custom preset replaces the built-in preset with the same id;
+  `deep` always keeps the built-in staged pipeline.
 - Skills: `~/.kl/skills/<name>/SKILL.md` or `.kl/skills/<name>/SKILL.md`; only
   the name and description enter the prompt, the body loads through `skill`.
 - MCP: `~/.kl/mcp.toml` with `[servers.<id>] command`, `args`, `enabled`.
@@ -460,14 +467,15 @@ again, lists plugins and prints the audit tail:
 pwsh scripts/demo-plugin.ps1
 ```
 
-Live Provider smoke (requires real keys):
+Live Provider and MCP smoke (requires real keys and a configured MCP server):
 
 ```powershell
-pwsh scripts/live-provider-smoke.ps1
+pwsh scripts/live-smoke.ps1
 ```
 
 The script exercises the three native protocols (`openai-chat`, `anthropic`
-and `openai-responses`). Without keys it writes
+and `openai-responses`) and, when `~/.kl/mcp.toml` configures an enabled
+server, the real MCP stdio handshake through `kl-core`. Without keys it writes
 `tests/fixtures/providers/live-smoke.status.json` as `pending`; it never
 fabricates a live success fixture.
 
@@ -556,8 +564,12 @@ Events: `session.created`, `turn.started`, `turn.delta`, `turn.reasoning`,
 
 - Windows AppContainer enforces workspace filesystem isolation and child-process
   containment. Network isolation is not claimed as verified; the policy
-  allowlist remains active. Linux and macOS expose an explicit unimplemented
-  backend rather than pretending policy checks are OS isolation.
+  allowlist remains active. Linux and macOS now use real OS backends instead of
+  an unimplemented placeholder: `bubblewrap` on Linux (read-only host, rebound
+  writable roots, fresh user/PID/IPC/UTS namespaces and an isolated network
+  namespace when the policy denies network) and a deny-by-default Seatbelt
+  profile through `/usr/bin/sandbox-exec` on macOS. An unavailable launcher is
+  reported and never silently treated as OS isolation.
 - Protecting sensitive paths on Windows removes the AppContainer ACE and makes
   that DACL protected. This is persistent ACL hardening of those paths.
 - Strict git execution requires the git installation root to be ACL-grantable.
@@ -565,7 +577,9 @@ Events: `session.created`, `turn.started`, `turn.delta`, `turn.reasoning`,
   with an explicit sandbox error.
 - WASM tool plugins are implemented; WASM providers are not.
 - Deep quality mode is explicit orchestration of five ordinary agent turns, not
-  a separate multi-agent runtime. Repository symbol indexing is not implemented.
+  a separate multi-agent runtime. The repository index is a shallow hint source
+  (file metadata, Rust/C#/TypeScript symbols, test selection) appended to the
+  explorer and planner prompts; it is not a symbol graph or a language server.
 - Reviewer/verifier workspace edits are detected by a fingerprint guard and fail
   the deep turn; prompts also prohibit edits. Shell/edit approvals remain the
   hard policy boundary.
@@ -574,8 +588,8 @@ Events: `session.created`, `turn.started`, `turn.delta`, `turn.reasoning`,
   dropped.
 - Live OpenAI Chat, Anthropic and OpenAI Responses smoke is pending because no
   API keys were available in the implementation environment. The offline mock
-  SSE conformance tests pass for all three protocols.
+  SSE conformance tests pass for all three protocols. Live MCP smoke runs only
+  when a stdio server is configured in `~/.kl/mcp.toml`.
 
-Next stage entry point: add Linux/macOS OS backends, PTY, verified network
-isolation, repository symbol indexing, custom agent preset files, real MCP
-server conformance, and live provider conformance/replay fixtures.
+Next stage entry point: add PTY, verified network isolation, real MCP server
+conformance, and live provider conformance/replay fixtures.

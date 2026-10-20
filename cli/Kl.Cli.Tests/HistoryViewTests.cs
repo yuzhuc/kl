@@ -402,7 +402,6 @@ public sealed class HistoryViewTests
     [Fact]
     public void HistoryShowsStatusTabsWorkspaceGroupingAndEllipsis()
     {
-        if (!OperatingSystem.IsWindows()) return;
         var state = new ChatTuiState
         {
             Screen = ChatScreen.History,
@@ -411,10 +410,10 @@ public sealed class HistoryViewTests
             [
                 Session(
                     "s1",
-                    "D:\\workspace-with-a-very-long-name",
+                    TestPaths.LongWorkspace,
                     "ready",
                     "A task title that is intentionally much longer than the row"),
-                Session("s2", "D:\\kl", "completed", "inactive task")
+                Session("s2", TestPaths.Workspace, "completed", "inactive task")
             ]
         };
 
@@ -426,14 +425,13 @@ public sealed class HistoryViewTests
         Assert.Contains("Working 0", plain);
         Assert.Contains("Ready 1", plain);
         Assert.Contains("Inactive 1", plain);
-        Assert.Contains("D:\\workspace-with-a-very-long-name  1", plain);
+        Assert.Contains($"{TestPaths.LongWorkspace}  1", plain);
         Assert.Contains("…", plain);
     }
     [Fact]
     public void WorkspaceGroupCenterTruncatesLongPaths()
     {
-        if (!OperatingSystem.IsWindows()) return;
-        var workspace = "D:\\" + new string('a', 80) + "\\project";
+        var workspace = TestPaths.LongRoot + new string('a', 80) + TestPaths.Separator + "project";
         var state = new ChatTuiState
         {
             Screen = ChatScreen.History,
@@ -443,7 +441,8 @@ public sealed class HistoryViewTests
 
         var lines = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(60, 24, state))
             .Split('\n');
-        var groupLine = lines.First(line => line.Contains("D:\\aaa", StringComparison.Ordinal));
+        var groupLine = lines.First(line =>
+            line.Contains(TestPaths.LongRoot + "aaa", StringComparison.Ordinal));
 
         Assert.Contains("…", groupLine);
         Assert.Contains("project  1", groupLine);

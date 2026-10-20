@@ -7,7 +7,7 @@
 mod agents;
 mod config;
 mod hooks;
-mod mcp;
+pub mod mcp;
 mod skills;
 mod subagent;
 

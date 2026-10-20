@@ -62,13 +62,12 @@ public sealed class ChatTuiTests
     [Fact]
     public void ChatEnglishSnapshot()
     {
-        if (!OperatingSystem.IsWindows()) return;
-        var state = new ChatTuiState("D:\\kl");
+        var state = new ChatTuiState(TestPaths.Workspace);
         var lines = new List<string>
         {
             string.Empty,
             "  >_ KL (v0.1.0)",
-            "     D:\\kl",
+            $"     {TestPaths.Workspace}",
             string.Empty,
             "  To get started, describe a task or try one of these commands:",
             string.Empty,
@@ -82,7 +81,7 @@ public sealed class ChatTuiTests
         lines.Add(new string('─', 80));
         lines.Add("› |Ask KL to do anything");
         lines.Add(new string('─', 80));
-        lines.Add("  no provider configured · D:\\kl · New chat");
+        lines.Add($"  no provider configured · {TestPaths.Workspace} · New chat");
         lines.Add("  ← for agents · ? for shortcuts");
 
         Assert.Equal(string.Join('\n', lines), Snapshot(ChatTuiRenderer.Render(80, 24, state)));
@@ -91,14 +90,13 @@ public sealed class ChatTuiTests
     [Fact]
     public void ChatChineseSnapshot()
     {
-        if (!OperatingSystem.IsWindows()) return;
-        var state = new ChatTuiState("D:\\kl");
+        var state = new ChatTuiState(TestPaths.Workspace);
         state.Settings.SetLanguage(UiLanguage.ChineseSimplified);
         var lines = new List<string>
         {
             string.Empty,
             "  >_ KL (v0.1.0)",
-            "     D:\\kl",
+            $"     {TestPaths.Workspace}",
             string.Empty,
             "  开始使用：描述一个任务，或尝试以下命令：",
             string.Empty,
@@ -112,7 +110,7 @@ public sealed class ChatTuiTests
         lines.Add(new string('─', 80));
         lines.Add("› |让 KL 做点什么，或输入 / 查看命令");
         lines.Add(new string('─', 80));
-        lines.Add("  未配置 Provider · D:\\kl · 新对话");
+        lines.Add($"  未配置 Provider · {TestPaths.Workspace} · 新对话");
         lines.Add("  ← 代理 · ? 快捷键");
 
         Assert.Equal(string.Join('\n', lines), Snapshot(ChatTuiRenderer.Render(80, 24, state)));
@@ -121,13 +119,12 @@ public sealed class ChatTuiTests
     [Fact]
     public void HomeUsesCodexTitleCommandAndPathColors()
     {
-        if (!OperatingSystem.IsWindows()) return;
-        var state = new ChatTuiState("D:\\kl", "openai", "gpt-5", "s1")
+        var state = new ChatTuiState(TestPaths.Workspace, "openai", "gpt-5", "s1")
         {
             ReasoningEffort = "high"
         };
         state.History.Add(new HistorySession(
-            "s1", "D:\\kl", "openai", "gpt-5", string.Empty, 1,
+            "s1", TestPaths.Workspace, "openai", "gpt-5", string.Empty, 1,
             null, "Say hello", null, null, "high"));
 
         var render = ChatTuiRenderer.Render(80, 24, state);
@@ -144,7 +141,7 @@ public sealed class ChatTuiTests
             DiffRender.Ansi.Reset,
             render);
         Assert.Contains(
-            "     " + DiffRender.Ansi.Secondary + "D:\\kl" + DiffRender.Ansi.Reset,
+            "     " + DiffRender.Ansi.Secondary + TestPaths.Workspace + DiffRender.Ansi.Reset,
             render);
         var lines = render.Split('\n');
         var modelLine = lines.First(line =>
@@ -154,7 +151,7 @@ public sealed class ChatTuiTests
             .Distinct()
             .ToList();
         Assert.True(sectionColors.Count >= 3);
-        Assert.Contains("· D:\\kl · Say hello", DiffRender.Ansi.Strip(modelLine));
+        Assert.Contains($"· {TestPaths.Workspace} · Say hello", DiffRender.Ansi.Strip(modelLine));
     }
 
     [Fact]
@@ -175,22 +172,20 @@ public sealed class ChatTuiTests
     [Fact]
     public void DefaultReasoningEffortIsHidden()
     {
-        if (!OperatingSystem.IsWindows()) return;
-        var state = new ChatTuiState("D:\\kl", "openai", "gpt-5", "s1")
+        var state = new ChatTuiState(TestPaths.Workspace, "openai", "gpt-5", "s1")
         {
             ReasoningEffort = "default"
         };
 
         var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state));
 
-        Assert.Contains("openai/gpt-5 · D:\\kl", plain);
+        Assert.Contains($"openai/gpt-5 · {TestPaths.Workspace}", plain);
         Assert.DoesNotContain("openai/gpt-5 default", plain);
     }
     [Fact]
     public void ShortcutsPageUsesCodexGroupsAndFooter()
     {
-        if (!OperatingSystem.IsWindows()) return;
-        var state = new ChatTuiState("D:\\kl", "openai", "gpt-5", "s1")
+        var state = new ChatTuiState(TestPaths.Workspace, "openai", "gpt-5", "s1")
         {
             Screen = ChatScreen.Shortcuts,
             ShortcutReturnScreen = ChatScreen.Chat,
@@ -209,7 +204,7 @@ public sealed class ChatTuiTests
         Assert.Contains("Session", plain);
         Assert.Contains("Transcript (open first)", plain);
         Assert.Contains("/settings customize", plain);
-        Assert.Contains("openai/gpt-5 high · D:\\kl", plain);
+        Assert.Contains($"openai/gpt-5 high · {TestPaths.Workspace}", plain);
         Assert.EndsWith("? / esc close", plain.Split('\n')[^1].TrimEnd());
 
         var compact = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state));
@@ -511,8 +506,7 @@ public sealed class ChatTuiTests
     [Fact]
     public void HomeShowsModelEffortAndRightAlignedWarning()
     {
-        if (!OperatingSystem.IsWindows()) return;
-        var state = new ChatTuiState("D:\\work", "deepseek", "deepseek-flash", "session-1")
+        var state = new ChatTuiState(TestPaths.Work, "deepseek", "deepseek-flash", "session-1")
         {
             ReasoningEffort = "high",
             WarningCount = 5
@@ -520,7 +514,7 @@ public sealed class ChatTuiTests
 
         var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(80, 24, state));
         var lines = plain.Split('\n');
-        Assert.Contains("deepseek/deepseek-flash high · D:\\work", plain);
+        Assert.Contains($"deepseek/deepseek-flash high · {TestPaths.Work}", plain);
         Assert.StartsWith("← for agents · ? for shortcuts", lines[^1].TrimStart());
         Assert.EndsWith("⚠ 5 warnings · f2 to view", lines[^1].TrimEnd());
         Assert.True(DiffRender.Ansi.VisibleWidth(lines[^1]) <= 80);
@@ -547,9 +541,8 @@ public sealed class ChatTuiTests
     [Fact]
     public void ModelLineGivesUnusedPathSpaceToTheTitle()
     {
-        if (!OperatingSystem.IsWindows()) return;
         var state = new ChatTuiState(
-            "D:\\kl",
+            TestPaths.Workspace,
             "deepseek",
             "deepseek-flash",
             "session-1")
@@ -559,7 +552,7 @@ public sealed class ChatTuiTests
             [
                 new HistorySession(
                     "session-1",
-                    "D:\\kl",
+                    TestPaths.Workspace,
                     "deepseek",
                     "deepseek-flash",
                     "2026-10-19T10:00:00Z",
