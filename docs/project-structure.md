@@ -219,7 +219,7 @@ xUnit 测试。覆盖参数解析、聊天状态机、设置页渲染、Provider
 | `demo-policy.ps1` | 策略拒绝演示。 |
 | `demo-plugin.ps1` | 插件安装/热升级演示。 |
 | `demo-review.ps1` | 审查流水线演示。 |
-| `live-provider-smoke.ps1` | 三种协议的真实 Provider 联调（需要 API Key）。 |
+| `live-smoke.ps1` | 三种协议的真实 Provider 联调与真实 MCP stdio 联调（需要 API Key / 已配置 MCP 服务）。 |
 
 ### `docs/`
 
