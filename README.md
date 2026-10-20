@@ -111,10 +111,11 @@ Rust/.NET toolchains. Release bundles are self-contained: `kl` carries its own
 neither the .NET runtime nor the Rust toolchain.
 
 Releases are built only from pushes to `main`. The workflow reads the workspace
-version from `Cargo.toml`, creates a unique `v<version>-rs<run>` tag, and
-publishes only archives, without `.sha256` files. After a successful publish,
-all older releases and `v*` tags are deleted, so only the newest release
-remains; changing the version replaces the previous version's release as well.
+version from `Cargo.toml` and creates `v<version>-rel1`, `v<version>-rel2`,
+and so on; every release carries the suffix, starting at `rel1`. Only archives
+are published, without `.sha256` files. Releases and tags are retained for the
+current `v<major>.<minor>.` series; when the major or minor version changes, all
+releases and tags from the previous series are deleted.
 
 ## Build and test
 
