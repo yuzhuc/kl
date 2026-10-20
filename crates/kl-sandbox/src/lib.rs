@@ -686,10 +686,9 @@ impl SandboxChild {
         match &mut self.inner {
             #[cfg(windows)]
             ChildInner::AppContainer(child) => child.try_wait(),
-            ChildInner::Process(child) => Ok(child
-                .try_wait()
-                .map_err(SandboxError::Io)?
-                .map(|status| status.code().unwrap_or(-1))),
+            ChildInner::Process(child) => {
+                Ok(child.try_wait().map_err(SandboxError::Io)?.map(exit_code))
+            }
         }
     }
 
@@ -697,9 +696,7 @@ impl SandboxChild {
         match &mut self.inner {
             #[cfg(windows)]
             ChildInner::AppContainer(child) => child.wait(),
-            ChildInner::Process(child) => {
-                Ok(child.wait().map_err(SandboxError::Io)?.code().unwrap_or(-1))
-            }
+            ChildInner::Process(child) => Ok(exit_code(child.wait().map_err(SandboxError::Io)?)),
         }
     }
 
@@ -730,6 +727,23 @@ impl SandboxChild {
             ChildInner::AppContainer(child) => child.cleanup_descendants(),
             ChildInner::Process(_) => Ok(()),
         }
+    }
+}
+
+/// Maps a signal-terminated child to the conventional 128 + signal code so
+/// callers and tests can tell a crash from a normal non-zero exit.
+fn exit_code(status: std::process::ExitStatus) -> i32 {
+    if let Some(code) = status.code() {
+        return code;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        128 + status.signal().unwrap_or(0)
+    }
+    #[cfg(not(unix))]
+    {
+        -1
     }
 }
 
