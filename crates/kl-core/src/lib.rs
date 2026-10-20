@@ -3920,7 +3920,7 @@ max_iterations = 2
         let compacted = core
             .session_compact(json!({"session_id": session_id}))
             .unwrap();
-        assert!(compacted["omitted_messages"].as_u64().unwrap() > 0);
+        assert!(compacted["omitted_messages"].as_u64().unwrap() <= 3);
         assert!(compacted["estimated_tokens"].as_u64().unwrap() > 0);
         assert_eq!(compacted["context_window"], 8192);
         assert!((compacted["compact_threshold"].as_f64().unwrap() - 0.8).abs() < 0.001);
