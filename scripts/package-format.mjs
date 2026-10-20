@@ -1,5 +1,4 @@
-import { createHash } from "node:crypto";
-import { closeSync, createReadStream, openSync, readSync } from "node:fs";
+import { closeSync, openSync, readSync } from "node:fs";
 
 // Every RID the release workflow is allowed to ship. A package must contain
 // binaries that really match its RID, so the layout is checked at pack time.
@@ -78,10 +77,4 @@ export function assertBinaryFormat(file, rid) {
         : `0x${actual.toString(16)}`;
     throw new Error(`${file}: expected ${rid} (0x${expected.toString(16)}), found ${found}`);
   }
-}
-
-export async function sha256File(file) {
-  const hash = createHash("sha256");
-  for await (const chunk of createReadStream(file)) hash.update(chunk);
-  return hash.digest("hex");
 }
