@@ -1,7 +1,9 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { assertBinaryFormat, layoutFor, sha256File } from "./package-format.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -19,9 +21,11 @@ if (!rid || !rustTarget) {
   throw new Error("usage: node scripts/package.mjs --rid <rid> --rust-target <target> [--zig] [--output <dir>]");
 }
 
+const layout = layoutFor(rid);
 const useZig = process.argv.includes("--zig");
 const output = path.resolve(root, option("--output", path.join("dist", rid)));
-const archive = path.join(root, "dist", `kl-${rid}${rid.startsWith("win") ? ".zip" : ".tar.gz"}`);
+const archive = path.join(root, "dist", `kl-${rid}${layout.ext}`);
+const cargoTarget = path.resolve(root, process.env.CARGO_TARGET_DIR ?? path.join(root, "target"));
 
 function run(command, args, cwd = root) {
   console.log(`\n== ${command} ${args.join(" ")} ==`);
@@ -43,8 +47,8 @@ run("dotnet", [
   "-o", output,
 ]);
 
-const coreName = rid.startsWith("win") ? "kl-core.exe" : "kl-core";
-const core = path.join(root, "target", rustTarget, "release", coreName);
+const coreName = layout.core;
+const core = path.join(cargoTarget, rustTarget, "release", coreName);
 if (!existsSync(core)) throw new Error(`core binary not found: ${core}`);
 cpSync(core, path.join(output, coreName));
 cpSync(path.join(root, "schemas"), path.join(output, "schemas"), { recursive: true });
@@ -61,4 +65,12 @@ if (rid.startsWith("win")) {
 } else {
   run("tar", ["-czf", archive, "-C", output, "."]);
 }
-console.log(`\nPackaged ${output}\nArchive ${archive}`);
+
+assertBinaryFormat(path.join(output, layout.exe), rid);
+assertBinaryFormat(path.join(output, layout.core), rid);
+
+const digest = await sha256File(archive);
+const checksum = `${archive}.sha256`;
+writeFileSync(checksum, `${digest}  ${path.basename(archive)}\n`);
+
+console.log(`\nPackaged ${output}\nArchive ${archive}\nChecksum ${checksum}`);
