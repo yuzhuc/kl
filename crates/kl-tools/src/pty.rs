@@ -9,6 +9,7 @@ use kl_exec::{CommandOutput, CommandSpec};
 use kl_sandbox::SandboxLauncher;
 use portable_pty::{Child, CommandBuilder, PtySize, native_pty_system};
 use std::io::{Read, Write};
+#[cfg(windows)]
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
