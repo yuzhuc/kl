@@ -131,6 +131,12 @@ PowerShell wrapper:
 pwsh scripts/build.ps1
 ```
 
+Docs check (asserts the current facts documented in this README):
+
+```sh
+node scripts/check-docs.mjs
+```
+
 Manual:
 
 ```powershell
@@ -606,9 +612,9 @@ Events: `session.created`, `turn.started`, `turn.delta`, `turn.reasoning`,
   `scripts/live-smoke.ps1` when keys and a real MCP server are available.
 - `session.fork` exists as an RPC and C# client method, but there is no TUI
   `/fork` command yet. Desktop GUI and repository splitting are deferred.
-- The release workflow still builds seven RIDs; the final retention list has
-  not been chosen. Live MCP smoke runs only
-  when a stdio server is configured in `~/.kl/mcp.toml`.
+- The release workflow builds seven RIDs; the final RID list is still pending.
+  Release artifacts retain only the current `v<major>.<minor>.` series. Live
+  MCP smoke runs only when a stdio server is configured in `~/.kl/mcp.toml`.
 
-Next stage entry point: add PTY, verified network isolation, real MCP server
-conformance, and live provider conformance/replay fixtures.
+Next stage entry point: real provider/MCP live smoke with credentials, the
+remaining `/fork` TUI entry, and optional web/memory/rewind capabilities.

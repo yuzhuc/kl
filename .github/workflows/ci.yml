@@ -11,6 +11,13 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Docs check
+        run: node scripts/check-docs.mjs
+      - name: Docs check test
+        run: node --test scripts/check-docs.test.mjs
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -55,6 +62,13 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Docs check
+        run: node scripts/check-docs.mjs
+      - name: Docs check test
+        run: node --test scripts/check-docs.test.mjs
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -96,6 +110,13 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Docs check
+        run: node scripts/check-docs.mjs
+      - name: Docs check test
+        run: node --test scripts/check-docs.test.mjs
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
