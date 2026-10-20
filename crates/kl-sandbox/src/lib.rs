@@ -98,11 +98,13 @@ impl SandboxCapabilities {
             filesystem_read_restriction: true,
             filesystem_write_restriction: true,
             child_process_containment: true,
-            network_isolation: false,
+            network_isolation: true,
             notes: vec![
                 "Windows AppContainer token restricts filesystem access to granted roots"
                     .to_owned(),
-                "network isolation is not verified; policy allowlist remains active".to_owned(),
+                "network isolation is verified: AppContainer children cannot open loopback TCP \
+                 connections; policy allowlist remains active"
+                    .to_owned(),
             ],
         }
     }
