@@ -2,6 +2,7 @@ use kl_plugin_host::{
     PluginError, PluginHost, PluginPermissions, SidecarError, SidecarProvider, SidecarTool,
 };
 use kl_provider::{CancellationToken, ChatEvent, ChatMessage, ChatRequest, Provider};
+#[cfg(windows)]
 use kl_sandbox::{SandboxBackendKind, SandboxConfig, SandboxManager, SandboxMode};
 use kl_tools::Tool;
 use serde_json::{Value, json};
