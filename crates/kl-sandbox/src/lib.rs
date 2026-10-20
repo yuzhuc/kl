@@ -1,10 +1,13 @@
 //! Unified process sandbox boundary.
 //!
 //! The policy-only backend remains available for non-strict operation, but it
-//! is not an OS sandbox. On Windows, `appcontainer` uses an AppContainer token
-//! plus a kill-on-close Job Object. Linux/macOS report an explicit unimplemented
-//! backend instead of pretending that policy checks are OS isolation.
+//! is not an OS sandbox. Strict mode selects a real OS backend: AppContainer on
+//! Windows, bubblewrap on Linux, and Seatbelt on macOS.
 
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "macos")]
+mod macos;
 #[cfg(windows)]
 mod windows;
 
@@ -35,6 +38,10 @@ pub enum SandboxBackendKind {
     Auto,
     #[serde(rename = "appcontainer")]
     AppContainer,
+    #[serde(rename = "bubblewrap")]
+    Bubblewrap,
+    #[serde(rename = "seatbelt")]
+    Seatbelt,
     Mxc,
     Policy,
     Off,
@@ -96,6 +103,36 @@ impl SandboxCapabilities {
                 "Windows AppContainer token restricts filesystem access to granted roots"
                     .to_owned(),
                 "network isolation is not verified; policy allowlist remains active".to_owned(),
+            ],
+        }
+    }
+
+    pub fn bubblewrap(network_isolation: bool) -> Self {
+        Self {
+            os_isolation: true,
+            filesystem_read_restriction: false,
+            filesystem_write_restriction: true,
+            child_process_containment: true,
+            network_isolation,
+            notes: vec![
+                "bubblewrap mounts the host read-only and rebinds writable roots".to_owned(),
+                "platform paths remain readable; the policy layer still gates file tools"
+                    .to_owned(),
+            ],
+        }
+    }
+
+    pub fn seatbelt(network_isolation: bool) -> Self {
+        Self {
+            os_isolation: true,
+            filesystem_read_restriction: true,
+            filesystem_write_restriction: true,
+            child_process_containment: false,
+            network_isolation,
+            notes: vec![
+                "macOS Seatbelt profile allows platform reads and the granted roots".to_owned(),
+                "child processes inherit the profile but no separate PID namespace is used"
+                    .to_owned(),
             ],
         }
     }
@@ -307,9 +344,11 @@ impl SandboxManager {
                 (backend, probe, Some(detail))
             }
             SandboxBackendKind::AppContainer => Self::select_app_container(config, strict),
+            SandboxBackendKind::Bubblewrap => Self::select_bubblewrap(config, strict),
+            SandboxBackendKind::Seatbelt => Self::select_seatbelt(config, strict),
             SandboxBackendKind::Auto => {
                 if strict {
-                    Self::select_app_container(config, true)
+                    Self::select_strict_platform(config)
                 } else {
                     let backend: Arc<dyn SandboxBackend> =
                         Arc::new(PolicyBackend { name: "policy" });
@@ -390,6 +429,102 @@ impl SandboxManager {
             }
         }
     }
+    #[cfg(target_os = "linux")]
+    fn select_bubblewrap(
+        config: &SandboxConfig,
+        strict: bool,
+    ) -> (Arc<dyn SandboxBackend>, SandboxProbe, Option<String>) {
+        Self::select_os_backend(linux::bubblewrap_backend(), config, strict)
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn select_bubblewrap(
+        config: &SandboxConfig,
+        strict: bool,
+    ) -> (Arc<dyn SandboxBackend>, SandboxProbe, Option<String>) {
+        Self::select_unavailable("bubblewrap", config, strict)
+    }
+
+    #[cfg(target_os = "macos")]
+    fn select_seatbelt(
+        config: &SandboxConfig,
+        strict: bool,
+    ) -> (Arc<dyn SandboxBackend>, SandboxProbe, Option<String>) {
+        Self::select_os_backend(macos::seatbelt_backend(), config, strict)
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn select_seatbelt(
+        config: &SandboxConfig,
+        strict: bool,
+    ) -> (Arc<dyn SandboxBackend>, SandboxProbe, Option<String>) {
+        Self::select_unavailable("seatbelt", config, strict)
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    fn select_os_backend(
+        backend: Arc<dyn SandboxBackend>,
+        config: &SandboxConfig,
+        strict: bool,
+    ) -> (Arc<dyn SandboxBackend>, SandboxProbe, Option<String>) {
+        let probe = backend.probe(config);
+        if probe.available || strict {
+            return (backend, probe, None);
+        }
+        let name = backend.name();
+        let fallback: Arc<dyn SandboxBackend> = Arc::new(PolicyBackend { name: "policy" });
+        let fallback_probe = fallback.probe(config);
+        let detail = format!(
+            "{name} unavailable ({}); policy-only fallback",
+            probe.detail
+        );
+        (fallback, fallback_probe, Some(detail))
+    }
+
+    fn select_unavailable(
+        name: &'static str,
+        config: &SandboxConfig,
+        strict: bool,
+    ) -> (Arc<dyn SandboxBackend>, SandboxProbe, Option<String>) {
+        let backend: Arc<dyn SandboxBackend> = Arc::new(UnimplementedBackend { name });
+        let probe = backend.probe(config);
+        if strict {
+            return (backend, probe, None);
+        }
+        let fallback: Arc<dyn SandboxBackend> = Arc::new(PolicyBackend { name: "policy" });
+        let fallback_probe = fallback.probe(config);
+        let detail = format!("{name} is not available on this platform; policy-only fallback");
+        (fallback, fallback_probe, Some(detail))
+    }
+
+    #[cfg(windows)]
+    fn select_strict_platform(
+        config: &SandboxConfig,
+    ) -> (Arc<dyn SandboxBackend>, SandboxProbe, Option<String>) {
+        Self::select_app_container(config, true)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn select_strict_platform(
+        config: &SandboxConfig,
+    ) -> (Arc<dyn SandboxBackend>, SandboxProbe, Option<String>) {
+        Self::select_bubblewrap(config, true)
+    }
+
+    #[cfg(target_os = "macos")]
+    fn select_strict_platform(
+        config: &SandboxConfig,
+    ) -> (Arc<dyn SandboxBackend>, SandboxProbe, Option<String>) {
+        Self::select_seatbelt(config, true)
+    }
+
+    #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
+    fn select_strict_platform(
+        config: &SandboxConfig,
+    ) -> (Arc<dyn SandboxBackend>, SandboxProbe, Option<String>) {
+        Self::select_unavailable("os-sandbox", config, true)
+    }
+
     pub fn policy_only() -> Self {
         Self::probe(&SandboxConfig {
             mode: SandboxMode::Policy,
@@ -604,6 +739,45 @@ impl Drop for SandboxChild {
     }
 }
 
+/// Starts a launcher with the request environment and child stdio.
+///
+/// OS backends wrap the requested command (bwrap, sandbox-exec) and pass the
+/// original argv through; stdio and env stay identical to direct execution.
+pub(crate) fn spawn_wrapped<S, I, A>(
+    spec: &CommandSpec,
+    program: S,
+    args: I,
+) -> Result<SandboxChild, SandboxError>
+where
+    S: AsRef<std::ffi::OsStr>,
+    I: IntoIterator<Item = A>,
+    A: AsRef<std::ffi::OsStr>,
+{
+    let mut command = Command::new(program);
+    command
+        .args(args)
+        .current_dir(&spec.cwd)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    if spec.clear_env {
+        command.env_clear();
+    }
+    for (name, value) in &spec.env {
+        command.env(name, value);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    let child = command.spawn().map_err(|error| {
+        SandboxError::Spawn(format!("failed to start {}: {error}", spec.program))
+    })?;
+    Ok(SandboxChild::from_process(child))
+}
+
 struct PolicyBackend {
     name: &'static str,
 }
@@ -638,29 +812,7 @@ impl SandboxBackend for PolicyBackend {
         spec: &CommandSpec,
         _policy: &SandboxPolicy,
     ) -> Result<SandboxChild, SandboxError> {
-        let mut command = Command::new(&spec.program);
-        command
-            .args(&spec.args)
-            .current_dir(&spec.cwd)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        if spec.clear_env {
-            command.env_clear();
-        }
-        for (name, value) in &spec.env {
-            command.env(name, value);
-        }
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-            command.creation_flags(CREATE_NO_WINDOW);
-        }
-        let child = command.spawn().map_err(|error| {
-            SandboxError::Spawn(format!("failed to start {}: {error}", spec.program))
-        })?;
-        Ok(SandboxChild::from_process(child))
+        spawn_wrapped(spec, &spec.program, &spec.args)
     }
 
     fn enforce(
@@ -672,12 +824,10 @@ impl SandboxBackend for PolicyBackend {
     }
 }
 
-#[cfg(not(windows))]
 struct UnimplementedBackend {
     name: &'static str,
 }
 
-#[cfg(not(windows))]
 impl SandboxBackend for UnimplementedBackend {
     fn name(&self) -> &'static str {
         self.name
@@ -1099,17 +1249,19 @@ mod tests {
     }
 
     #[test]
-    fn strict_auto_without_mxc_is_fail_closed_on_unimplemented_platforms() {
-        #[cfg(not(windows))]
-        {
-            let manager = SandboxManager::probe(&SandboxConfig {
-                mode: SandboxMode::Strict,
-                backend: SandboxBackendKind::Auto,
-                mxc_command: Some("definitely-not-a-real-mxc-command".to_owned()),
-                probe_timeout_ms: 500,
-            });
-            assert!(!manager.status().available);
+    fn strict_auto_is_fail_closed_or_uses_os_backend() {
+        let manager = SandboxManager::probe(&SandboxConfig {
+            mode: SandboxMode::Strict,
+            backend: SandboxBackendKind::Auto,
+            mxc_command: Some("definitely-not-a-real-mxc-command".to_owned()),
+            probe_timeout_ms: 500,
+        });
+        if manager.status().available {
+            assert_ne!(manager.status().backend, "policy");
+            assert!(manager.ensure_process_execution().is_ok());
+        } else {
             assert!(manager.ensure_process_execution().is_err());
+            assert!(manager.status().detail.contains("fail"));
         }
     }
 
