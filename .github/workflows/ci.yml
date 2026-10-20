@@ -112,7 +112,7 @@ jobs:
       - name: Rust tests
         shell: bash
         run: |
-          set -o pipefail
+          set +e
           cargo test --workspace --no-fail-fast 2>&1 | tee rust-tests.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
