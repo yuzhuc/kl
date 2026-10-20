@@ -44,6 +44,7 @@ pub struct SessionMeta {
 pub struct SessionData {
     pub meta: SessionMeta,
     pub messages: Vec<Value>,
+    pub approval_rules: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -109,6 +110,7 @@ impl SessionStore {
                 turn_state: default_turn_state(),
             },
             messages: Vec::new(),
+            approval_rules: Vec::new(),
         };
         let directory = self.session_dir(&data.meta.id);
         fs::create_dir_all(&directory)?;
@@ -125,16 +127,20 @@ impl SessionStore {
         }
         let meta: SessionMeta = serde_json::from_slice(&fs::read(&meta_path)?)?;
         let state_path = directory.join("state.json");
-        let mut messages = if state_path.exists() {
+        let (mut messages, approval_rules) = if state_path.exists() {
             let state: StateFile = serde_json::from_slice(&fs::read(&state_path)?)?;
-            state.messages
+            (state.messages, state.approval_rules)
         } else {
-            Vec::new()
+            (Vec::new(), Vec::new())
         };
         if messages.is_empty() {
             messages = project_messages(&self.read_events(id)?);
         }
-        Ok(SessionData { meta, messages })
+        Ok(SessionData {
+            meta,
+            messages,
+            approval_rules,
+        })
     }
 
     pub fn list(&self) -> Result<Vec<SessionMeta>, StoreError> {
@@ -200,6 +206,7 @@ impl SessionStore {
             &directory.join("state.json"),
             &serde_json::to_vec_pretty(&StateFile {
                 messages: data.messages.clone(),
+                approval_rules: data.approval_rules.clone(),
             })?,
         )?;
         Ok(())
@@ -316,6 +323,8 @@ pub fn project_messages(events: &[StoredEvent]) -> Vec<Value> {
 struct StateFile {
     #[serde(default)]
     messages: Vec<Value>,
+    #[serde(default)]
+    approval_rules: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -430,6 +439,20 @@ mod tests {
         assert_eq!(loaded.meta.last_message.as_deref(), Some("done"));
         assert_eq!(loaded.meta.turn_state, TURN_STATE_IDLE);
         assert_eq!(store.list().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn approval_rules_round_trip() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(temp.path()).unwrap();
+        let mut data = store
+            .create("D:\\work", "openai", "gpt-test", "high")
+            .unwrap();
+        data.approval_rules.push("shell:echo hi".to_owned());
+        store.save(&data).unwrap();
+
+        let loaded = store.load(&data.meta.id).unwrap();
+        assert_eq!(loaded.approval_rules, vec!["shell:echo hi"]);
     }
 
     #[test]

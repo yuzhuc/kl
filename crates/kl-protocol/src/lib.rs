@@ -695,6 +695,7 @@ pub struct ApprovalRespondParams {
 #[serde(rename_all = "snake_case")]
 pub enum ApprovalDecision {
     Allow,
+    AllowSession,
     Deny,
 }
 

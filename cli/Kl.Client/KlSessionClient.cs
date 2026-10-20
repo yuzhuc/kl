@@ -348,11 +348,14 @@ public sealed class KlSessionClient : IAsyncDisposable
             approvalCancellation = _turnCancellation?.Token ?? CancellationToken.None;
         }
 
-        bool allow;
+        string decision;
         try
         {
-            allow = await _presenter.RequestApprovalAsync(request, approvalCancellation)
-                .ConfigureAwait(false);
+            decision = _presenter is ISessionApprovalDecisionPresenter decisionPresenter
+                ? await decisionPresenter.RequestApprovalDecisionAsync(request, approvalCancellation)
+                    .ConfigureAwait(false)
+                : await _presenter.RequestApprovalAsync(request, approvalCancellation)
+                    .ConfigureAwait(false) ? "allow" : "deny";
         }
         catch (OperationCanceledException)
         {
@@ -369,7 +372,7 @@ public sealed class KlSessionClient : IAsyncDisposable
             await _client.RespondApprovalAsync(
                 SessionId,
                 approvalId,
-                allow,
+                decision,
                 cancellationToken).ConfigureAwait(false);
         }
         catch (JsonRpcException error)

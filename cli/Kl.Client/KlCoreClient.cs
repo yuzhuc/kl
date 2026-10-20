@@ -247,13 +247,24 @@ public sealed class KlCoreClient : IAsyncDisposable
         string approvalId,
         bool allow,
         CancellationToken cancellationToken = default) =>
+        RespondApprovalAsync(
+            sessionId,
+            approvalId,
+            allow ? "allow" : "deny",
+            cancellationToken);
+
+    public Task<JsonElement> RespondApprovalAsync(
+        string sessionId,
+        string approvalId,
+        string decision,
+        CancellationToken cancellationToken = default) =>
         RequestAsync(
             Protocol.ApprovalRespond,
             new Dictionary<string, object?>
             {
                 ["session_id"] = sessionId,
                 ["approval_id"] = approvalId,
-                ["decision"] = allow ? "allow" : "deny"
+                ["decision"] = decision
             },
             cancellationToken);
 
