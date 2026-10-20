@@ -13,7 +13,6 @@ jobs:
     outputs:
       tag: ${{ steps.version.outputs.tag }}
       version: ${{ steps.version.outputs.version }}
-      series: ${{ steps.version.outputs.series }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,25 +26,9 @@ jobs:
             echo "cannot read workspace version from Cargo.toml" >&2
             exit 1
           fi
-          git fetch --tags --force
-          base="v${version}"
-          if git rev-parse -q --verify "refs/tags/${base}" >/dev/null; then
-            max=0
-            for existing in $(git tag --list "${base}-rs*"); do
-              n="${existing##*-rs}"
-              case "$n" in
-                ''|*[!0-9]*) continue ;;
-              esac
-              if [ "$n" -gt "$max" ]; then max="$n"; fi
-            done
-            tag="${base}-rs$((max + 1))"
-          else
-            tag="${base}"
-          fi
-          major_minor="$(printf '%s' "$version" | awk -F. '{print $1 "." $2}')"
+          tag="v${version}-rs${GITHUB_RUN_NUMBER}"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "series=v${major_minor}." >> "$GITHUB_OUTPUT"
       - name: Create tag at this commit
         shell: bash
         env:
@@ -225,32 +208,35 @@ jobs:
       contents: write
     env:
       GH_TOKEN: ${{ github.token }}
-      KEEP_PREFIX: ${{ needs.prepare.outputs.series }}
+      TARGET_TAG: ${{ needs.prepare.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Delete releases outside the current version series
+      - name: Delete old releases
         shell: bash
         run: |
           set -euo pipefail
           gh release list --limit 1000 --json tagName --jq '.[].tagName' |
           while IFS= read -r tag; do
             [ -z "$tag" ] && continue
-            case "$tag" in
-              "${KEEP_PREFIX}"*) echo "keep release $tag" ;;
-              *) echo "delete release $tag"; gh release delete "$tag" --yes --cleanup-tag ;;
-            esac
+            if [ "$tag" = "${TARGET_TAG}" ]; then
+              echo "keep release $tag"
+            else
+              echo "delete release $tag"
+              gh release delete "$tag" --yes --cleanup-tag
+            fi
           done
-      - name: Delete tags outside the current version series
+      - name: Delete old release tags
         shell: bash
         run: |
           set -euo pipefail
           git fetch --tags --force
           git tag --list 'v*' | while IFS= read -r tag; do
             [ -z "$tag" ] && continue
-            case "$tag" in
-              "${KEEP_PREFIX}"*) ;;
-              *) echo "delete tag $tag"; git push origin "refs/tags/$tag" --delete || true ;;
-            esac
+            if [ "$tag" = "${TARGET_TAG}" ]; then
+              continue
+            fi
+            echo "delete tag $tag"
+            git push origin "refs/tags/$tag" --delete || true
           done
