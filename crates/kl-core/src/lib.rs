@@ -54,7 +54,7 @@ use kl_review::{
     Finding, ReviewContext, ReviewError, ReviewMode, ReviewReport, collect_context, finalize,
     llm_warning, model_prompt, parse_model_findings, runtime_findings, scan_local,
 };
-use kl_sandbox::SandboxManager;
+use kl_sandbox::{SandboxManager, SandboxPolicy};
 use kl_store::{
     SessionData, SessionMeta, SessionStore, StoreError, TURN_STATE_IDLE,
     TURN_STATE_WAITING_APPROVAL, TURN_STATE_WORKING,
@@ -915,6 +915,8 @@ impl Core {
             &context.home,
             &tools,
             Duration::from_secs(config.agent.command_timeout_secs.clamp(1, 10)),
+            &sandbox,
+            &mcp_workspace(&context),
         );
         tools.register(Arc::new(subagent::SubagentTool::new(
             router.clone(),
@@ -2466,7 +2468,24 @@ fn register_plugin_adapters(
     }
 }
 
-fn register_mcp_tools(home: &Path, tools: &Arc<ToolRegistry>, timeout: Duration) {
+// Workspace the MCP servers are started in. Sessions pick their own
+// workspace later; at startup the process directory is the only known root.
+// shortcut: MCP servers use the startup directory as their sandbox workspace;
+// move the spawn into the session turn when MCP servers become per-session.
+fn mcp_workspace(context: &ServerContext) -> PathBuf {
+    std::env::current_dir()
+        .ok()
+        .and_then(|directory| dunce::canonicalize(directory).ok())
+        .unwrap_or_else(|| context.home.clone())
+}
+
+fn register_mcp_tools(
+    home: &Path,
+    tools: &Arc<ToolRegistry>,
+    timeout: Duration,
+    sandbox: &SandboxManager,
+    workspace: &Path,
+) {
     let config = match mcp::load_config(home) {
         Ok(config) => config,
         Err(error) => {
@@ -2477,8 +2496,9 @@ fn register_mcp_tools(home: &Path, tools: &Arc<ToolRegistry>, timeout: Duration)
             return;
         }
     };
+    let policy = SandboxPolicy::workspace(workspace);
     for (name, server) in config.enabled_servers() {
-        let client = match mcp::McpClient::connect(server, timeout) {
+        let client = match mcp::McpClient::connect(server, timeout, sandbox, &policy) {
             Ok(client) => Arc::new(client),
             Err(error) => {
                 eprintln!("mcp: server {name} unavailable: {error}");

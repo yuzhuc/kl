@@ -777,6 +777,7 @@ dependencies = [
  "dunce",
  "kl-agent",
  "kl-audit",
+ "kl-exec",
  "kl-index",
  "kl-plugin-host",
  "kl-policy",
