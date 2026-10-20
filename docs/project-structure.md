@@ -98,7 +98,7 @@ SSE 流解析、取消、usage 和模型元数据（`context_window`、
 OS 级沙箱边界。提供统一的 `SandboxBackend` 接口（probe/spawn/
 capabilities/enforce），Windows 上实现 AppContainer token、kill-on-close
 Job Object、工作区 ACL 和 `kl-sandbox-runner` 清理环境启动器。
-strict 模式下探测失败会 fail-closed。Linux/macOS 目前显式标记为未实现。
+strict 模式下探测失败会 fail-closed。Linux 使用 bubblewrap，macOS 使用 Seatbelt；Windows 使用 AppContainer。
 
 ### `kl-exec`
 

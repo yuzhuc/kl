@@ -17,7 +17,8 @@ public enum ChatCommandKind
     Agent,
     Skills,
     Mcp,
-    Copy
+    Copy,
+    Fork
 }
 
 public sealed record ChatCommandDefinition(

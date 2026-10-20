@@ -1105,6 +1105,13 @@ public static class ChatTuiRunner
             case ChatCommandKind.Copy:
                 CopyLastAssistant(state);
                 break;
+            case ChatCommandKind.Fork:
+                (connection, state) = await ForkSessionAsync(
+                    options,
+                    state,
+                    connection,
+                    cancellationToken).ConfigureAwait(false);
+                break;
             case ChatCommandKind.Exit:
                 return new CommandResult(connection, state, Exit: true);
         }
@@ -1587,6 +1594,81 @@ public static class ChatTuiRunner
             state.AddError(ChatTexts.NewSessionUnavailable(
                 language,
                 error.Message));
+        }
+        return (connection, state);
+    }
+
+    private static async Task<(Connection?, ChatTuiState)> ForkSessionAsync(
+        CliOptions options,
+        ChatTuiState state,
+        Connection? connection,
+        CancellationToken cancellationToken)
+    {
+        var language = state.Language;
+        if (connection is null)
+        {
+            state.StatusMessage = ChatTexts.T(
+                language,
+                "fork unavailable: no active session",
+                "无法分叉：没有活动会话");
+            return (connection, state);
+        }
+        if (state.IsTurnActive)
+        {
+            state.StatusMessage = ChatTexts.T(
+                language,
+                "cannot fork while a turn is active",
+                "turn 进行中，无法分叉会话");
+            return (connection, state);
+        }
+
+        string forkId;
+        try
+        {
+            forkId = await connection.Session.ForkAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception error) when (IsCommandError(error))
+        {
+            state.AddError(ChatTexts.T(
+                language,
+                $"fork unavailable: {error.Message}",
+                $"无法分叉会话：{error.Message}"));
+            return (connection, state);
+        }
+
+        await connection.Session.DisposeAsync().ConfigureAwait(false);
+        connection = null;
+        try
+        {
+            connection = await OpenSessionAsync(
+                options,
+                forkId,
+                cancellationToken).ConfigureAwait(false);
+            state = NewState(connection.Session, options.Verbose, language, state.Agent);
+            await LoadTranscriptAsync(
+                connection.Session,
+                options,
+                state,
+                cancellationToken).ConfigureAwait(false);
+            state.History = await LoadHistoryAsync(connection.Session, state)
+                .ConfigureAwait(false);
+            state.AddInfo(ChatTexts.T(
+                language,
+                $"Forked session {forkId}",
+                $"已分叉会话 {forkId}"));
+        }
+        catch (Exception error) when (IsCommandError(error))
+        {
+            state = NewStateWithoutSession(options, language, state.Agent);
+            state.AddError(ChatTexts.T(
+                language,
+                $"fork unavailable: {error.Message}",
+                $"无法分叉会话：{error.Message}"));
+            state.StatusMessage = ChatTexts.T(
+                language,
+                "fork unavailable",
+                "无法分叉会话");
         }
         return (connection, state);
     }

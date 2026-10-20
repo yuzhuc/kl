@@ -1,6 +1,6 @@
 use crate::{
     CancellationToken, ChatEvent, ChatOutcome, ChatRequest, FinishReason, ModelInfo, Provider,
-    ProviderError, ToolCall, Usage,
+    ProviderError, ProviderErrorKind, ToolCall, Usage,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -14,6 +14,7 @@ pub struct ScriptedProvider {
     models: Vec<ModelInfo>,
     turns: Vec<ScriptTurn>,
     cursor: AtomicUsize,
+    calls: AtomicUsize,
     reset_on_begin_turn: bool,
 }
 
@@ -25,6 +26,16 @@ pub struct ScriptTurn {
     pub reasoning: String,
     #[serde(default)]
     pub tool_calls: Vec<ScriptToolCall>,
+    /// Scripted failure: the turn fails instead of streaming an answer.
+    #[serde(default)]
+    pub error: Option<ScriptError>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ScriptError {
+    pub kind: ProviderErrorKind,
+    #[serde(default)]
+    pub message: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -43,6 +54,7 @@ impl ScriptedProvider {
             models: vec![ModelInfo::new("scripted")],
             turns,
             cursor: AtomicUsize::new(0),
+            calls: AtomicUsize::new(0),
             reset_on_begin_turn: true,
         }
     }
@@ -90,6 +102,11 @@ impl ScriptedProvider {
     pub fn empty(id: impl Into<String>) -> Self {
         Self::new(id, Vec::new())
     }
+
+    /// Number of `stream_chat` calls served so far.
+    pub fn call_count(&self) -> usize {
+        self.calls.load(Ordering::SeqCst)
+    }
 }
 
 impl Provider for ScriptedProvider {
@@ -125,6 +142,7 @@ impl Provider for ScriptedProvider {
         cancel: &CancellationToken,
         on_event: &mut dyn FnMut(ChatEvent),
     ) -> Result<ChatOutcome, ProviderError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
         if cancel.is_cancelled() {
             return Err(ProviderError::cancelled());
         }
@@ -147,6 +165,9 @@ impl Provider for ScriptedProvider {
                 return Err(ProviderError::cancelled());
             }
             on_event(ChatEvent::TextDelta(chunk));
+        }
+        if let Some(error) = &turn.error {
+            return Err(ProviderError::new(error.kind, error.message.clone()));
         }
 
         let mut calls = Vec::new();
@@ -238,11 +259,13 @@ mod tests {
                     text: "one".to_owned(),
                     reasoning: String::new(),
                     tool_calls: Vec::new(),
+                    error: None,
                 },
                 ScriptTurn {
                     text: "two".to_owned(),
                     reasoning: String::new(),
                     tool_calls: Vec::new(),
+                    error: None,
                 },
             ],
         );
