@@ -18,6 +18,26 @@ export function layoutFor(rid) {
   return layout;
 }
 
+// Files that only support debugging. A self-contained publish copies the
+// whole runtime pack, so these end up in the bundle even though nothing in
+// the shipped binary needs them.
+const DIAGNOSTIC_FILE_PATTERNS = [
+  /\.pdb$/i,
+  /\.dbg$/i,
+  /^createdump(\.exe)?$/i,
+  /^Microsoft\.DiaSymReader\.Native\..*\.dll$/i,
+  /^mscordaccore.*\.dll$/i,
+  /^mscordbi.*\.dll$/i,
+  /^sos\.dll$/i,
+  /^libsosplugin/i,
+  /^libmscordaccore/i,
+  /^libmscordbi/i,
+];
+
+export function isDiagnosticFile(name) {
+  return DIAGNOSTIC_FILE_PATTERNS.some((pattern) => pattern.test(name));
+}
+
 function readBytes(file, length, position = 0) {
   const fd = openSync(file, "r");
   try {
