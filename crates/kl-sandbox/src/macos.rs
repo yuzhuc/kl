@@ -275,7 +275,8 @@ mod tests {
         let mut policy = SandboxPolicy::workspace(workspace.path());
         policy.allow_network = true;
         let text = profile(&policy);
-        assert!(text.contains("(allow network*)"));
+        assert!(text.contains("(allow network-outbound)"));
+        assert!(text.contains("(allow network-inbound)"));
         assert!(!text.contains("(deny network*)"));
     }
 
