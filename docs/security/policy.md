@@ -100,6 +100,13 @@ and a normal failing audit record. Sensitive-path ACL hardening changes the
 DACL of the affected path. If the git installation root cannot be granted to
 the AppContainer SID, git fails closed with an explicit sandbox error.
 
+## Workspace memory
+
+The `memory` tool stores Markdown entries under `<workspace>/.kl/memory`.
+List and read use `Action::Read`; write and delete use `Action::Edit`, so they
+go through the normal approval path. Entry names are restricted to safe
+`.md` names, and the tool enforces a 64KB per-entry and 100-entry cap.
+
 ## Plugin permissions
 
 Sidecar manifests declare:

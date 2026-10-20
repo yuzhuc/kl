@@ -17,7 +17,7 @@ Rust trusted core (kl-core)
   HookRunner + HookedTool
   SubagentTool (read-only, sequential)
   JobTool (sandboxed background commands)
-  ToolRegistry (built-ins + sidecar/WASM + MCP + worktree)
+  ToolRegistry (built-ins + memory + sidecar/WASM + MCP + worktree)
   PolicyEngine (path/command/git/network/env/plugin/approval)
   SandboxManager (policy/AppContainer backends, strict probing, MXC status)
   PluginHost (manifest v1, sidecar supervisor, health, drain, hot swap)

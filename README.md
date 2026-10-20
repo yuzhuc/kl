@@ -5,7 +5,7 @@ terminal client. It does not use a Python runtime or Python build scripts.
 
 Status: **stage 0-3.5, Codex-style terminal UI, built-in agent presets,
 workspace skills, MCP stdio tools, trusted hooks, sequential subagent,
-worktree tool, shared C# client library and benchmark harness implemented**.
+worktree tool, workspace-scoped memory tool, provider retry/backoff, shared C# client library and benchmark harness implemented**.
 Desktop GUI is future work. Live external Provider and MCP smoke are pending
 until credentials or local servers are supplied; see
 `tests/fixtures/providers/live-smoke.status.json`.
@@ -610,11 +610,14 @@ Events: `session.created`, `turn.started`, `turn.delta`, `turn.reasoning`,
   API keys were available in the implementation environment. The offline mock
   SSE conformance tests pass for all three protocols. Use
   `scripts/live-smoke.ps1` when keys and a real MCP server are available.
-- `session.fork` exists as an RPC and C# client method, but there is no TUI
-  `/fork` command yet. Desktop GUI and repository splitting are deferred.
+- `session.fork` is available from the TUI as `/fork`; it creates an
+  independent session with the same messages and approval rules.
+- The workspace-scoped `memory` tool stores Markdown notes under
+  `.kl/memory`; memory is not yet injected into the system prompt and there is
+  no `/memory` command. Desktop GUI and repository splitting are deferred.
 - The release workflow builds seven RIDs; the final RID list is still pending.
   Release artifacts retain only the current `v<major>.<minor>.` series. Live
   MCP smoke runs only when a stdio server is configured in `~/.kl/mcp.toml`.
 
-Next stage entry point: real provider/MCP live smoke with credentials, the
-remaining `/fork` TUI entry, and optional web/memory/rewind capabilities.
+Next stage entry point: real provider/MCP live smoke with credentials, provider
+cost/caching, web tools, and session rewind/revert.
