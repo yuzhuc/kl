@@ -103,6 +103,17 @@ public sealed class KlSessionClient : IAsyncDisposable
     public Task<JsonElement> ListSessionsAsync(CancellationToken cancellationToken = default) =>
         _client.ListSessionsAsync(cancellationToken);
 
+    public async Task<string> ForkAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _client.ForkSessionAsync(SessionId, cancellationToken)
+            .ConfigureAwait(false);
+        return result.TryGetProperty("session_id", out var id)
+            && id.ValueKind == JsonValueKind.String
+            ? id.GetString() ?? string.Empty
+            : throw new JsonRpcException(-32603, "session.fork returned no session_id");
+    }
+
     public Task<JsonElement> RenameSessionAsync(
         string sessionId,
         string name,

@@ -12,7 +12,8 @@ public sealed class ChatCommandPaletteTests
         state.Insert('/');
 
         Assert.True(ChatCommandPalette.IsOpen(state));
-        Assert.Equal(15, ChatCommandPalette.Matches(state.Input).Count);
+        Assert.Equal(16, ChatCommandPalette.Matches(state.Input).Count);
+        Assert.Contains(ChatCommandPalette.Matches(state.Input), match => match.Name == "/fork");
         Assert.Equal("/init", ChatCommandPalette.Selected(state)?.Name);
 
         var lines = ChatTuiRenderer.CommandPaletteLines(state, 100);
