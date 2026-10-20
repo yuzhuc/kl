@@ -372,7 +372,12 @@ Windows, `backend = "appcontainer"` (or `auto` in strict mode) runs shell, git
 and sidecar processes through an AppContainer token and a kill-on-close Job
 Object. A `kl-sandbox-runner` helper clears the inherited environment before
 starting the target process, so plugin environment allowlists remain effective.
-MXC is probed explicitly; an unavailable launcher is reported and never
+On Linux, strict mode wraps commands in `bubblewrap` (install the `bubblewrap`
+package); the host is read-only, writable roots are rebound, and commands run in
+fresh user/PID/IPC/UTS namespaces with an isolated network namespace when the
+policy denies network. Set `KL_BWRAP_PATH` to use a specific launcher. On macOS,
+strict mode uses `/usr/bin/sandbox-exec` with a deny-by-default Seatbelt
+profile. MXC is probed explicitly; an unavailable launcher is reported and never
 silently treated as an OS sandbox. `kl doctor` shows the backend, strict mode,
 probe result, capability matrix and MXC status.
 
