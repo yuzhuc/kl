@@ -1112,11 +1112,122 @@ public static class ChatTuiRunner
                     connection,
                     cancellationToken).ConfigureAwait(false);
                 break;
+            case ChatCommandKind.Cost:
+                ShowCost(state);
+                break;
+            case ChatCommandKind.Context:
+                await ShowContextAsync(state, connection, cancellationToken)
+                    .ConfigureAwait(false);
+                break;
+            case ChatCommandKind.Diff:
+                ShowDiff(state);
+                break;
+            case ChatCommandKind.Export:
+                await ExportTranscriptAsync(state, cancellationToken)
+                    .ConfigureAwait(false);
+                break;
             case ChatCommandKind.Exit:
                 return new CommandResult(connection, state, Exit: true);
         }
 
         return new CommandResult(connection, state, Exit: false);
+    }
+
+    private static void ShowCost(ChatTuiState state)
+    {
+        var cost = state.LastTurnCostUsd is { } last
+            ? last.ToString("$0.000000", System.Globalization.CultureInfo.InvariantCulture)
+            : "unpriced";
+        var totalCost = state.TotalCostUsd.ToString(
+            "$0.000000",
+            System.Globalization.CultureInfo.InvariantCulture);
+        state.AddInfo(
+            $"tokens: input {state.TotalInputTokens}, output {state.TotalOutputTokens}; " +
+            $"last turn: input {state.LastTurnInputTokens}, output {state.LastTurnOutputTokens}; " +
+            $"cost: {cost}; total cost: {totalCost}");
+    }
+
+    private static async Task ShowContextAsync(
+        ChatTuiState state,
+        Connection? connection,
+        CancellationToken cancellationToken)
+    {
+        var used = state.LastTurnInputTokens > 0
+            ? state.LastTurnInputTokens
+            : state.TotalInputTokens;
+        var detail = $"context tokens: {used}; cumulative input: {state.TotalInputTokens}";
+        if (connection is not null)
+        {
+            try
+            {
+                var result = await RequestCoreAsync(
+                    connection.Session,
+                    "provider.list",
+                    null,
+                    cancellationToken).ConfigureAwait(false);
+                if (result.TryGetProperty("models", out var models)
+                    && models.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    foreach (var model in models.EnumerateArray())
+                    {
+                        if (GetString(model, "provider") != state.Provider
+                            || GetString(model, "model") != state.Model)
+                        {
+                            continue;
+                        }
+                        var window = GetInt(model, "context_window") ?? 0;
+                        var threshold = model.TryGetProperty("compact_threshold", out var value)
+                            && value.ValueKind == System.Text.Json.JsonValueKind.Number
+                            && value.TryGetDouble(out var parsed)
+                                ? parsed
+                                : 0;
+                        detail += $"; window: {window}; compact at: {threshold:P0}";
+                        break;
+                    }
+                }
+            }
+            catch (Exception error)
+                when (error is JsonRpcException or IOException or InvalidOperationException)
+            {
+                detail += $"; metadata unavailable: {error.Message}";
+            }
+        }
+        state.AddInfo(detail);
+    }
+
+    private static void ShowDiff(ChatTuiState state)
+    {
+        var diffs = state.Transcript
+            .Where(entry => entry.Kind == TranscriptKind.Diff)
+            .Select(entry => entry.Text)
+            .Where(text => !string.IsNullOrWhiteSpace(text))
+            .ToList();
+        state.AddInfo(diffs.Count == 0
+            ? "no workspace diff captured in this session"
+            : string.Join(Environment.NewLine, diffs));
+    }
+
+    private static async Task ExportTranscriptAsync(
+        ChatTuiState state,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(state.Workspace))
+        {
+            state.AddError("cannot export without a workspace");
+            return;
+        }
+        var path = Path.Combine(
+            state.Workspace,
+            $"kl-export-{DateTimeOffset.Now:yyyyMMdd-HHmmss}.md");
+        var builder = new System.Text.StringBuilder();
+        builder.AppendLine($"# KL session {state.SessionId}").AppendLine();
+        foreach (var entry in state.Transcript)
+        {
+            builder.AppendLine($"## {entry.Kind}").AppendLine().AppendLine(entry.Text).AppendLine();
+        }
+        await File.WriteAllTextAsync(path, builder.ToString(), cancellationToken)
+            .ConfigureAwait(false);
+        state.AddInfo($"exported transcript: {path}");
     }
 
     private static async Task ShowAgentPresetsAsync(

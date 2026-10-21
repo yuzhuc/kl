@@ -166,6 +166,12 @@ public sealed class ChatTuiState
     public string Model { get; set; }
     public string Agent { get; set; } = "build";
     public string ReasoningEffort { get; set; } = string.Empty;
+    public long LastTurnInputTokens { get; set; }
+    public long LastTurnOutputTokens { get; set; }
+    public double? LastTurnCostUsd { get; set; }
+    public long TotalInputTokens { get; set; }
+    public long TotalOutputTokens { get; set; }
+    public double TotalCostUsd { get; set; }
     public int WarningCount { get; set; }
     public string SessionId { get; set; }
     public int ContextColorSeed { get; } = Random.Shared.Next();
@@ -806,6 +812,12 @@ public sealed class ChatTuiState
                     $"[audit] {sessionEvent.Text}"));
                 break;
             case SessionEventKind.TurnCompleted:
+                LastTurnInputTokens = sessionEvent.InputTokens;
+                LastTurnOutputTokens = sessionEvent.OutputTokens;
+                LastTurnCostUsd = sessionEvent.CostUsd;
+                TotalInputTokens += sessionEvent.InputTokens;
+                TotalOutputTokens += sessionEvent.OutputTokens;
+                TotalCostUsd += sessionEvent.CostUsd ?? 0;
                 FinishTurn(sessionEvent.Status, sessionEvent.Text, failed: false);
                 break;
             case SessionEventKind.TurnFailed:

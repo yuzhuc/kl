@@ -18,6 +18,19 @@ Every tool request is evaluated as `action + resource -> effect`:
 `allow_session` or `deny`. `allow_session` stores a tool+resource rule in
 session state and reloads with the session.
 
+## Approval modes
+
+| Mode | Behavior |
+|---|---|
+| `ask` | Policy-selected actions require approval |
+| `plan` | Read-only tool access; writes and shell are denied |
+| `acceptEdits` | Workspace edits are auto-approved; shell and plugins still ask |
+| `dontAsk` | Policy-allowed actions run without prompts; policy denials still deny |
+| `auto` | Policy-allowed edits, shell and plugins are auto-approved |
+| `read-only` | Reads only; edits, shell, plugin actions and git writes are denied |
+
+Mode changes are persisted in config and written to the audit log.
+
 ## Stage-scoped access
 
 Deep stages do not rely on prompt text for isolation:

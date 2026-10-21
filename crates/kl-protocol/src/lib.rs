@@ -373,6 +373,11 @@ pub struct DefaultModelResult {
 pub enum ApprovalMode {
     #[default]
     Ask,
+    Plan,
+    #[serde(rename = "acceptEdits")]
+    AcceptEdits,
+    #[serde(rename = "dontAsk")]
+    DontAsk,
     Auto,
     ReadOnly,
 }
@@ -381,6 +386,9 @@ impl ApprovalMode {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Ask => "ask",
+            Self::Plan => "plan",
+            Self::AcceptEdits => "acceptEdits",
+            Self::DontAsk => "dontAsk",
             Self::Auto => "auto",
             Self::ReadOnly => "read-only",
         }
@@ -845,6 +853,12 @@ pub enum CoreEvent {
         turn_id: String,
         status: String,
         text: String,
+        #[serde(default)]
+        input_tokens: u64,
+        #[serde(default)]
+        output_tokens: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cost_usd: Option<f64>,
     },
     #[serde(rename = "turn.failed")]
     TurnFailed { turn_id: String, message: String },

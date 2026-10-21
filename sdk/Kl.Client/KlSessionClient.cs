@@ -320,11 +320,21 @@ public sealed class KlSessionClient : IAsyncDisposable
             case "turn.completed":
                 var status = GetString(data, "status");
                 var text = GetString(data, "text");
+                var inputTokens = GetLong(data, "input_tokens");
+                var outputTokens = GetLong(data, "output_tokens");
+                double? costUsd = data.TryGetProperty("cost_usd", out var cost)
+                    && cost.ValueKind == JsonValueKind.Number
+                    && cost.TryGetDouble(out var parsedCost)
+                        ? parsedCost
+                        : null;
                 await _presenter.OnEventAsync(
                     new SessionEvent(
                         SessionEventKind.TurnCompleted,
                         Text: text,
-                        Status: status),
+                        Status: status,
+                        InputTokens: inputTokens,
+                        OutputTokens: outputTokens,
+                        CostUsd: costUsd),
                     cancellationToken).ConfigureAwait(false);
                 _turnCompletion?.TrySetResult(new TurnOutcome(status, text));
                 break;
@@ -403,6 +413,13 @@ public sealed class KlSessionClient : IAsyncDisposable
 
     private static string GetRaw(JsonElement element, string name) =>
         element.TryGetProperty(name, out var value) ? value.GetRawText() : "{}";
+
+    private static long GetLong(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value)
+        && value.ValueKind == JsonValueKind.Number
+        && value.TryGetInt64(out var parsed)
+            ? parsed
+            : 0;
 
     private static string Sanitize(string text)
     {

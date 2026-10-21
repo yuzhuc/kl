@@ -18,7 +18,11 @@ public enum ChatCommandKind
     Skills,
     Mcp,
     Copy,
-    Fork
+    Fork,
+    Cost,
+    Context,
+    Diff,
+    Export
 }
 
 public sealed record ChatCommandDefinition(
@@ -140,7 +144,31 @@ public static class ChatCommandPalette
             ChatCommandKind.Fork,
             "fork the current session",
             "分叉当前会话",
-            ["/fork"])
+            ["/fork"]),
+        new(
+            "/cost",
+            ChatCommandKind.Cost,
+            "show token usage and estimated cost",
+            "查看 token 用量和预估费用",
+            ["/cost"]),
+        new(
+            "/context",
+            ChatCommandKind.Context,
+            "show context usage and compaction threshold",
+            "查看上下文占用和压缩阈值",
+            ["/context"]),
+        new(
+            "/diff",
+            ChatCommandKind.Diff,
+            "show workspace changes captured in this session",
+            "查看本会话捕获的工作区改动",
+            ["/diff"]),
+        new(
+            "/export",
+            ChatCommandKind.Export,
+            "export this conversation as markdown",
+            "将当前会话导出为 Markdown",
+            ["/export"])
     ];
 
     public static string Description(

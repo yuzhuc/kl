@@ -30,7 +30,10 @@ public sealed record SessionEvent(
     string? Reason = null,
     string? Decision = null,
     string? Status = null,
-    string? TurnId = null);
+    string? TurnId = null,
+    long InputTokens = 0,
+    long OutputTokens = 0,
+    double? CostUsd = null);
 
 public sealed record ApprovalRequestEvent(
     string ApprovalId,

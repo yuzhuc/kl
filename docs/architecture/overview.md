@@ -133,7 +133,7 @@ packaged binaries really match them. Adding or removing a RID requires an ADR
 
 - Full GUI MVP.
 - Real provider/MCP live smoke with credentials.
-- Provider cost/cache and `/cost`.
+- Provider prompt caching.
 - Model-summary compaction.
 - Web tools, memory prompt injection and `/memory`.
 - Session rewind/revert and MCP resources/OAuth.
