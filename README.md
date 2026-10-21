@@ -154,7 +154,7 @@ and the release matrix in
 ## Known gaps
 
 - Real Provider/MCP live smoke requires credentials or a local MCP server.
-- The GUI consumes `Kl.Client`, but its full MVP remains in progress.
+- GUI is a static Avalonia shell; `Kl.Client` integration and the full MVP remain in progress.
 - Provider prompt caching and session rewind/revert are not complete.
 - MCP servers start in the Core startup workspace, not a per-session workspace.
 - PTY under Windows AppContainer fails closed because that backend cannot be
