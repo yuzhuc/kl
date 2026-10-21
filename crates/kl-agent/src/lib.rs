@@ -901,7 +901,12 @@ impl Agent {
             return error_payload(&message);
         }
 
-        if evaluation.effect == Effect::Ask {
+        if evaluation.effect == Effect::Ask || tool.always_ask() {
+            let reason = if evaluation.effect == Effect::Ask {
+                evaluation.reason.clone()
+            } else {
+                "user interaction requires approval".to_owned()
+            };
             let approval_id = format!("{turn_id}:{}", call.id);
             let decision = approvals.request(ApprovalRequest {
                 approval_id,
@@ -911,7 +916,7 @@ impl Agent {
                 action: request.action.as_str().to_owned(),
                 resource: request.resource.clone(),
                 args: args.clone(),
-                reason: evaluation.reason.clone(),
+                reason,
             });
             approved = Some(decision == ApprovalDecision::Allow);
             if decision == ApprovalDecision::Deny {

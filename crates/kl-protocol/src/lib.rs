@@ -858,6 +858,15 @@ pub enum CoreEvent {
         turn_id: Option<String>,
         record_id: String,
     },
+    #[serde(rename = "context.compacted")]
+    ContextCompacted {
+        trigger: String,
+        omitted_messages: usize,
+        estimated_tokens: u64,
+        summary_used: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        summary: Option<String>,
+    },
     #[serde(rename = "turn.completed")]
     TurnCompleted {
         turn_id: String,

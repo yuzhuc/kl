@@ -1679,6 +1679,8 @@ impl Core {
         };
         let omitted_messages = messages.omitted_messages;
         let estimated_tokens = messages.estimated_tokens;
+        let summary_used = messages.summary_used;
+        let summary = messages.summary.clone();
         let history = messages.history;
         {
             let mut sessions = self
@@ -1709,6 +1711,16 @@ impl Core {
             };
             self.store.save(&data).map_err(store_error)?;
         }
+        let _ = self.hub.emit(
+            &session_id,
+            CoreEvent::ContextCompacted {
+                trigger: "session.compact".to_owned(),
+                omitted_messages,
+                estimated_tokens,
+                summary_used,
+                summary,
+            },
+        );
         to_value(SessionCompactResult {
             omitted_messages,
             estimated_tokens,
@@ -4224,6 +4236,15 @@ max_iterations = 2
         );
         let persisted = core.store.load(&session_id).unwrap();
         assert_eq!(persisted.messages.len(), history.len());
+        let events = core.store.read_events(&session_id).unwrap();
+        assert!(events.iter().any(|event| matches!(
+            &event.event,
+            CoreEvent::ContextCompacted {
+                trigger,
+                summary_used: false,
+                ..
+            } if trigger == "session.compact"
+        )));
 
         {
             let mut sessions = core.sessions.lock().unwrap();

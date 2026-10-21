@@ -11,6 +11,7 @@ public enum SessionEventKind
     ApprovalResolved,
     ToolCompleted,
     AuditRecorded,
+    ContextCompacted,
     TurnCompleted,
     TurnFailed,
     Error

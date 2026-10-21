@@ -270,26 +270,26 @@ public sealed class KlSessionClient : IAsyncDisposable
     public Task<JsonElement> ListMemoryAsync(
         string? scope = null,
         CancellationToken cancellationToken = default) =>
-        _client.ListMemoryAsync(SessionId, scope, cancellationToken);
+        Client.ListMemoryAsync(SessionId, scope, cancellationToken);
 
     public Task<JsonElement> ReadMemoryAsync(
         string name,
         string? scope = null,
         CancellationToken cancellationToken = default) =>
-        _client.ReadMemoryAsync(name, SessionId, scope, cancellationToken);
+        Client.ReadMemoryAsync(name, SessionId, scope, cancellationToken);
 
     public Task<JsonElement> WriteMemoryAsync(
         string name,
         string content,
         string? scope = null,
         CancellationToken cancellationToken = default) =>
-        _client.WriteMemoryAsync(name, content, SessionId, scope, cancellationToken);
+        Client.WriteMemoryAsync(name, content, SessionId, scope, cancellationToken);
 
     public Task<JsonElement> DeleteMemoryAsync(
         string name,
         string? scope = null,
         CancellationToken cancellationToken = default) =>
-        _client.DeleteMemoryAsync(name, SessionId, scope, cancellationToken);
+        Client.DeleteMemoryAsync(name, SessionId, scope, cancellationToken);
 
     public async Task<TurnOutcome> RunTurnAsync(
         string prompt,
@@ -612,6 +612,14 @@ public sealed class KlSessionClient : IAsyncDisposable
                     new SessionEvent(
                         SessionEventKind.AuditRecorded,
                         Text: GetString(data, "record_id")),
+                    cancellationToken).ConfigureAwait(false);
+                break;
+            case "context.compacted":
+                await _presenter.OnEventAsync(
+                    new SessionEvent(
+                        SessionEventKind.ContextCompacted,
+                        Text: GetString(data, "trigger"),
+                        Summary: GetString(data, "summary")),
                     cancellationToken).ConfigureAwait(false);
                 break;
             case "turn.completed":

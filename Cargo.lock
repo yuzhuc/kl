@@ -962,6 +962,8 @@ dependencies = [
  "similar",
  "tempfile",
  "thiserror 2.0.21",
+ "ureq",
+ "url",
  "walkdir",
 ]
 

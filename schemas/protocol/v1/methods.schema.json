@@ -827,6 +827,7 @@
             "tool.completed",
             "sandbox.violation",
             "audit.recorded",
+            "context.compacted",
             "turn.completed",
             "turn.failed"
           ]
