@@ -141,8 +141,6 @@ packaged binaries really match them. Adding or removing a RID requires an ADR
 - Full GUI MVP and GUI release packaging.
 - Real provider/MCP live smoke with credentials.
 - Provider prompt caching.
-- Model-summary compaction.
-- Web tools, memory prompt injection and `/memory`.
 - Session rewind/revert and MCP resources/OAuth.
 - Per-session MCP workspace.
 - Repository split.

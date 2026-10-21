@@ -89,15 +89,15 @@ It currently opens a minimal Avalonia window; the full GUI MVP is future work.
 
 - Provider-neutral agent loop with `build`, `plan`, `explore`, `review`,
   `verify` and `deep` presets.
-- Built-in file, search, shell, git, worktree, job, subagent and workspace
-  memory tools.
+- Built-in file, search, shell, git, worktree, job, subagent, memory, todo,
+  ask_user and allowlisted web_fetch tools.
 - Unified tool pipeline: validation, hooks, policy, approval, sandbox,
   execution, result bounds, audit and events.
 - Windows AppContainer, Linux bubblewrap and macOS Seatbelt sandboxes.
 - MCP server processes start through the active `SandboxManager`.
 - Persistent sessions with event projection, resume, fork and approval rules.
 - Optional local server with attach/replay and one-writer session leases.
-- Layered context compaction and a 23-task acceptance harness.
+- Model-summary context compaction with mechanical fallback and a 23-task acceptance harness.
 - Skills, hooks, sidecar/WASM plugins and Ed25519 plugin integrity checks.
 - Shell commands support `tty=true`; `tty=true` uses portable-pty where the sandbox backend supports it.
 - Transient provider retry with exponential backoff and cancellation.
@@ -155,8 +155,7 @@ and the release matrix in
 
 - Real Provider/MCP live smoke requires credentials or a local MCP server.
 - The GUI consumes `Kl.Client`, but its full MVP remains in progress.
-- Provider prompt caching, model-summary compaction, web tools, memory prompt
-  injection and session rewind/revert are not complete.
+- Provider prompt caching and session rewind/revert are not complete.
 - MCP servers start in the Core startup workspace, not a per-session workspace.
 - PTY under Windows AppContainer fails closed because that backend cannot be
   wrapped by an external PTY runner.

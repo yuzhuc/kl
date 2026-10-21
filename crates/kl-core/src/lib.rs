@@ -3533,6 +3533,24 @@ mod tests {
     }
 
     #[test]
+    fn approval_broker_timeout_and_cancel_deny() {
+        let broker = ApprovalBroker::new(Duration::from_millis(20));
+        let receiver = broker.register("timeout");
+        let started = Instant::now();
+        assert_eq!(
+            broker.wait_registered("timeout", receiver, &AtomicBool::new(false)),
+            ApprovalDecision::Deny
+        );
+        assert!(started.elapsed() >= Duration::from_millis(15));
+
+        let receiver = broker.register("cancel");
+        assert_eq!(
+            broker.wait_registered("cancel", receiver, &AtomicBool::new(true)),
+            ApprovalDecision::Deny
+        );
+    }
+
+    #[test]
     fn handshake_then_ping() {
         let home = tempfile::tempdir().unwrap();
         let output = serve(
