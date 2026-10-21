@@ -410,7 +410,7 @@
       "additionalProperties": false
     },
     "approvalMode": {
-      "enum": ["ask", "auto", "read-only"]
+      "enum": ["ask", "plan", "acceptEdits", "dontAsk", "auto", "read-only"]
     },
     "reasoningEffort": {
       "enum": ["default", "low", "medium", "high"]

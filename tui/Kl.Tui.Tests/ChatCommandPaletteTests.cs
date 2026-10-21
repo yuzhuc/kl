@@ -12,8 +12,12 @@ public sealed class ChatCommandPaletteTests
         state.Insert('/');
 
         Assert.True(ChatCommandPalette.IsOpen(state));
-        Assert.Equal(16, ChatCommandPalette.Matches(state.Input).Count);
+        Assert.Equal(20, ChatCommandPalette.Matches(state.Input).Count);
         Assert.Contains(ChatCommandPalette.Matches(state.Input), match => match.Name == "/fork");
+        Assert.Contains(ChatCommandPalette.Matches(state.Input), match => match.Name == "/cost");
+        Assert.Contains(ChatCommandPalette.Matches(state.Input), match => match.Name == "/context");
+        Assert.Contains(ChatCommandPalette.Matches(state.Input), match => match.Name == "/diff");
+        Assert.Contains(ChatCommandPalette.Matches(state.Input), match => match.Name == "/export");
         Assert.Equal("/init", ChatCommandPalette.Selected(state)?.Name);
 
         var lines = ChatTuiRenderer.CommandPaletteLines(state, 100);
@@ -21,6 +25,35 @@ public sealed class ChatCommandPaletteTests
         Assert.Contains(lines, line => line.Contains("/init"));
         Assert.Contains(lines, line => line.Contains("/settings"));
         Assert.DoesNotContain(lines, line => line.Contains("/resume"));
+    }
+
+    [Fact]
+    public void CostCommandAccumulatesUsageAndPricing()
+    {
+        var command = ChatCommandPalette.FindExact("/cost");
+        Assert.NotNull(command);
+        Assert.Equal(ChatCommandKind.Cost, command!.Kind);
+
+        var state = new ChatTuiState();
+        state.Apply(new SessionEvent(
+            SessionEventKind.TurnCompleted,
+            Status: "completed",
+            InputTokens: 120,
+            OutputTokens: 30,
+            CostUsd: 0.001));
+        state.Apply(new SessionEvent(
+            SessionEventKind.TurnCompleted,
+            Status: "completed",
+            InputTokens: 80,
+            OutputTokens: 20,
+            CostUsd: 0.002));
+
+        Assert.Equal(80, state.LastTurnInputTokens);
+        Assert.Equal(20, state.LastTurnOutputTokens);
+        Assert.Equal(0.002, state.LastTurnCostUsd);
+        Assert.Equal(200, state.TotalInputTokens);
+        Assert.Equal(50, state.TotalOutputTokens);
+        Assert.Equal(0.003, state.TotalCostUsd, 6);
     }
 
     [Fact]
@@ -294,7 +327,7 @@ public sealed class ChatCommandPaletteTests
 
         ChatCommandPalette.MoveSelection(state, -1);
         Assert.Equal(
-            "/fork",
+            "/export",
             ChatCommandPalette.Selected(state)?.Name);
 
         ChatCommandPalette.MoveSelection(state, 1);

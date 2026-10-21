@@ -3,7 +3,7 @@
 KL is a local-first AI coding agent with a Rust trusted core and C# clients.
 
 - **Core:** Rust, JSON-RPC 2.0 over stdio, provider-neutral agent loop.
-- **TUI:** C# terminal client in `tui/Kl.Tui`.
+- **TUI:** C# Terminal.Gui v2 client in `tui/Kl.Tui`.
 - **GUI:** Avalonia scaffold in `gui/Kl.Gui` (MVP still under construction).
 - **Shared client:** `sdk/Kl.Client`, used by the TUI and intended for the GUI.
 
@@ -99,6 +99,7 @@ It currently opens a minimal Avalonia window; the full GUI MVP is future work.
 - Skills, hooks, sidecar/WASM plugins and Ed25519 plugin integrity checks.
 - Shell commands support `tty=true`; `tty=true` uses portable-pty where the sandbox backend supports it.
 - Transient provider retry with exponential backoff and cancellation.
+- Built-in model catalog and per-turn/cumulative token usage with `/cost`.
 
 ## Configuration
 
@@ -112,7 +113,8 @@ KL reads user configuration from `~/.kl/`:
 
 Workspace-level `AGENTS.md`, `.kl/memory/` and project skills are also
 discovered. See [`docs/security/policy.md`](docs/security/policy.md) for the
-permission model.
+permission model. Permission modes include `ask`, `plan`, `acceptEdits`,
+`dontAsk`, `auto` and `read-only`; unknown model prices are never invented.
 
 ## Sandbox and security
 
@@ -150,8 +152,8 @@ and the release matrix in
 ## Known gaps
 
 - Real Provider/MCP live smoke requires credentials or a local MCP server.
-- GUI MVP, provider cost/cache, model-summary compaction, web tools, memory
-  prompt injection and session rewind/revert are not complete.
+- GUI MVP, provider prompt caching, model-summary compaction, web tools,
+  memory prompt injection and session rewind/revert are not complete.
 - MCP servers start in the Core startup workspace, not a per-session workspace.
 - PTY under Windows AppContainer fails closed because that backend cannot be
   wrapped by an external PTY runner.

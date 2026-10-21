@@ -336,10 +336,14 @@ impl Agent {
                             outcome.text.clone(),
                             Vec::new(),
                         ));
+                        let cost_usd = usage_cost_usd(&self.metadata, &usage);
                         sink.emit(CoreEvent::TurnCompleted {
                             turn_id: turn_id.to_owned(),
                             status: TurnStatus::Completed.as_str().to_owned(),
                             text: outcome.text.clone(),
+                            input_tokens: usage.input_tokens,
+                            output_tokens: usage.output_tokens,
+                            cost_usd,
                         })?;
                         return Ok(TurnResult {
                             status: TurnStatus::Completed,
@@ -537,6 +541,9 @@ impl Agent {
             turn_id: turn_id.to_owned(),
             status: TurnStatus::Cancelled.as_str().to_owned(),
             text: "Cancelled by user.".to_owned(),
+            input_tokens: usage.input_tokens,
+            output_tokens: usage.output_tokens,
+            cost_usd: usage_cost_usd(&self.metadata, &usage),
         })?;
         Ok(TurnResult {
             status: TurnStatus::Cancelled,
@@ -729,18 +736,6 @@ impl Agent {
 
         if evaluation.effect == Effect::Ask {
             let approval_id = format!("{turn_id}:{}", call.id);
-            if let Err(error) = sink.emit(CoreEvent::ToolApprovalRequested {
-                turn_id: turn_id.to_owned(),
-                call_id: call.id.clone(),
-                approval_id: approval_id.clone(),
-                name: call.name.clone(),
-                action: request.action.as_str().to_owned(),
-                resource: request.resource.clone(),
-                args: args.clone(),
-                reason: evaluation.reason.clone(),
-            }) {
-                return error_payload(&format!("event sink error: {error}"));
-            }
             let decision = approvals.request(ApprovalRequest {
                 approval_id,
                 turn_id: turn_id.to_owned(),
@@ -1214,6 +1209,13 @@ fn compaction_omitted(message: &ChatMessage) -> Option<usize> {
     count.parse().ok()
 }
 
+fn usage_cost_usd(metadata: &ModelMetadata, usage: &Usage) -> Option<f64> {
+    let catalog = metadata.catalog?;
+    let input = usage.input_tokens as f64 * catalog.input_price_per_million;
+    let output = usage.output_tokens as f64 * catalog.output_price_per_million;
+    Some((input + output) / 1_000_000.0)
+}
+
 fn estimate_tokens(text: &str) -> u64 {
     (text.chars().count() as u64).div_ceil(3)
 }
@@ -1349,6 +1351,37 @@ mod tests {
                 tool_calls: Vec::new(),
                 finish_reason: FinishReason::Stop,
                 usage: Usage::default(),
+            })
+        }
+    }
+
+    struct UsageProvider;
+
+    impl Provider for UsageProvider {
+        fn id(&self) -> &str {
+            "usage"
+        }
+        fn kind(&self) -> &str {
+            "scripted"
+        }
+        fn models(&self) -> Vec<ModelInfo> {
+            vec![ModelInfo::new("usage")]
+        }
+        fn stream_chat(
+            &self,
+            _request: &ChatRequest,
+            _cancel: &CancellationToken,
+            on_event: &mut dyn FnMut(ChatEvent),
+        ) -> Result<ChatOutcome, ProviderError> {
+            on_event(ChatEvent::TextDelta("priced".to_owned()));
+            Ok(ChatOutcome {
+                text: "priced".to_owned(),
+                tool_calls: Vec::new(),
+                finish_reason: FinishReason::Stop,
+                usage: Usage {
+                    input_tokens: 1_000_000,
+                    output_tokens: 1_000_000,
+                },
             })
         }
     }
@@ -1802,6 +1835,52 @@ mod tests {
         assert!(long_user > short);
         assert!(tool_call > short);
         assert!(tool_result > short);
+    }
+
+    #[test]
+    fn turn_completed_event_carries_usage_and_cost() {
+        let metadata = ModelMetadata::new(
+            "openai",
+            "gpt-5",
+            Protocol::Scripted,
+            "offline://test",
+            400_000,
+            0.8,
+            128_000,
+        )
+        .with_catalog(kl_provider::lookup_model("openai", "gpt-5"));
+        let agent = test_agent(Arc::new(UsageProvider), metadata);
+        let sink = RecordingSink::default();
+        run_once(&agent, &sink).unwrap();
+        let events = sink.events.lock().unwrap();
+        assert!(events.iter().any(|event| matches!(
+            event,
+            CoreEvent::TurnCompleted {
+                input_tokens: 1_000_000,
+                output_tokens: 1_000_000,
+                cost_usd: Some(cost),
+                ..
+            } if (*cost - 11.25).abs() < 1e-9
+        )));
+    }
+
+    #[test]
+    fn catalog_price_computes_turn_cost() {
+        let metadata = ModelMetadata::new(
+            "openai",
+            "gpt-5",
+            kl_provider::Protocol::OpenAiResponses,
+            "https://example.invalid/responses",
+            400_000,
+            0.8,
+            128_000,
+        )
+        .with_catalog(kl_provider::lookup_model("openai", "gpt-5"));
+        let usage = Usage {
+            input_tokens: 1_000_000,
+            output_tokens: 1_000_000,
+        };
+        assert_eq!(usage_cost_usd(&metadata, &usage), Some(11.25));
     }
 
     #[test]
@@ -2459,6 +2538,42 @@ mod tests {
             })
             .collect();
         assert_eq!(deltas, vec!["recovered"]);
+    }
+
+    #[test]
+    fn retries_timeout_provider_error() {
+        let scripted = Arc::new(
+            ScriptedProvider::from_json(
+                "scripted",
+                r#"[{"error":{"kind":"timeout","message":"provider timeout"}},
+                    {"text":"recovered"}]"#,
+            )
+            .unwrap(),
+        );
+        let provider: Arc<dyn Provider> = scripted.clone();
+        let agent = retrying_agent(provider, Duration::from_millis(1));
+        let sink = RecordingSink::default();
+
+        assert_eq!(run_once(&agent, &sink).unwrap().text, "recovered");
+        assert_eq!(scripted.call_count(), 2);
+    }
+
+    #[test]
+    fn retries_stream_disconnect_before_delta() {
+        let scripted = Arc::new(
+            ScriptedProvider::from_json(
+                "scripted",
+                r#"[{"error":{"kind":"transport","message":"stream disconnected"}},
+                    {"text":"recovered"}]"#,
+            )
+            .unwrap(),
+        );
+        let provider: Arc<dyn Provider> = scripted.clone();
+        let agent = retrying_agent(provider, Duration::from_millis(1));
+        let sink = RecordingSink::default();
+
+        assert_eq!(run_once(&agent, &sink).unwrap().text, "recovered");
+        assert_eq!(scripted.call_count(), 2);
     }
 
     #[test]

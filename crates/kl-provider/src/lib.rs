@@ -3,11 +3,13 @@
 //! or wire protocols.
 
 mod anthropic;
+mod catalog;
 mod openai;
 mod responses;
 mod scripted;
 
 pub use anthropic::AnthropicAdapter;
+pub use catalog::{ModelCatalogEntry, lookup as lookup_model};
 pub use openai::OpenAiChatAdapter;
 pub use responses::OpenAiResponsesAdapter;
 pub use scripted::ScriptedProvider;
@@ -85,6 +87,8 @@ pub struct ModelMetadata {
     pub context_window: u32,
     pub compact_threshold: f32,
     pub max_output_tokens: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catalog: Option<ModelCatalogEntry>,
 }
 
 impl ModelMetadata {
@@ -105,7 +109,13 @@ impl ModelMetadata {
             context_window,
             compact_threshold,
             max_output_tokens,
+            catalog: None,
         }
+    }
+
+    pub fn with_catalog(mut self, catalog: Option<ModelCatalogEntry>) -> Self {
+        self.catalog = catalog;
+        self
     }
 }
 

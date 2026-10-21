@@ -39,7 +39,7 @@ clients.
 | `kl-index` | Shallow repository symbols and test selection hints |
 | `kl-plugin-host` | Sidecar/WASM plugin supervision and integrity checks |
 | `Kl.Client` | C# JSON-RPC/session client used by TUI and GUI |
-| `Kl.Tui` | Terminal UI, rendering, input and approval presentation |
+| `Kl.Tui` | Terminal.Gui v2 terminal UI, rendering, input and approval presentation |
 | `Kl.Gui` | Avalonia shell; currently a scaffold |
 
 ## Protocol
@@ -133,7 +133,7 @@ packaged binaries really match them. Adding or removing a RID requires an ADR
 
 - Full GUI MVP.
 - Real provider/MCP live smoke with credentials.
-- Provider cost/cache and `/cost`.
+- Provider prompt caching.
 - Model-summary compaction.
 - Web tools, memory prompt injection and `/memory`.
 - Session rewind/revert and MCP resources/OAuth.

@@ -62,6 +62,9 @@ public sealed class SettingsTuiTests
         var cases = new[]
         {
             (Mode: SettingsApprovalMode.Ask, Wire: "ask", Current: "auto"),
+            (Mode: SettingsApprovalMode.Plan, Wire: "plan", Current: "ask"),
+            (Mode: SettingsApprovalMode.AcceptEdits, Wire: "acceptEdits", Current: "ask"),
+            (Mode: SettingsApprovalMode.DontAsk, Wire: "dontAsk", Current: "ask"),
             (Mode: SettingsApprovalMode.Auto, Wire: "auto", Current: "ask"),
             (Mode: SettingsApprovalMode.ReadOnly, Wire: "read-only", Current: "ask")
         };
@@ -77,6 +80,9 @@ public sealed class SettingsTuiTests
             Assert.Equal(SettingsView.Permissions, state.View);
             var render = SettingsTuiRenderer.Render(100, 30, state);
             Assert.Contains("ask - approve before changes", render);
+            Assert.Contains("plan - read-only planning", render);
+            Assert.Contains("acceptEdits - edits only", render);
+            Assert.Contains("dontAsk - never prompt", render);
             Assert.Contains("auto - approve automatically", render);
             Assert.Contains("read-only - no changes", render);
             Assert.Contains("Sandbox backend: appcontainer", render);
@@ -117,7 +123,7 @@ public sealed class SettingsTuiTests
         state.HandleKey(Key(ConsoleKey.Enter));
         state.HandleKey(Key(ConsoleKey.DownArrow));
         state.HandleKey(Key(ConsoleKey.Enter));
-        Assert.Equal(SettingsApprovalMode.Auto, state.PendingApprovalMode);
+        Assert.Equal(SettingsApprovalMode.Plan, state.PendingApprovalMode);
 
         var cancel = state.HandleKey(Key(ConsoleKey.Escape));
 

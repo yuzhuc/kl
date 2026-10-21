@@ -22,7 +22,7 @@ use kl_agent::{
     Agent, AgentConfig, AgentError, ApprovalGate, ApprovalRequest, EventSink, TurnResult,
     TurnStatus,
 };
-use kl_audit::AuditLog;
+use kl_audit::{AuditLog, AuditRecord, AuditSink};
 use kl_plugin_host::{
     PluginError, PluginHost, PluginInfo, PluginKind, SidecarProvider, SidecarTool,
 };
@@ -260,13 +260,21 @@ impl ApprovalBroker {
         }
     }
 
-    fn wait(&self, approval_id: &str, cancel: &AtomicBool) -> ApprovalDecision {
+    fn register(&self, approval_id: &str) -> mpsc::Receiver<ApprovalDecision> {
         let (sender, receiver) = mpsc::channel();
         self.pending
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .insert(approval_id.to_owned(), sender);
+        receiver
+    }
 
+    fn wait_registered(
+        &self,
+        approval_id: &str,
+        receiver: mpsc::Receiver<ApprovalDecision>,
+        cancel: &AtomicBool,
+    ) -> ApprovalDecision {
         let started = Instant::now();
         let decision = loop {
             if cancel.load(Ordering::Relaxed) {
@@ -386,7 +394,23 @@ impl ApprovalGate for CoreApprovalGate {
             &self.session_id,
             TURN_STATE_WAITING_APPROVAL,
         );
-        let decision = self.broker.wait(&request.approval_id, &self.cancel);
+        let receiver = self.broker.register(&request.approval_id);
+        let _ = self.hub.emit(
+            &self.session_id,
+            CoreEvent::ToolApprovalRequested {
+                turn_id: request.turn_id.clone(),
+                call_id: request.call_id.clone(),
+                approval_id: request.approval_id.clone(),
+                name: request.tool.clone(),
+                action: request.action.clone(),
+                resource: request.resource.clone(),
+                args: request.args.clone(),
+                reason: request.reason.clone(),
+            },
+        );
+        let decision = self
+            .broker
+            .wait_registered(&request.approval_id, receiver, &self.cancel);
         let _ = set_turn_state(
             &self.sessions,
             &self.hub.store,
@@ -734,6 +758,9 @@ impl DeepTurn {
             turn_id: self.base_turn_id.clone(),
             status: TurnStatus::Completed.as_str().to_owned(),
             text: text.clone(),
+            input_tokens: usage.input_tokens,
+            output_tokens: usage.output_tokens,
+            cost_usd: None,
         })?;
         Ok(TurnResult {
             status: TurnStatus::Completed,
@@ -759,6 +786,9 @@ impl DeepTurn {
             turn_id: self.base_turn_id.clone(),
             status: TurnStatus::Cancelled.as_str().to_owned(),
             text: text.clone(),
+            input_tokens: usage.input_tokens,
+            output_tokens: usage.output_tokens,
+            cost_usd: None,
         })?;
         Ok(TurnResult {
             status: TurnStatus::Cancelled,
@@ -2034,10 +2064,23 @@ impl Core {
         config::permissions_set(&self.context.config_path, params.approval_mode)
             .map_err(config_write_error)?;
         self.config.agent.approval_mode = params.approval_mode;
-        let auto_approve = params.approval_mode == ApprovalMode::Auto;
-        self.config.policy.auto_approve_edits = auto_approve;
-        self.config.policy.auto_approve_shell = auto_approve;
-        self.config.policy.auto_approve_plugins = auto_approve;
+        let (edits, shell, plugins) = config::approval_flags(params.approval_mode);
+        self.config.policy.auto_approve_edits = edits;
+        self.config.policy.auto_approve_shell = shell;
+        self.config.policy.auto_approve_plugins = plugins;
+        let mut audit = AuditRecord::new(
+            "core",
+            "",
+            "",
+            "permissions",
+            "set",
+            params.approval_mode.as_str(),
+            "allow",
+        );
+        audit.ok = true;
+        self.audit
+            .record(&audit)
+            .map_err(|error| rpc_error(error_codes::INTERNAL_ERROR, error.to_string()))?;
         to_value(self.permissions_result())
     }
 
@@ -2067,16 +2110,27 @@ impl Core {
 
     fn effective_policy_config(&self) -> kl_policy::PolicyConfig {
         let mut policy = self.config.policy.clone();
-        if self.config.agent.approval_mode == ApprovalMode::Auto {
-            policy.auto_approve_edits = true;
-            policy.auto_approve_shell = true;
-            policy.auto_approve_plugins = true;
+        match self.config.agent.approval_mode {
+            ApprovalMode::AcceptEdits => {
+                policy.auto_approve_edits = true;
+                policy.auto_approve_shell = false;
+                policy.auto_approve_plugins = false;
+            }
+            ApprovalMode::DontAsk | ApprovalMode::Auto => {
+                policy.auto_approve_edits = true;
+                policy.auto_approve_shell = true;
+                policy.auto_approve_plugins = true;
+            }
+            ApprovalMode::Ask | ApprovalMode::Plan | ApprovalMode::ReadOnly => {}
         }
         policy
     }
 
     fn tool_access(&self) -> ToolAccess {
-        if self.config.agent.approval_mode == ApprovalMode::ReadOnly {
+        if matches!(
+            self.config.agent.approval_mode,
+            ApprovalMode::Plan | ApprovalMode::ReadOnly
+        ) {
             ToolAccess::ReadOnly
         } else {
             ToolAccess::Full
@@ -2609,6 +2663,10 @@ fn build_routes(
     let mut routes = Vec::new();
     for provider in &catalog.providers {
         for metadata in &provider.models {
+            let metadata = metadata.clone().with_catalog(kl_provider::lookup_model(
+                &metadata.provider,
+                &metadata.model,
+            ));
             let adapter: Arc<dyn ProtocolAdapter> = match metadata.protocol {
                 Protocol::OpenAiChat => Arc::new(OpenAiChatAdapter::new(
                     metadata.url.clone(),
@@ -2631,7 +2689,7 @@ fn build_routes(
                 }
             };
             let bound = Arc::new(BoundProvider::new(metadata.clone(), adapter));
-            routes.push((metadata.clone(), bound as Arc<dyn Provider>));
+            routes.push((metadata, bound as Arc<dyn Provider>));
         }
     }
 
@@ -3048,7 +3106,13 @@ fn policy_summary(mode: ApprovalMode) -> &'static str {
         ApprovalMode::Ask => {
             "Workspace paths are enforced; actions selected by policy can require approval."
         }
-        ApprovalMode::Auto => {
+        ApprovalMode::Plan => {
+            "Planning is read-only; edits, shell commands, plugin actions, and git writes are denied."
+        }
+        ApprovalMode::AcceptEdits => {
+            "Workspace edits are auto-approved; shell commands and plugins still require approval."
+        }
+        ApprovalMode::DontAsk | ApprovalMode::Auto => {
             "Edits, shell commands, and plugins are auto-approved within policy; workspace paths are enforced."
         }
         ApprovalMode::ReadOnly => {
@@ -3809,7 +3873,7 @@ max_iterations = 2
         let (mut core, _) = new_test_core(config_path.clone(), home.path());
         core.handshaken = true;
 
-        for mode in ["ask", "auto", "read-only"] {
+        for mode in ["ask", "plan", "acceptEdits", "dontAsk", "auto", "read-only"] {
             let result = core
                 .permissions_set(json!({"approval_mode": mode}))
                 .unwrap();
@@ -3817,13 +3881,17 @@ max_iterations = 2
             assert_eq!(core.permissions_get().unwrap(), result);
             let saved = Config::load(&config_path).unwrap();
             assert_eq!(saved.agent.approval_mode.as_str(), mode);
-            let auto = mode == "auto";
-            assert_eq!(saved.policy.auto_approve_edits, auto);
-            assert_eq!(saved.policy.auto_approve_shell, auto);
-            assert_eq!(saved.policy.auto_approve_plugins, auto);
+            let (edits, shell, plugins) = match mode {
+                "acceptEdits" => (true, false, false),
+                "dontAsk" | "auto" => (true, true, true),
+                _ => (false, false, false),
+            };
+            assert_eq!(saved.policy.auto_approve_edits, edits);
+            assert_eq!(saved.policy.auto_approve_shell, shell);
+            assert_eq!(saved.policy.auto_approve_plugins, plugins);
             assert_eq!(
                 core.tool_access(),
-                if mode == "read-only" {
+                if matches!(mode, "plan" | "read-only") {
                     ToolAccess::ReadOnly
                 } else {
                     ToolAccess::Full
