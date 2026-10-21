@@ -225,6 +225,12 @@ public sealed class TerminalGuiMainWindow : Runnable
             Append($"\nSession {_session.SessionId} | {_session.Provider}/{_session.Model}\nWorkspace: {_session.Workspace}");
             return;
         }
+        if (MemoryCommandParser.TryParse(prompt, out var memory))
+        {
+            _input.Text = string.Empty;
+            _ = RunMemoryAsync(memory);
+            return;
+        }
         if (prompt.StartsWith('/'))
         {
             _input.Text = string.Empty;
@@ -277,6 +283,84 @@ public sealed class TerminalGuiMainWindow : Runnable
             : _output.Text + text;
         _output.MoveEnd();
         SetNeedsDraw();
+    }
+
+    private async Task RunMemoryAsync(MemoryCommand command)
+    {
+        try
+        {
+            switch (command.Action)
+            {
+                case MemoryCommandAction.List:
+                {
+                    var result = await _session.ListMemoryAsync(command.Scope, _lifetime.Token)
+                        .ConfigureAwait(false);
+                    var entries = new List<string>();
+                    if (result.TryGetProperty("entries", out var list)
+                        && list.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    {
+                        foreach (var entry in list.EnumerateArray())
+                        {
+                            entries.Add($"{entry.GetProperty("name").GetString()} ({entry.GetProperty("scope").GetString()})");
+                        }
+                    }
+                    _app.Invoke(() => Append(entries.Count == 0
+                        ? "\nno memory entries"
+                        : "\n" + string.Join(Environment.NewLine, entries)));
+                    break;
+                }
+                case MemoryCommandAction.Read:
+                {
+                    if (string.IsNullOrWhiteSpace(command.Name))
+                    {
+                        _app.Invoke(() => Append("\nusage: /memory read <name>"));
+                        break;
+                    }
+                    var result = await _session
+                        .ReadMemoryAsync(command.Name, command.Scope, _lifetime.Token)
+                        .ConfigureAwait(false);
+                    _app.Invoke(() => Append(
+                        "\n" + result.GetProperty("content").GetString()));
+                    break;
+                }
+                case MemoryCommandAction.Write:
+                {
+                    if (string.IsNullOrWhiteSpace(command.Name))
+                    {
+                        _app.Invoke(() => Append("\nusage: /memory write <name> <content>"));
+                        break;
+                    }
+                    var result = await _session
+                        .WriteMemoryAsync(command.Name, command.Content, command.Scope, _lifetime.Token)
+                        .ConfigureAwait(false);
+                    _app.Invoke(() => Append(
+                        $"\nwrote {result.GetProperty("name").GetString()}"));
+                    break;
+                }
+                case MemoryCommandAction.Delete:
+                {
+                    if (string.IsNullOrWhiteSpace(command.Name))
+                    {
+                        _app.Invoke(() => Append("\nusage: /memory delete <name>"));
+                        break;
+                    }
+                    var result = await _session
+                        .DeleteMemoryAsync(command.Name, command.Scope, _lifetime.Token)
+                        .ConfigureAwait(false);
+                    _app.Invoke(() => Append(
+                        $"\ndeleted {result.GetProperty("name").GetString()}"));
+                    break;
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Window closed.
+        }
+        catch (Exception error) when (error is JsonRpcException or IOException or InvalidOperationException)
+        {
+            _app.Invoke(() => Append($"\n[error] {error.Message}"));
+        }
     }
 
     private void SetStatus(string? state = null)

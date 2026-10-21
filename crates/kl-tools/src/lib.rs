@@ -13,7 +13,7 @@ mod worktree;
 
 pub use files::{EditFileTool, ReadFileTool, WriteFileTool};
 pub use jobs::JobTool;
-pub use memory::MemoryTool;
+pub use memory::{MemoryEntry, MemoryInjection, MemoryScope, MemoryStore, MemoryTool};
 pub use search::{GlobTool, GrepTool};
 pub use shell::{GitTool, ShellTool};
 pub use todo::TodoTool;

@@ -1,0 +1,10 @@
+{
+  "jsonrpc": "2.0",
+  "kl_protocol": 1,
+  "id": 25,
+  "result": {
+    "name": "notes.md",
+    "scope": "workspace",
+    "content": "# hello\n"
+  }
+}

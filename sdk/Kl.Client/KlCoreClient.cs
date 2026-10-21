@@ -482,5 +482,81 @@ public sealed class KlCoreClient : IAsyncDisposable
             new Dictionary<string, object?> { ["id"] = id },
             cancellationToken);
 
+    public Task<JsonElement> ListMemoryAsync(
+        string? sessionId = null,
+        string? scope = null,
+        CancellationToken cancellationToken = default)
+    {
+        var parameters = new Dictionary<string, object?>();
+        if (!string.IsNullOrWhiteSpace(sessionId))
+        {
+            parameters["session_id"] = sessionId;
+        }
+        if (!string.IsNullOrWhiteSpace(scope))
+        {
+            parameters["scope"] = scope;
+        }
+        return RequestAsync(Protocol.MemoryList, parameters, cancellationToken);
+    }
+
+    public Task<JsonElement> ReadMemoryAsync(
+        string name,
+        string? sessionId = null,
+        string? scope = null,
+        CancellationToken cancellationToken = default)
+    {
+        var parameters = new Dictionary<string, object?> { ["name"] = name };
+        if (!string.IsNullOrWhiteSpace(sessionId))
+        {
+            parameters["session_id"] = sessionId;
+        }
+        if (!string.IsNullOrWhiteSpace(scope))
+        {
+            parameters["scope"] = scope;
+        }
+        return RequestAsync(Protocol.MemoryRead, parameters, cancellationToken);
+    }
+
+    public Task<JsonElement> WriteMemoryAsync(
+        string name,
+        string content,
+        string? sessionId = null,
+        string? scope = null,
+        CancellationToken cancellationToken = default)
+    {
+        var parameters = new Dictionary<string, object?>
+        {
+            ["name"] = name,
+            ["content"] = content
+        };
+        if (!string.IsNullOrWhiteSpace(sessionId))
+        {
+            parameters["session_id"] = sessionId;
+        }
+        if (!string.IsNullOrWhiteSpace(scope))
+        {
+            parameters["scope"] = scope;
+        }
+        return RequestAsync(Protocol.MemoryWrite, parameters, cancellationToken);
+    }
+
+    public Task<JsonElement> DeleteMemoryAsync(
+        string name,
+        string? sessionId = null,
+        string? scope = null,
+        CancellationToken cancellationToken = default)
+    {
+        var parameters = new Dictionary<string, object?> { ["name"] = name };
+        if (!string.IsNullOrWhiteSpace(sessionId))
+        {
+            parameters["session_id"] = sessionId;
+        }
+        if (!string.IsNullOrWhiteSpace(scope))
+        {
+            parameters["scope"] = scope;
+        }
+        return RequestAsync(Protocol.MemoryDelete, parameters, cancellationToken);
+    }
+
     public async ValueTask DisposeAsync() => await _rpc.DisposeAsync().ConfigureAwait(false);
 }

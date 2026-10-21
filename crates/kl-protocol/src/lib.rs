@@ -63,6 +63,10 @@ pub mod methods {
     pub const PLUGIN_RELOAD: &str = "plugin.reload";
     pub const PLUGIN_ENABLE: &str = "plugin.enable";
     pub const PLUGIN_DISABLE: &str = "plugin.disable";
+    pub const MEMORY_LIST: &str = "memory.list";
+    pub const MEMORY_READ: &str = "memory.read";
+    pub const MEMORY_WRITE: &str = "memory.write";
+    pub const MEMORY_DELETE: &str = "memory.delete";
     pub const EVENT: &str = "event";
 }
 
@@ -954,6 +958,72 @@ pub struct SessionLeaseResult {
     pub expires_at_unix_ms: i64,
 }
 
+/// A single Markdown memory entry.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MemoryEntryInfo {
+    pub name: String,
+    pub scope: String,
+    pub size_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MemoryListParams {
+    pub session_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MemoryListResult {
+    pub entries: Vec<MemoryEntryInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MemoryReadParams {
+    pub session_id: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MemoryReadResult {
+    pub name: String,
+    pub scope: String,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MemoryWriteParams {
+    pub session_id: String,
+    pub name: String,
+    pub content: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MemoryWriteResult {
+    pub name: String,
+    pub scope: String,
+    pub size_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MemoryDeleteParams {
+    pub session_id: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MemoryDeleteResult {
+    pub name: String,
+    pub scope: String,
+    pub deleted: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1101,5 +1171,69 @@ mod tests {
             serde_json::from_value(fixture("session_lease_result.json")["result"].clone()).unwrap();
         assert_eq!(lease.session_id, "session-1");
         assert_eq!(lease.expires_at_unix_ms, 1760000060000);
+    }
+
+    #[test]
+    fn memory_methods_are_stable() {
+        assert_eq!(methods::MEMORY_LIST, "memory.list");
+        assert_eq!(methods::MEMORY_READ, "memory.read");
+        assert_eq!(methods::MEMORY_WRITE, "memory.write");
+        assert_eq!(methods::MEMORY_DELETE, "memory.delete");
+    }
+
+    #[test]
+    fn memory_params_use_snake_case_and_optional_scope() {
+        let params: MemoryListParams =
+            serde_json::from_value(json!({ "session_id": "session-1" })).unwrap();
+        assert_eq!(params.session_id, "session-1");
+        assert_eq!(params.scope, None);
+
+        let params: MemoryReadParams = serde_json::from_value(json!({
+            "session_id": "session-1",
+            "name": "notes.md",
+            "scope": "user"
+        }))
+        .unwrap();
+        assert_eq!(params.session_id, "session-1");
+        assert_eq!(params.name, "notes.md");
+        assert_eq!(params.scope.as_deref(), Some("user"));
+
+        let params: MemoryWriteParams = serde_json::from_value(json!({
+            "session_id": "session-1",
+            "name": "notes.md",
+            "content": "# hello"
+        }))
+        .unwrap();
+        assert_eq!(params.session_id, "session-1");
+        assert_eq!(params.content, "# hello");
+        assert_eq!(params.scope, None);
+    }
+
+    #[test]
+    fn shared_fixtures_match_the_memory_contracts() {
+        let list: MemoryListResult =
+            serde_json::from_value(fixture("memory_list_result.json")["result"].clone()).unwrap();
+        assert_eq!(list.entries.len(), 1);
+        assert_eq!(list.entries[0].name, "notes.md");
+        assert_eq!(list.entries[0].scope, "workspace");
+        assert_eq!(list.entries[0].size_bytes, 7);
+
+        let read: MemoryReadResult =
+            serde_json::from_value(fixture("memory_read_result.json")["result"].clone()).unwrap();
+        assert_eq!(read.name, "notes.md");
+        assert_eq!(read.scope, "workspace");
+        assert_eq!(read.content, "# hello\n");
+
+        let write: MemoryWriteResult =
+            serde_json::from_value(fixture("memory_write_result.json")["result"].clone()).unwrap();
+        assert_eq!(write.name, "notes.md");
+        assert_eq!(write.scope, "workspace");
+        assert_eq!(write.size_bytes, 7);
+
+        let delete: MemoryDeleteResult =
+            serde_json::from_value(fixture("memory_delete_result.json")["result"].clone()).unwrap();
+        assert_eq!(delete.name, "notes.md");
+        assert_eq!(delete.scope, "workspace");
+        assert!(delete.deleted);
     }
 }

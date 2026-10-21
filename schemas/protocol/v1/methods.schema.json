@@ -718,6 +718,97 @@
       },
       "additionalProperties": false
     },
+    "memoryListParams": {
+      "type": "object",
+      "required": ["session_id"],
+      "properties": {
+        "session_id": { "type": "string" },
+        "scope": { "enum": ["workspace", "user"] }
+      },
+      "additionalProperties": false
+    },
+    "memoryListResult": {
+      "type": "object",
+      "required": ["entries"],
+      "properties": {
+        "entries": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/memoryEntryInfo" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "memoryEntryInfo": {
+      "type": "object",
+      "required": ["name", "scope", "size_bytes"],
+      "properties": {
+        "name": { "type": "string" },
+        "scope": { "enum": ["workspace", "user"] },
+        "size_bytes": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "memoryReadParams": {
+      "type": "object",
+      "required": ["session_id", "name"],
+      "properties": {
+        "session_id": { "type": "string" },
+        "name": { "type": "string" },
+        "scope": { "enum": ["workspace", "user"] }
+      },
+      "additionalProperties": false
+    },
+    "memoryReadResult": {
+      "type": "object",
+      "required": ["name", "scope", "content"],
+      "properties": {
+        "name": { "type": "string" },
+        "scope": { "enum": ["workspace", "user"] },
+        "content": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "memoryWriteParams": {
+      "type": "object",
+      "required": ["session_id", "name", "content"],
+      "properties": {
+        "session_id": { "type": "string" },
+        "name": { "type": "string" },
+        "content": { "type": "string" },
+        "scope": { "enum": ["workspace", "user"] }
+      },
+      "additionalProperties": false
+    },
+    "memoryWriteResult": {
+      "type": "object",
+      "required": ["name", "scope", "size_bytes"],
+      "properties": {
+        "name": { "type": "string" },
+        "scope": { "enum": ["workspace", "user"] },
+        "size_bytes": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "memoryDeleteParams": {
+      "type": "object",
+      "required": ["session_id", "name"],
+      "properties": {
+        "session_id": { "type": "string" },
+        "name": { "type": "string" },
+        "scope": { "enum": ["workspace", "user"] }
+      },
+      "additionalProperties": false
+    },
+    "memoryDeleteResult": {
+      "type": "object",
+      "required": ["name", "scope", "deleted"],
+      "properties": {
+        "name": { "type": "string" },
+        "scope": { "enum": ["workspace", "user"] },
+        "deleted": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
     "coreEvent": {
       "type": "object",
       "required": ["type"],
