@@ -573,7 +573,7 @@ impl Agent {
         sink: &dyn EventSink,
         approvals: &dyn ApprovalGate,
     ) -> Vec<String> {
-        const MAX_WORKERS: usize = 4;
+        const MAX_WORKERS: usize = 10;
         let results: Vec<Mutex<Option<String>>> =
             (0..calls.len()).map(|_| Mutex::new(None)).collect();
         let next = std::sync::atomic::AtomicUsize::new(0);
@@ -1700,6 +1700,126 @@ mod tests {
         fn request(&self, _request: ApprovalRequest) -> ApprovalDecision {
             self.0
         }
+    }
+
+    /// Read-only probe that reports how many copies of itself run at the same
+    /// time. Each call waits until `target` copies are in flight, so the test
+    /// fails (instead of hanging) when the worker pool is too small.
+    struct ConcurrencyProbe {
+        in_flight: AtomicUsize,
+        peak: AtomicUsize,
+        target: usize,
+    }
+
+    impl ConcurrencyProbe {
+        fn new(target: usize) -> Self {
+            Self {
+                in_flight: AtomicUsize::new(0),
+                peak: AtomicUsize::new(0),
+                target,
+            }
+        }
+    }
+
+    impl Tool for ConcurrencyProbe {
+        fn name(&self) -> &str {
+            "probe"
+        }
+
+        fn description(&self) -> &str {
+            "concurrency probe"
+        }
+
+        fn parameters(&self) -> Value {
+            serde_json::json!({"type": "object"})
+        }
+
+        fn policy_request(&self, _args: &Value) -> Result<PolicyRequest, ToolError> {
+            Ok(PolicyRequest {
+                action: Action::Read,
+                resource: "probe".to_owned(),
+            })
+        }
+
+        fn read_only(&self, _args: &Value) -> bool {
+            true
+        }
+
+        fn execute(
+            &self,
+            _context: &ToolContext<'_>,
+            args: &Value,
+        ) -> Result<ToolOutcome, ToolError> {
+            let label = args
+                .get("label")
+                .and_then(Value::as_str)
+                .unwrap_or("?")
+                .to_owned();
+            let current = self.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+            self.peak.fetch_max(current, Ordering::SeqCst);
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while self.in_flight.load(Ordering::SeqCst) < self.target && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            self.in_flight.fetch_sub(1, Ordering::SeqCst);
+            Ok(ToolOutcome::ok(
+                format!("probe {label}"),
+                format!("probe {label}"),
+            ))
+        }
+    }
+
+    #[test]
+    fn parallel_tool_batch_exceeds_four_workers_and_keeps_result_order() {
+        let target = 8;
+        let temp = tempfile::tempdir().unwrap();
+        let probe = Arc::new(ConcurrencyProbe::new(target));
+        let tools = ToolRegistry::empty();
+        let tool: Arc<dyn Tool> = probe.clone();
+        tools.register(tool);
+        let policy = Arc::new(PolicyEngine::new(temp.path(), PolicyConfig::default()).unwrap());
+        let agent = Agent::new(
+            Arc::new(FailingProvider),
+            metadata(),
+            Arc::new(tools),
+            policy,
+            Arc::new(SandboxManager::policy_only()),
+            Arc::new(MemoryAudit::default()),
+            AgentConfig::default(),
+        );
+        let calls: Vec<ToolCall> = (0..target)
+            .map(|index| ToolCall {
+                id: format!("call-{index}"),
+                name: "probe".to_owned(),
+                arguments: format!("{{\"label\":\"{index}\"}}"),
+            })
+            .collect();
+        let sink = RecordingSink::default();
+
+        let results = agent.execute_tool_batch(
+            "session",
+            "turn",
+            &calls,
+            &AtomicBool::new(false),
+            &sink,
+            &Gate(ApprovalDecision::Allow),
+        );
+
+        assert_eq!(results.len(), target);
+        for (index, payload) in results.iter().enumerate() {
+            let payload: Value = serde_json::from_str(payload).unwrap();
+            assert_eq!(payload["ok"], true, "call {index}: {payload}");
+            assert_eq!(
+                payload["output"].as_str(),
+                Some(format!("probe {index}").as_str()),
+                "call {index}: {payload}"
+            );
+        }
+        let peak = probe.peak.load(Ordering::SeqCst);
+        assert!(
+            peak > 4,
+            "expected more than 4 concurrent tool calls, peak was {peak}"
+        );
     }
 
     struct FailingProvider;
