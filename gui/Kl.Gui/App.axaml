@@ -1,10 +1,86 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="Kl.Gui.App"
-             RequestedThemeVariant="Default">
-             <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
+             RequestedThemeVariant="Dark">
+
+    <Application.Resources>
+        <SolidColorBrush x:Key="KlSurface" Color="#0D0E12" />
+        <SolidColorBrush x:Key="KlSurfaceAlt" Color="#121419" />
+        <SolidColorBrush x:Key="KlTopBar" Color="#101217" />
+        <SolidColorBrush x:Key="KlInput" Color="#16181E" />
+        <SolidColorBrush x:Key="KlLine" Color="#242832" />
+        <SolidColorBrush x:Key="KlTextPrimary" Color="#E8EAF0" />
+        <SolidColorBrush x:Key="KlTextSecondary" Color="#9AA1B1" />
+        <SolidColorBrush x:Key="KlTextMuted" Color="#6B7280" />
+        <SolidColorBrush x:Key="KlAccent" Color="#6C7BFF" />
+        <SolidColorBrush x:Key="KlAccentHover" Color="#8391FF" />
+        <SolidColorBrush x:Key="KlAccentPressed" Color="#5A68E0" />
+        <SolidColorBrush x:Key="KlAccentSoft" Color="#1A1D36" />
+        <SolidColorBrush x:Key="KlAccentLine" Color="#2E3560" />
+    </Application.Resources>
 
     <Application.Styles>
         <FluentTheme />
+
+        <Style Selector="Button.klAccent">
+            <Setter Property="Background" Value="{DynamicResource KlAccent}" />
+            <Setter Property="Foreground" Value="#FFFFFF" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="14,7" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.klAccent:pointerover">
+            <Setter Property="Background" Value="{DynamicResource KlAccentHover}" />
+        </Style>
+        <Style Selector="Button.klAccent:pressed">
+            <Setter Property="Background" Value="{DynamicResource KlAccentPressed}" />
+        </Style>
+        <Style Selector="Button.klAccent:focus">
+            <Setter Property="BorderBrush" Value="{DynamicResource KlAccentHover}" />
+        </Style>
+        <Style Selector="Button.klAccent:disabled">
+            <Setter Property="Background" Value="{DynamicResource KlLine}" />
+            <Setter Property="Foreground" Value="{DynamicResource KlTextMuted}" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+
+        <Style Selector="Button.klGhost">
+            <Setter Property="Background" Value="{DynamicResource KlSurface}" />
+            <Setter Property="Foreground" Value="{DynamicResource KlTextSecondary}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource KlLine}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="14,7" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.klGhost:pointerover">
+            <Setter Property="Background" Value="{DynamicResource KlInput}" />
+            <Setter Property="Foreground" Value="{DynamicResource KlTextPrimary}" />
+        </Style>
+        <Style Selector="Button.klGhost:focus">
+            <Setter Property="BorderBrush" Value="{DynamicResource KlAccent}" />
+        </Style>
+        <Style Selector="Button.klGhost:disabled">
+            <Setter Property="Foreground" Value="{DynamicResource KlTextMuted}" />
+        </Style>
+
+        <Style Selector="TextBox">
+            <Setter Property="Background" Value="{DynamicResource KlInput}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource KlLine}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Foreground" Value="{DynamicResource KlTextPrimary}" />
+            <Setter Property="CaretBrush" Value="{DynamicResource KlAccent}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Padding" Value="10,7" />
+        </Style>
+        <Style Selector="TextBox:focus">
+            <Setter Property="BorderBrush" Value="{DynamicResource KlAccent}" />
+        </Style>
     </Application.Styles>
 </Application>
