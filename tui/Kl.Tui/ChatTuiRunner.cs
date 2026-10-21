@@ -527,6 +527,16 @@ public static class ChatTuiRunner
                             break;
                         case ChatKeyAction.Send:
                             var prompt = state.Input.Trim();
+                            if (MemoryCommandParser.TryParse(prompt, out var memoryCommand))
+                            {
+                                await RunMemoryAsync(
+                                        state,
+                                        connection,
+                                        memoryCommand,
+                                        cancellationToken)
+                                    .ConfigureAwait(false);
+                                break;
+                            }
                             if (TryParseAgentCommand(prompt, out var agentPreset))
                             {
                                 if (agentPreset is null)
@@ -1126,6 +1136,18 @@ public static class ChatTuiRunner
                 await ExportTranscriptAsync(state, cancellationToken)
                     .ConfigureAwait(false);
                 break;
+            case ChatCommandKind.Memory:
+                await RunMemoryAsync(
+                        state,
+                        connection,
+                        new MemoryCommand(
+                            MemoryCommandAction.List,
+                            string.Empty,
+                            string.Empty,
+                            null),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                break;
             case ChatCommandKind.Exit:
                 return new CommandResult(connection, state, Exit: true);
         }
@@ -1205,6 +1227,89 @@ public static class ChatTuiRunner
         state.AddInfo(diffs.Count == 0
             ? "no workspace diff captured in this session"
             : string.Join(Environment.NewLine, diffs));
+    }
+
+    private static async Task RunMemoryAsync(
+        ChatTuiState state,
+        Connection? connection,
+        MemoryCommand command,
+        CancellationToken cancellationToken)
+    {
+        state.ClearInput();
+        if (connection is null)
+        {
+            state.AddError("memory needs an active session");
+            return;
+        }
+
+        try
+        {
+            switch (command.Action)
+            {
+                case MemoryCommandAction.List:
+                {
+                    var result = await connection.Session
+                        .ListMemoryAsync(command.Scope, cancellationToken)
+                        .ConfigureAwait(false);
+                    var entries = result.TryGetProperty("entries", out var list)
+                        && list.ValueKind == System.Text.Json.JsonValueKind.Array
+                        ? list.EnumerateArray()
+                            .Select(entry =>
+                                $"{GetString(entry, "name")} ({GetString(entry, "scope")})")
+                            .ToList()
+                        : [];
+                    state.AddInfo(entries.Count == 0
+                        ? "no memory entries"
+                        : string.Join(Environment.NewLine, entries));
+                    break;
+                }
+                case MemoryCommandAction.Read:
+                {
+                    if (string.IsNullOrWhiteSpace(command.Name))
+                    {
+                        state.AddError("usage: /memory read <name>");
+                        break;
+                    }
+                    var result = await connection.Session
+                        .ReadMemoryAsync(command.Name, command.Scope, cancellationToken)
+                        .ConfigureAwait(false);
+                    state.AddInfo(GetString(result, "content"));
+                    break;
+                }
+                case MemoryCommandAction.Write:
+                {
+                    if (string.IsNullOrWhiteSpace(command.Name))
+                    {
+                        state.AddError("usage: /memory write <name> <content>");
+                        break;
+                    }
+                    var result = await connection.Session
+                        .WriteMemoryAsync(command.Name, command.Content, command.Scope, cancellationToken)
+                        .ConfigureAwait(false);
+                    state.AddInfo(
+                        $"wrote {GetString(result, "name")} ({GetString(result, "scope")})");
+                    break;
+                }
+                case MemoryCommandAction.Delete:
+                {
+                    if (string.IsNullOrWhiteSpace(command.Name))
+                    {
+                        state.AddError("usage: /memory delete <name>");
+                        break;
+                    }
+                    var result = await connection.Session
+                        .DeleteMemoryAsync(command.Name, command.Scope, cancellationToken)
+                        .ConfigureAwait(false);
+                    state.AddInfo(
+                        $"deleted {GetString(result, "name")} ({GetString(result, "scope")})");
+                    break;
+                }
+            }
+        }
+        catch (Exception error) when (IsCommandError(error))
+        {
+            state.AddError(error.Message);
+        }
     }
 
     private static async Task ExportTranscriptAsync(

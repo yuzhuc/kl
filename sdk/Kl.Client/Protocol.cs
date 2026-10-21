@@ -50,5 +50,9 @@ public static class Protocol
     public const string PluginReload = "plugin.reload";
     public const string PluginEnable = "plugin.enable";
     public const string PluginDisable = "plugin.disable";
+    public const string MemoryList = "memory.list";
+    public const string MemoryRead = "memory.read";
+    public const string MemoryWrite = "memory.write";
+    public const string MemoryDelete = "memory.delete";
     public const string Event = "event";
 }

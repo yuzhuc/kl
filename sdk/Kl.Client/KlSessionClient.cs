@@ -152,6 +152,30 @@ public sealed class KlSessionClient : IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         _client.DeleteSessionAsync(sessionId, cancellationToken);
 
+    public Task<JsonElement> ListMemoryAsync(
+        string? scope = null,
+        CancellationToken cancellationToken = default) =>
+        _client.ListMemoryAsync(SessionId, scope, cancellationToken);
+
+    public Task<JsonElement> ReadMemoryAsync(
+        string name,
+        string? scope = null,
+        CancellationToken cancellationToken = default) =>
+        _client.ReadMemoryAsync(name, SessionId, scope, cancellationToken);
+
+    public Task<JsonElement> WriteMemoryAsync(
+        string name,
+        string content,
+        string? scope = null,
+        CancellationToken cancellationToken = default) =>
+        _client.WriteMemoryAsync(name, content, SessionId, scope, cancellationToken);
+
+    public Task<JsonElement> DeleteMemoryAsync(
+        string name,
+        string? scope = null,
+        CancellationToken cancellationToken = default) =>
+        _client.DeleteMemoryAsync(name, SessionId, scope, cancellationToken);
+
     public async Task<TurnOutcome> RunTurnAsync(
         string prompt,
         CancellationToken cancellationToken = default)

@@ -24,6 +24,13 @@ const R3_METHODS = [
   "session.lease",
 ];
 
+const MEMORY_METHODS = [
+  "memory.list",
+  "memory.read",
+  "memory.write",
+  "memory.delete",
+];
+
 function readRepo() {
   return (file) => readFileSync(path.join(root, file), "utf8");
 }
@@ -72,6 +79,40 @@ test("the R3 methods are declared in Rust, the schema and C#", () => {
       `${method} missing from ${SCHEMA_FILE}`,
     );
   }
+});
+
+test("the memory methods are declared in Rust, the schema and C#", () => {
+  const read = readRepo();
+  const rustMethods = extractRustMethods(read(RUST_FILE));
+  const schema = JSON.parse(read(SCHEMA_FILE));
+  const schemaRoots = new Set(extractSchemaRoots(schema));
+  const csharpMethods = new Set(extractCsharpMethods(read(CSHARP_FILE)));
+
+  for (const method of MEMORY_METHODS) {
+    assert.ok(rustMethods.includes(method), `${method} missing from Rust`);
+    assert.ok(csharpMethods.has(method), `${method} missing from C#`);
+    assert.ok(
+      schemaRoots.has(schemaRootFor(method)),
+      `${method} missing from ${SCHEMA_FILE}`,
+    );
+  }
+});
+
+test("a C# constant missing for a memory method is reported", () => {
+  const read = (file) => {
+    const text = readRepo()(file);
+    if (file !== CSHARP_FILE) return text;
+    return text.replace('    public const string MemoryList = "memory.list";\n', "");
+  };
+  const result = checkProtocol(read);
+  assert.ok(result.failures.length > 0);
+  assert.ok(
+    result.failures.some(
+      (failure) =>
+        failure.id === "method-missing-in-csharp" &&
+        failure.detail.includes("memory.list"),
+    ),
+  );
 });
 
 test("a C# constant missing for an R3 method is reported", () => {
