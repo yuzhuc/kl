@@ -101,6 +101,10 @@ pub struct CompactionResult {
     pub history: Vec<ChatMessage>,
     pub omitted_messages: usize,
     pub estimated_tokens: u64,
+    /// True when a model written summary replaced the omitted rounds.
+    pub summary_used: bool,
+    /// The summary that replaced the omitted rounds, when one was produced.
+    pub summary: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -211,6 +215,11 @@ impl Agent {
         self
     }
 
+    /// Compacts a session history to fit the context budget.
+    ///
+    /// Rounds that no longer fit are replaced by a model written summary
+    /// while the most recent rounds stay verbatim. When the provider call
+    /// fails the mechanical trim is used instead, so a session is never lost.
     pub fn compact_history(&self, history: &[ChatMessage]) -> Result<CompactionResult, AgentError> {
         let request = self.request_for(history);
         if !history.iter().any(|message| message.role == Role::User) {
@@ -222,15 +231,40 @@ impl Agent {
                     &request.tools,
                     history,
                 ),
+                summary_used: false,
+                summary: None,
             });
         }
         let budget = effective_context_budget(&self.metadata);
-        let compacted = compact_history(history, &self.system_prompt, &request.tools, budget)
-            .ok_or_else(|| {
-                AgentError::ContextWindowExceeded(format!(
-                    "history cannot be compacted within budget {budget}"
-                ))
-            })?;
+        let mechanical = compact_history(history, &self.system_prompt, &request.tools, budget);
+        // The mechanical trim drops whole rounds and leaves a marker behind.
+        // That loses the content, so the model is asked to summarize them.
+        let loses_rounds = match &mechanical {
+            None => true,
+            Some(compacted) => compacted
+                .iter()
+                .any(|message| compaction_omitted(message).is_some()),
+        };
+        if loses_rounds {
+            if let Some((compacted, summary, omitted)) =
+                self.summarize_history(history, &request.tools, budget)
+            {
+                let estimated_tokens =
+                    estimate_history_tokens(&self.system_prompt, &request.tools, &compacted);
+                return Ok(CompactionResult {
+                    history: compacted,
+                    omitted_messages: omitted,
+                    estimated_tokens,
+                    summary_used: true,
+                    summary: Some(summary),
+                });
+            }
+        }
+        let compacted = mechanical.ok_or_else(|| {
+            AgentError::ContextWindowExceeded(format!(
+                "history cannot be compacted within budget {budget}"
+            ))
+        })?;
         let previous_omitted = history
             .iter()
             .filter_map(compaction_omitted)
@@ -245,7 +279,125 @@ impl Agent {
             history: compacted,
             omitted_messages: total_omitted.saturating_sub(previous_omitted),
             estimated_tokens,
+            summary_used: false,
+            summary: None,
         })
+    }
+
+    /// Replaces the oldest rounds with a model written summary and keeps the
+    /// most recent rounds verbatim. Returns None when the provider cannot be
+    /// reached or when the summarized history would not fit the budget, so
+    /// the caller can fall back to the mechanical trim.
+    fn summarize_history(
+        &self,
+        history: &[ChatMessage],
+        tools: &[ToolDefinition],
+        budget: u64,
+    ) -> Option<(Vec<ChatMessage>, String, usize)> {
+        let mut systems: Vec<ChatMessage> = Vec::new();
+        let mut previous_summaries: Vec<String> = Vec::new();
+        let mut conversation: Vec<ChatMessage> = Vec::new();
+        for message in history {
+            if compaction_omitted(message).is_some() {
+                continue;
+            }
+            match message.role {
+                Role::System if message.text().starts_with(SUMMARY_HEADER) => {
+                    previous_summaries.push(message.text().to_owned());
+                }
+                Role::System => systems.push(message.clone()),
+                _ => conversation.push(message.clone()),
+            }
+        }
+        let rounds = split_rounds(&conversation);
+        if rounds.len() < 2 {
+            return None;
+        }
+        let summary_tokens = (budget / 4).clamp(64, SUMMARY_MAX_OUTPUT_TOKENS);
+        let allowance = summary_tokens.saturating_add(SUMMARY_TOKEN_MARGIN);
+        let max_keep = rounds
+            .len()
+            .saturating_sub(1)
+            .min(SUMMARY_KEEP_RECENT_ROUNDS);
+        let mut keep = 0usize;
+        let mut tail: Vec<ChatMessage> = Vec::new();
+        for candidate in 1..=max_keep {
+            let candidate_tail: Vec<ChatMessage> = rounds[rounds.len() - candidate..]
+                .iter()
+                .flatten()
+                .cloned()
+                .collect();
+            let mut probe = systems.clone();
+            probe.extend(candidate_tail.iter().cloned());
+            let tokens = estimate_history_tokens(&self.system_prompt, tools, &probe);
+            if tokens.saturating_add(allowance) <= budget {
+                keep = candidate;
+                tail = candidate_tail;
+            } else {
+                break;
+            }
+        }
+        if keep == 0 {
+            return None;
+        }
+        let old = &rounds[..rounds.len() - keep];
+        let dropped: usize = old.iter().map(|round| round.len()).sum();
+        let previously_omitted = history
+            .iter()
+            .filter_map(compaction_omitted)
+            .fold(0usize, usize::saturating_add);
+        let mut transcript = String::new();
+        for previous in &previous_summaries {
+            transcript.push_str(previous);
+            transcript.push('\n');
+        }
+        transcript.push_str(&render_rounds(old));
+        let summary = self.request_summary(&transcript, summary_tokens)?;
+        let summary =
+            truncate_chars_keep_ends(&summary, (summary_tokens as usize).saturating_mul(3));
+        let mut compacted = systems;
+        compacted.push(ChatMessage::system(format!("{SUMMARY_HEADER}\n{summary}")));
+        if previously_omitted.saturating_add(dropped) > 0 {
+            compacted.push(compaction_marker(
+                previously_omitted.saturating_add(dropped),
+            ));
+        }
+        compacted.extend(tail);
+        if estimate_history_tokens(&self.system_prompt, tools, &compacted) >= budget {
+            return None;
+        }
+        Some((compacted, summary, dropped))
+    }
+
+    /// Asks the model for a summary of the older rounds. The request is not
+    /// part of the conversation and never reaches the user interface.
+    fn request_summary(&self, transcript: &str, max_tokens: u64) -> Option<String> {
+        let input_budget = u64::from(self.metadata.context_window)
+            .saturating_sub(u64::from(self.metadata.max_output_tokens))
+            .saturating_sub(max_tokens)
+            .saturating_sub(SUMMARY_TOKEN_MARGIN);
+        // shortcut: a transcript longer than one context window is summarized
+        // from its head and tail only, upgrade to chunked summaries when
+        // sessions regularly exceed the window.
+        let transcript =
+            truncate_chars_keep_ends(transcript, (input_budget as usize).saturating_mul(3));
+        let mut request = ChatRequest::new(
+            self.metadata.model.clone(),
+            vec![ChatMessage::user(transcript)],
+        );
+        request.system = SUMMARY_INSTRUCTIONS.to_owned();
+        request.max_tokens = max_tokens.min(u32::MAX as u64) as u32;
+        let cancel = CancellationToken::new();
+        let mut ignore = |_event: ChatEvent| {};
+        let outcome = self
+            .provider
+            .stream_chat(&request, &cancel, &mut ignore)
+            .ok()?;
+        let text = outcome.text.trim();
+        if text.is_empty() {
+            return None;
+        }
+        Some(text.to_owned())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -494,9 +646,24 @@ impl Agent {
     }
 
     fn request_for(&self, history: &[ChatMessage]) -> ChatRequest {
-        let mut request = ChatRequest::new(self.metadata.model.clone(), history.to_vec());
+        // The compaction summary is a system message, but some providers
+        // ignore system messages inside the message list, so it is folded
+        // into the system prompt.
+        let mut system = self.system_prompt.clone();
+        let mut messages = Vec::with_capacity(history.len());
+        for message in history {
+            if message.role == Role::System && message.text().starts_with(SUMMARY_HEADER) {
+                if !system.is_empty() {
+                    system.push_str("\n\n");
+                }
+                system.push_str(&message.text());
+            } else {
+                messages.push(message.clone());
+            }
+        }
+        let mut request = ChatRequest::new(self.metadata.model.clone(), messages);
         request.max_tokens = self.metadata.max_output_tokens;
-        request.system = self.system_prompt.clone();
+        request.system = system;
         request.tools = self.tools.definitions();
         request
     }
@@ -1107,6 +1274,11 @@ const COMPACTION_MARKER_SUFFIX: &str = " older message(s)]";
 const TOOL_PRUNE_MARKER_PREFIX: &str = "[KL tool result pruned: ";
 const TOOL_PRUNE_MARKER_SUFFIX: &str = " chars]";
 const TOOL_PRUNE_THRESHOLD: usize = 2 * 1024;
+const SUMMARY_HEADER: &str = "[KL conversation summary]";
+const SUMMARY_INSTRUCTIONS: &str = "Summarize the earlier part of a coding session. Keep decisions, file paths, commands, results and open questions. Reply with the summary only.";
+const SUMMARY_KEEP_RECENT_ROUNDS: usize = 2;
+const SUMMARY_MAX_OUTPUT_TOKENS: u64 = 1024;
+const SUMMARY_TOKEN_MARGIN: u64 = 64;
 
 fn effective_context_budget(metadata: &ModelMetadata) -> u64 {
     let window = u64::from(metadata.context_window);
@@ -1178,6 +1350,69 @@ fn estimate_history_tokens(system: &str, tools: &[ToolDefinition], history: &[Ch
     request.system = system.to_owned();
     request.tools = tools.to_vec();
     estimate_context_tokens(&request)
+}
+
+/// Splits a conversation into rounds. A round starts at a user message and
+/// holds every assistant and tool message that answers it, so a tool call
+/// and its result always stay in the same round.
+fn split_rounds(conversation: &[ChatMessage]) -> Vec<Vec<ChatMessage>> {
+    let mut rounds: Vec<Vec<ChatMessage>> = Vec::new();
+    let mut pending: Vec<String> = Vec::new();
+    for message in conversation {
+        // A tool call and its result must not end up in different rounds, so
+        // a round only closes while no tool call is unanswered.
+        let starts_round = message.role == Role::User && pending.is_empty();
+        if starts_round {
+            rounds.push(Vec::new());
+        }
+        if rounds.is_empty() {
+            rounds.push(Vec::new());
+        }
+        if message.role == Role::Assistant {
+            for call in &message.tool_calls {
+                pending.push(call.id.clone());
+            }
+        }
+        if message.role == Role::Tool {
+            if let Some(id) = message.tool_call_id.as_deref() {
+                pending.retain(|open| open != id);
+            }
+        }
+        rounds
+            .last_mut()
+            .expect("round exists")
+            .push(message.clone());
+    }
+    rounds
+}
+
+/// Renders rounds as plain text for the summary request.
+fn render_rounds(rounds: &[Vec<ChatMessage>]) -> String {
+    let mut text = String::new();
+    for round in rounds {
+        for message in round {
+            let role = match message.role {
+                Role::System => "system",
+                Role::User => "user",
+                Role::Assistant => "assistant",
+                Role::Tool => "tool",
+            };
+            text.push_str(role);
+            text.push_str(": ");
+            text.push_str(&message.text());
+            if !message.tool_calls.is_empty() {
+                let names: Vec<&str> = message
+                    .tool_calls
+                    .iter()
+                    .map(|call| call.name.as_str())
+                    .collect();
+                text.push_str(&format!(" [tools: {}]", names.join(", ")));
+            }
+            text.push('\n');
+        }
+        text.push('\n');
+    }
+    text
 }
 
 fn prune_tool_results(conversation: &mut [ChatMessage]) {
@@ -2769,6 +3004,265 @@ mod tests {
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].approved, Some(false));
         assert!(!records[0].ok);
+    }
+    /// Provider that answers the summary request with a fixed text and counts
+    /// how many requests it saw.
+    struct SummaryProvider {
+        text: String,
+        requests: Mutex<Vec<ChatRequest>>,
+    }
+
+    impl Provider for SummaryProvider {
+        fn id(&self) -> &str {
+            "summary"
+        }
+
+        fn kind(&self) -> &str {
+            "test"
+        }
+
+        fn models(&self) -> Vec<ModelInfo> {
+            Vec::new()
+        }
+
+        fn stream_chat(
+            &self,
+            request: &ChatRequest,
+            _cancel: &CancellationToken,
+            _on_event: &mut dyn FnMut(ChatEvent),
+        ) -> Result<ChatOutcome, ProviderError> {
+            self.requests.lock().unwrap().push(request.clone());
+            Ok(ChatOutcome {
+                text: self.text.clone(),
+                tool_calls: Vec::new(),
+                finish_reason: FinishReason::Stop,
+                usage: Usage::default(),
+            })
+        }
+    }
+
+    /// Provider that always fails, so the summary path has to fall back.
+    struct BrokenSummaryProvider;
+
+    impl Provider for BrokenSummaryProvider {
+        fn id(&self) -> &str {
+            "broken-summary"
+        }
+
+        fn kind(&self) -> &str {
+            "test"
+        }
+
+        fn models(&self) -> Vec<ModelInfo> {
+            Vec::new()
+        }
+
+        fn stream_chat(
+            &self,
+            _request: &ChatRequest,
+            _cancel: &CancellationToken,
+            _on_event: &mut dyn FnMut(ChatEvent),
+        ) -> Result<ChatOutcome, ProviderError> {
+            Err(ProviderError::new(
+                ProviderErrorKind::Server,
+                "summary boom",
+            ))
+        }
+    }
+
+    /// History with several rounds, large enough to exceed the budget.
+    fn oversized_history() -> Vec<ChatMessage> {
+        let mut history = vec![ChatMessage::system("persistent system")];
+        for index in 0..10 {
+            history.push(ChatMessage::user(format!(
+                "old user {index} {}",
+                "u".repeat(600)
+            )));
+            history.push(ChatMessage::assistant_with_text(
+                format!("old answer {index} {}", "a".repeat(600)),
+                Vec::new(),
+            ));
+        }
+        history.push(ChatMessage::user("latest request"));
+        history.push(ChatMessage::assistant_with_text(
+            "latest answer",
+            Vec::new(),
+        ));
+        history
+    }
+
+    #[test]
+    fn summary_compaction_replaces_old_rounds_with_a_model_summary() {
+        let provider = Arc::new(SummaryProvider {
+            text: "The session discussed the old rounds.".to_owned(),
+            requests: Mutex::new(Vec::new()),
+        });
+        let agent = test_agent(provider.clone(), metadata_with_limit(4_000, 0.9, 100));
+        let history = oversized_history();
+
+        let result = agent.compact_history(&history).unwrap();
+
+        assert!(result.summary_used);
+        assert_eq!(
+            result.summary.as_deref(),
+            Some("The session discussed the old rounds.")
+        );
+        assert!(result.omitted_messages > 0);
+        let summary = result
+            .history
+            .iter()
+            .find(|message| message.text().starts_with(SUMMARY_HEADER))
+            .expect("summary message");
+        assert!(
+            summary
+                .text()
+                .contains("The session discussed the old rounds.")
+        );
+        // The oldest rounds are gone, the newest round is kept verbatim.
+        assert!(
+            !result
+                .history
+                .iter()
+                .any(|message| message.text().contains("old user 0"))
+        );
+        assert!(
+            result
+                .history
+                .iter()
+                .any(|message| message.text() == "latest request")
+        );
+        // The summary request is not part of the conversation.
+        let requests = provider.requests.lock().unwrap();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].system, SUMMARY_INSTRUCTIONS);
+        assert!(requests[0].tools.is_empty());
+    }
+
+    #[test]
+    fn summary_failure_falls_back_to_the_mechanical_trim() {
+        let agent = test_agent(
+            Arc::new(BrokenSummaryProvider),
+            metadata_with_limit(4_000, 0.9, 100),
+        );
+        let history = oversized_history();
+
+        let result = agent.compact_history(&history).unwrap();
+
+        assert!(!result.summary_used);
+        assert!(result.summary.is_none());
+        assert!(result.omitted_messages > 0);
+        assert!(
+            result
+                .history
+                .iter()
+                .any(|message| { compaction_omitted(message).is_some() })
+        );
+        assert!(
+            result
+                .history
+                .iter()
+                .any(|message| message.text() == "latest request")
+        );
+    }
+
+    #[test]
+    fn summary_compaction_keeps_tool_calls_paired_with_their_results() {
+        let provider = Arc::new(SummaryProvider {
+            text: "Earlier rounds were summarized.".to_owned(),
+            requests: Mutex::new(Vec::new()),
+        });
+        let agent = test_agent(provider.clone(), metadata_with_limit(4_000, 0.9, 100));
+        let mut history = vec![ChatMessage::system("persistent system")];
+        for index in 0..10 {
+            let call = ToolCall {
+                id: format!("old-call-{index}"),
+                name: "read_file".to_owned(),
+                arguments: "{\"path\":\"a.txt\"}".to_owned(),
+            };
+            history.push(ChatMessage::user(format!(
+                "old user {index} {}",
+                "u".repeat(600)
+            )));
+            history.push(ChatMessage::assistant_with_text(
+                format!("old answer {index} {}", "a".repeat(200)),
+                vec![call.clone()],
+            ));
+            history.push(ChatMessage::tool(&call.id, "file contents"));
+        }
+        history.push(ChatMessage::user("latest request"));
+        let latest = ToolCall {
+            id: "latest-call".to_owned(),
+            name: "read_file".to_owned(),
+            arguments: "{\"path\":\"b.txt\"}".to_owned(),
+        };
+        history.push(ChatMessage::assistant_with_text(
+            "latest answer",
+            vec![latest.clone()],
+        ));
+        history.push(ChatMessage::tool(&latest.id, "latest contents"));
+
+        let result = agent.compact_history(&history).unwrap();
+
+        assert!(result.summary_used);
+        let mut known = Vec::new();
+        for message in &result.history {
+            if message.role == Role::Assistant {
+                known.extend(message.tool_calls.iter().map(|call| call.id.as_str()));
+            }
+            if message.role == Role::Tool {
+                let id = message.tool_call_id.as_deref().unwrap();
+                assert!(known.contains(&id), "tool result without its call");
+            }
+        }
+        assert!(known.contains(&"latest-call"));
+        assert!(!known.contains(&"old-call-0"));
+    }
+
+    #[test]
+    fn summary_compaction_keeps_the_recent_rounds_verbatim() {
+        let provider = Arc::new(SummaryProvider {
+            text: "Earlier rounds were summarized.".to_owned(),
+            requests: Mutex::new(Vec::new()),
+        });
+        let agent = test_agent(provider.clone(), metadata_with_limit(4_000, 0.9, 100));
+        let history = oversized_history();
+        let recent: Vec<String> = history
+            .iter()
+            .rev()
+            .take(2)
+            .map(|message| message.text())
+            .collect();
+
+        let result = agent.compact_history(&history).unwrap();
+
+        assert!(result.summary_used);
+        for text in &recent {
+            assert!(
+                result.history.iter().any(|message| &message.text() == text),
+                "recent round missing: {text}"
+            );
+        }
+    }
+
+    #[test]
+    fn compaction_within_budget_never_calls_the_provider() {
+        let provider = Arc::new(SummaryProvider {
+            text: "should not be used".to_owned(),
+            requests: Mutex::new(Vec::new()),
+        });
+        let agent = test_agent(provider.clone(), metadata_with_limit(32_000, 0.75, 1_234));
+        let history = vec![
+            ChatMessage::system("persistent system"),
+            ChatMessage::user("hello"),
+            ChatMessage::assistant_with_text("hi", Vec::new()),
+        ];
+
+        let result = agent.compact_history(&history).unwrap();
+
+        assert!(!result.summary_used);
+        assert!(result.summary.is_none());
+        assert_eq!(result.omitted_messages, 0);
+        assert!(provider.requests.lock().unwrap().is_empty());
     }
 }
 
