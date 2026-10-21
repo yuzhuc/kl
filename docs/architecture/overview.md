@@ -39,7 +39,7 @@ clients.
 | `kl-index` | Shallow repository symbols and test selection hints |
 | `kl-plugin-host` | Sidecar/WASM plugin supervision and integrity checks |
 | `Kl.Client` | C# JSON-RPC/session client used by TUI and GUI |
-| `Kl.Tui` | Terminal UI, rendering, input and approval presentation |
+| `Kl.Tui` | Terminal.Gui v2 terminal UI, rendering, input and approval presentation |
 | `Kl.Gui` | Avalonia shell; currently a scaffold |
 
 ## Protocol

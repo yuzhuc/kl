@@ -39,7 +39,7 @@ Generated output such as `target/`, `bin/`, `obj/` and `dist/` is ignored.
 
 | Project | Responsibility |
 |---|---|
-| `tui/Kl.Tui` | Terminal UI, command parsing, rendering and approvals; assembly name `kl` |
+| `tui/Kl.Tui` | Terminal.Gui v2 UI, command parsing, rendering and approvals; assembly name `kl` |
 | `tui/Kl.Tui.Tests` | TUI, protocol contract and core integration tests |
 | `gui/Kl.Gui` | Avalonia GUI scaffold; not yet an MVP |
 | `sdk/Kl.Client` | JSON-RPC connection, session client, DTOs and core locator |

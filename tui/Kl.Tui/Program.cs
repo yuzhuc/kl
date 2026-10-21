@@ -167,9 +167,9 @@ internal static class Program
 
     private static async Task<int> ChatAsync(TuiOptions options, ConsoleUi ui)
     {
-        if (ChatTuiRunner.CanUseTui)
+        if (TerminalGuiRunner.CanUseTui)
         {
-            return await ChatTuiRunner.RunAsync(options).ConfigureAwait(false);
+            return await TerminalGuiRunner.RunAsync(options).ConfigureAwait(false);
         }
         return await PlainChatAsync(options, ui).ConfigureAwait(false);
     }

@@ -123,7 +123,7 @@ public sealed class SettingsTuiTests
         state.HandleKey(Key(ConsoleKey.Enter));
         state.HandleKey(Key(ConsoleKey.DownArrow));
         state.HandleKey(Key(ConsoleKey.Enter));
-        Assert.Equal(SettingsApprovalMode.Auto, state.PendingApprovalMode);
+        Assert.Equal(SettingsApprovalMode.Plan, state.PendingApprovalMode);
 
         var cancel = state.HandleKey(Key(ConsoleKey.Escape));
 
