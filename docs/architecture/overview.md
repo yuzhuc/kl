@@ -7,7 +7,7 @@ TUI (tui/Kl.Tui)     GUI (gui/Kl.Gui)     Headless/CI
         \                  |                  /
          \             Kl.Client             /
           \                |                /
-           +------- JSON-RPC / stdio -------+
+           +-- JSON-RPC / stdio or local socket --+
                             |
                      Rust core (kl-core)
               Emitter + JSON-RPC loop
@@ -44,13 +44,18 @@ clients.
 
 ## Protocol
 
-- One JSON-RPC 2.0 message per line over stdio.
+- One JSON-RPC 2.0 message per line over stdio or a local socket.
+- `kl serve` uses a Windows named pipe or a Unix/macOS filesystem UDS.
 - `kl.handshake` negotiates the protocol version before session/turn methods.
 - `kl.ping` and `kl.doctor` work before the handshake for diagnostics.
 - Core events are notifications with `method: "event"` and a per-session
   monotonically increasing `seq`.
 - `schemas/protocol/v1` is the contract; Rust and .NET tests consume the same
   fixtures under `tests/fixtures/protocol`.
+
+- `server.info` exposes the endpoint and transport. `session.attach` replays
+  stored events and subscribes to live events; `session.lease` enforces one
+  writer per session; `session.detach` releases both.
 
 Representative methods: `session.create`, `session.resume`, `session.fork`,
 `session.history`, `session.compact`, `turn.start`, `turn.cancel`,
@@ -78,6 +83,8 @@ enter session history.
 - `events.jsonl` is the append-only source of truth.
 - Missing or empty state can be reconstructed from events.
 - Sessions support resume, fork, rename, delete and history queries.
+- Local-server attach replays `events.jsonl` by sequence and rejects a second
+  writer with `SESSION_BUSY`. Disconnected clients release their lease.
 - Approval `allow_session` rules are stored with the session and survive reload.
 - Layered compaction first prunes large tool results, then drops older rounds.
 
@@ -131,7 +138,7 @@ packaged binaries really match them. Adding or removing a RID requires an ADR
 
 ## Known gaps
 
-- Full GUI MVP.
+- Full GUI MVP and GUI release packaging.
 - Real provider/MCP live smoke with credentials.
 - Provider prompt caching.
 - Model-summary compaction.

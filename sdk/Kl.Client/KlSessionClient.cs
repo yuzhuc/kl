@@ -22,16 +22,19 @@ public sealed class KlSessionClient : IAsyncDisposable
     private CancellationTokenSource? _turnCancellation;
     private string? _currentTurnId;
     private bool _cancelRequested;
+    private readonly bool _serverMode;
 
     private KlSessionClient(
         KlCoreClient client,
         KlSessionOptions sessionOptions,
         ISessionPresenter presenter,
-        JsonElement session)
+        JsonElement session,
+        bool serverMode)
     {
         _client = client;
         _sessionOptions = sessionOptions;
         _presenter = presenter;
+        _serverMode = serverMode;
         SessionId = session.GetProperty("session_id").GetString() ?? string.Empty;
         Workspace = session.GetProperty("workspace").GetString() ?? string.Empty;
         Provider = session.GetProperty("provider").GetString() ?? string.Empty;
@@ -61,11 +64,24 @@ public sealed class KlSessionClient : IAsyncDisposable
         CancellationToken cancellationToken = default,
         Action<string>? progress = null)
     {
-        var client = KlCoreClient.Start(clientOptions);
-        try
+        var endpoint = KlCoreClient.ResolveEndpoint(clientOptions);
+        var serverMode = endpoint is not null;
+        KlCoreClient client;
+        if (serverMode)
         {
+            progress?.Invoke("connecting");
+            client = await KlCoreClient.ConnectAsync(clientOptions, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        else
+        {
+            client = KlCoreClient.Start(clientOptions);
             progress?.Invoke("handshaking");
             await client.HandshakeAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        try
+        {
             progress?.Invoke("opening-session");
             JsonElement session;
             if (!string.IsNullOrWhiteSpace(sessionOptions.SessionId))
@@ -84,7 +100,18 @@ public sealed class KlSessionClient : IAsyncDisposable
                     cancellationToken).ConfigureAwait(false);
             }
 
-            var result = new KlSessionClient(client, sessionOptions, presenter, session);
+            if (serverMode)
+            {
+                // The server only forwards events for attached sessions and only
+                // accepts turn traffic from the lease holder.
+                var sessionId = session.GetProperty("session_id").GetString() ?? string.Empty;
+                await client.AttachSessionAsync(sessionId, null, cancellationToken)
+                    .ConfigureAwait(false);
+                await client.LeaseSessionAsync(sessionId, null, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            var result = new KlSessionClient(client, sessionOptions, presenter, session, serverMode);
             progress?.Invoke("session-ready");
             return result;
         }
@@ -139,6 +166,11 @@ public sealed class KlSessionClient : IAsyncDisposable
         _turnCompletion = completion;
         try
         {
+            if (_serverMode)
+            {
+                await _client.LeaseSessionAsync(SessionId, null, cancellationToken)
+                    .ConfigureAwait(false);
+            }
             var start = await _client.StartTurnAsync(
                 SessionId,
                 prompt,
@@ -188,6 +220,11 @@ public sealed class KlSessionClient : IAsyncDisposable
 
         try
         {
+            if (_serverMode)
+            {
+                await _client.LeaseSessionAsync(SessionId, null, cancellationToken)
+                    .ConfigureAwait(false);
+            }
             await _client.CancelTurnAsync(SessionId, turnId, cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -390,6 +427,11 @@ public sealed class KlSessionClient : IAsyncDisposable
 
         try
         {
+            if (_serverMode)
+            {
+                await _client.LeaseSessionAsync(SessionId, null, cancellationToken)
+                    .ConfigureAwait(false);
+            }
             await _client.RespondApprovalAsync(
                 SessionId,
                 approvalId,

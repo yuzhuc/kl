@@ -73,6 +73,10 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+mod server;
+
+pub use server::run_server;
+
 pub const FEATURES: &[&str] = &[
     "events",
     "sessions",
@@ -1052,28 +1056,30 @@ impl Core {
     }
 
     fn handle_line(&mut self, line: &str) {
+        if let Some(response) = self.handle_request(line) {
+            let _ = self.emitter().send(&response);
+        }
+    }
+
+    /// Handles one request and returns its response without writing it. The
+    /// stdio loop and the local server share this path.
+    fn handle_request(&mut self, line: &str) -> Option<Value> {
         let message: IncomingMessage = match serde_json::from_str(line) {
             Ok(message) => message,
             Err(error) => {
-                let _ = self.emitter().respond_error(
+                return Some(failure(
                     None,
                     error_codes::PARSE_ERROR,
                     format!("invalid JSON: {error}"),
-                );
-                return;
+                ));
             }
         };
 
         if let Err(error) = validate_envelope(&message) {
-            let _ = self
-                .emitter()
-                .respond_error(message.id.clone(), error.code, error.message);
-            return;
+            return Some(failure(message.id.clone(), error.code, error.message));
         }
 
-        let Some(id) = message.id.clone() else {
-            return;
-        };
+        let id = message.id.clone()?;
         let method = message.method.clone().unwrap_or_default();
         let needs_handshake = !matches!(
             method.as_str(),
@@ -1088,26 +1094,14 @@ impl Core {
             self.dispatch(&method, message.params)
         };
 
-        match result {
-            Ok(value) => {
-                let _ = self.emitter().respond(id, value);
-            }
-            Err(error) => {
-                let _ = match error.data {
-                    Some(data) => self.emitter().send(&failure_with_data(
-                        Some(id),
-                        error.code,
-                        error.message,
-                        data,
-                    )),
-                    None => self
-                        .emitter()
-                        .respond_error(Some(id), error.code, error.message),
-                };
-            }
-        }
+        Some(match result {
+            Ok(value) => success(id, value),
+            Err(error) => match error.data {
+                Some(data) => failure_with_data(Some(id), error.code, error.message, data),
+                None => failure(Some(id), error.code, error.message),
+            },
+        })
     }
-
     fn emitter(&self) -> &Emitter {
         &self.hub.emitter
     }

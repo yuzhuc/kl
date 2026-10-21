@@ -13,10 +13,10 @@ public sealed record HandshakeInfo(
 
 public sealed class KlCoreClient : IAsyncDisposable
 {
-    private readonly Process _process;
+    private readonly Process? _process;
     private readonly JsonRpcConnection _rpc;
 
-    private KlCoreClient(Process process, JsonRpcConnection rpc)
+    private KlCoreClient(Process? process, JsonRpcConnection rpc)
     {
         _process = process;
         _rpc = rpc;
@@ -63,6 +63,99 @@ public sealed class KlCoreClient : IAsyncDisposable
         return new KlCoreClient(process, new JsonRpcConnection(process));
     }
 
+    /// <summary>
+    /// Resolves the local server endpoint: the explicit option wins, then the
+    /// server info file under the home directory. Null means no server.
+    /// </summary>
+    public static string? ResolveEndpoint(KlClientOptions options)
+    {
+        if (!string.IsNullOrWhiteSpace(options.Endpoint))
+        {
+            return options.Endpoint.Trim();
+        }
+
+        var home = options.HomePath;
+        if (string.IsNullOrWhiteSpace(home))
+        {
+            home = Environment.GetEnvironmentVariable("KL_HOME");
+        }
+        if (string.IsNullOrWhiteSpace(home))
+        {
+            var profile = Environment.GetEnvironmentVariable("USERPROFILE")
+                ?? Environment.GetEnvironmentVariable("HOME");
+            home = string.IsNullOrWhiteSpace(profile)
+                ? Path.Combine(Directory.GetCurrentDirectory(), ".kl")
+                : Path.Combine(profile, ".kl");
+        }
+
+        var file = Path.Combine(Path.GetFullPath(home), "server.json");
+        if (!File.Exists(file))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(file));
+            var root = document.RootElement;
+            if (!root.TryGetProperty("endpoint", out var endpoint)
+                || endpoint.ValueKind != JsonValueKind.String)
+            {
+                return null;
+            }
+
+            // A stale server file must not send the client to a dead endpoint.
+            if (root.TryGetProperty("pid", out var pid)
+                && pid.ValueKind == JsonValueKind.Number
+                && pid.TryGetInt32(out var processId)
+                && !IsProcessAlive(processId))
+            {
+                return null;
+            }
+
+            return endpoint.GetString();
+        }
+        catch (Exception error) when (error is IOException or JsonException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Connects to a running local server and completes the handshake.</summary>
+    public static async Task<KlCoreClient> ConnectAsync(
+        KlClientOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        var endpoint = ResolveEndpoint(options)
+            ?? throw new InvalidOperationException("no local server endpoint available");
+        var stream = LocalSocketConnection.Connect(endpoint);
+        var client = new KlCoreClient(null, new JsonRpcConnection(stream, stream));
+        try
+        {
+            await client.HandshakeAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            await client.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+
+        return client;
+    }
+
+    private static bool IsProcessAlive(int processId)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+            return !process.HasExited;
+        }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
     public Task<JsonElement> RequestAsync(
         string method,
         object? parameters,
@@ -107,6 +200,38 @@ public sealed class KlCoreClient : IAsyncDisposable
 
     public Task<JsonElement> DoctorAsync(CancellationToken cancellationToken = default) =>
         RequestAsync(Protocol.Doctor, null, cancellationToken);
+
+    public Task<JsonElement> AttachSessionAsync(
+        string sessionId,
+        long? afterSeq = null,
+        CancellationToken cancellationToken = default)
+    {
+        var parameters = new Dictionary<string, object?>
+        {
+            ["session_id"] = sessionId
+        };
+        if (afterSeq is not null)
+        {
+            parameters["after_seq"] = afterSeq.Value;
+        }
+        return RequestAsync(Protocol.SessionAttach, parameters, cancellationToken);
+    }
+
+    public Task<JsonElement> LeaseSessionAsync(
+        string sessionId,
+        long? leaseMs = null,
+        CancellationToken cancellationToken = default)
+    {
+        var parameters = new Dictionary<string, object?>
+        {
+            ["session_id"] = sessionId
+        };
+        if (leaseMs is not null)
+        {
+            parameters["lease_ms"] = leaseMs.Value;
+        }
+        return RequestAsync(Protocol.SessionLease, parameters, cancellationToken);
+    }
 
     public ChannelReader<JsonElement> Notifications => _rpc.Notifications;
 

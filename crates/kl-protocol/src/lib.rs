@@ -25,6 +25,7 @@ pub mod methods {
     pub const HANDSHAKE: &str = "kl.handshake";
     pub const PING: &str = "kl.ping";
     pub const DOCTOR: &str = "kl.doctor";
+    pub const SERVER_INFO: &str = "server.info";
     pub const SESSION_CREATE: &str = "session.create";
     pub const SESSION_RESUME: &str = "session.resume";
     pub const SESSION_HISTORY: &str = "session.history";
@@ -34,6 +35,9 @@ pub mod methods {
     pub const SESSION_STATUS: &str = "session.status";
     pub const SESSION_COMPACT: &str = "session.compact";
     pub const SESSION_FORK: &str = "session.fork";
+    pub const SESSION_ATTACH: &str = "session.attach";
+    pub const SESSION_DETACH: &str = "session.detach";
+    pub const SESSION_LEASE: &str = "session.lease";
     pub const TURN_START: &str = "turn.start";
     pub const TURN_CANCEL: &str = "turn.cancel";
     pub const APPROVAL_RESPOND: &str = "tool.approval.respond";
@@ -76,6 +80,8 @@ pub mod error_codes {
     pub const PROVIDER_UNAVAILABLE: i64 = -32005;
     pub const APPROVAL_NOT_FOUND: i64 = -32006;
     pub const POLICY_DENIED: i64 = -32007;
+    pub const SESSION_BUSY: i64 = -32008;
+    pub const LEASE_REQUIRED: i64 = -32009;
     pub const PLUGIN_ERROR: i64 = -32010;
     pub const PLUGIN_NOT_FOUND: i64 = -32011;
     pub const PLUGIN_PERMISSION: i64 = -32012;
@@ -895,6 +901,59 @@ impl EventNotification {
     }
 }
 
+/// Identity and transport metadata of a running core.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ServerInfoResult {
+    pub server_name: String,
+    pub server_version: String,
+    pub protocol_version: u32,
+    pub transport: String,
+    pub endpoint: String,
+    pub pid: u32,
+    pub started_at_unix_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SessionAttachParams {
+    pub session_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after_seq: Option<u64>,
+}
+
+/// Replayed events reuse the notification payload so a client can replay
+/// them through the same handler it uses for live `event` notifications.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SessionAttachResult {
+    pub session_id: String,
+    pub replay: Vec<EventParams>,
+    pub last_seq: u64,
+    pub lease_held: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SessionDetachParams {
+    pub session_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SessionDetachResult {
+    pub session_id: String,
+    pub detached: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SessionLeaseParams {
+    pub session_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lease_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SessionLeaseResult {
+    pub session_id: String,
+    pub expires_at_unix_ms: i64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -957,5 +1016,90 @@ mod tests {
         assert_eq!(encoded["type"], "tool.completed");
         let decoded: CoreEvent = serde_json::from_value(encoded).unwrap();
         assert_eq!(decoded, event);
+    }
+
+    fn fixture(name: &str) -> serde_json::Value {
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/protocol")
+            .join(name);
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        serde_json::from_str(&text).expect("fixture must be valid JSON")
+    }
+
+    #[test]
+    fn r3_methods_and_error_codes_are_stable() {
+        assert_eq!(methods::SERVER_INFO, "server.info");
+        assert_eq!(methods::SESSION_ATTACH, "session.attach");
+        assert_eq!(methods::SESSION_DETACH, "session.detach");
+        assert_eq!(methods::SESSION_LEASE, "session.lease");
+        assert_eq!(error_codes::SESSION_BUSY, -32008);
+        assert_eq!(error_codes::LEASE_REQUIRED, -32009);
+    }
+
+    #[test]
+    fn session_attach_params_allow_a_missing_after_seq() {
+        let params: SessionAttachParams =
+            serde_json::from_value(json!({ "session_id": "session-1" })).unwrap();
+        assert_eq!(params.session_id, "session-1");
+        assert_eq!(params.after_seq, None);
+
+        let params: SessionAttachParams =
+            serde_json::from_value(json!({ "session_id": "session-1", "after_seq": 4 })).unwrap();
+        assert_eq!(params.after_seq, Some(4));
+    }
+
+    #[test]
+    fn session_attach_result_replays_event_records() {
+        let result: SessionAttachResult = serde_json::from_value(json!({
+            "session_id": "session-1",
+            "replay": [
+                {
+                    "session_id": "session-1",
+                    "seq": 3,
+                    "event": { "type": "turn.started", "data": { "turn_id": "turn-1" } }
+                }
+            ],
+            "last_seq": 3,
+            "lease_held": true
+        }))
+        .unwrap();
+        assert_eq!(result.replay.len(), 1);
+        assert_eq!(result.replay[0].seq, 3);
+        assert_eq!(
+            result.replay[0].event,
+            CoreEvent::TurnStarted {
+                turn_id: "turn-1".to_owned()
+            }
+        );
+        assert_eq!(result.last_seq, 3);
+        assert!(result.lease_held);
+    }
+
+    #[test]
+    fn shared_fixtures_match_the_r3_contracts() {
+        let server_info: ServerInfoResult =
+            serde_json::from_value(fixture("server_info_result.json")["result"].clone()).unwrap();
+        assert_eq!(server_info.server_name, "kl-core");
+        assert_eq!(server_info.protocol_version, PROTOCOL_VERSION);
+        assert_eq!(server_info.transport, "stdio");
+
+        let attach: SessionAttachResult =
+            serde_json::from_value(fixture("session_attach_result.json")["result"].clone())
+                .unwrap();
+        assert_eq!(attach.session_id, "session-1");
+        assert_eq!(attach.replay.len(), 1);
+        assert_eq!(attach.last_seq, 3);
+        assert!(attach.lease_held);
+
+        let detach: SessionDetachResult =
+            serde_json::from_value(fixture("session_detach_result.json")["result"].clone())
+                .unwrap();
+        assert!(detach.detached);
+
+        let lease: SessionLeaseResult =
+            serde_json::from_value(fixture("session_lease_result.json")["result"].clone()).unwrap();
+        assert_eq!(lease.session_id, "session-1");
+        assert_eq!(lease.expires_at_unix_ms, 1760000060000);
     }
 }

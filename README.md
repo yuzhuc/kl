@@ -2,7 +2,7 @@
 
 KL is a local-first AI coding agent with a Rust trusted core and C# clients.
 
-- **Core:** Rust, JSON-RPC 2.0 over stdio, provider-neutral agent loop.
+- **Core:** Rust, JSON-RPC 2.0 over stdio or a local named-pipe/UDS server, provider-neutral agent loop.
 - **TUI:** C# Terminal.Gui v2 client in `tui/Kl.Tui`.
 - **GUI:** Avalonia scaffold in `gui/Kl.Gui` (MVP still under construction).
 - **Shared client:** `sdk/Kl.Client`, used by the TUI and intended for the GUI.
@@ -23,7 +23,7 @@ TUI (tui/Kl.Tui)     GUI (gui/Kl.Gui)     Headless/CI
         \                  |                  /
          \             Kl.Client             /
           \                |                /
-           +------- JSON-RPC / stdio -------+
+           +-- JSON-RPC / stdio or local socket --+
                             |
                      Rust Core (kl-core)
               Protocol / Session / Events / Audit
@@ -72,6 +72,7 @@ Common TUI commands:
 dotnet run --project tui/Kl.Tui -- doctor
 dotnet run --project tui/Kl.Tui -- run "fix the failing test" --workspace . --yes
 dotnet run --project tui/Kl.Tui -- chat --workspace .
+dotnet run --project tui/Kl.Tui -- serve
 dotnet run --project tui/Kl.Tui -- resume
 dotnet run --project tui/Kl.Tui -- review --workspace .
 ```
@@ -95,6 +96,7 @@ It currently opens a minimal Avalonia window; the full GUI MVP is future work.
 - Windows AppContainer, Linux bubblewrap and macOS Seatbelt sandboxes.
 - MCP server processes start through the active `SandboxManager`.
 - Persistent sessions with event projection, resume, fork and approval rules.
+- Optional local server with attach/replay and one-writer session leases.
 - Layered context compaction and a 23-task acceptance harness.
 - Skills, hooks, sidecar/WASM plugins and Ed25519 plugin integrity checks.
 - Shell commands support `tty=true`; `tty=true` uses portable-pty where the sandbox backend supports it.
@@ -152,8 +154,9 @@ and the release matrix in
 ## Known gaps
 
 - Real Provider/MCP live smoke requires credentials or a local MCP server.
-- GUI MVP, provider prompt caching, model-summary compaction, web tools,
-  memory prompt injection and session rewind/revert are not complete.
+- The GUI consumes `Kl.Client`, but its full MVP remains in progress.
+- Provider prompt caching, model-summary compaction, web tools, memory prompt
+  injection and session rewind/revert are not complete.
 - MCP servers start in the Core startup workspace, not a per-session workspace.
 - PTY under Windows AppContainer fails closed because that backend cannot be
   wrapped by an external PTY runner.

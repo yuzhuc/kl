@@ -22,7 +22,7 @@ Generated output such as `target/`, `bin/`, `obj/` and `dist/` is ignored.
 | Crate | Responsibility |
 |---|---|
 | `kl-protocol` | Stable protocol DTOs, methods, errors and event schema |
-| `kl-core` | JSON-RPC server, sessions, agent orchestration and extension wiring |
+| `kl-core` | stdio/local-socket JSON-RPC server, sessions, agent orchestration and extension wiring |
 | `kl-agent` | Agent loop, tool dispatch, retries and context compaction |
 | `kl-provider` | Provider adapters and streaming/usage handling |
 | `kl-tools` | Built-in tools and tool metadata |
@@ -42,7 +42,7 @@ Generated output such as `target/`, `bin/`, `obj/` and `dist/` is ignored.
 | `tui/Kl.Tui` | Terminal.Gui v2 UI, command parsing, rendering and approvals; assembly name `kl` |
 | `tui/Kl.Tui.Tests` | TUI, protocol contract and core integration tests |
 | `gui/Kl.Gui` | Avalonia GUI scaffold; not yet an MVP |
-| `sdk/Kl.Client` | JSON-RPC connection, session client, DTOs and core locator |
+| `sdk/Kl.Client` | stdio/local-socket connection, session client, DTOs and endpoint discovery |
 
 The TUI and GUI should share `Kl.Client`; neither owns an agent loop.
 

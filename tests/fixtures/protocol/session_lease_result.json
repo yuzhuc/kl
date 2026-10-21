@@ -1,0 +1,9 @@
+{
+  "jsonrpc": "2.0",
+  "kl_protocol": 1,
+  "id": 23,
+  "result": {
+    "session_id": "session-1",
+    "expires_at_unix_ms": 1760000060000
+  }
+}

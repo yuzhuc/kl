@@ -1,0 +1,10 @@
+{
+  "jsonrpc": "2.0",
+  "kl_protocol": 1,
+  "id": 23,
+  "method": "session.lease",
+  "params": {
+    "session_id": "session-1",
+    "lease_ms": 60000
+  }
+}

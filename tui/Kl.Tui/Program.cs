@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 
 namespace Kl.Tui;
@@ -86,6 +87,8 @@ internal static class Program
                 return await AuditAsync(options, ui).ConfigureAwait(false);
             case "config":
                 return await ConfigAsync(options, ui).ConfigureAwait(false);
+            case "serve":
+                return await ServeAsync(options, ui).ConfigureAwait(false);
             default:
                 ui.Error($"unknown command: {options.Command}");
                 PrintHelp();
@@ -427,6 +430,51 @@ internal static class Program
         return 0;
     }
 
+    private static async Task<int> ServeAsync(TuiOptions options, ConsoleUi ui)
+    {
+        var corePath = CoreLocator.Find(options.CorePath);
+        var startInfo = new ProcessStartInfo(corePath)
+        {
+            UseShellExecute = false,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+            StandardErrorEncoding = new UTF8Encoding(false)
+        };
+        startInfo.ArgumentList.Add("--serve");
+        if (!string.IsNullOrWhiteSpace(options.SocketName))
+        {
+            startInfo.ArgumentList.Add("--socket");
+            startInfo.ArgumentList.Add(options.SocketName);
+        }
+        // The core reads KL_CONFIG/KL_HOME; inherit the current environment
+        // and override it only when the matching option was given.
+        if (!string.IsNullOrWhiteSpace(options.ConfigPath))
+        {
+            startInfo.Environment["KL_CONFIG"] = Path.GetFullPath(options.ConfigPath);
+        }
+        if (!string.IsNullOrWhiteSpace(options.HomePath))
+        {
+            startInfo.Environment["KL_HOME"] = Path.GetFullPath(options.HomePath);
+        }
+
+        using var process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException($"failed to start {corePath}");
+
+        // The server logs its endpoint on stderr; forward it so the user can
+        // point other clients at it.
+        var pump = Task.Run(async () =>
+        {
+            while (await process.StandardError.ReadLineAsync().ConfigureAwait(false) is { } line)
+            {
+                Console.Error.WriteLine(line);
+            }
+        });
+
+        await process.WaitForExitAsync().ConfigureAwait(false);
+        await pump.ConfigureAwait(false);
+        return process.ExitCode;
+    }
+
     private static void AttachDiagnostics(KlCoreClient client, TuiOptions options, ConsoleUi ui)
     {
         if (!options.Verbose)
@@ -465,6 +513,7 @@ internal static class Program
               kl review [--base <ref>]   review the current diff
               kl audit [limit]           show recent audit records
               kl config                  show the redacted configuration
+              kl serve [--socket name]   run the local core server in the foreground
               kl version                 print versions
 
             Options:
@@ -475,6 +524,7 @@ internal static class Program
               --provider <id>            override provider
               --model <id>               override model
               --session <id>             resume a specific session
+              --socket <name>            local server endpoint name (serve only)
               --base <ref>               review changes since a git ref
               --strict                   show low-confidence review findings
               --mode <mode>              review mode: quick|standard|strict

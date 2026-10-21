@@ -1,0 +1,9 @@
+{
+  "jsonrpc": "2.0",
+  "kl_protocol": 1,
+  "id": 22,
+  "method": "session.detach",
+  "params": {
+    "session_id": "session-1"
+  }
+}
