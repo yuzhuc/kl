@@ -493,6 +493,8 @@ public static class ChatTexts
                 "/status - 查看当前会话配置",
                 "/permissions - 选择 KL 的权限与审批方式",
                 "/model - 选择模型和推理强度",
+                "/cost - 查看 token 用量和预估费用",
+                "/context - 查看上下文占用",
                 "/review - 审查当前改动并发现问题"
             ];
         }
@@ -505,6 +507,8 @@ public static class ChatTexts
             "/status - show current session configuration",
             "/permissions - choose what KL is allowed to do",
             "/model - choose what model and reasoning effort to use",
+            "/cost - show token usage and estimated cost",
+            "/context - show context usage",
             "/review - review changes and find issues"
         ];
     }

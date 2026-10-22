@@ -1,0 +1,11 @@
+{
+  "jsonrpc": "2.0",
+  "kl_protocol": 1,
+  "id": 26,
+  "method": "memory.write",
+  "params": {
+    "session_id": "session-1",
+    "name": "notes.md",
+    "content": "# hello\n"
+  }
+}

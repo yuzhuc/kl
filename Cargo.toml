@@ -15,12 +15,18 @@ members = [
     "crates/kl-core",
     "crates/kl-index",
 ]
+exclude = ["vendor/ureq"]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-rust-version = "1.85"
+rust-version = "1.86"
+
+# ureq 2.12.1 only accepts vulnerable webpki-roots 0.26; keep its API
+# while forwarding TLS roots to the fixed 1.0.10 release.
+[patch.crates-io]
+ureq = { path = "vendor/ureq" }
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }

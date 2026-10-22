@@ -74,6 +74,9 @@ public sealed record SettingsCommand(
 public enum SettingsApprovalMode
 {
     Ask,
+    Plan,
+    AcceptEdits,
+    DontAsk,
     Auto,
     ReadOnly
 }
@@ -91,6 +94,9 @@ public static class SettingsAgentValues
     public static IReadOnlyList<SettingsApprovalMode> ApprovalModes { get; } =
     [
         SettingsApprovalMode.Ask,
+        SettingsApprovalMode.Plan,
+        SettingsApprovalMode.AcceptEdits,
+        SettingsApprovalMode.DontAsk,
         SettingsApprovalMode.Auto,
         SettingsApprovalMode.ReadOnly
     ];
@@ -106,6 +112,9 @@ public static class SettingsAgentValues
     public static string Wire(SettingsApprovalMode mode) => mode switch
     {
         SettingsApprovalMode.Ask => "ask",
+        SettingsApprovalMode.Plan => "plan",
+        SettingsApprovalMode.AcceptEdits => "acceptEdits",
+        SettingsApprovalMode.DontAsk => "dontAsk",
         SettingsApprovalMode.Auto => "auto",
         SettingsApprovalMode.ReadOnly => "read-only",
         _ => "ask"
@@ -122,6 +131,9 @@ public static class SettingsAgentValues
 
     public static SettingsApprovalMode ParseApprovalMode(string? value) => value switch
     {
+        "plan" => SettingsApprovalMode.Plan,
+        "acceptEdits" or "accept-edits" or "acceptedits" => SettingsApprovalMode.AcceptEdits,
+        "dontAsk" or "dont-ask" or "dontask" => SettingsApprovalMode.DontAsk,
         "auto" => SettingsApprovalMode.Auto,
         "read-only" or "read_only" or "readonly" => SettingsApprovalMode.ReadOnly,
         _ => SettingsApprovalMode.Ask

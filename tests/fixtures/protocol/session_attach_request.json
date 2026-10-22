@@ -1,0 +1,10 @@
+{
+  "jsonrpc": "2.0",
+  "kl_protocol": 1,
+  "id": 21,
+  "method": "session.attach",
+  "params": {
+    "session_id": "session-1",
+    "after_seq": 2
+  }
+}

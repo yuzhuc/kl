@@ -1,20 +1,15 @@
-# Provider live smoke fixtures
+# Provider live smoke
 
-`scripts/live-smoke.ps1` performs a minimal real call for each native protocol
-and records successful responses as JSON fixtures.
+`scripts/live-smoke.ps1` performs a minimal real call for each configured
+native provider and records successful output as a fixture.
 
 - `openai-chat` uses `OPENAI_API_KEY`.
 - `anthropic` uses `ANTHROPIC_API_KEY`.
 - `openai-responses` uses `OPENAI_API_KEY`.
 
-If a key is not set, the protocol is recorded as `pending` in
-`live-smoke.status.json`; success is never fabricated. Live fixtures are written
-only after a successful real call.
-
-The same script performs a real MCP stdio handshake (`initialize` and
-`tools/list`) for enabled servers in `~/.kl/mcp.toml`. With no server the MCP
-entry is `pending`. Offline SSE conformance remains in
-`crates/kl-provider/tests/http_stream.rs`.
+If a key is absent or a call fails, record it as `pending` or failed; never
+fabricate success. The script also performs a real MCP stdio handshake for
+enabled servers in `~/.kl/mcp.toml`.
 
 Run:
 

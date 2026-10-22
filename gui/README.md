@@ -1,16 +1,25 @@
 # KL GUI
 
-Avalonia-based graphical client for KL.
+Avalonia 12.1.4 graphical client for KL.
 
-This is currently an initialization scaffold: it opens a minimal window and
-does not yet implement chat, history, diff, approvals or settings. The full GUI
-MVP will reuse `sdk/Kl.Client` and the same JSON-RPC session/event contract as
-the TUI.
+## Status
 
-Run:
+The current GUI is a static shell with the planned layout, theme and window
+chrome. It does not yet reference `sdk/Kl.Client` and does not implement chat,
+history, streaming events, tool cards, approvals, diff or settings.
+
+GUI integration is intentionally paused. The TUI and local multi-client Core
+are the current priority.
+
+## Build
 
 ```powershell
+dotnet build gui/Kl.Gui/Kl.Gui.csproj
 dotnet run --project gui/Kl.Gui
 ```
 
-Project: `gui/Kl.Gui/Kl.Gui.csproj` (assembly/namespace `Kl.Gui`).
+## Next integration step
+
+Add a project reference to `sdk/Kl.Client` and build the shell incrementally
+from the slices in [`../docs/gui/mvp-spec.md`](../docs/gui/mvp-spec.md). Do not
+start a separate Core process from Avalonia code.

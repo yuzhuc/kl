@@ -11,6 +11,7 @@ public sealed class TuiOptions
     public string? Provider { get; set; }
     public string? Model { get; set; }
     public string? Session { get; set; }
+    public string? SocketName { get; set; }
     public string? BaseRef { get; set; }
     public bool Strict { get; set; }
     public string? ReviewMode { get; set; }
@@ -46,7 +47,7 @@ public static class CommandLine
 {
     private static readonly HashSet<string> Commands =
     [
-        "chat", "run", "resume", "doctor", "ping", "provider", "auth", "model", "plugin", "review", "audit", "config", "version", "help"
+        "chat", "run", "resume", "doctor", "ping", "provider", "auth", "model", "plugin", "review", "audit", "config", "serve", "version", "help"
     ];
 
     public static TuiOptions Parse(string[] args)
@@ -84,6 +85,9 @@ public static class CommandLine
                     break;
                 case "--session":
                     options.Session = Next(args, ref i, arg);
+                    break;
+                case "--socket":
+                    options.SocketName = Next(args, ref i, arg);
                     break;
                 case "--base":
                     options.BaseRef = Next(args, ref i, arg);

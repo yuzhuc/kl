@@ -1,0 +1,14 @@
+{
+  "jsonrpc": "2.0",
+  "kl_protocol": 1,
+  "id": 20,
+  "result": {
+    "server_name": "kl-core",
+    "server_version": "0.1.0",
+    "protocol_version": 1,
+    "transport": "stdio",
+    "endpoint": "stdio://kl-core",
+    "pid": 4242,
+    "started_at_unix_ms": 1760000000000
+  }
+}

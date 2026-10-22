@@ -1,6 +1,6 @@
 # ADR 0002: JSON-RPC 2.0 over stdio for the MVP
 
-- Status: accepted
+- Status: accepted; local multi-client transport is defined in ADR 0012
 - Date: 2026-10-17
 
 ## Context

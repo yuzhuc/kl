@@ -22,7 +22,7 @@ toml = "0.8"
 uuid = { version = "1", features = ["v4"] }
 walkdir = "2"
 dunce = "1"
-wasmtime = { version = "34.0.2", default-features = false, features = [
+wasmtime = { version = "36.0.19", default-features = false, features = [
     "component-model",
     "cranelift",
     "runtime",

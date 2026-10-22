@@ -1,6 +1,7 @@
 //! Built-in tools. Tools evaluate policy again before touching the
 //! filesystem so a direct call cannot bypass the agent's approval gate.
 
+mod ask_user;
 mod diff;
 mod files;
 mod jobs;
@@ -8,13 +9,18 @@ mod memory;
 mod pty;
 mod search;
 mod shell;
+mod todo;
+mod web_fetch;
 mod worktree;
 
+pub use ask_user::AskUserTool;
 pub use files::{EditFileTool, ReadFileTool, WriteFileTool};
 pub use jobs::JobTool;
-pub use memory::MemoryTool;
+pub use memory::{MemoryEntry, MemoryInjection, MemoryScope, MemoryStore, MemoryTool};
 pub use search::{GlobTool, GrepTool};
 pub use shell::{GitTool, ShellTool};
+pub use todo::TodoTool;
+pub use web_fetch::WebFetchTool;
 pub use worktree::WorktreeTool;
 
 use kl_policy::{Action, PolicyEngine};
@@ -125,6 +131,17 @@ pub trait Tool: Send + Sync {
         self.read_only(args)
     }
 
+    /// Contract flag for tools that belong outside the current turn's tool
+    /// batch. Recorded on the trait for now; the agent does not act on it yet.
+    fn should_defer(&self, _args: &Value) -> bool {
+        false
+    }
+
+    /// Tools that must always ask the user, even when policy would allow them.
+    fn always_ask(&self) -> bool {
+        false
+    }
+
     fn interrupt_behavior(&self) -> InterruptBehavior {
         InterruptBehavior::Cancel
     }
@@ -169,6 +186,9 @@ impl ToolRegistry {
             Arc::new(WorktreeTool),
             Arc::new(JobTool::new()),
             Arc::new(MemoryTool),
+            Arc::new(TodoTool),
+            Arc::new(AskUserTool),
+            Arc::new(WebFetchTool),
         ];
         Self {
             tools: RwLock::new(
@@ -307,12 +327,32 @@ mod tests {
             assert!(memory.destructive(&args), "{args}");
         }
 
+        let todo = registry.get("todo").unwrap();
+        for args in [
+            json!({"action": "add", "title": "write tests"}),
+            json!({"action": "update", "id": "t1", "title": "write tests"}),
+            json!({"action": "complete", "id": "t1"}),
+        ] {
+            assert!(!todo.read_only(&args), "{args}");
+            assert!(!todo.concurrency_safe(&args), "{args}");
+            assert!(todo.destructive(&args), "{args}");
+        }
+        let listed = json!({"action": "list"});
+        assert!(todo.read_only(&listed));
+        assert!(todo.concurrency_safe(&listed));
+        assert!(!todo.destructive(&listed));
+
         for name in ["write_file", "edit_file", "shell", "git", "worktree", "job"] {
             let tool = registry.get(name).unwrap();
             assert!(tool.destructive(&json!({})), "{name}");
             assert!(!tool.read_only(&json!({})), "{name}");
             assert!(!tool.concurrency_safe(&json!({})), "{name}");
             assert_eq!(tool.source(), ToolSource::Builtin);
+        }
+
+        for name in registry.names() {
+            let tool = registry.get(&name).unwrap();
+            assert!(!tool.should_defer(&json!({})), "{name}");
         }
     }
 

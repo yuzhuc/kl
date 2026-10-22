@@ -18,13 +18,15 @@ public sealed class JsonRpcException : Exception
 }
 
 /// <summary>
-/// Newline-delimited JSON-RPC connection over a child process's stdio.
+/// Newline-delimited JSON-RPC connection over a duplex stream. The stream may
+/// be a child process's stdio or a local socket.
 /// Responses are matched to requests by id; `event` notifications are raised
 /// on the calling thread's event loop.
 /// </summary>
 public sealed class JsonRpcConnection : IAsyncDisposable
 {
-    private readonly Process _process;
+    private readonly Process? _process;
+    private readonly Stream _input;
     private readonly StreamWriter _writer;
     private readonly StreamReader _reader;
     private readonly ConcurrentDictionary<long, TaskCompletionSource<JsonElement>> _pending = new();
@@ -33,21 +35,28 @@ public sealed class JsonRpcConnection : IAsyncDisposable
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Task _readerTask;
-    private readonly Task _stderrTask;
+    private readonly Task? _stderrTask;
     private readonly ConcurrentQueue<string> _stderrLines = new();
     private long _nextId;
 
     public JsonRpcConnection(Process process)
+        : this(process.StandardInput.BaseStream, process.StandardOutput.BaseStream, process)
+    {
+    }
+
+    /// <summary>Creates a connection over an already connected duplex stream.</summary>
+    public JsonRpcConnection(Stream input, Stream output, Process? process = null)
     {
         _process = process;
-        _writer = new StreamWriter(process.StandardInput.BaseStream, new UTF8Encoding(false))
+        _input = input;
+        _writer = new StreamWriter(input, new UTF8Encoding(false))
         {
             AutoFlush = true,
             NewLine = "\n"
         };
-        _reader = new StreamReader(process.StandardOutput.BaseStream, new UTF8Encoding(false));
+        _reader = new StreamReader(output, new UTF8Encoding(false));
         _readerTask = Task.Run(ReadLoopAsync);
-        _stderrTask = Task.Run(ReadStderrAsync);
+        _stderrTask = process is null ? null : Task.Run(ReadStderrAsync);
     }
 
     public event Action<JsonElement>? NotificationReceived;
@@ -105,6 +114,7 @@ public sealed class JsonRpcConnection : IAsyncDisposable
                 {
                     continue;
                 }
+
 
                 if (!JsonLineCodec.TryParse(line, out var document) || document is null)
                 {
@@ -179,9 +189,15 @@ public sealed class JsonRpcConnection : IAsyncDisposable
 
     private async Task ReadStderrAsync()
     {
+        var process = _process;
+        if (process is null)
+        {
+            return;
+        }
+
         try
         {
-            while (await _process.StandardError.ReadLineAsync().ConfigureAwait(false) is { } line)
+            while (await process.StandardError.ReadLineAsync().ConfigureAwait(false) is { } line)
             {
                 _stderrLines.Enqueue(line);
                 while (_stderrLines.Count > 20)
@@ -199,6 +215,11 @@ public sealed class JsonRpcConnection : IAsyncDisposable
 
     private async Task WaitForStderrAsync()
     {
+        if (_stderrTask is null)
+        {
+            return;
+        }
+
         try
         {
             await _stderrTask.WaitAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
@@ -241,35 +262,38 @@ public sealed class JsonRpcConnection : IAsyncDisposable
         _shutdown.Cancel();
         try
         {
-            _process.StandardInput.Close();
+            _input.Close();
         }
         catch (Exception error) when (error is IOException or InvalidOperationException or ObjectDisposedException)
         {
-            // The process may already be gone.
+            // The peer may already be gone.
         }
 
-        try
-        {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-            await _process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
+        if (_process is not null)
         {
             try
             {
-                if (!_process.HasExited)
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                await _process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                try
                 {
-                    _process.Kill(entireProcessTree: true);
+                    if (!_process.HasExited)
+                    {
+                        _process.Kill(entireProcessTree: true);
+                    }
+                }
+                catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception)
+                {
+                    // Process already exited.
                 }
             }
-            catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception)
+            catch (Exception error) when (error is IOException or InvalidOperationException or ObjectDisposedException)
             {
-                // Process already exited.
+                // Shutdown races are expected.
             }
-        }
-        catch (Exception error) when (error is IOException or InvalidOperationException or ObjectDisposedException)
-        {
-            // Shutdown races are expected.
         }
 
         try
@@ -281,13 +305,16 @@ public sealed class JsonRpcConnection : IAsyncDisposable
             // Shutdown races are expected.
         }
 
-        try
+        if (_stderrTask is not null)
         {
-            await _stderrTask.ConfigureAwait(false);
-        }
-        catch (Exception error) when (error is IOException or ObjectDisposedException or OperationCanceledException)
-        {
-            // Shutdown races are expected.
+            try
+            {
+                await _stderrTask.ConfigureAwait(false);
+            }
+            catch (Exception error) when (error is IOException or ObjectDisposedException or OperationCanceledException)
+            {
+                // Shutdown races are expected.
+            }
         }
 
         _notifications.Writer.TryComplete();
@@ -295,7 +322,10 @@ public sealed class JsonRpcConnection : IAsyncDisposable
         DisposeQuietly(_writer);
         _writeLock.Dispose();
         _shutdown.Dispose();
-        DisposeQuietly(_process);
+        if (_process is not null)
+        {
+            DisposeQuietly(_process);
+        }
     }
 
     private static void DisposeQuietly(IDisposable disposable)

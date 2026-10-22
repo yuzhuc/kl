@@ -1029,6 +1029,14 @@ pub fn config_set_default_model(
     })
 }
 
+pub fn approval_flags(approval_mode: ApprovalMode) -> (bool, bool, bool) {
+    match approval_mode {
+        ApprovalMode::AcceptEdits => (true, false, false),
+        ApprovalMode::DontAsk | ApprovalMode::Auto => (true, true, true),
+        ApprovalMode::Ask | ApprovalMode::Plan | ApprovalMode::ReadOnly => (false, false, false),
+    }
+}
+
 pub fn permissions_set(config_path: &Path, approval_mode: ApprovalMode) -> Result<(), ConfigError> {
     let mut value = read_toml_value(config_path)?;
     {
@@ -1038,13 +1046,13 @@ pub fn permissions_set(config_path: &Path, approval_mode: ApprovalMode) -> Resul
             toml::Value::String(approval_mode.as_str().to_owned()),
         );
         let policy = ensure_table(&mut value, "policy")?;
-        let auto_approve = approval_mode == ApprovalMode::Auto;
-        for key in [
-            "auto_approve_edits",
-            "auto_approve_shell",
-            "auto_approve_plugins",
+        let (edits, shell, plugins) = approval_flags(approval_mode);
+        for (key, enabled) in [
+            ("auto_approve_edits", edits),
+            ("auto_approve_shell", shell),
+            ("auto_approve_plugins", plugins),
         ] {
-            policy.insert(key.to_owned(), toml::Value::Boolean(auto_approve));
+            policy.insert(key.to_owned(), toml::Value::Boolean(enabled));
         }
     }
     write_toml_atomic(config_path, &value)

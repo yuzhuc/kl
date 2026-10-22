@@ -593,6 +593,9 @@ mod tests {
                     turn_id: "turn-1".to_owned(),
                     status: "completed".to_owned(),
                     text: "done".to_owned(),
+                    input_tokens: 0,
+                    output_tokens: 0,
+                    cost_usd: None,
                 },
             ),
             stored_event(
@@ -640,6 +643,9 @@ mod tests {
                     turn_id: "old-turn".to_owned(),
                     status: "completed".to_owned(),
                     text: "   ".to_owned(),
+                    input_tokens: 0,
+                    output_tokens: 0,
+                    cost_usd: None,
                 },
             ),
             stored_event(
@@ -648,6 +654,9 @@ mod tests {
                     turn_id: "old-turn".to_owned(),
                     status: "completed".to_owned(),
                     text: "old answer".to_owned(),
+                    input_tokens: 0,
+                    output_tokens: 0,
+                    cost_usd: None,
                 },
             ),
             stored_event(
@@ -704,6 +713,9 @@ mod tests {
                     turn_id: "turn-1".to_owned(),
                     status: "completed".to_owned(),
                     text: "done".to_owned(),
+                    input_tokens: 0,
+                    output_tokens: 0,
+                    cost_usd: None,
                 },
             )
             .unwrap();
@@ -742,6 +754,9 @@ mod tests {
                     turn_id: "turn-1".to_owned(),
                     status: "completed".to_owned(),
                     text: "done".to_owned(),
+                    input_tokens: 0,
+                    output_tokens: 0,
+                    cost_usd: None,
                 },
             )
             .unwrap();
