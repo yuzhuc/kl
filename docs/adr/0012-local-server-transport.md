@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. Implementation is in progress on `feat/server-attach`.
+Accepted and implemented in `dev`. The server, attach/replay, sequence de-duplication and single-writer lease are covered by Rust and C# integration tests.
 
 ## Context
 

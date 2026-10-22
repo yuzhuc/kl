@@ -1,58 +1,34 @@
-# Policy, sandbox and audit
+# Security and policy
 
-## Decision model
+KL runs locally and treats the Core as the trusted boundary. Clients can
+request actions, but only the Core evaluates policy, obtains approvals, invokes
+the sandbox and writes audit records.
 
-Every tool request is evaluated as `action + resource -> effect`:
-
-| Action | Resource | Default |
-|---|---|---|
-| read | resolved path | allow inside workspace |
-| edit | resolved path | ask |
-| shell | command text | ask |
-| git_read | git arguments | allow for read-only subcommands |
-| git_write | git arguments | ask |
-| plugin | plugin id | ask |
-| deny | dangerous command/path | always deny |
-
-`deny` cannot be overridden by auto-approval. Approvals accept `allow`,
-`allow_session` or `deny`. `allow_session` stores a tool+resource rule in
-session state and reloads with the session.
-
-## Approval modes
+## Permission modes
 
 | Mode | Behavior |
 |---|---|
-| `ask` | Policy-selected actions require approval |
-| `plan` | Read-only tool access; writes and shell are denied |
-| `acceptEdits` | Workspace edits are auto-approved; shell and plugins still ask |
-| `dontAsk` | Policy-allowed actions run without prompts; policy denials still deny |
-| `auto` | Policy-allowed edits, shell and plugins are auto-approved |
-| `read-only` | Reads only; edits, shell, plugin actions and git writes are denied |
+| `ask` | Sensitive actions request approval |
+| `plan` | Writes and shell actions are denied |
+| `acceptEdits` | Edits are auto-approved; shell and plugins still ask |
+| `dontAsk` | Non-denied actions proceed without an interactive prompt |
+| `auto` | Uses the configured policy approvals |
+| `read-only` | Only read actions are allowed |
 
-Mode changes are persisted in config and written to the audit log.
-
-## Stage-scoped access
-
-Deep stages do not rely on prompt text for isolation:
-
-| Stage | Access | Allowed |
-|---|---|---|
-| explorer, planner, implementer | `Full` | normal policy and approvals |
-| reviewer | `ReadOnly` | read/grep/glob and read-only git |
-| verifier | `VerifyOnly` | read-only tools plus recognized test/build/lint commands |
-
-`ReadOnly` denies edits, shell, git writes and plugin calls. `VerifyOnly` also
-denies shell metacharacters and arbitrary redirection. A workspace fingerprint
-remains as a second defense.
+Approval decisions are `allow`, `deny` and `allow_session`; `allow_session`
+remembers the rule for the current session. Unknown or unsupported decisions
+fail safely.
 
 ## Path safety
 
-- Paths are resolved against the canonical workspace and must remain inside
-  the policy roots unless explicitly granted.
+- Paths are resolved against the canonical workspace and must remain inside the
+  policy roots unless explicitly granted.
 - Sensitive paths (`.env`, keys, credentials, `.ssh`, `.aws`, `.gnupg`, `.git`)
   are denied or require approval.
 - Memory entries are limited to safe `.md` names under `.kl/memory`; traversal,
   symlinked entries and Windows reserved names are rejected.
+- Todo state is stored under `.kl/todos.json` and is bounded in size and entry
+  count.
 
 ## Shell, git and network
 
@@ -60,6 +36,9 @@ remains as a second defense.
 - `policy.env_allowlist` switches to a clean environment with only listed
   variables.
 - `policy.network_allowlist` rejects URLs outside the configured hosts.
+- `web_fetch` additionally rejects loopback, private, link-local, multicast,
+  userinfo, non-http(s) and non-standard-port destinations, and revalidates
+  every redirect.
 - Git writes require approval; read-only inspection is recognized separately.
 - Shell and git run through the active sandbox.
 
@@ -74,10 +53,22 @@ OS backend and fails closed when the selected backend is unavailable.
 | Linux | bubblewrap | read-only host, writable roots, user/PID/IPC/UTS namespaces, network namespace |
 | macOS | Seatbelt | deny-by-default profile, granted roots, network policy |
 
-MCP server processes start through the active sandbox (`SandboxManager`). Shell `tty=true`
-uses a PTY where the backend can be wrapped; Windows AppContainer rejects PTY
-rather than running unsandboxed. Linux sandbox read isolation is policy-level:
-the host is mounted read-only, not reduced to a workspace-only filesystem.
+MCP server processes start through the active sandbox. Shell `tty=true` uses a
+PTY where the backend can be wrapped; Windows AppContainer rejects PTY rather
+than running unsandboxed.
+
+## Memory and context
+
+- Workspace memory is under `.kl/memory`; user memory is under `~/.kl/memory`.
+- Memory injection is bounded in characters/tokens and recorded in audit.
+- Writes and deletes use the normal policy and approval channel.
+- `/memory` exposes list, read, write and delete operations through protocol
+  methods; clients do not access memory files directly.
+- Compaction preserves complete tool-call/result pairs and the most recent
+  rounds. A model summary is bounded and falls back to mechanical trimming on
+  provider failure.
+- `context.compacted` records the trigger, omitted count, estimated tokens and
+  summary status.
 
 ## Plugins
 
@@ -89,7 +80,7 @@ the host is mounted read-only, not reduced to a workspace-only filesystem.
 
 ## Audit
 
-Every tool request produces a normal audit record and persisted session events.
+Every tool request produces an audit record and persisted session events.
 Policy denials emit `sandbox.violation`; approvals emit
 `tool.approval.requested` and `tool.approval.resolved`. Audit JSONL is the
 source of truth; SQLite is a query index.
@@ -98,4 +89,6 @@ source of truth; SQLite is a query index.
 
 - Real provider/MCP live smoke still requires credentials or a local server.
 - MCP servers use the Core startup workspace, not a per-session workspace.
+- DNS rebinding protection is based on pre-request resolution; pinning the
+  connection address would be a later hardening step.
 - The release RID list is fixed; adding a RID requires an ADR.

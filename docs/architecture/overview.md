@@ -10,7 +10,7 @@ TUI (tui/Kl.Tui)     GUI (gui/Kl.Gui)     Headless/CI
            +-- JSON-RPC / stdio or local socket --+
                             |
                      Rust core (kl-core)
-              Emitter + JSON-RPC loop
+              Emitter + JSON-RPC request handling
               ProviderRouter + Agent runtime
               SessionStore + EventHub
               PolicyEngine + SandboxManager
@@ -18,19 +18,19 @@ TUI (tui/Kl.Tui)     GUI (gui/Kl.Gui)     Headless/CI
               Skills / Hooks / MCP / Plugins
 ```
 
-The Rust core is the only process that executes tools, calls providers, writes
-sessions or evaluates policy. The TUI, GUI and headless clients are protocol
-clients.
+The Rust Core is the only process that executes tools, calls providers, writes
+sessions or evaluates policy. TUI, GUI and headless clients are protocol
+clients. `Kl.Client` owns the C# transport and session API.
 
 ## Repository boundaries
 
 | Layer | Responsibility |
 |---|---|
 | `kl-protocol` | Wire envelopes, events, errors, DTOs and stable constants |
-| `kl-core` | Server, sessions, agent orchestration, RPC and extension wiring |
-| `kl-agent` | Provider-neutral turn loop, tool dispatch and compaction |
+| `kl-core` | stdio/local server, sessions, agent orchestration and extension wiring |
+| `kl-agent` | Provider-neutral turn loop, tool dispatch, compaction and retries |
 | `kl-provider` | OpenAI Chat, Anthropic, Responses and scripted/plugin routes |
-| `kl-tools` | Built-in tools and the unified tool contract |
+| `kl-tools` | Built-in tools, metadata, policies and the unified tool pipeline |
 | `kl-policy` | Action/resource evaluation and stage-scoped access |
 | `kl-sandbox` | OS sandbox backends, probing and launch helpers |
 | `kl-store` | Session metadata, state projection and event log |
@@ -38,66 +38,87 @@ clients.
 | `kl-review` | Diff, security and optional LLM review pipeline |
 | `kl-index` | Shallow repository symbols and test selection hints |
 | `kl-plugin-host` | Sidecar/WASM plugin supervision and integrity checks |
-| `Kl.Client` | C# JSON-RPC/session client used by TUI and GUI |
-| `Kl.Tui` | Terminal.Gui v2 terminal UI, rendering, input and approval presentation |
-| `Kl.Gui` | Avalonia shell; currently a scaffold |
+| `Kl.Client` | C# JSON-RPC/session client used by the TUI and GUI |
+| `Kl.Tui` | Terminal.Gui v2 terminal client and approval presentation |
+| `Kl.Gui` | Avalonia shell; chat integration is paused |
 
-## Protocol
+## Protocol and transports
 
 - One JSON-RPC 2.0 message per line over stdio or a local socket.
-- `kl serve` uses a Windows named pipe or a Unix/macOS filesystem UDS.
 - `kl.handshake` negotiates the protocol version before session/turn methods.
 - `kl.ping` and `kl.doctor` work before the handshake for diagnostics.
-- Core events are notifications with `method: "event"` and a per-session
-  monotonically increasing `seq`.
-- `schemas/protocol/v1` is the contract; Rust and .NET tests consume the same
-  fixtures under `tests/fixtures/protocol`.
+- `kl serve` uses a Windows named pipe or a Unix/macOS filesystem UDS.
+- `server.info` exposes the endpoint and transport.
+- `session.attach` replays stored events after `after_seq` and subscribes the
+  connection to live events.
+- `session.lease` enforces one writer per session; `session.detach` releases
+  the subscription and lease.
+- Core events are notifications with `method: "event"` and a per-session,
+  monotonically increasing `seq`. Clients de-duplicate by `session_id + seq`.
+- `schemas/protocol/v1` is the contract; Rust, schema and C# constants are
+  checked together by `scripts/check-protocol.mjs`.
+- Shared fixtures live under `tests/fixtures/protocol`.
 
-- `server.info` exposes the endpoint and transport. `session.attach` replays
-  stored events and subscribes to live events; `session.lease` enforces one
-  writer per session; `session.detach` releases both.
+Representative methods include `session.create`, `session.resume`,
+`session.history`, `session.attach`, `session.lease`, `turn.start`,
+`turn.cancel`, `tool.approval.respond`, `memory.*`, `provider.*`, `skill.*`,
+`mcp.list`, `plugin.*`, `review.run` and `audit.tail`.
 
-Representative methods: `session.create`, `session.resume`, `session.fork`,
-`session.history`, `session.compact`, `turn.start`, `turn.cancel`,
-`tool.approval.respond`, `provider.*`, `skill.*`, `mcp.list`, `plugin.*`,
-`review.run`, `audit.tail`.
+## Sessions, replay and reconnect
+
+- `session.json` stores metadata.
+- `state.json` stores the message projection.
+- `events.jsonl` is the append-only source of truth.
+- Missing or empty state is reconstructed from events.
+- Sessions support resume, fork, rename, delete and history queries.
+- Local-server attach replays `events.jsonl` by sequence and rejects a second
+  writer with `SESSION_BUSY`.
+- `KlSessionClient` consumes replay, drops stale sequences, records `LastSeq`
+  and can reconnect from that sequence.
+- Approval `allow_session` rules are stored with the session and survive reload.
+
+## Context and memory
+
+- Mechanical compaction prunes large tool results and old rounds while
+  preserving complete tool-call/result pairs.
+- When mechanical trimming must drop rounds, the agent asks the active provider
+  for a bounded summary and falls back to mechanical trimming on failure.
+- `context.compacted` records the trigger, omitted count, estimated tokens,
+  summary status and summary content in the session event log.
+- Workspace memory lives under `.kl/memory`; user memory under `~/.kl/memory`.
+- Memory injection is bounded, workspace-first and audited. `/memory` supports
+  list, read, write and delete through protocol methods.
 
 ## Tool pipeline
 
 Every tool call follows the same path:
 
 ```text
-validate -> pre-hook -> policy -> approval -> sandbox
-  -> execute -> post-hook -> bounded result -> audit -> event
+validate -> pre-hook -> policy -> approval
+  -> sandbox -> execute -> post-hook
+  -> bounded result -> audit -> event
 ```
 
 Tool metadata includes read-only/destructive flags, concurrency safety,
-validation, result limits and source. Concurrency-safe calls may run in
-parallel; mutating calls remain ordered. Result bodies are bounded before they
-enter session history.
+interrupt behavior, result limits, defer hints and source. Read-only calls may
+run in parallel; mutating calls remain ordered. Result bodies are bounded before
+they enter session history.
 
-## Sessions and events
-
-- `session.json` stores metadata.
-- `state.json` stores the message projection.
-- `events.jsonl` is the append-only source of truth.
-- Missing or empty state can be reconstructed from events.
-- Sessions support resume, fork, rename, delete and history queries.
-- Local-server attach replays `events.jsonl` by sequence and rejects a second
-  writer with `SESSION_BUSY`. Disconnected clients release their lease.
-- Approval `allow_session` rules are stored with the session and survive reload.
-- Layered compaction first prunes large tool results, then drops older rounds.
+Built-in tools include file operations, grep/glob, shell, git, worktree, jobs,
+memory, todo, `ask_user` and allowlisted `web_fetch`. `ask_user` uses the normal
+approval channel. `web_fetch` requires a non-empty policy allowlist, revalidates
+every redirect and rejects private or special network destinations.
 
 ## Sandbox
 
 `sandbox.mode = "policy"` is the default. `strict` requires a real OS backend
 and fails closed if it is unavailable.
 
-| Platform | Backend |
-|---|---|
-| Windows | AppContainer token, filesystem grants, kill-on-close Job Object, loopback network verification |
-| Linux | bubblewrap, read-only host, writable roots, user/PID/IPC/UTS and optional network namespaces |
-| macOS | deny-by-default Seatbelt profile via `/usr/bin/sandbox-exec` |
+| Platform | Backend | Main controls |
+|---|---|---|
+| Windows | AppContainer | workspace grants, child-process Job Object, loopback network isolation |
+| Linux | bubblewrap | read-only host, writable roots, user/PID/IPC/UTS and optional network namespaces |
+| macOS | Seatbelt | deny-by-default profile, granted roots, network policy |
 
 Shell PTY is implemented through portable-pty where an external PTY can wrap
 the backend; Windows AppContainer fails closed. MCP stdio servers and shell
@@ -119,7 +140,8 @@ commands use the same sandbox manager.
 
 `Kl.Client` owns the C# protocol connection and session API. The TUI adds
 terminal rendering and input. The GUI must reuse `Kl.Client` and the same
-session/events, not copy the agent loop or tool execution.
+session/events; it must not copy the agent loop, policy or tool execution.
+The GUI currently has a static Avalonia shell only.
 
 ## Release
 
@@ -138,7 +160,7 @@ packaged binaries really match them. Adding or removing a RID requires an ADR
 
 ## Known gaps
 
-- Full GUI MVP and GUI release packaging.
+- Full GUI integration and GUI release packaging.
 - Real provider/MCP live smoke with credentials.
 - Provider prompt caching.
 - Session rewind/revert and MCP resources/OAuth.

@@ -1,15 +1,15 @@
 # Plugin examples
 
-This directory contains example plugin manifests and entrypoints used by the
-plugin host tests and demos.
+This directory contains manifests and entrypoints exercised by the plugin host
+tests and demos.
 
-Supported plugin kinds are **tool** plugins using manifest v1:
+Supported kinds:
 
-- sidecar: executable process speaking newline-delimited JSON-RPC 2.0 over stdio;
+- sidecar: executable speaking newline-delimited JSON-RPC 2.0 over stdio;
 - WASM: Component Model module exporting JSON-string `health` and `execute`.
 
 See [`../docs/plugin-api/README.md`](../docs/plugin-api/README.md) for the
-manifest, permissions, integrity/signature contract and host behavior.
+manifest, permissions, integrity and signature contract.
 
-Plugins are disabled by default. Enabling one is an explicit host action;
-integrity and optional Ed25519 signatures are checked before activation.
+Plugins are disabled by default. Activation requires an explicit host action
+and passes integrity/signature checks first.
