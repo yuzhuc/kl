@@ -12,12 +12,13 @@ public sealed class ChatCommandPaletteTests
         state.Insert('/');
 
         Assert.True(ChatCommandPalette.IsOpen(state));
-        Assert.Equal(20, ChatCommandPalette.Matches(state.Input).Count);
+        Assert.Equal(21, ChatCommandPalette.Matches(state.Input).Count);
         Assert.Contains(ChatCommandPalette.Matches(state.Input), match => match.Name == "/fork");
         Assert.Contains(ChatCommandPalette.Matches(state.Input), match => match.Name == "/cost");
         Assert.Contains(ChatCommandPalette.Matches(state.Input), match => match.Name == "/context");
         Assert.Contains(ChatCommandPalette.Matches(state.Input), match => match.Name == "/diff");
         Assert.Contains(ChatCommandPalette.Matches(state.Input), match => match.Name == "/export");
+        Assert.Contains(ChatCommandPalette.Matches(state.Input), match => match.Name == "/memory");
         Assert.Equal("/init", ChatCommandPalette.Selected(state)?.Name);
 
         var lines = ChatTuiRenderer.CommandPaletteLines(state, 100);
@@ -327,7 +328,7 @@ public sealed class ChatCommandPaletteTests
 
         ChatCommandPalette.MoveSelection(state, -1);
         Assert.Equal(
-            "/export",
+            "/memory",
             ChatCommandPalette.Selected(state)?.Name);
 
         ChatCommandPalette.MoveSelection(state, 1);

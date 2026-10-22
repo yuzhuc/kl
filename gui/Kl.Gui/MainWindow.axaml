@@ -2,8 +2,253 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="820"
         x:Class="Kl.Gui.MainWindow"
-        Title="KL GUI">
-    Welcome to KL GUI!
+        Title="KL"
+        Width="1280"
+        Height="820"
+        MinWidth="960"
+        MinHeight="600"
+        WindowStartupLocation="CenterScreen"
+        CanResize="True"
+        WindowDecorations="BorderOnly"
+        Background="{StaticResource KlSurface}">
+
+    <Grid RowDefinitions="44,*">
+
+        <!-- Self drawn window chrome: the drag surface sits behind the content so
+             that only the bare top bar background starts a window drag. -->
+        <Border Grid.Row="0"
+                Background="{StaticResource KlTopBar}"
+                BorderBrush="{StaticResource KlLine}"
+                BorderThickness="0,0,0,1">
+            <Grid>
+
+                <Border Name="TopBarDragSurface"
+                        Background="Transparent"
+                        PointerPressed="OnTopBarPointerPressed" />
+
+                <Grid ColumnDefinitions="Auto,*,Auto" Margin="14,0">
+                    <TextBlock Grid.Column="0"
+                               Text="KL GUI"
+                               FontSize="11"
+                               Foreground="{StaticResource KlTextMuted}"
+                               VerticalAlignment="Center"
+                               IsHitTestVisible="False" />
+
+                    <StackPanel Grid.Column="2"
+                                Orientation="Horizontal"
+                                Spacing="8"
+                                VerticalAlignment="Center"
+                                IsHitTestVisible="False">
+
+                        <Border Background="{StaticResource KlInput}"
+                                BorderBrush="{StaticResource KlLine}"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Padding="9,3">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock Text="provider" FontSize="11" Foreground="{StaticResource KlTextMuted}" />
+                                <TextBlock Text="default" FontSize="11" Foreground="{StaticResource KlTextPrimary}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Background="{StaticResource KlInput}"
+                                BorderBrush="{StaticResource KlLine}"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Padding="9,3">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock Text="model" FontSize="11" Foreground="{StaticResource KlTextMuted}" />
+                                <TextBlock Text="default" FontSize="11" Foreground="{StaticResource KlTextPrimary}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Background="{StaticResource KlInput}"
+                                BorderBrush="{StaticResource KlLine}"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Padding="9,3">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock Text="reasoning" FontSize="11" Foreground="{StaticResource KlTextMuted}" />
+                                <TextBlock Text="default" FontSize="11" Foreground="{StaticResource KlTextPrimary}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Background="{StaticResource KlInput}"
+                                BorderBrush="{StaticResource KlLine}"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Padding="9,3">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <Ellipse Width="7" Height="7" Fill="{StaticResource KlTextMuted}" />
+                                <TextBlock Text="Disconnected" FontSize="11" Foreground="{StaticResource KlTextPrimary}" />
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="280" MinWidth="240" MaxWidth="420" />
+                <ColumnDefinition Width="4" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Sidebar -->
+            <Border Grid.Column="0"
+                    Background="{StaticResource KlSurfaceAlt}"
+                    BorderBrush="{StaticResource KlLine}"
+                    BorderThickness="0,0,1,0">
+                <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto" Margin="12,12,12,14">
+
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                        <Border Width="28" Height="28" CornerRadius="6" Background="{StaticResource KlAccent}">
+                            <TextBlock Text="K"
+                                       FontSize="15"
+                                       FontWeight="Bold"
+                                       Foreground="#FFFFFF"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                        </Border>
+                        <TextBlock Text="KL"
+                                   FontSize="15"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource KlTextPrimary}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <Button Grid.Row="1"
+                            Classes="accent"
+                            Content="New session"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
+                            Padding="14,7"
+                            FontSize="12"
+                            FontWeight="SemiBold"
+                            Margin="0,16,0,0"
+                            AutomationProperties.Name="New session" />
+
+                    <TextBox Grid.Row="2"
+                             PlaceholderText="Search sessions"
+                             Margin="0,10,0,0"
+                             AutomationProperties.Name="Search sessions" />
+
+                    <TextBlock Grid.Row="3"
+                               Text="Sessions"
+                               FontSize="11"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource KlTextMuted}"
+                               Margin="2,16,0,0" />
+
+                    <TextBlock Grid.Row="4"
+                               Text="No sessions yet"
+                               FontSize="12"
+                               Foreground="{StaticResource KlTextMuted}"
+                               Margin="2,6,0,0" />
+
+                    <Border Grid.Row="6"
+                            BorderBrush="{StaticResource KlLine}"
+                            BorderThickness="0,1,0,0"
+                            Padding="0,10,0,0"
+                            Margin="0,12,0,0">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="workspace" FontSize="11" Foreground="{StaticResource KlTextMuted}" />
+                            <TextBlock Text="kl" FontSize="12" Foreground="{StaticResource KlTextPrimary}" />
+                        </StackPanel>
+                    </Border>
+
+                </Grid>
+            </Border>
+
+            <GridSplitter Grid.Column="1"
+                          Background="Transparent"
+                          ResizeDirection="Columns"
+                          ResizeBehavior="PreviousAndNext"
+                          ShowsPreview="True"
+                          AutomationProperties.Name="Resize sidebar" />
+
+            <!-- Main area -->
+            <Grid Grid.Column="2" RowDefinitions="Auto,*,Auto">
+
+                <Border Grid.Row="0"
+                        BorderBrush="{StaticResource KlLine}"
+                        BorderThickness="0,0,0,1"
+                        Padding="18,0">
+                    <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                        <TextBlock Text="KL" FontSize="12" Foreground="{StaticResource KlTextMuted}" />
+                        <TextBlock Text="/" FontSize="12" Foreground="{StaticResource KlTextMuted}" />
+                        <TextBlock Text="New session" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource KlTextPrimary}" />
+                    </StackPanel>
+                </Border>
+
+                <StackPanel Grid.Row="1"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Spacing="14">
+                    <Border Width="64" Height="64"
+                            CornerRadius="8"
+                            Background="{StaticResource KlAccentSoft}"
+                            BorderBrush="{StaticResource KlAccentLine}"
+                            BorderThickness="1">
+                        <TextBlock Text="KL"
+                                   FontSize="20"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource KlAccent}"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                    <TextBlock Text="Start a new session to begin."
+                               FontSize="13"
+                               Foreground="{StaticResource KlTextMuted}"
+                               HorizontalAlignment="Center" />
+                </StackPanel>
+
+                <Border Grid.Row="2"
+                        Background="{StaticResource KlSurfaceAlt}"
+                        BorderBrush="{StaticResource KlLine}"
+                        BorderThickness="0,1,0,0"
+                        Padding="16,12">
+                    <Grid RowDefinitions="Auto,Auto">
+                        <TextBox Grid.Row="0"
+                                 AcceptsReturn="True"
+                                 TextWrapping="Wrap"
+                                 PlaceholderText="Send a message..."
+                                 MinHeight="76"
+                                 MaxHeight="220"
+                                 AutomationProperties.Name="Message composer" />
+
+                        <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto" Margin="0,10,0,0">
+                            <TextBlock Grid.Column="0"
+                                       Text="Ready"
+                                       FontSize="12"
+                                       Foreground="{StaticResource KlTextMuted}"
+                                       VerticalAlignment="Center" />
+                            <Button Grid.Column="1"
+                                    Content="Cancel"
+                                    IsEnabled="False"
+                                    HorizontalContentAlignment="Center"
+                                    Padding="14,7"
+                                    FontSize="12"
+                                    AutomationProperties.Name="Cancel turn" />
+                            <Button Grid.Column="2"
+                                    Classes="accent"
+                                    Content="Send"
+                                    IsEnabled="False"
+                                    HorizontalContentAlignment="Center"
+                                    Padding="14,7"
+                                    FontSize="12"
+                                    Margin="8,0,0,0"
+                                    AutomationProperties.Name="Send message" />
+                        </Grid>
+                    </Grid>
+                </Border>
+
+            </Grid>
+
+        </Grid>
+    </Grid>
 </Window>

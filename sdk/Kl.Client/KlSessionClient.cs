@@ -12,26 +12,42 @@ public sealed record TurnOutcome(string Status, string Text);
 /// </summary>
 public sealed class KlSessionClient : IAsyncDisposable
 {
-    private readonly KlCoreClient _client;
+    private const int SessionBusyCode = -32008;
+
+    private readonly KlClientOptions _clientOptions;
     private readonly KlSessionOptions _sessionOptions;
     private readonly ISessionPresenter _presenter;
     private readonly CancellationTokenSource _shutdown = new();
-    private readonly Task _eventLoop;
+    private readonly Channel<JsonElement> _events = Channel.CreateUnbounded<JsonElement>(
+        new UnboundedChannelOptions { SingleReader = true });
     private readonly object _turnCancellationLock = new();
+    private readonly object _sequenceLock = new();
+    private readonly object _clientLock = new();
+    private readonly Dictionary<string, long> _sequenceBySession = new();
+    private readonly SemaphoreSlim _reconnectGate = new(1, 1);
+    private readonly Task _eventLoop;
+    private KlCoreClient? _client;
     private TaskCompletionSource<TurnOutcome>? _turnCompletion;
     private CancellationTokenSource? _turnCancellation;
+    private CancellationTokenSource? _pumpCancellation;
+    private Task? _pumpTask;
     private string? _currentTurnId;
     private bool _cancelRequested;
+    private readonly bool _serverMode;
 
     private KlSessionClient(
         KlCoreClient client,
+        KlClientOptions clientOptions,
         KlSessionOptions sessionOptions,
         ISessionPresenter presenter,
-        JsonElement session)
+        JsonElement session,
+        bool serverMode)
     {
         _client = client;
+        _clientOptions = clientOptions;
         _sessionOptions = sessionOptions;
         _presenter = presenter;
+        _serverMode = serverMode;
         SessionId = session.GetProperty("session_id").GetString() ?? string.Empty;
         Workspace = session.GetProperty("workspace").GetString() ?? string.Empty;
         Provider = session.GetProperty("provider").GetString() ?? string.Empty;
@@ -52,6 +68,18 @@ public sealed class KlSessionClient : IAsyncDisposable
     public string ReasoningEffort { get; }
     public int MessageCount { get; }
 
+    /// <summary>Highest event sequence consumed for this session.</summary>
+    public long LastSeq
+    {
+        get
+        {
+            lock (_sequenceLock)
+            {
+                return _sequenceBySession.TryGetValue(SessionId, out var seq) ? seq : 0;
+            }
+        }
+    }
+
     public void SetAgent(string? agent) => _sessionOptions.Agent = agent;
 
     public static async Task<KlSessionClient> StartAsync(
@@ -61,52 +89,166 @@ public sealed class KlSessionClient : IAsyncDisposable
         CancellationToken cancellationToken = default,
         Action<string>? progress = null)
     {
-        var client = KlCoreClient.Start(clientOptions);
-        try
+        var endpoint = KlCoreClient.ResolveEndpoint(clientOptions);
+        var serverMode = endpoint is not null;
+        KlCoreClient client;
+        if (serverMode)
         {
+            progress?.Invoke("connecting");
+            client = await KlCoreClient.ConnectAsync(clientOptions, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        else
+        {
+            client = KlCoreClient.Start(clientOptions);
             progress?.Invoke("handshaking");
             await client.HandshakeAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        KlSessionClient? session = null;
+        try
+        {
             progress?.Invoke("opening-session");
-            JsonElement session;
+            JsonElement info;
             if (!string.IsNullOrWhiteSpace(sessionOptions.SessionId))
             {
-                session = await client.ResumeSessionAsync(sessionOptions.SessionId, cancellationToken)
+                info = await client.ResumeSessionAsync(sessionOptions.SessionId, cancellationToken)
                     .ConfigureAwait(false);
             }
             else
             {
                 var workspace = Path.GetFullPath(
                     sessionOptions.Workspace ?? Directory.GetCurrentDirectory());
-                session = await client.CreateSessionAsync(
+                info = await client.CreateSessionAsync(
                     workspace,
                     sessionOptions.Provider,
                     sessionOptions.Model,
                     cancellationToken).ConfigureAwait(false);
             }
 
-            var result = new KlSessionClient(client, sessionOptions, presenter, session);
+            session = new KlSessionClient(
+                client,
+                clientOptions,
+                sessionOptions,
+                presenter,
+                info,
+                serverMode);
+
+            if (serverMode)
+            {
+                // The server only forwards events for attached sessions and only
+                // accepts turn traffic from the lease holder.
+                var attach = await client.AttachSessionAsync(
+                    session.SessionId,
+                    null,
+                    cancellationToken).ConfigureAwait(false);
+                await client.LeaseSessionAsync(session.SessionId, null, cancellationToken)
+                    .ConfigureAwait(false);
+                session.EnqueueReplay(attach);
+            }
+
+            session.StartPump(client);
             progress?.Invoke("session-ready");
-            return result;
+            return session;
         }
         catch
         {
-            await client.DisposeAsync().ConfigureAwait(false);
+            if (session is not null)
+            {
+                await session.DisposeAsync().ConfigureAwait(false);
+            }
+            else
+            {
+                await client.DisposeAsync().ConfigureAwait(false);
+            }
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Reconnects to the local server, re-attaches the current session, replays
+    /// everything after <see cref="LastSeq"/> and takes the write lease again.
+    /// A failed reconnect keeps the session id so the caller can retry.
+    /// </summary>
+    public async Task ReconnectAsync(CancellationToken cancellationToken = default)
+    {
+        if (!_serverMode)
+        {
+            throw new NotSupportedException("reconnect requires the local server transport");
+        }
+
+        await _reconnectGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            KlCoreClient? previous;
+            lock (_clientLock)
+            {
+                previous = _client;
+                _client = null;
+            }
+            await StopPumpAsync().ConfigureAwait(false);
+            if (previous is not null)
+            {
+                await previous.DisposeAsync().ConfigureAwait(false);
+            }
+
+            // A turn that ran on the dropped connection cannot be resumed.
+            _turnCompletion?.TrySetResult(
+                new TurnOutcome("failed", "connection replaced by reconnect"));
+
+            KlCoreClient next;
+            try
+            {
+                next = await KlCoreClient.ConnectAsync(_clientOptions, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception error) when (error is not OperationCanceledException)
+            {
+                throw new InvalidOperationException(
+                    $"reconnect failed for session {SessionId}: {error.Message}",
+                    error);
+            }
+
+            try
+            {
+                var attach = await next.AttachSessionAsync(
+                    SessionId,
+                    LastSeq,
+                    cancellationToken).ConfigureAwait(false);
+                await LeaseAsync(next, cancellationToken).ConfigureAwait(false);
+                lock (_clientLock)
+                {
+                    _client = next;
+                }
+                EnqueueReplay(attach);
+                StartPump(next);
+            }
+            catch (Exception error) when (error is not OperationCanceledException)
+            {
+                await next.DisposeAsync().ConfigureAwait(false);
+                throw new InvalidOperationException(
+                    $"reconnect failed for session {SessionId}: {error.Message}",
+                    error);
+            }
+        }
+        finally
+        {
+            _reconnectGate.Release();
         }
     }
 
     public Task<JsonElement> HistoryAsync(
         int limit = 20,
         CancellationToken cancellationToken = default) =>
-        _client.SessionHistoryAsync(SessionId, limit, cancellationToken);
+        Client.SessionHistoryAsync(SessionId, limit, cancellationToken);
 
     public Task<JsonElement> ListSessionsAsync(CancellationToken cancellationToken = default) =>
-        _client.ListSessionsAsync(cancellationToken);
+        Client.ListSessionsAsync(cancellationToken);
 
     public async Task<string> ForkAsync(
         CancellationToken cancellationToken = default)
     {
-        var result = await _client.ForkSessionAsync(SessionId, cancellationToken)
+        var result = await Client.ForkSessionAsync(SessionId, cancellationToken)
             .ConfigureAwait(false);
         return result.TryGetProperty("session_id", out var id)
             && id.ValueKind == JsonValueKind.String
@@ -118,17 +260,42 @@ public sealed class KlSessionClient : IAsyncDisposable
         string sessionId,
         string name,
         CancellationToken cancellationToken = default) =>
-        _client.RenameSessionAsync(sessionId, name, cancellationToken);
+        Client.RenameSessionAsync(sessionId, name, cancellationToken);
 
     public Task<JsonElement> DeleteSessionAsync(
         string sessionId,
         CancellationToken cancellationToken = default) =>
-        _client.DeleteSessionAsync(sessionId, cancellationToken);
+        Client.DeleteSessionAsync(sessionId, cancellationToken);
+
+    public Task<JsonElement> ListMemoryAsync(
+        string? scope = null,
+        CancellationToken cancellationToken = default) =>
+        Client.ListMemoryAsync(SessionId, scope, cancellationToken);
+
+    public Task<JsonElement> ReadMemoryAsync(
+        string name,
+        string? scope = null,
+        CancellationToken cancellationToken = default) =>
+        Client.ReadMemoryAsync(name, SessionId, scope, cancellationToken);
+
+    public Task<JsonElement> WriteMemoryAsync(
+        string name,
+        string content,
+        string? scope = null,
+        CancellationToken cancellationToken = default) =>
+        Client.WriteMemoryAsync(name, content, SessionId, scope, cancellationToken);
+
+    public Task<JsonElement> DeleteMemoryAsync(
+        string name,
+        string? scope = null,
+        CancellationToken cancellationToken = default) =>
+        Client.DeleteMemoryAsync(name, SessionId, scope, cancellationToken);
 
     public async Task<TurnOutcome> RunTurnAsync(
         string prompt,
         CancellationToken cancellationToken = default)
     {
+        var client = Client;
         var completion = new TaskCompletionSource<TurnOutcome>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var turnCancellation = new CancellationTokenSource();
@@ -139,7 +306,12 @@ public sealed class KlSessionClient : IAsyncDisposable
         _turnCompletion = completion;
         try
         {
-            var start = await _client.StartTurnAsync(
+            if (_serverMode)
+            {
+                await client.LeaseSessionAsync(SessionId, null, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            var start = await client.StartTurnAsync(
                 SessionId,
                 prompt,
                 _sessionOptions.Provider,
@@ -188,10 +360,17 @@ public sealed class KlSessionClient : IAsyncDisposable
 
         try
         {
-            await _client.CancelTurnAsync(SessionId, turnId, cancellationToken)
+            var client = Client;
+            if (_serverMode)
+            {
+                await client.LeaseSessionAsync(SessionId, null, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            await client.CancelTurnAsync(SessionId, turnId, cancellationToken)
                 .ConfigureAwait(false);
         }
-        catch (JsonRpcException error)
+        catch (Exception error)
+            when (error is JsonRpcException or IOException or InvalidOperationException)
         {
             await _presenter.OnEventAsync(
                 new SessionEvent(
@@ -201,15 +380,121 @@ public sealed class KlSessionClient : IAsyncDisposable
         }
     }
 
+    private KlCoreClient Client
+    {
+        get
+        {
+            lock (_clientLock)
+            {
+                return _client
+                    ?? throw new InvalidOperationException(
+                        $"session {SessionId} is disconnected; call ReconnectAsync to restore it");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Takes the write lease, retrying while the dropped connection still owns
+    /// it. Windows named pipes release the lease only after the pipe drains.
+    /// </summary>
+    private async Task LeaseAsync(
+        KlCoreClient client,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                await client.LeaseSessionAsync(SessionId, null, cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            }
+            catch (JsonRpcException error)
+                when (error.Code == SessionBusyCode && attempt < 40)
+            {
+                await Task.Delay(50, cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private void StartPump(KlCoreClient client)
+    {
+        var cancellation = new CancellationTokenSource();
+        _pumpCancellation = cancellation;
+        _pumpTask = Task.Run(() => PumpAsync(client, cancellation.Token));
+    }
+
+    private async Task StopPumpAsync()
+    {
+        var cancellation = _pumpCancellation;
+        var task = _pumpTask;
+        _pumpCancellation = null;
+        _pumpTask = null;
+        if (cancellation is null || task is null)
+        {
+            return;
+        }
+
+        await cancellation.CancelAsync().ConfigureAwait(false);
+        try
+        {
+            await task.ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is OperationCanceledException or ChannelClosedException)
+        {
+            // The connection is going away.
+        }
+        cancellation.Dispose();
+    }
+
+    private async Task PumpAsync(KlCoreClient client, CancellationToken cancellationToken)
+    {
+        try
+ {
+            await foreach (var message in client.Notifications.ReadAllAsync(cancellationToken))
+            {
+                if (message.TryGetProperty("params", out var parameters))
+                {
+                    _events.Writer.TryWrite(parameters);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Replaced by a newer connection.
+        }
+        catch (ChannelClosedException)
+        {
+            // Core exited.
+        }
+        finally
+        {
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                // The connection dropped on its own. A running turn cannot
+                // finish, so it fails instead of hanging.
+                lock (_clientLock)
+                {
+                    if (ReferenceEquals(_client, client))
+                    {
+                        _client = null;
+                    }
+                }
+                _turnCompletion?.TrySetResult(
+                    new TurnOutcome("failed", "core connection closed"));
+            }
+        }
+    }
+
     private async Task ConsumeEventsAsync(CancellationToken cancellationToken)
     {
         try
         {
-            await foreach (var message in _client.Notifications.ReadAllAsync(cancellationToken))
+            await foreach (var parameters in _events.Reader.ReadAllAsync(cancellationToken))
             {
                 try
                 {
-                    await HandleEventAsync(message, cancellationToken).ConfigureAwait(false);
+                    await HandleEventAsync(parameters, cancellationToken).ConfigureAwait(false);
                 }
                 catch (Exception error)
                     when (error is JsonException or InvalidOperationException or KeyNotFoundException)
@@ -236,14 +521,26 @@ public sealed class KlSessionClient : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Handles one core event. <paramref name="parameters"/> is the
+    /// <c>{session_id, seq, event}</c> payload the core uses for both live
+    /// notifications and attach replays.
+    /// </summary>
     private async Task HandleEventAsync(
-        JsonElement message,
+        JsonElement parameters,
         CancellationToken cancellationToken)
     {
-        if (!message.TryGetProperty("params", out var parameters)
-            || !parameters.TryGetProperty("event", out var envelope)
+        if (!parameters.TryGetProperty("event", out var envelope)
             || !envelope.TryGetProperty("type", out var typeElement))
         {
+            return;
+        }
+
+        var sessionId = GetString(parameters, "session_id");
+        var seq = GetLong(parameters, "seq");
+        if (seq > 0 && !TryAdvanceSequence(sessionId, seq))
+        {
+            // Duplicate replay or a stale out-of-order event.
             return;
         }
 
@@ -315,6 +612,14 @@ public sealed class KlSessionClient : IAsyncDisposable
                     new SessionEvent(
                         SessionEventKind.AuditRecorded,
                         Text: GetString(data, "record_id")),
+                    cancellationToken).ConfigureAwait(false);
+                break;
+            case "context.compacted":
+                await _presenter.OnEventAsync(
+                    new SessionEvent(
+                        SessionEventKind.ContextCompacted,
+                        Text: GetString(data, "trigger"),
+                        Summary: GetString(data, "summary")),
                     cancellationToken).ConfigureAwait(false);
                 break;
             case "turn.completed":
@@ -390,19 +695,68 @@ public sealed class KlSessionClient : IAsyncDisposable
 
         try
         {
-            await _client.RespondApprovalAsync(
+            var client = Client;
+            if (_serverMode)
+            {
+                await client.LeaseSessionAsync(SessionId, null, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            await client.RespondApprovalAsync(
                 SessionId,
                 approvalId,
                 decision,
                 cancellationToken).ConfigureAwait(false);
         }
-        catch (JsonRpcException error)
+        catch (Exception error)
+            when (error is JsonRpcException or IOException or InvalidOperationException)
         {
             await _presenter.OnEventAsync(
                 new SessionEvent(
                     SessionEventKind.Error,
                     Text: $"approval response failed: {error.Message}"),
                 cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Accepts an event only when its sequence is newer than the last one seen
+    /// for that session, so replays and duplicates are shown once and stale
+    /// out-of-order events are dropped.
+    /// </summary>
+    private bool TryAdvanceSequence(string sessionId, long seq)
+    {
+        lock (_sequenceLock)
+        {
+            if (sessionId.Length > 0
+                && _sequenceBySession.TryGetValue(sessionId, out var last)
+                && seq <= last)
+            {
+                return false;
+            }
+            if (sessionId.Length > 0)
+            {
+                _sequenceBySession[sessionId] = seq;
+            }
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Queues the events the server replayed for this session. They travel
+    /// through the same channel as live events so ordering and de-duplication
+    /// behave identically.
+    /// </summary>
+    private void EnqueueReplay(JsonElement attach)
+    {
+        if (!attach.TryGetProperty("replay", out var replay)
+            || replay.ValueKind != JsonValueKind.Array)
+        {
+            return;
+        }
+
+        foreach (var entry in replay.EnumerateArray())
+        {
+            _events.Writer.TryWrite(entry);
         }
     }
 
@@ -447,6 +801,7 @@ public sealed class KlSessionClient : IAsyncDisposable
             _turnCancellation?.Cancel();
         }
         _shutdown.Cancel();
+        await StopPumpAsync().ConfigureAwait(false);
         try
         {
             await _eventLoop.ConfigureAwait(false);
@@ -455,7 +810,17 @@ public sealed class KlSessionClient : IAsyncDisposable
         {
             // Normal shutdown.
         }
+        _events.Writer.TryComplete();
         _shutdown.Dispose();
-        await _client.DisposeAsync().ConfigureAwait(false);
+        KlCoreClient? client;
+        lock (_clientLock)
+        {
+            client = _client;
+            _client = null;
+        }
+        if (client is not null)
+        {
+            await client.DisposeAsync().ConfigureAwait(false);
+        }
     }
 }

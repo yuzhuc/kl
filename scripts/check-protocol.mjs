@@ -6,6 +6,10 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 const PROTOCOL_RS = "crates/kl-protocol/src/lib.rs";
 const METHODS_SCHEMA = "schemas/protocol/v1/methods.schema.json";
+const CSHARP_PROTOCOL = "sdk/Kl.Client/Protocol.cs";
+
+// 方法名形状：小写点分标识符。"kl-core"、"kl-tui"、"0.1.0" 不是方法。
+const METHOD_NAME = /^[a-z][a-z0-9_]*(\.[a-z0-9_]+)*$/;
 
 // schema 里少数根名推不出 Rust 方法名（历史命名不一致），补 schema 时应统一
 const SCHEMA_ROOT_OWNERS = {
@@ -55,6 +59,12 @@ export function extractRustEvents(text) {
   return [...block.matchAll(/#\[serde\(rename = "([^"]+)"\)\]/g)].map((match) => match[1]);
 }
 
+export function extractCsharpMethods(text) {
+  return [...text.matchAll(/public const string \w+ = "([^"]+)";/g)]
+    .map((match) => match[1])
+    .filter((value) => METHOD_NAME.test(value));
+}
+
 export function extractSchemaRoots(schema) {
   return Object.keys(schema.$defs ?? {})
     .filter((key) => key.endsWith("Params") || key.endsWith("Result"))
@@ -63,7 +73,13 @@ export function extractSchemaRoots(schema) {
 
 export function extractSchemaEvents(schema) {
   const notification = schema.$defs?.eventNotification;
-  return notification?.properties?.params?.properties?.event?.properties?.type?.enum ?? [];
+  const event = resolveRef(schema, notification?.properties?.params?.properties?.event);
+  return event?.properties?.type?.enum ?? [];
+}
+
+function resolveRef(schema, node) {
+  if (!node?.$ref) return node;
+  return schema.$defs?.[node.$ref.replace("#/$defs/", "")];
 }
 
 // "provider.set_api_key" -> "providerSetApiKey"，"kl.handshake" -> "handshake"
@@ -99,11 +115,15 @@ export function checkProtocol(read) {
   const failures = [];
   const rustText = read(PROTOCOL_RS);
   const schemaText = read(METHODS_SCHEMA);
+  const csharpText = read(CSHARP_PROTOCOL);
   if (rustText === undefined) {
     return { failures: [{ id: "rust-missing", detail: `${PROTOCOL_RS}: file is missing` }] };
   }
   if (schemaText === undefined) {
     return { failures: [{ id: "schema-missing", detail: `${METHODS_SCHEMA}: file is missing` }] };
+  }
+  if (csharpText === undefined) {
+    return { failures: [{ id: "csharp-missing", detail: `${CSHARP_PROTOCOL}: file is missing` }] };
   }
 
   let schema;
@@ -123,6 +143,7 @@ export function checkProtocol(read) {
 
   const schemaRoots = new Set(extractSchemaRoots(schema));
   const schemaEvents = new Set(extractSchemaEvents(schema));
+  const csharpMethods = new Set(extractCsharpMethods(csharpText));
 
   for (const method of rustMethods) {
     if (method === "event") continue;
@@ -161,6 +182,24 @@ export function checkProtocol(read) {
     }
   }
 
+  for (const method of rustMethods) {
+    if (!csharpMethods.has(method)) {
+      failures.push({
+        id: "method-missing-in-csharp",
+        detail: `method ${method} has no constant in ${CSHARP_PROTOCOL}`,
+      });
+    }
+  }
+
+  for (const method of csharpMethods) {
+    if (!rustMethods.includes(method)) {
+      failures.push({
+        id: "csharp-method-unknown",
+        detail: `${CSHARP_PROTOCOL} declares ${method} but ${PROTOCOL_RS} has no such method`,
+      });
+    }
+  }
+
   return { failures };
 }
 
@@ -179,7 +218,7 @@ function main() {
     console.error(`protocol check: ${failures.length} mismatches`);
     process.exit(1);
   }
-  console.log("protocol check: Rust methods and events match the schema");
+  console.log("protocol check: Rust methods and events match the schema and C#");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();

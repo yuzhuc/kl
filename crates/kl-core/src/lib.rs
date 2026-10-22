@@ -32,18 +32,20 @@ use kl_protocol::{
     ApprovalMode, ApprovalRespondParams, AuditTailParams, CORE_NAME, CORE_VERSION, CoreEvent,
     DefaultModelResult, DoctorCheck, DoctorResult, EventNotification, HandshakeParams,
     HandshakeResult, IncomingMessage, MIN_PROTOCOL_VERSION, McpListResult, McpToolInfo,
-    PROTOCOL_VERSION, PermissionsResult, PermissionsSetParams, PingParams, PingResult,
-    PluginIdParams, PluginInstallParams, PluginListResult, ProviderEnabledResult,
-    ProviderKeyResult, ProviderListResult, ProviderModelSummary, ProviderSetApiKeyParams,
-    ProviderSetEnabledParams, ProviderUpsertParams, ProviderUpsertResult, RequestId, ReviewFinding,
-    ReviewResult, ReviewRunParams, RpcError, SandboxCapabilitiesSummary, SandboxSummary,
-    SessionCompactParams, SessionCompactResult, SessionCreateParams, SessionDeleteParams,
-    SessionDeleteResult, SessionHistoryEntry, SessionHistoryParams, SessionHistoryResult,
-    SessionHistoryToolSummary, SessionInfo, SessionListResult, SessionRenameParams,
-    SessionResumeParams, SessionStatusParams, SessionStatusResult, SetDefaultModelParams,
-    SkillGetParams, SkillGetResult, SkillInfo, SkillListParams, SkillListResult, TurnCancelParams,
-    TurnCancelResult, TurnStartParams, TurnStartResult, WorkspaceInitParams, WorkspaceInitResult,
-    error_codes, failure, failure_with_data, methods, negotiate, success, validate_envelope,
+    MemoryDeleteParams, MemoryDeleteResult, MemoryEntryInfo, MemoryListParams, MemoryListResult,
+    MemoryReadParams, MemoryReadResult, MemoryWriteParams, MemoryWriteResult, PROTOCOL_VERSION,
+    PermissionsResult, PermissionsSetParams, PingParams, PingResult, PluginIdParams,
+    PluginInstallParams, PluginListResult, ProviderEnabledResult, ProviderKeyResult,
+    ProviderListResult, ProviderModelSummary, ProviderSetApiKeyParams, ProviderSetEnabledParams,
+    ProviderUpsertParams, ProviderUpsertResult, RequestId, ReviewFinding, ReviewResult,
+    ReviewRunParams, RpcError, SandboxCapabilitiesSummary, SandboxSummary, SessionCompactParams,
+    SessionCompactResult, SessionCreateParams, SessionDeleteParams, SessionDeleteResult,
+    SessionHistoryEntry, SessionHistoryParams, SessionHistoryResult, SessionHistoryToolSummary,
+    SessionInfo, SessionListResult, SessionRenameParams, SessionResumeParams, SessionStatusParams,
+    SessionStatusResult, SetDefaultModelParams, SkillGetParams, SkillGetResult, SkillInfo,
+    SkillListParams, SkillListResult, TurnCancelParams, TurnCancelResult, TurnStartParams,
+    TurnStartResult, WorkspaceInitParams, WorkspaceInitResult, error_codes, failure,
+    failure_with_data, methods, negotiate, success, validate_envelope,
 };
 use kl_provider::{
     AnthropicAdapter, BoundProvider, CancellationToken, ChatEvent, ChatMessage, ChatOutcome,
@@ -59,7 +61,7 @@ use kl_store::{
     SessionData, SessionMeta, SessionStore, StoreError, TURN_STATE_IDLE,
     TURN_STATE_WAITING_APPROVAL, TURN_STATE_WORKING,
 };
-use kl_tools::{ToolError, ToolRegistry, ToolSource};
+use kl_tools::{MemoryScope, MemoryStore, ToolError, ToolRegistry, ToolSource};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -72,6 +74,10 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+mod server;
+
+pub use server::run_server;
 
 pub const FEATURES: &[&str] = &[
     "events",
@@ -604,6 +610,7 @@ struct DeepTurn {
     default_model: String,
     task: String,
     workspace: PathBuf,
+    memory_prompt: String,
     tool_access: ToolAccess,
 }
 
@@ -698,7 +705,8 @@ impl DeepTurn {
                 self.sandbox.clone(),
                 self.audit.clone(),
                 agent_config,
-            );
+            )
+            .with_system_prompt(&self.memory_prompt);
             let prompt = stage.prompt(&self.task, index_context.as_deref());
             let result = agent.run_turn(
                 &self.session_id,
@@ -1052,28 +1060,30 @@ impl Core {
     }
 
     fn handle_line(&mut self, line: &str) {
+        if let Some(response) = self.handle_request(line) {
+            let _ = self.emitter().send(&response);
+        }
+    }
+
+    /// Handles one request and returns its response without writing it. The
+    /// stdio loop and the local server share this path.
+    fn handle_request(&mut self, line: &str) -> Option<Value> {
         let message: IncomingMessage = match serde_json::from_str(line) {
             Ok(message) => message,
             Err(error) => {
-                let _ = self.emitter().respond_error(
+                return Some(failure(
                     None,
                     error_codes::PARSE_ERROR,
                     format!("invalid JSON: {error}"),
-                );
-                return;
+                ));
             }
         };
 
         if let Err(error) = validate_envelope(&message) {
-            let _ = self
-                .emitter()
-                .respond_error(message.id.clone(), error.code, error.message);
-            return;
+            return Some(failure(message.id.clone(), error.code, error.message));
         }
 
-        let Some(id) = message.id.clone() else {
-            return;
-        };
+        let id = message.id.clone()?;
         let method = message.method.clone().unwrap_or_default();
         let needs_handshake = !matches!(
             method.as_str(),
@@ -1088,26 +1098,14 @@ impl Core {
             self.dispatch(&method, message.params)
         };
 
-        match result {
-            Ok(value) => {
-                let _ = self.emitter().respond(id, value);
-            }
-            Err(error) => {
-                let _ = match error.data {
-                    Some(data) => self.emitter().send(&failure_with_data(
-                        Some(id),
-                        error.code,
-                        error.message,
-                        data,
-                    )),
-                    None => self
-                        .emitter()
-                        .respond_error(Some(id), error.code, error.message),
-                };
-            }
-        }
+        Some(match result {
+            Ok(value) => success(id, value),
+            Err(error) => match error.data {
+                Some(data) => failure_with_data(Some(id), error.code, error.message, data),
+                None => failure(Some(id), error.code, error.message),
+            },
+        })
     }
-
     fn emitter(&self) -> &Emitter {
         &self.hub.emitter
     }
@@ -1151,6 +1149,10 @@ impl Core {
             methods::PLUGIN_RELOAD => self.plugin_reload(params),
             methods::PLUGIN_ENABLE => self.plugin_enable(params),
             methods::PLUGIN_DISABLE => self.plugin_disable(params),
+            methods::MEMORY_LIST => self.memory_list(params),
+            methods::MEMORY_READ => self.memory_read(params),
+            methods::MEMORY_WRITE => self.memory_write(params),
+            methods::MEMORY_DELETE => self.memory_delete(params),
             other => Err(rpc_error(
                 error_codes::METHOD_NOT_FOUND,
                 format!("unknown method: {other}"),
@@ -1677,6 +1679,8 @@ impl Core {
         };
         let omitted_messages = messages.omitted_messages;
         let estimated_tokens = messages.estimated_tokens;
+        let summary_used = messages.summary_used;
+        let summary = messages.summary.clone();
         let history = messages.history;
         {
             let mut sessions = self
@@ -1707,6 +1711,16 @@ impl Core {
             };
             self.store.save(&data).map_err(store_error)?;
         }
+        let _ = self.hub.emit(
+            &session_id,
+            CoreEvent::ContextCompacted {
+                trigger: "session.compact".to_owned(),
+                omitted_messages,
+                estimated_tokens,
+                summary_used,
+                summary,
+            },
+        );
         to_value(SessionCompactResult {
             omitted_messages,
             estimated_tokens,
@@ -1901,7 +1915,12 @@ impl Core {
         };
         let is_deep = profile.id == agents::DEEP_ID;
         let prompt_prefix = profile.prompt_prefix.clone();
-        let system_prompt = profile.system.clone().unwrap_or_default();
+        let memory_block = self.memory_injection(&workspace);
+        let system_prompt = match profile.system.clone() {
+            Some(system) if memory_block.is_empty() => system,
+            Some(system) => format!("{memory_block}\n\n{system}"),
+            None => memory_block.clone(),
+        };
 
         let thread_session = session_id.clone();
         let thread_turn = turn_id.clone();
@@ -1943,6 +1962,7 @@ impl Core {
                     default_model: thread_metadata.model.clone(),
                     task: format!("{skills_summary}{prompt_prefix}{prompt}"),
                     workspace: PathBuf::from(&workspace),
+                    memory_prompt: memory_block.clone(),
                     tool_access,
                 }
                 .run(&mut history)
@@ -2435,6 +2455,186 @@ impl Core {
             name: params.name,
             content,
         })
+    }
+
+    /// Resolves the memory store of a session: the workspace store under
+    /// `.kl/memory` and the user store under the KL home.
+    fn memory_store(&mut self, session_id: &str) -> Result<MemoryStore, RpcError> {
+        let workspace = self.session_workspace(session_id)?;
+        MemoryStore::resolve(&workspace, Some(&self.context.home)).map_err(memory_error)
+    }
+
+    /// Builds the bounded memory block that is injected into the system
+    /// prompt and records it in the audit trail.
+    fn memory_injection(&self, workspace: &str) -> String {
+        let Ok(store) = MemoryStore::resolve(Path::new(workspace), Some(&self.context.home)) else {
+            return String::new();
+        };
+        let injection = store.injection();
+        if injection.entries.is_empty() {
+            return String::new();
+        }
+        let mut audit = AuditRecord::new(
+            "core",
+            "",
+            "",
+            "memory",
+            "inject",
+            injection.entries.join(", "),
+            "allow",
+        );
+        audit.ok = true;
+        audit.with_output(&injection.text);
+        let _ = self.audit.record(&audit);
+        format!(
+            "Project memory (from .kl/memory and ~/.kl/memory, {} entr{}):\n\n{}",
+            injection.entries.len(),
+            if injection.entries.len() == 1 {
+                "y"
+            } else {
+                "ies"
+            },
+            injection.text
+        )
+    }
+
+    fn memory_list(&mut self, params: Value) -> Result<Value, RpcError> {
+        let params: MemoryListParams = parse_params(params, methods::MEMORY_LIST)?;
+        let scope = memory_scope(params.scope.as_deref())?;
+        let store = self.memory_store(&params.session_id)?;
+        let entries = store
+            .list(scope)
+            .into_iter()
+            .map(|entry| MemoryEntryInfo {
+                name: entry.name,
+                scope: entry.scope.as_str().to_owned(),
+                size_bytes: entry.bytes,
+            })
+            .collect();
+        to_value(MemoryListResult { entries })
+    }
+
+    fn memory_read(&mut self, params: Value) -> Result<Value, RpcError> {
+        let params: MemoryReadParams = parse_params(params, methods::MEMORY_READ)?;
+        let scope = memory_scope(params.scope.as_deref())?;
+        let store = self.memory_store(&params.session_id)?;
+        let (scope, content) = match scope {
+            Some(scope) => (
+                scope,
+                store.read(scope, &params.name).map_err(memory_error)?,
+            ),
+            None => match store.read(MemoryScope::Workspace, &params.name) {
+                Ok(content) => (MemoryScope::Workspace, content),
+                Err(ToolError::NotFound(_)) => (
+                    MemoryScope::User,
+                    store
+                        .read(MemoryScope::User, &params.name)
+                        .map_err(memory_error)?,
+                ),
+                Err(error) => return Err(memory_error(error)),
+            },
+        };
+        to_value(MemoryReadResult {
+            name: params.name,
+            scope: scope.as_str().to_owned(),
+            content,
+        })
+    }
+
+    fn memory_write(&mut self, params: Value) -> Result<Value, RpcError> {
+        let params: MemoryWriteParams = parse_params(params, methods::MEMORY_WRITE)?;
+        let scope = memory_scope(params.scope.as_deref())?.unwrap_or(MemoryScope::Workspace);
+        let workspace = self.session_workspace(&params.session_id)?;
+        self.memory_write_allowed(scope, &workspace)?;
+        let store = self.memory_store(&params.session_id)?;
+        let (_, path) = store
+            .write(scope, &params.name, &params.content)
+            .map_err(memory_error)?;
+        self.record_memory_audit("write", &path, scope)?;
+        to_value(MemoryWriteResult {
+            name: params.name,
+            scope: scope.as_str().to_owned(),
+            size_bytes: params.content.len() as u64,
+        })
+    }
+
+    fn memory_delete(&mut self, params: Value) -> Result<Value, RpcError> {
+        let params: MemoryDeleteParams = parse_params(params, methods::MEMORY_DELETE)?;
+        let scope = memory_scope(params.scope.as_deref())?;
+        let workspace = self.session_workspace(&params.session_id)?;
+        self.memory_write_allowed(scope.unwrap_or(MemoryScope::Workspace), &workspace)?;
+        let store = self.memory_store(&params.session_id)?;
+        let scope = match scope {
+            Some(scope) => scope,
+            None => {
+                if store
+                    .list(Some(MemoryScope::Workspace))
+                    .iter()
+                    .any(|entry| entry.name == params.name)
+                {
+                    MemoryScope::Workspace
+                } else {
+                    MemoryScope::User
+                }
+            }
+        };
+        let path = store
+            .entry_path_for(scope, &params.name)
+            .map_err(memory_error)?;
+        store.delete(scope, &params.name).map_err(memory_error)?;
+        self.record_memory_audit("delete", &path, scope)?;
+        to_value(MemoryDeleteResult {
+            name: params.name,
+            scope: scope.as_str().to_owned(),
+            deleted: true,
+        })
+    }
+
+    /// Writes need an editable mode. The workspace store is additionally
+    /// checked against the policy engine so sensitive paths stay blocked.
+    ///
+    /// The protocol path is driven by the interactive client, so an explicit
+    /// user command is the approval; the agent path still goes through the
+    /// tool approval gate.
+    fn memory_write_allowed(&self, scope: MemoryScope, workspace: &Path) -> Result<(), RpcError> {
+        let access = self.tool_access();
+        if access != ToolAccess::Full {
+            return Err(rpc_error(
+                error_codes::POLICY_DENIED,
+                "memory writes are not allowed in the current permission mode",
+            ));
+        }
+        if scope == MemoryScope::Workspace {
+            let policy = PolicyEngine::new(workspace, self.effective_policy_config())
+                .map_err(|error| rpc_error(error_codes::INTERNAL_ERROR, error.to_string()))?;
+            let evaluation =
+                policy.evaluate_with_access(access, kl_policy::Action::Edit, ".kl/memory");
+            if evaluation.effect == kl_policy::Effect::Deny {
+                return Err(rpc_error(error_codes::POLICY_DENIED, evaluation.reason));
+            }
+        }
+        Ok(())
+    }
+
+    fn record_memory_audit(
+        &self,
+        action: &str,
+        path: &Path,
+        scope: MemoryScope,
+    ) -> Result<(), RpcError> {
+        let mut audit = AuditRecord::new(
+            "core",
+            "",
+            "",
+            "memory",
+            action,
+            format!("{} ({})", path.display(), scope.as_str()),
+            "allow",
+        );
+        audit.ok = true;
+        self.audit
+            .record(&audit)
+            .map_err(|error| rpc_error(error_codes::INTERNAL_ERROR, error.to_string()))
     }
 
     fn mcp_list(&self) -> Result<Value, RpcError> {
@@ -3079,6 +3279,27 @@ fn skill_error(error: ToolError) -> RpcError {
     rpc_error(code, error.to_string())
 }
 
+fn memory_error(error: ToolError) -> RpcError {
+    let code = match &error {
+        ToolError::Policy(_) => error_codes::POLICY_DENIED,
+        ToolError::InvalidArgs(_) | ToolError::NotFound(_) => error_codes::INVALID_PARAMS,
+        _ => error_codes::INTERNAL_ERROR,
+    };
+    rpc_error(code, error.to_string())
+}
+
+fn memory_scope(value: Option<&str>) -> Result<Option<MemoryScope>, RpcError> {
+    match value {
+        None => Ok(None),
+        Some(value) => MemoryScope::parse(value).map(Some).ok_or_else(|| {
+            rpc_error(
+                error_codes::INVALID_PARAMS,
+                format!("unknown memory scope: {value}"),
+            )
+        }),
+    }
+}
+
 fn store_error(error: StoreError) -> RpcError {
     match error {
         StoreError::NotFound(id) => rpc_error(
@@ -3309,6 +3530,24 @@ mod tests {
             .lines()
             .map(|line| serde_json::from_str(line).unwrap())
             .collect()
+    }
+
+    #[test]
+    fn approval_broker_timeout_and_cancel_deny() {
+        let broker = ApprovalBroker::new(Duration::from_millis(20));
+        let receiver = broker.register("timeout");
+        let started = Instant::now();
+        assert_eq!(
+            broker.wait_registered("timeout", receiver, &AtomicBool::new(false)),
+            ApprovalDecision::Deny
+        );
+        assert!(started.elapsed() >= Duration::from_millis(15));
+
+        let receiver = broker.register("cancel");
+        assert_eq!(
+            broker.wait_registered("cancel", receiver, &AtomicBool::new(true)),
+            ApprovalDecision::Deny
+        );
     }
 
     #[test]
@@ -4015,6 +4254,15 @@ max_iterations = 2
         );
         let persisted = core.store.load(&session_id).unwrap();
         assert_eq!(persisted.messages.len(), history.len());
+        let events = core.store.read_events(&session_id).unwrap();
+        assert!(events.iter().any(|event| matches!(
+            &event.event,
+            CoreEvent::ContextCompacted {
+                trigger,
+                summary_used: false,
+                ..
+            } if trigger == "session.compact"
+        )));
 
         {
             let mut sessions = core.sessions.lock().unwrap();
@@ -4186,6 +4434,183 @@ max_iterations = 2
             .map(|stored| stored.seq)
             .expect("matching turn.started event");
         assert!(user_messages[0].0 < started_seq);
+    }
+
+    #[test]
+    fn memory_methods_round_trip_and_reject_unsafe_input() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = temp.path().join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let config = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let (mut core, _) = new_test_core(config, home.path());
+        core.handshaken = true;
+        let created = core
+            .session_create(json!({"workspace": workspace.to_string_lossy()}))
+            .unwrap();
+        let session_id = created["session_id"].as_str().unwrap().to_owned();
+
+        let empty = core.memory_list(json!({"session_id": session_id})).unwrap();
+        assert_eq!(empty["entries"].as_array().unwrap().len(), 0);
+
+        let written = core
+            .memory_write(json!({
+                "session_id": session_id,
+                "name": "notes.md",
+                "content": "# hello"
+            }))
+            .unwrap();
+        assert_eq!(written["name"], "notes.md");
+        assert_eq!(written["scope"], "workspace");
+        assert!(workspace.join(".kl/memory/notes.md").is_file());
+
+        let listed = core.memory_list(json!({"session_id": session_id})).unwrap();
+        assert_eq!(listed["entries"].as_array().unwrap().len(), 1);
+        assert_eq!(listed["entries"][0]["name"], "notes.md");
+
+        let read = core
+            .memory_read(json!({"session_id": session_id, "name": "notes.md"}))
+            .unwrap();
+        assert_eq!(read["content"], "# hello");
+        assert_eq!(read["scope"], "workspace");
+
+        for name in ["../escape.md", "sub/dir.md", "..", "notes.txt"] {
+            let error = core
+                .memory_write(json!({
+                    "session_id": session_id,
+                    "name": name,
+                    "content": "x"
+                }))
+                .unwrap_err();
+            assert_eq!(error.code, error_codes::INVALID_PARAMS, "{name}");
+        }
+        assert!(!workspace.join(".kl/escape.md").exists());
+
+        let error = core
+            .memory_write(json!({
+                "session_id": session_id,
+                "name": "big.md",
+                "content": "a".repeat(70 * 1024)
+            }))
+            .unwrap_err();
+        assert_eq!(error.code, error_codes::INVALID_PARAMS);
+
+        let deleted = core
+            .memory_delete(json!({"session_id": session_id, "name": "notes.md"}))
+            .unwrap();
+        assert_eq!(deleted["deleted"], true);
+        assert!(!workspace.join(".kl/memory/notes.md").exists());
+
+        let listed = core.memory_list(json!({"session_id": session_id})).unwrap();
+        assert_eq!(listed["entries"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn memory_is_injected_into_the_system_prompt_and_dropped_after_delete() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = temp.path().join("workspace");
+        std::fs::create_dir_all(workspace.join(".kl/memory")).unwrap();
+        std::fs::write(workspace.join(".kl/memory/notes.md"), "remember the milk").unwrap();
+        let config = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let (mut core, _) = new_test_core(config, home.path());
+        core.handshaken = true;
+
+        let system = Arc::new(Mutex::new(Vec::new()));
+        let (_, metadata) = core.router.get(Some("scripted"), Some("scripted")).unwrap();
+        core.router.register(
+            metadata,
+            Arc::new(CapturingProvider {
+                system: system.clone(),
+            }),
+        );
+
+        let created = core
+            .session_create(json!({"workspace": workspace.to_string_lossy()}))
+            .unwrap();
+        let session_id = created["session_id"].as_str().unwrap().to_owned();
+
+        core.turn_start(json!({"session_id": session_id, "prompt": "hello"}))
+            .unwrap();
+        wait_for_threads(&mut core);
+        let captured = system
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone();
+        assert!(
+            !captured.is_empty(),
+            "the agent must have called the provider"
+        );
+        assert!(
+            captured[0].contains("remember the milk"),
+            "memory must reach the system prompt: {}",
+            captured[0]
+        );
+
+        let records = core.audit.tail(50).unwrap();
+        assert!(
+            records
+                .iter()
+                .any(|record| record["tool"] == "memory" && record["action"] == "inject"),
+            "the injection must be recorded in the audit trail"
+        );
+
+        core.memory_delete(json!({"session_id": session_id, "name": "notes.md"}))
+            .unwrap();
+        core.turn_start(json!({"session_id": session_id, "prompt": "hello again"}))
+            .unwrap();
+        wait_for_threads(&mut core);
+        let captured = system
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone();
+        let last = captured.last().unwrap();
+        assert!(
+            !last.contains("remember the milk"),
+            "a deleted memory must not be injected again: {last}"
+        );
+    }
+
+    #[test]
+    fn user_memory_is_injected_but_the_workspace_wins() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = temp.path().join("workspace");
+        std::fs::create_dir_all(workspace.join(".kl/memory")).unwrap();
+        let home = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(home.path().join("memory")).unwrap();
+        std::fs::write(home.path().join("memory/global.md"), "global note").unwrap();
+        std::fs::write(home.path().join("memory/dup.md"), "user version").unwrap();
+        std::fs::write(workspace.join(".kl/memory/dup.md"), "workspace version").unwrap();
+
+        let config = command_config(temp.path());
+        let (mut core, _) = new_test_core(config, home.path());
+        core.handshaken = true;
+
+        let system = Arc::new(Mutex::new(Vec::new()));
+        let (_, metadata) = core.router.get(Some("scripted"), Some("scripted")).unwrap();
+        core.router.register(
+            metadata,
+            Arc::new(CapturingProvider {
+                system: system.clone(),
+            }),
+        );
+
+        let created = core
+            .session_create(json!({"workspace": workspace.to_string_lossy()}))
+            .unwrap();
+        let session_id = created["session_id"].as_str().unwrap().to_owned();
+        core.turn_start(json!({"session_id": session_id, "prompt": "hello"}))
+            .unwrap();
+        wait_for_threads(&mut core);
+
+        let captured = system
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone();
+        let prompt = captured.first().unwrap();
+        assert!(prompt.contains("global note"), "{prompt}");
+        assert!(prompt.contains("workspace version"), "{prompt}");
+        assert!(!prompt.contains("user version"), "{prompt}");
     }
 
     #[test]
@@ -4474,6 +4899,48 @@ max_iterations = 2
     }
 
     struct SlowProvider;
+
+    /// Captures the system prompt of every request so tests can assert what
+    /// the agent was told.
+    struct CapturingProvider {
+        system: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl Provider for CapturingProvider {
+        fn id(&self) -> &str {
+            "capturing"
+        }
+
+        fn kind(&self) -> &str {
+            "test"
+        }
+
+        fn models(&self) -> Vec<ModelInfo> {
+            vec![ModelInfo::new("capturing")]
+        }
+
+        fn available(&self) -> (bool, String) {
+            (true, "captures the system prompt".to_owned())
+        }
+
+        fn stream_chat(
+            &self,
+            request: &ChatRequest,
+            _cancel: &CancellationToken,
+            _on_event: &mut dyn FnMut(ChatEvent),
+        ) -> Result<ChatOutcome, ProviderError> {
+            self.system
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .push(request.system.clone());
+            Ok(ChatOutcome {
+                text: "ok".to_owned(),
+                tool_calls: Vec::new(),
+                finish_reason: FinishReason::Stop,
+                usage: Usage::default(),
+            })
+        }
+    }
 
     impl Provider for SlowProvider {
         fn id(&self) -> &str {

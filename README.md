@@ -2,19 +2,20 @@
 
 KL is a local-first AI coding agent with a Rust trusted core and C# clients.
 
-- **Core:** Rust, JSON-RPC 2.0 over stdio, provider-neutral agent loop.
+- **Core:** Rust, JSON-RPC 2.0 over stdio or a local named-pipe/UDS server.
 - **TUI:** C# Terminal.Gui v2 client in `tui/Kl.Tui`.
-- **GUI:** Avalonia scaffold in `gui/Kl.Gui` (MVP still under construction).
+- **GUI:** Avalonia 12.1.4 client shell in `gui/Kl.Gui`; chat integration is paused.
 - **Shared client:** `sdk/Kl.Client`, used by the TUI and intended for the GUI.
 
-The project does not use Python and is designed around local execution,
-explicit approvals and auditable tool calls.
+The project is designed around local execution, explicit approvals, bounded
+context, auditable tool calls and provider neutrality. It does not use Python.
 
 ## Status
 
-The core, TUI, security model, extension layer and release pipeline are
-implemented. The GUI is initialized but not yet a complete client. Real
-provider/MCP live smoke still needs credentials or a configured local server.
+Core, TUI, security, context/memory tools, local multi-client transport and
+release packaging are implemented. The GUI has a static Avalonia shell but is
+not yet connected to `Kl.Client`. Real provider/MCP live smoke still needs
+credentials or a configured local server.
 
 ## Architecture
 
@@ -23,7 +24,7 @@ TUI (tui/Kl.Tui)     GUI (gui/Kl.Gui)     Headless/CI
         \                  |                  /
          \             Kl.Client             /
           \                |                /
-           +------- JSON-RPC / stdio -------+
+           +-- JSON-RPC / stdio or local socket --+
                             |
                      Rust Core (kl-core)
               Protocol / Session / Events / Audit
@@ -41,13 +42,15 @@ Clients never call a model or execute a tool directly. See
 |---|---|
 | `crates/` | Rust core and capability crates |
 | `tui/Kl.Tui` | C# terminal client |
-| `tui/Kl.Tui.Tests` | TUI and protocol contract tests |
-| `gui/Kl.Gui` | Avalonia GUI scaffold |
+| `tui/Kl.Tui.Tests` | TUI, protocol and core integration tests |
+| `gui/Kl.Gui` | Avalonia GUI shell |
 | `sdk/Kl.Client` | reusable C# JSON-RPC/session client |
 | `schemas/` | protocol and plugin JSON schemas |
 | `benchmarks/` | acceptance tasks and fixtures |
 | `scripts/` | package, benchmark and live-smoke scripts |
 | `docs/` | architecture, security, ADR and API docs |
+
+Generated output such as `target/`, `bin/`, `obj/` and `dist/` is ignored.
 
 ## Prerequisites
 
@@ -56,8 +59,8 @@ Clients never call a model or execute a tool directly. See
 - Node.js 22+ for repository scripts
 - Git
 
-Release bundles are self-contained: users need neither the .NET runtime nor
-the Rust toolchain. Source builds need both SDKs.
+Release bundles are self-contained or use the bundled runtime; users do not
+need a local Rust toolchain. Source builds need Rust and .NET.
 
 ## Build and run
 
@@ -74,30 +77,35 @@ dotnet run --project tui/Kl.Tui -- run "fix the failing test" --workspace . --ye
 dotnet run --project tui/Kl.Tui -- chat --workspace .
 dotnet run --project tui/Kl.Tui -- resume
 dotnet run --project tui/Kl.Tui -- review --workspace .
+dotnet run --project tui/Kl.Tui -- serve
 ```
 
-The GUI scaffold can be started with:
+The GUI shell can be started with:
 
 ```powershell
 dotnet run --project gui/Kl.Gui
 ```
 
-It currently opens a minimal Avalonia window; the full GUI MVP is future work.
+It currently displays the shell layout only; session, streaming, tools,
+approvals, diff and settings are not connected yet.
 
 ## Main capabilities
 
 - Provider-neutral agent loop with `build`, `plan`, `explore`, `review`,
   `verify` and `deep` presets.
-- Built-in file, search, shell, git, worktree, job, subagent and workspace
-  memory tools.
+- Built-in file, search, shell, git, worktree, job, subagent, memory, todo,
+  ask_user and allowlisted web_fetch tools.
 - Unified tool pipeline: validation, hooks, policy, approval, sandbox,
   execution, result bounds, audit and events.
-- Windows AppContainer, Linux bubblewrap and macOS Seatbelt sandboxes.
+- Windows AppContainer, Linux `bubblewrap` and macOS Seatbelt sandboxes.
 - MCP server processes start through the active `SandboxManager`.
 - Persistent sessions with event projection, resume, fork and approval rules.
-- Layered context compaction and a 23-task acceptance harness.
-- Skills, hooks, sidecar/WASM plugins and Ed25519 plugin integrity checks.
-- Shell commands support `tty=true`; `tty=true` uses portable-pty where the sandbox backend supports it.
+- Optional local server with attach/replay, sequence de-duplication, reconnect
+  and one-writer session leases.
+- Model-summary context compaction with mechanical fallback and a 23-task acceptance harness.
+- Workspace and user memory injection with bounded prompt size and `/memory`.
+- Shell commands support `tty=true`; `tty=true` uses portable-pty where the
+  sandbox backend supports it.
 - Transient provider retry with exponential backoff and cancellation.
 - Built-in model catalog and per-turn/cumulative token usage with `/cost`.
 
@@ -111,30 +119,31 @@ KL reads user configuration from `~/.kl/`:
 - `skills/` — user-level skills.
 - `mcp.toml` — enabled MCP stdio servers.
 
-Workspace-level `AGENTS.md`, `.kl/memory/` and project skills are also
-discovered. See [`docs/security/policy.md`](docs/security/policy.md) for the
-permission model. Permission modes include `ask`, `plan`, `acceptEdits`,
-`dontAsk`, `auto` and `read-only`; unknown model prices are never invented.
+Workspace-level `AGENTS.md`, `.kl/memory/` and project skills are discovered.
+See [`docs/security/policy.md`](docs/security/policy.md) for the permission
+model. Permission modes include `ask`, `plan`, `acceptEdits`, `dontAsk`, `auto`
+and `read-only`; unknown model prices are never invented.
 
 ## Sandbox and security
 
 - `strict` mode requires a real OS backend and fails closed when unavailable.
 - Windows uses AppContainer with filesystem, child-process and loopback network
   isolation.
-- Linux uses `bubblewrap` with read-only host mounts, writable workspace roots and
-  an isolated network namespace when network access is denied.
+- Linux uses `bubblewrap` with read-only host mounts, writable workspace roots
+  and an isolated network namespace when network access is denied.
 - macOS uses a deny-by-default Seatbelt profile through `sandbox-exec`.
 - Shell commands and MCP servers run through the same sandbox boundary.
 - High-risk actions require approval. A decision can be `allow`, `deny`, or
   `allow for this session` (`allow_session`); session rules are persisted in
   session state.
+- `web_fetch` requires a configured allowlist, revalidates every redirect and
+  rejects loopback, private, link-local, multicast and userinfo URLs.
 
 ## Release
 
 Releases are built only from pushes to `main`. The workflow reads the workspace
-version, creates `v<version>-rc1` and then `-rc2`, `-rc3`, and so on. It
-retains only the current `v<major>.<minor>.` series and publishes archives
-without `.sha256` files.
+version, creates `v<version>-rc1` and then `-rc2`, `-rc3`, and so on. It retains
+only the current `v<major>.<minor>.` series and publishes archives without `.sha256` files.
 
 The current release matrix is:
 
@@ -152,8 +161,9 @@ and the release matrix in
 ## Known gaps
 
 - Real Provider/MCP live smoke requires credentials or a local MCP server.
-- GUI MVP, provider prompt caching, model-summary compaction, web tools,
-  memory prompt injection and session rewind/revert are not complete.
+- GUI is a static Avalonia shell; `Kl.Client` integration and the full MVP
+  remain in progress.
+- Provider prompt caching and session rewind/revert are not complete.
 - MCP servers start in the Core startup workspace, not a per-session workspace.
 - PTY under Windows AppContainer fails closed because that backend cannot be
   wrapped by an external PTY runner.
@@ -161,8 +171,10 @@ and the release matrix in
 
 ## Documentation
 
+- [`docs/README.md`](docs/README.md)
 - [`docs/architecture/overview.md`](docs/architecture/overview.md)
 - [`docs/project-structure.md`](docs/project-structure.md)
 - [`docs/security/policy.md`](docs/security/policy.md)
 - [`docs/plugin-api/README.md`](docs/plugin-api/README.md)
+- [`docs/gui/mvp-spec.md`](docs/gui/mvp-spec.md)
 - [`docs/adr/`](docs/adr/)

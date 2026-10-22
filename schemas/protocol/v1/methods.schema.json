@@ -628,6 +628,214 @@
       },
       "additionalProperties": false
     },
+    "serverInfoParams": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "serverInfoResult": {
+      "type": "object",
+      "required": [
+        "server_name",
+        "server_version",
+        "protocol_version",
+        "transport",
+        "endpoint",
+        "pid",
+        "started_at_unix_ms"
+      ],
+      "properties": {
+        "server_name": { "type": "string" },
+        "server_version": { "type": "string" },
+        "protocol_version": { "const": 1 },
+        "transport": { "type": "string" },
+        "endpoint": { "type": "string" },
+        "pid": { "type": "integer", "minimum": 1 },
+        "started_at_unix_ms": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "sessionAttachParams": {
+      "type": "object",
+      "required": ["session_id"],
+      "properties": {
+        "session_id": { "type": "string" },
+        "after_seq": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "sessionAttachResult": {
+      "type": "object",
+      "required": ["session_id", "replay", "last_seq", "lease_held"],
+      "properties": {
+        "session_id": { "type": "string" },
+        "replay": { "type": "array", "items": { "$ref": "#/$defs/eventRecord" } },
+        "last_seq": { "type": "integer", "minimum": 0 },
+        "lease_held": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "sessionDetachParams": {
+      "type": "object",
+      "required": ["session_id"],
+      "properties": { "session_id": { "type": "string" } },
+      "additionalProperties": false
+    },
+    "sessionDetachResult": {
+      "type": "object",
+      "required": ["session_id", "detached"],
+      "properties": {
+        "session_id": { "type": "string" },
+        "detached": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "sessionLeaseParams": {
+      "type": "object",
+      "required": ["session_id"],
+      "properties": {
+        "session_id": { "type": "string" },
+        "lease_ms": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "sessionLeaseResult": {
+      "type": "object",
+      "required": ["session_id", "expires_at_unix_ms"],
+      "properties": {
+        "session_id": { "type": "string" },
+        "expires_at_unix_ms": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "eventRecord": {
+      "type": "object",
+      "required": ["session_id", "seq", "event"],
+      "properties": {
+        "session_id": { "type": "string" },
+        "seq": { "type": "integer", "minimum": 1 },
+        "event": { "$ref": "#/$defs/coreEvent" }
+      },
+      "additionalProperties": false
+    },
+    "memoryListParams": {
+      "type": "object",
+      "required": ["session_id"],
+      "properties": {
+        "session_id": { "type": "string" },
+        "scope": { "enum": ["workspace", "user"] }
+      },
+      "additionalProperties": false
+    },
+    "memoryListResult": {
+      "type": "object",
+      "required": ["entries"],
+      "properties": {
+        "entries": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/memoryEntryInfo" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "memoryEntryInfo": {
+      "type": "object",
+      "required": ["name", "scope", "size_bytes"],
+      "properties": {
+        "name": { "type": "string" },
+        "scope": { "enum": ["workspace", "user"] },
+        "size_bytes": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "memoryReadParams": {
+      "type": "object",
+      "required": ["session_id", "name"],
+      "properties": {
+        "session_id": { "type": "string" },
+        "name": { "type": "string" },
+        "scope": { "enum": ["workspace", "user"] }
+      },
+      "additionalProperties": false
+    },
+    "memoryReadResult": {
+      "type": "object",
+      "required": ["name", "scope", "content"],
+      "properties": {
+        "name": { "type": "string" },
+        "scope": { "enum": ["workspace", "user"] },
+        "content": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "memoryWriteParams": {
+      "type": "object",
+      "required": ["session_id", "name", "content"],
+      "properties": {
+        "session_id": { "type": "string" },
+        "name": { "type": "string" },
+        "content": { "type": "string" },
+        "scope": { "enum": ["workspace", "user"] }
+      },
+      "additionalProperties": false
+    },
+    "memoryWriteResult": {
+      "type": "object",
+      "required": ["name", "scope", "size_bytes"],
+      "properties": {
+        "name": { "type": "string" },
+        "scope": { "enum": ["workspace", "user"] },
+        "size_bytes": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "memoryDeleteParams": {
+      "type": "object",
+      "required": ["session_id", "name"],
+      "properties": {
+        "session_id": { "type": "string" },
+        "name": { "type": "string" },
+        "scope": { "enum": ["workspace", "user"] }
+      },
+      "additionalProperties": false
+    },
+    "memoryDeleteResult": {
+      "type": "object",
+      "required": ["name", "scope", "deleted"],
+      "properties": {
+        "name": { "type": "string" },
+        "scope": { "enum": ["workspace", "user"] },
+        "deleted": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "coreEvent": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "enum": [
+            "session.created",
+            "user.message",
+            "turn.started",
+            "turn.delta",
+            "turn.reasoning",
+            "tool.started",
+            "tool.output",
+            "tool.approval.requested",
+            "tool.approval.resolved",
+            "tool.completed",
+            "sandbox.violation",
+            "audit.recorded",
+            "context.compacted",
+            "turn.completed",
+            "turn.failed"
+          ]
+        },
+        "data": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
     "eventNotification": {
       "type": "object",
       "required": ["jsonrpc", "kl_protocol", "method", "params"],
@@ -641,32 +849,7 @@
           "properties": {
             "session_id": { "type": "string" },
             "seq": { "type": "integer", "minimum": 1 },
-            "event": {
-              "type": "object",
-              "required": ["type"],
-              "properties": {
-                "type": {
-                  "enum": [
-                    "session.created",
-                    "user.message",
-                    "turn.started",
-                    "turn.delta",
-                    "turn.reasoning",
-                    "tool.started",
-                    "tool.output",
-                    "tool.approval.requested",
-                    "tool.approval.resolved",
-                    "tool.completed",
-                    "sandbox.violation",
-                    "audit.recorded",
-                    "turn.completed",
-                    "turn.failed"
-                  ]
-                },
-                "data": { "type": "object" }
-              },
-              "additionalProperties": false
-            }
+            "event": { "$ref": "#/$defs/coreEvent" }
           },
           "additionalProperties": false
         }
