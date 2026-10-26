@@ -344,7 +344,10 @@ pub fn project_messages(events: &[StoredEvent]) -> Vec<Value> {
                 ..
             } if !summary.trim().is_empty() => {
                 flush_projected_turn(&mut turn, &mut messages);
-                messages.push(text_message("system", summary));
+                messages.push(text_message(
+                    "system",
+                    &format!("[KL conversation summary]\n{summary}"),
+                ));
             }
             _ => {}
         }
@@ -928,7 +931,10 @@ mod tests {
             messages[1]["tool_calls"][0]["id"],
             messages[2]["tool_call_id"]
         );
-        assert_eq!(messages[4]["content"][0]["data"], "Earlier work summary");
+        assert_eq!(
+            messages[4]["content"][0]["data"],
+            "[KL conversation summary]\nEarlier work summary"
+        );
 
         std::fs::write(&state_path, r#"{"messages":[]}"#).unwrap();
         assert_eq!(store.load(&data.meta.id).unwrap().messages, messages);
