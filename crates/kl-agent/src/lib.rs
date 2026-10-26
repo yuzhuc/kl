@@ -108,6 +108,14 @@ pub struct CompactionResult {
 }
 
 #[derive(Debug, Clone)]
+struct CompactionNotice {
+    omitted_messages: usize,
+    estimated_tokens: u64,
+    summary_used: bool,
+    summary: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct ApprovalRequest {
     pub approval_id: String,
     pub turn_id: String,
@@ -438,7 +446,16 @@ impl Agent {
                         return Err(AgentError::MaxIterations);
                     }
 
-                    let request = self.prepare_request(history)?;
+                    let (request, compaction) = self.prepare_request(history)?;
+                    if let Some(compaction) = compaction {
+                        sink.emit(CoreEvent::ContextCompacted {
+                            trigger: "turn.auto".to_owned(),
+                            omitted_messages: compaction.omitted_messages,
+                            estimated_tokens: compaction.estimated_tokens,
+                            summary_used: compaction.summary_used,
+                            summary: compaction.summary,
+                        })?;
+                    }
 
                     let estimated_input = estimate_request_tokens(&request);
                     let outcome = match self.stream_provider(request, cancel.clone(), sink, turn_id)
@@ -668,29 +685,33 @@ impl Agent {
         request
     }
 
-    fn prepare_request(&self, history: &mut Vec<ChatMessage>) -> Result<ChatRequest, AgentError> {
+    fn prepare_request(
+        &self,
+        history: &mut Vec<ChatMessage>,
+    ) -> Result<(ChatRequest, Option<CompactionNotice>), AgentError> {
         let request = self.request_for(history);
         let budget = effective_context_budget(&self.metadata);
         let estimated = estimate_context_tokens(&request);
         if estimated <= budget {
-            return Ok(request);
+            return Ok((request, None));
         }
 
-        let compacted = compact_history(history, &self.system_prompt, &request.tools, budget)
-            .ok_or_else(|| {
-                AgentError::ContextWindowExceeded(format!(
-                    "estimated {estimated} input tokens exceed budget {budget}"
-                ))
-            })?;
-        let request = self.request_for(&compacted);
-        let compacted_estimated = estimate_context_tokens(&request);
-        if compacted_estimated >= budget {
+        let compacted = self.compact_history(history)?;
+        let request = self.request_for(&compacted.history);
+        if compacted.estimated_tokens >= budget {
             return Err(AgentError::ContextWindowExceeded(format!(
-                "compacted request uses {compacted_estimated} input tokens, budget is {budget}"
+                "compacted request uses {} input tokens, budget is {budget}",
+                compacted.estimated_tokens
             )));
         }
-        *history = compacted;
-        Ok(request)
+        let notice = CompactionNotice {
+            omitted_messages: compacted.omitted_messages,
+            estimated_tokens: compacted.estimated_tokens,
+            summary_used: compacted.summary_used,
+            summary: compacted.summary,
+        };
+        *history = compacted.history;
+        Ok((request, Some(notice)))
     }
 
     fn finish_cancelled(
@@ -2357,7 +2378,7 @@ mod tests {
         ];
         let original = history.clone();
 
-        let request = agent.prepare_request(&mut history).unwrap();
+        let (request, _) = agent.prepare_request(&mut history).unwrap();
 
         assert_eq!(history, original);
         assert_eq!(request.messages, original);
@@ -2383,33 +2404,22 @@ mod tests {
                 Vec::new(),
             ));
         }
+        history.push(ChatMessage::user("latest request"));
         let original_len = history.len();
-        let sink = RecordingSink::default();
 
-        agent
-            .run_turn(
-                "session",
-                "turn",
-                "latest request",
-                &mut history,
-                Arc::new(AtomicBool::new(false)),
-                &sink,
-                &Gate(ApprovalDecision::Allow),
-            )
-            .unwrap();
+        let (request, compaction) = agent.prepare_request(&mut history).unwrap();
 
-        let requests = provider.requests.lock().unwrap();
-        let request = &requests[0];
+        assert!(compaction.is_some());
         assert_eq!(request.messages[0].text(), "persistent system");
         assert_eq!(request.messages.last().unwrap().text(), "latest request");
         assert!(
             request
                 .messages
                 .iter()
-                .any(|message| { compaction_omitted(message).is_some_and(|count| count > 0) })
+                .any(|message| compaction_omitted(message).is_some_and(|count| count > 0))
         );
         assert!(
-            estimate_context_tokens(request)
+            estimate_context_tokens(&request)
                 < effective_context_budget(&metadata_with_limit(900, 0.5, 100))
         );
         assert!(history.len() < original_len);
@@ -2426,7 +2436,7 @@ mod tests {
                 "turn {index} {}",
                 "u".repeat(160)
             )));
-            let request = agent.prepare_request(&mut history).unwrap();
+            let (request, _) = agent.prepare_request(&mut history).unwrap();
             assert!(
                 estimate_context_tokens(&request)
                     <= effective_context_budget(&metadata_with_limit(1_000, 0.6, 100))
@@ -3261,6 +3271,45 @@ mod tests {
         assert_eq!(requests.len(), 1);
         assert_eq!(requests[0].system, SUMMARY_INSTRUCTIONS);
         assert!(requests[0].tools.is_empty());
+    }
+
+    #[test]
+    fn automatic_compaction_uses_summary_and_emits_an_event() {
+        let provider = Arc::new(SummaryProvider {
+            text: "The earlier work is summarized automatically.".to_owned(),
+            requests: Mutex::new(Vec::new()),
+        });
+        let agent = test_agent(provider.clone(), metadata_with_limit(4_000, 0.9, 100));
+        let mut history = oversized_history();
+        let sink = RecordingSink::default();
+
+        let result = agent
+            .run_turn(
+                "session",
+                "turn-auto-compact",
+                "continue",
+                &mut history,
+                Arc::new(AtomicBool::new(false)),
+                &sink,
+                &Gate(ApprovalDecision::Allow),
+            )
+            .unwrap();
+
+        assert_eq!(result.text, "The earlier work is summarized automatically.");
+        let events = sink.events.lock().unwrap();
+        assert!(events.iter().any(|event| matches!(
+            event,
+            CoreEvent::ContextCompacted {
+                trigger,
+                summary_used: true,
+                summary: Some(summary),
+                ..
+            } if trigger == "turn.auto" && summary.contains("summarized automatically")
+        )));
+        let requests = provider.requests.lock().unwrap();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[0].system, SUMMARY_INSTRUCTIONS);
+        assert!(requests[1].system.contains(SUMMARY_HEADER));
     }
 
     #[test]
