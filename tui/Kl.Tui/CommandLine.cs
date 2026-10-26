@@ -34,6 +34,7 @@ public sealed class TuiOptions
     public KlSessionOptions ToSessionOptions() => new()
     {
         SessionId = Session,
+        SkipInitialReplay = true,
         Workspace = Workspace,
         Provider = Provider,
         Model = Model,

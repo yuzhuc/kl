@@ -34,7 +34,11 @@ internal sealed class FakeCoreServer : IAsyncDisposable
                 Path.GetTempPath(),
                 "kl-fake-" + Guid.NewGuid().ToString("N") + ".sock");
         }
-        _acceptLoop = Task.Run(AcceptLoopAsync);
+        _acceptLoop = Task.Factory.StartNew(
+            AcceptLoop,
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
     }
 
     public string SessionId { get; }
@@ -117,7 +121,7 @@ internal sealed class FakeCoreServer : IAsyncDisposable
         });
     }
 
-    private async Task AcceptLoopAsync()
+    private void AcceptLoop()
     {
         if (OperatingSystem.IsWindows())
         {
@@ -131,11 +135,11 @@ internal sealed class FakeCoreServer : IAsyncDisposable
                     System.IO.Pipes.PipeOptions.Asynchronous);
                 try
                 {
-                    await server.WaitForConnectionAsync(_shutdown.Token).ConfigureAwait(false);
+                    server.WaitForConnectionAsync(_shutdown.Token).GetAwaiter().GetResult();
                 }
                 catch (OperationCanceledException)
                 {
-                    await server.DisposeAsync().ConfigureAwait(false);
+                    server.Dispose();
                     return;
                 }
                 _ = Task.Run(() => ServeAsync(server));
@@ -150,7 +154,7 @@ internal sealed class FakeCoreServer : IAsyncDisposable
         {
             while (!_shutdown.IsCancellationRequested)
             {
-                var socket = await listener.AcceptAsync(_shutdown.Token).ConfigureAwait(false);
+                var socket = listener.AcceptAsync(_shutdown.Token).GetAwaiter().GetResult();
                 _ = Task.Run(() => ServeAsync(new NetworkStream(socket, ownsSocket: true)));
             }
         }
