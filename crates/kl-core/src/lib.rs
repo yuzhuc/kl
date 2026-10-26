@@ -2084,10 +2084,11 @@ impl Core {
         config::permissions_set(&self.context.config_path, params.approval_mode)
             .map_err(config_write_error)?;
         self.config.agent.approval_mode = params.approval_mode;
-        let (edits, shell, plugins) = config::approval_flags(params.approval_mode);
-        self.config.policy.auto_approve_edits = edits;
-        self.config.policy.auto_approve_shell = shell;
-        self.config.policy.auto_approve_plugins = plugins;
+        if let Some((edits, shell, plugins)) = config::approval_flags(params.approval_mode) {
+            self.config.policy.auto_approve_edits = edits;
+            self.config.policy.auto_approve_shell = shell;
+            self.config.policy.auto_approve_plugins = plugins;
+        }
         let mut audit = AuditRecord::new(
             "core",
             "",
@@ -2136,12 +2137,15 @@ impl Core {
                 policy.auto_approve_shell = false;
                 policy.auto_approve_plugins = false;
             }
-            ApprovalMode::DontAsk | ApprovalMode::Auto => {
+            ApprovalMode::DontAsk => {
                 policy.auto_approve_edits = true;
                 policy.auto_approve_shell = true;
                 policy.auto_approve_plugins = true;
             }
-            ApprovalMode::Ask | ApprovalMode::Plan | ApprovalMode::ReadOnly => {}
+            ApprovalMode::Ask
+            | ApprovalMode::Plan
+            | ApprovalMode::ReadOnly
+            | ApprovalMode::Auto => {}
         }
         policy
     }
@@ -3333,9 +3337,10 @@ fn policy_summary(mode: ApprovalMode) -> &'static str {
         ApprovalMode::AcceptEdits => {
             "Workspace edits are auto-approved; shell commands and plugins still require approval."
         }
-        ApprovalMode::DontAsk | ApprovalMode::Auto => {
-            "Edits, shell commands, and plugins are auto-approved within policy; workspace paths are enforced."
+        ApprovalMode::DontAsk => {
+            "Non-denied edits, shell commands, and plugins proceed without an interactive prompt."
         }
+        ApprovalMode::Auto => "Uses the configured policy auto-approval settings.",
         ApprovalMode::ReadOnly => {
             "Reads are allowed; edits, shell commands, plugin actions, and git writes are denied."
         }
@@ -4146,6 +4151,57 @@ max_iterations = 2
             core.permissions_get().unwrap()["approval_mode"],
             "read-only"
         );
+    }
+
+    #[test]
+    fn auto_preserves_policy_flags_while_dont_ask_overrides_them() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("script.json"), r#"[{"text":"unused"}]"#).unwrap();
+        let config_path = temp.path().join("kl.toml");
+        std::fs::write(
+            &config_path,
+            r#"
+[agent]
+provider = "scripted"
+model = "scripted"
+scripted_path = "script.json"
+
+[policy]
+auto_approve_edits = true
+auto_approve_shell = false
+auto_approve_plugins = true
+"#,
+        )
+        .unwrap();
+        let home = tempfile::tempdir().unwrap();
+
+        {
+            let (mut core, _) = new_test_core(config_path.clone(), home.path());
+            core.handshaken = true;
+            core.permissions_set(json!({"approval_mode": "auto"}))
+                .unwrap();
+            assert!(core.config.policy.auto_approve_edits);
+            assert!(!core.config.policy.auto_approve_shell);
+            assert!(core.config.policy.auto_approve_plugins);
+            let effective = core.effective_policy_config();
+            assert!(effective.auto_approve_edits);
+            assert!(!effective.auto_approve_shell);
+            assert!(effective.auto_approve_plugins);
+        }
+
+        {
+            let (mut restarted, _) = new_test_core(config_path.clone(), home.path());
+            restarted.handshaken = true;
+            assert!(restarted.config.policy.auto_approve_edits);
+            assert!(!restarted.config.policy.auto_approve_shell);
+            assert!(restarted.config.policy.auto_approve_plugins);
+            restarted
+                .permissions_set(json!({"approval_mode": "dontAsk"}))
+                .unwrap();
+            assert!(restarted.config.policy.auto_approve_edits);
+            assert!(restarted.config.policy.auto_approve_shell);
+            assert!(restarted.config.policy.auto_approve_plugins);
+        }
     }
 
     #[test]
