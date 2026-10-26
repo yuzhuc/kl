@@ -33,6 +33,7 @@ public sealed class KlSessionClient : IAsyncDisposable
     private Task? _pumpTask;
     private string? _currentTurnId;
     private bool _cancelRequested;
+    private volatile bool _isWriter;
     private readonly bool _serverMode;
 
     private KlSessionClient(
@@ -58,6 +59,7 @@ public sealed class KlSessionClient : IAsyncDisposable
         MessageCount = session.TryGetProperty("message_count", out var count)
             ? count.GetInt32()
             : 0;
+        _isWriter = !serverMode;
         _eventLoop = Task.Run(() => ConsumeEventsAsync(_shutdown.Token));
     }
 
@@ -67,6 +69,7 @@ public sealed class KlSessionClient : IAsyncDisposable
     public string Model { get; }
     public string ReasoningEffort { get; }
     public int MessageCount { get; }
+    public bool IsWriter => _isWriter;
 
     /// <summary>Highest event sequence consumed for this session.</summary>
     public long LastSeq
@@ -142,9 +145,16 @@ public sealed class KlSessionClient : IAsyncDisposable
                     session.SessionId,
                     null,
                     cancellationToken).ConfigureAwait(false);
-                await client.LeaseSessionAsync(session.SessionId, null, cancellationToken)
+                await session.TryAcquireLeaseAsync(client, cancellationToken)
                     .ConfigureAwait(false);
-                session.EnqueueReplay(attach);
+                if (sessionOptions.SkipInitialReplay)
+                {
+                    session.SetLastSeq(attach);
+                }
+                else
+                {
+                    session.EnqueueReplay(attach);
+                }
             }
 
             session.StartPump(client);
@@ -180,6 +190,7 @@ public sealed class KlSessionClient : IAsyncDisposable
         await _reconnectGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            _isWriter = false;
             KlCoreClient? previous;
             lock (_clientLock)
             {
@@ -215,7 +226,7 @@ public sealed class KlSessionClient : IAsyncDisposable
                     SessionId,
                     LastSeq,
                     cancellationToken).ConfigureAwait(false);
-                await LeaseAsync(next, cancellationToken).ConfigureAwait(false);
+                await TryAcquireLeaseAsync(next, cancellationToken).ConfigureAwait(false);
                 lock (_clientLock)
                 {
                     _client = next;
@@ -295,7 +306,7 @@ public sealed class KlSessionClient : IAsyncDisposable
         string prompt,
         CancellationToken cancellationToken = default)
     {
-        var client = Client;
+        var client = await EnsureWriterAsync(cancellationToken).ConfigureAwait(false);
         var completion = new TaskCompletionSource<TurnOutcome>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var turnCancellation = new CancellationTokenSource();
@@ -306,11 +317,6 @@ public sealed class KlSessionClient : IAsyncDisposable
         _turnCompletion = completion;
         try
         {
-            if (_serverMode)
-            {
-                await client.LeaseSessionAsync(SessionId, null, cancellationToken)
-                    .ConfigureAwait(false);
-            }
             var start = await client.StartTurnAsync(
                 SessionId,
                 prompt,
@@ -344,6 +350,7 @@ public sealed class KlSessionClient : IAsyncDisposable
 
     public async Task CancelAsync(CancellationToken cancellationToken = default)
     {
+        var client = await EnsureWriterAsync(cancellationToken).ConfigureAwait(false);
         CancellationTokenSource? turnCancellation;
         lock (_turnCancellationLock)
         {
@@ -360,12 +367,6 @@ public sealed class KlSessionClient : IAsyncDisposable
 
         try
         {
-            var client = Client;
-            if (_serverMode)
-            {
-                await client.LeaseSessionAsync(SessionId, null, cancellationToken)
-                    .ConfigureAwait(false);
-            }
             await client.CancelTurnAsync(SessionId, turnId, cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -394,26 +395,42 @@ public sealed class KlSessionClient : IAsyncDisposable
     }
 
     /// <summary>
-    /// Takes the write lease, retrying while the dropped connection still owns
-    /// it. Windows named pipes release the lease only after the pipe drains.
+    /// Takes the write lease for turn traffic, or reports a read-only observer
+    /// without sending an RPC that the server will reject.
     /// </summary>
-    private async Task LeaseAsync(
+    private async Task<KlCoreClient> EnsureWriterAsync(
+        CancellationToken cancellationToken)
+    {
+        var client = Client;
+        if (!await TryAcquireLeaseAsync(client, cancellationToken).ConfigureAwait(false))
+        {
+            throw new InvalidOperationException(
+                $"session {SessionId} is read-only: another client holds the write lease");
+        }
+        return client;
+    }
+
+    private async Task<bool> TryAcquireLeaseAsync(
         KlCoreClient client,
         CancellationToken cancellationToken)
     {
-        for (var attempt = 0; ; attempt++)
+        if (!_serverMode)
         {
-            try
-            {
-                await client.LeaseSessionAsync(SessionId, null, cancellationToken)
-                    .ConfigureAwait(false);
-                return;
-            }
-            catch (JsonRpcException error)
-                when (error.Code == SessionBusyCode && attempt < 40)
-            {
-                await Task.Delay(50, cancellationToken).ConfigureAwait(false);
-            }
+            _isWriter = true;
+            return true;
+        }
+
+        try
+        {
+            await client.LeaseSessionAsync(SessionId, null, cancellationToken)
+                .ConfigureAwait(false);
+            _isWriter = true;
+            return true;
+        }
+        catch (JsonRpcException error) when (error.Code == SessionBusyCode)
+        {
+            _isWriter = false;
+            return false;
         }
     }
 
@@ -695,12 +712,7 @@ public sealed class KlSessionClient : IAsyncDisposable
 
         try
         {
-            var client = Client;
-            if (_serverMode)
-            {
-                await client.LeaseSessionAsync(SessionId, null, cancellationToken)
-                    .ConfigureAwait(false);
-            }
+            var client = await EnsureWriterAsync(cancellationToken).ConfigureAwait(false);
             await client.RespondApprovalAsync(
                 SessionId,
                 approvalId,
@@ -738,6 +750,15 @@ public sealed class KlSessionClient : IAsyncDisposable
                 _sequenceBySession[sessionId] = seq;
             }
             return true;
+        }
+    }
+
+    private void SetLastSeq(JsonElement attach)
+    {
+        var seq = GetLong(attach, "last_seq");
+        lock (_sequenceLock)
+        {
+            _sequenceBySession[SessionId] = seq;
         }
     }
 

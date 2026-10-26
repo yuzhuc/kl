@@ -16,6 +16,7 @@ public sealed class KlClientOptions
 public sealed class KlSessionOptions
 {
     public string? SessionId { get; init; }
+    public bool SkipInitialReplay { get; init; }
     public string? Workspace { get; init; }
     public string? Provider { get; init; }
     public string? Model { get; init; }
