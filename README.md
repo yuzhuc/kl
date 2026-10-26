@@ -100,9 +100,10 @@ approvals, diff and settings are not connected yet.
 - Windows AppContainer, Linux `bubblewrap` and macOS Seatbelt sandboxes.
 - MCP server processes start through the active `SandboxManager`.
 - Persistent sessions with event projection, resume, fork and approval rules.
-- Optional local server with attach/replay, sequence de-duplication, reconnect
-  and one-writer session leases.
-- Model-summary context compaction with mechanical fallback and a 23-task acceptance harness.
+- Optional local server with attach/replay, sequence de-duplication, reconnect,
+  one-writer session leases and read-only observer clients.
+- Automatic model-summary context compaction with mechanical fallback, explicit
+  `/compact`, and a 23-task acceptance harness.
 - Workspace and user memory injection with bounded prompt size and `/memory`.
 - Shell commands support `tty=true`; `tty=true` uses portable-pty where the
   sandbox backend supports it.
@@ -161,6 +162,8 @@ and the release matrix in
 ## Known gaps
 
 - Real Provider/MCP live smoke requires credentials or a local MCP server.
+- Windows release packaging still needs `kl-sandbox-runner.exe` included and a
+  packaged `kl serve` smoke test.
 - GUI is a static Avalonia shell; `Kl.Client` integration and the full MVP
   remain in progress.
 - Provider prompt caching and session rewind/revert are not complete.

@@ -12,7 +12,7 @@ the sandbox and writes audit records.
 | `plan` | Writes and shell actions are denied |
 | `acceptEdits` | Edits are auto-approved; shell and plugins still ask |
 | `dontAsk` | Non-denied actions proceed without an interactive prompt |
-| `auto` | Uses the configured policy approvals |
+| `auto` | Uses the existing `auto_approve_*` policy settings without overwriting them |
 | `read-only` | Only read actions are allowed |
 
 Approval decisions are `allow`, `deny` and `allow_session`; `allow_session`
@@ -64,11 +64,13 @@ than running unsandboxed.
 - Writes and deletes use the normal policy and approval channel.
 - `/memory` exposes list, read, write and delete operations through protocol
   methods; clients do not access memory files directly.
-- Compaction preserves complete tool-call/result pairs and the most recent
-  rounds. A model summary is bounded and falls back to mechanical trimming on
-  provider failure.
-- `context.compacted` records the trigger, omitted count, estimated tokens and
-  summary status.
+- Automatic turn compaction and `/compact` preserve complete tool-call/result
+  pairs and the most recent rounds. A model summary is bounded and falls back to
+  mechanical trimming on provider failure.
+- `context.compacted` records `turn.auto` or `session.compact`, the omitted
+  count, estimated tokens and summary status.
+- Local-server sessions have one writer lease; other clients may attach as
+  read-only observers and cannot start turns, cancel turns or answer approvals.
 
 ## Plugins
 
@@ -91,4 +93,7 @@ source of truth; SQLite is a query index.
 - MCP servers use the Core startup workspace, not a per-session workspace.
 - DNS rebinding protection is based on pre-request resolution; pinning the
   connection address would be a later hardening step.
+- Projection from `events.jsonl` is best-effort after context compaction; exact
+  compacted tails require `state.json`. A missing or corrupt state file still
+  rebuilds valid tool pairs and the compaction summary.
 - The release RID list is fixed; adding a RID requires an ADR.

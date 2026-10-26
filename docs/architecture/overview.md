@@ -50,9 +50,11 @@ clients. `Kl.Client` owns the C# transport and session API.
 - `kl serve` uses a Windows named pipe or a Unix/macOS filesystem UDS.
 - `server.info` exposes the endpoint and transport.
 - `session.attach` replays stored events after `after_seq` and subscribes the
-  connection to live events.
-- `session.lease` enforces one writer per session; `session.detach` releases
-  the subscription and lease.
+  connection to live events. Clients that load history through the protocol can
+  skip the initial replay while still recording `last_seq`.
+- `session.lease` enforces one writer per session; a second client remains
+  attached as a read-only observer. `session.detach` releases the subscription
+  and lease.
 - Core events are notifications with `method: "event"` and a per-session,
   monotonically increasing `seq`. Clients de-duplicate by `session_id + seq`.
 - `schemas/protocol/v1` is the contract; Rust, schema and C# constants are
@@ -67,24 +69,29 @@ Representative methods include `session.create`, `session.resume`,
 ## Sessions, replay and reconnect
 
 - `session.json` stores metadata.
-- `state.json` stores the message projection.
-- `events.jsonl` is the append-only source of truth.
-- Missing or empty state is reconstructed from events.
+- `state.json` stores the current message projection used for exact resume.
+- `events.jsonl` is the append-only event log used for replay, audit and a
+  best-effort projection when state is missing or empty.
+- The event projection rebuilds valid assistant tool calls and paired tool
+  results, and restores compaction summaries. Exact compacted tails still rely
+  on `state.json`.
 - Sessions support resume, fork, rename, delete and history queries.
-- Local-server attach replays `events.jsonl` by sequence and rejects a second
-  writer with `SESSION_BUSY`.
+- Local-server attach replays `events.jsonl` by sequence, permits multiple
+  subscribers and enforces a single write lease.
 - `KlSessionClient` consumes replay, drops stale sequences, records `LastSeq`
-  and can reconnect from that sequence.
+  and can reconnect from that sequence. `session.history` carries reasoning,
+  tool output and diff metadata so clients do not read Core files directly.
 - Approval `allow_session` rules are stored with the session and survive reload.
 
 ## Context and memory
 
+- Automatic turn compaction and `/compact` both ask the active provider for a
+  bounded summary when old rounds must be dropped, with a mechanical fallback
+  on failure.
 - Mechanical compaction prunes large tool results and old rounds while
   preserving complete tool-call/result pairs.
-- When mechanical trimming must drop rounds, the agent asks the active provider
-  for a bounded summary and falls back to mechanical trimming on failure.
-- `context.compacted` records the trigger, omitted count, estimated tokens,
-  summary status and summary content in the session event log.
+- `context.compacted` records `turn.auto` or `session.compact`, the omitted
+  count, estimated tokens, summary status and summary content in the event log.
 - Workspace memory lives under `.kl/memory`; user memory under `~/.kl/memory`.
 - Memory injection is bounded, workspace-first and audited. `/memory` supports
   list, read, write and delete through protocol methods.
@@ -100,8 +107,10 @@ validate -> pre-hook -> policy -> approval
 ```
 
 Tool metadata includes read-only/destructive flags, concurrency safety,
-interrupt behavior, result limits, defer hints and source. Read-only calls may
-run in parallel; mutating calls remain ordered. Result bodies are bounded before
+interrupt behavior, result limits, defer hints and source. `should_defer`,
+`destructive` and concurrency hints are internal scheduling metadata; they are
+not serialized into provider-visible tool descriptions. Read-only calls may run
+in parallel; mutating calls remain ordered. Result bodies are bounded before
 they enter session history.
 
 Built-in tools include file operations, grep/glob, shell, git, worktree, jobs,
@@ -161,6 +170,8 @@ packaged binaries really match them. Adding or removing a RID requires an ADR
 ## Known gaps
 
 - Full GUI integration and GUI release packaging.
+- Windows release bundle must include `kl-sandbox-runner.exe`; packaged
+  `kl serve` smoke coverage is still pending.
 - Real provider/MCP live smoke with credentials.
 - Provider prompt caching.
 - Session rewind/revert and MCP resources/OAuth.

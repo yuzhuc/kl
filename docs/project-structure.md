@@ -46,8 +46,9 @@ workspaces is ignored or treated as disposable.
 | `sdk/Kl.Client` | JSON-RPC connection, session client, DTOs and endpoint discovery |
 
 The TUI and GUI share `Kl.Client`; neither owns an agent loop. `KlSessionClient`
-supports stdio, local-server connect, attach/replay, sequence de-duplication and
-reconnect from `LastSeq`.
+supports stdio, local-server connect, attach/replay, sequence de-duplication,
+reconnect from `LastSeq`, protocol-backed rich history and read-only observer
+sessions when another client holds the write lease.
 
 ## Protocol and fixtures
 

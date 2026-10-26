@@ -71,6 +71,21 @@ const CHECKS = [
     },
   },
   {
+    id: "tool-metadata-internal",
+    description: "Tool scheduling metadata stays internal and is not provider-visible",
+    failures(read) {
+      return [
+        must(
+          read,
+          "docs/architecture/overview.md",
+          /`should_defer`,\s*`destructive` and concurrency hints are internal scheduling metadata/,
+          "the internal tool metadata contract",
+        ),
+        must(read, "crates/kl-tools/src/lib.rs", /fn should_defer/, "the internal should_defer hook"),
+      ].filter(Boolean);
+    },
+  },
+  {
     id: "benchmark-tasks",
     description: "The benchmark harness keeps 23 tasks",
     failures(read) {
