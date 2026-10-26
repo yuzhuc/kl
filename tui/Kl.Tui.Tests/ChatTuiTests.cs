@@ -1722,25 +1722,51 @@ public sealed class ChatTuiTests
                   "text": "",
                   "timestamp": "2026-10-17T10:00:01Z",
                   "seq": 4,
-                  "tool": {"name": "shell", "ok": true, "summary": "exit 0 in 5 ms"}
+                  "tool": {
+                    "name": "shell",
+                    "ok": true,
+                    "summary": "exit 0 in 5 ms",
+                    "output": "line1\nline2",
+                    "diff": "+new"
+                  }
                 },
-                {"role": "assistant", "text": "done", "timestamp": "2026-10-17T10:00:02Z", "seq": 5}
+                {
+                  "role": "assistant",
+                  "text": "done",
+                  "timestamp": "2026-10-17T10:00:02Z",
+                  "seq": 5,
+                  "reasoning": "Check files."
+                }
               ]
             }
             """);
 
         var messages = ChatTuiState.ParseHistory(document.RootElement);
+        var events = ChatTuiState.BuildHistoryEvents(messages);
         var state = new ChatTuiState();
-        state.AddHistory(messages);
+        state.AddHistory(messages, events.Reasoning, events.Tools);
 
         Assert.Equal(3, messages.Count);
         Assert.Equal(2, messages[0].Seq);
+        Assert.Equal("Check files.", messages[2].Reasoning);
+        Assert.Equal("line1\nline2", messages[1].ToolOutput);
+        Assert.Equal("+new", messages[1].ToolDiff);
         Assert.Equal(
-            new[] { TranscriptKind.User, TranscriptKind.Tool, TranscriptKind.Assistant },
+            new[]
+            {
+                TranscriptKind.User,
+                TranscriptKind.Tool,
+                TranscriptKind.Diff,
+                TranscriptKind.Reasoning,
+                TranscriptKind.Assistant
+            },
             state.Transcript.Select(entry => entry.Kind));
         Assert.Equal("fix it", state.Transcript[0].Text);
-        Assert.Equal("[ok] shell: exit 0 in 5 ms", state.Transcript[1].Text);
-        Assert.Equal("done", state.Transcript[2].Text);
+        Assert.Contains("[ok] shell: exit 0 in 5 ms", state.Transcript[1].Text);
+        Assert.Contains("line2", state.Transcript[1].Text);
+        Assert.Equal("+new", state.Transcript[2].Text);
+        Assert.Equal("Check files.", state.Transcript[3].Text);
+        Assert.Equal("done", state.Transcript[4].Text);
     }
 
     [Fact]
@@ -1761,6 +1787,9 @@ public sealed class ChatTuiTests
         Assert.Null(message.ToolName);
         Assert.Null(message.ToolOk);
         Assert.Null(message.ToolSummary);
+        Assert.Null(message.Reasoning);
+        Assert.Null(message.ToolOutput);
+        Assert.Null(message.ToolDiff);
     }
 
     [Fact]

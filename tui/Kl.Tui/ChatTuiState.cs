@@ -117,7 +117,10 @@ public sealed record HistoryMessage(
     long? Seq,
     string? ToolName,
     bool? ToolOk,
-    string? ToolSummary)
+    string? ToolSummary,
+    string? Reasoning = null,
+    string? ToolOutput = null,
+    string? ToolDiff = null)
 {
     public string ToolDisplay()
     {
@@ -879,173 +882,45 @@ public sealed class ChatTuiState
         TranscriptScroll = Math.Clamp(TranscriptScroll + delta, 0, maximum);
     }
 
-    public static List<HistoryReasoning> ParseReasoningEvents(IEnumerable<string> lines) =>
-        ParseHistoryEvents(lines).Reasoning;
-
-    public static HistoryEvents ParseHistoryEvents(IEnumerable<string> lines)
+    public static HistoryEvents BuildHistoryEvents(IEnumerable<HistoryMessage> messages)
     {
         var turns = new List<HistoryReasoning>();
         var tools = new Dictionary<long, HistoryTool>();
-        var toolBuilders =
-            new Dictionary<string, (string Name, string Args, StringBuilder Output)>();
-        long? start = null;
-        var text = new StringBuilder();
-        var separateNext = false;
-        void Finish(long end)
+        foreach (var message in messages)
         {
-            if (start is { } startSeq && text.Length > 0)
-            {
-                turns.Add(new HistoryReasoning(startSeq, end, text.ToString().Trim()));
-            }
-            start = null;
-            text.Clear();
-            separateNext = false;
-        }
-        void MarkSeparate()
-        {
-            if (start is not null && text.Length > 0)
-            {
-                separateNext = true;
-            }
-        }
-
-        foreach (var line in lines)
-        {
-            if (string.IsNullOrWhiteSpace(line))
+            if (message.Seq is not { } seq)
             {
                 continue;
             }
-            JsonDocument document;
-            try
+            if (message.Role == "assistant"
+                && !string.IsNullOrWhiteSpace(message.Reasoning))
             {
-                document = JsonDocument.Parse(line);
+                turns.Add(new HistoryReasoning(
+                    seq,
+                    seq,
+                    SanitizeEventText(message.Reasoning.Trim())));
             }
-            catch (JsonException)
+            if (message.Role != "tool")
             {
                 continue;
             }
-            using (document)
+            var toolText = new StringBuilder();
+            toolText.Append(message.ToolOk is false ? "[fail] " : "[ok] ");
+            toolText.Append(message.ToolName).Append(": ").Append(message.ToolSummary);
+            if (!string.IsNullOrWhiteSpace(message.ToolOutput))
             {
-                var root = document.RootElement;
-                if (!root.TryGetProperty("seq", out var seqValue)
-                    || !seqValue.TryGetInt64(out var seq)
-                    || !root.TryGetProperty("event", out var stored)
-                    || stored.ValueKind != JsonValueKind.Object)
-                {
-                    continue;
-                }
-                var data = stored.TryGetProperty("data", out var dataValue)
-                    && dataValue.ValueKind == JsonValueKind.Object
-                        ? dataValue
-                        : default;
-                switch (GetString(stored, "type"))
-                {
-                    case "turn.started":
-                        Finish(seq - 1);
-                        start = seq;
-                        break;
-                    case "turn.reasoning":
-                        if (start is null)
-                        {
-                            break;
-                        }
-                        if (separateNext && text.Length > 0)
-                        {
-                            text.Append('\n');
-                        }
-                        text.Append(GetString(data, "text"));
-                        separateNext = false;
-                        break;
-                    case "turn.completed":
-                    case "turn.failed":
-                        Finish(seq);
-                        break;
-                    case "tool.started":
-                        if (data.ValueKind == JsonValueKind.Object)
-                        {
-                            var callId = GetString(data, "call_id");
-                            if (callId.Length > 0)
-                            {
-                                toolBuilders[callId] = (
-                                    GetString(data, "name"),
-                                    GetRaw(data, "args"),
-                                    new StringBuilder());
-                            }
-                        }
-                        MarkSeparate();
-                        break;
-                    case "tool.output":
-                        if (data.ValueKind == JsonValueKind.Object)
-                        {
-                            var callId = GetString(data, "call_id");
-                            if (callId.Length > 0)
-                            {
-                                if (!toolBuilders.TryGetValue(callId, out var builder))
-                                {
-                                    builder = (string.Empty, string.Empty, new StringBuilder());
-                                }
-                                builder.Output.Append(GetString(data, "chunk"));
-                                toolBuilders[callId] = builder;
-                            }
-                        }
-                        MarkSeparate();
-                        break;
-                    case "tool.completed":
-                        if (data.ValueKind == JsonValueKind.Object)
-                        {
-                            var callId = GetString(data, "call_id");
-                            var name = GetString(data, "name");
-                            var args = string.Empty;
-                            var output = GetString(data, "output");
-                            if (callId.Length > 0
-                                && toolBuilders.Remove(callId, out var builder))
-                            {
-                                if (name.Length == 0)
-                                {
-                                    name = builder.Name;
-                                }
-                                args = builder.Args;
-                                if (output.Length == 0 && builder.Output.Length > 0)
-                                {
-                                    output = builder.Output.ToString();
-                                }
-                            }
-                            var ok = !data.TryGetProperty("ok", out var okValue)
-                                || okValue.ValueKind != JsonValueKind.False;
-                            var summary = GetString(data, "summary");
-                            var toolText = new StringBuilder();
-                            toolText.Append(ok ? "[ok] " : "[fail] ");
-                            toolText.Append(name).Append(": ").Append(summary);
-                            if (args.Length > 0)
-                            {
-                                toolText.Append('\n').Append(name).Append(' ').Append(args);
-                            }
-                            if (output.Length > 0)
-                            {
-                                toolText.Append('\n').Append(output.TrimEnd());
-                            }
-                            var diff = GetOptionalString(data, "diff");
-                            tools[seq] = new HistoryTool(
-                                seq,
-                                SanitizeEventText(toolText.ToString()),
-                                string.IsNullOrWhiteSpace(diff)
-                                    ? null
-                                    : SanitizeEventText(diff));
-                        }
-                        MarkSeparate();
-                        break;
-                    default:
-                        MarkSeparate();
-                        break;
-                }
+                toolText.Append('\n').Append(message.ToolOutput.TrimEnd());
             }
-        }
-        if (start is not null)
-        {
-            Finish(long.MaxValue);
+            tools[seq] = new HistoryTool(
+                seq,
+                SanitizeEventText(toolText.ToString()),
+                string.IsNullOrWhiteSpace(message.ToolDiff)
+                    ? null
+                    : SanitizeEventText(message.ToolDiff));
         }
         return new HistoryEvents(turns, tools);
     }
+
     public static List<HistoryMessage> ParseHistory(JsonElement result)
     {
         var messages = new List<HistoryMessage>();
@@ -1060,6 +935,8 @@ public sealed class ChatTuiState
             string? toolName = null;
             bool? toolOk = null;
             string? toolSummary = null;
+            string? toolOutput = null;
+            string? toolDiff = null;
             if (value.TryGetProperty("tool", out var tool)
                 && tool.ValueKind == JsonValueKind.Object)
             {
@@ -1069,6 +946,8 @@ public sealed class ChatTuiState
                     ? ok.GetBoolean()
                     : null;
                 toolSummary = GetOptionalString(tool, "summary");
+                toolOutput = GetOptionalString(tool, "output");
+                toolDiff = GetOptionalString(tool, "diff");
             }
 
             messages.Add(new HistoryMessage(
@@ -1081,7 +960,10 @@ public sealed class ChatTuiState
                     : null,
                 toolName,
                 toolOk,
-                toolSummary));
+                toolSummary,
+                GetOptionalString(value, "reasoning"),
+                toolOutput,
+                toolDiff));
         }
         return messages;
     }
@@ -1125,9 +1007,6 @@ public sealed class ChatTuiState
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
-
-    private static string GetRaw(JsonElement element, string name) =>
-        element.TryGetProperty(name, out var value) ? value.GetRawText() : string.Empty;
 
     private static string SanitizeEventText(string text)
     {

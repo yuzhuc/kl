@@ -159,11 +159,17 @@ fn session_history_messages_match_shared_contract() {
     assert_eq!(tool.name, "shell");
     assert!(tool.ok);
     assert_eq!(tool.summary, "exit 0 in 5 ms");
+    assert_eq!(tool.output.as_deref(), Some("line1\nline2\n"));
+    assert_eq!(tool.diff.as_deref(), Some("+new"));
     assert_eq!(result.messages[2].role, "assistant");
     assert_eq!(result.messages[2].text, "done");
+    assert_eq!(
+        result.messages[2].reasoning.as_deref(),
+        Some("Check the files.")
+    );
 
     let serialized = serde_json::to_string(&response).unwrap();
-    for forbidden in ["args", "output", "diff", "api_key"] {
+    for forbidden in ["args", "api_key"] {
         assert!(
             !serialized.contains(&format!("\"{forbidden}\"")),
             "history leaked {forbidden}: {serialized}"

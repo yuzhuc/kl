@@ -91,24 +91,22 @@ public sealed class ResumeHistoryTests
         var messages = new List<HistoryMessage>
         {
             new("user", "old prompt", "", 2, null, null, null),
-            new("assistant", "old answer", "", 5, null, null, null),
+            new(
+                "assistant",
+                "old answer",
+                "",
+                5,
+                null,
+                null,
+                null,
+                Reasoning: "Check files."),
             new("user", "second prompt", "", 7, null, null, null),
             new("assistant", "second answer", "", 9, null, null, null)
         };
-        var lines = new[]
-        {
-            """{"seq":2,"event":{"type":"turn.started","data":{"turn_id":"t1"}}}""",
-            """{"seq":3,"event":{"type":"turn.reasoning","data":{"turn_id":"t1","text":"Check"}}}""",
-            """{"seq":4,"event":{"type":"turn.reasoning","data":{"turn_id":"t1","text":" files."}}}""",
-            """{"seq":5,"event":{"type":"turn.delta","data":{"turn_id":"t1","text":"old answer"}}}""",
-            """{"seq":6,"event":{"type":"turn.completed","data":{"turn_id":"t1"}}}""",
-            """{"seq":7,"event":{"type":"turn.started","data":{"turn_id":"t2"}}}""",
-            """{"seq":8,"event":{"type":"turn.delta","data":{"turn_id":"t2","text":"second answer"}}}""",
-            """{"seq":9,"event":{"type":"turn.completed","data":{"turn_id":"t2"}}}"""
-        };
+        var events = ChatTuiState.BuildHistoryEvents(messages);
 
         var state = new ChatTuiState();
-        state.AddHistory(messages, ChatTuiState.ParseReasoningEvents(lines));
+        state.AddHistory(messages, events.Reasoning, events.Tools);
 
         Assert.Collection(
             state.Transcript,
@@ -134,19 +132,19 @@ public sealed class ResumeHistoryTests
         var messages = new List<HistoryMessage>
         {
             new("user", "run it", "", 2, null, null, null),
-            new("tool", "", "", 5, "shell", true, "exit 0"),
+            new(
+                "tool",
+                "",
+                "",
+                5,
+                "shell",
+                true,
+                "exit 0",
+                ToolOutput: "line1\nline2\n",
+                ToolDiff: "+new"),
             new("assistant", "done", "", 6, null, null, null)
         };
-        var lines = new[]
-        {
-            """{"seq":2,"event":{"type":"turn.started","data":{"turn_id":"t1"}}}""",
-            """{"seq":3,"event":{"type":"tool.started","data":{"turn_id":"t1","call_id":"c1","name":"shell","args":{"command":"dir"}}}}""",
-            """{"seq":4,"event":{"type":"tool.output","data":{"turn_id":"t1","call_id":"c1","stream":"combined","chunk":"line1\n"}}}""",
-            """{"seq":5,"event":{"type":"tool.completed","data":{"turn_id":"t1","call_id":"c1","name":"shell","ok":true,"summary":"exit 0","output":"line1\nline2\n","diff":"+new"}}}""",
-            """{"seq":6,"event":{"type":"turn.completed","data":{"turn_id":"t1","status":"completed","text":"done"}}}"""
-        };
-
-        var events = ChatTuiState.ParseHistoryEvents(lines);
+        var events = ChatTuiState.BuildHistoryEvents(messages);
         var state = new ChatTuiState();
         state.AddHistory(messages, events.Reasoning, events.Tools);
 
@@ -154,7 +152,6 @@ public sealed class ResumeHistoryTests
             state.Transcript,
             entry => entry.Kind == TranscriptKind.Tool);
         Assert.Contains("[ok] shell: exit 0", tool.Text);
-        Assert.Contains("shell {\"command\":\"dir\"}", tool.Text);
         Assert.Contains("line2", tool.Text);
         var diff = Assert.Single(
             state.Transcript,
@@ -164,6 +161,7 @@ public sealed class ResumeHistoryTests
             state.Transcript,
             entry => entry.Kind == TranscriptKind.Assistant && entry.Text == "done");
     }
+
     private sealed class SilentPresenter : ISessionPresenter
     {
         public ValueTask OnEventAsync(

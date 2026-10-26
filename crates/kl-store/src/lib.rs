@@ -291,32 +291,132 @@ impl SessionStore {
 }
 
 pub fn project_messages(events: &[StoredEvent]) -> Vec<Value> {
-    events
-        .iter()
-        .filter_map(|stored| match &stored.event {
+    let mut messages = Vec::new();
+    let mut turn = None;
+    for stored in events {
+        match &stored.event {
             CoreEvent::UserMessage { text, .. } => {
-                Some(serde_json::json!({"role": "user", "content": text}))
+                flush_projected_turn(&mut turn, &mut messages);
+                messages.push(text_message("user", text));
+                turn = Some(ProjectedTurn::default());
             }
-            CoreEvent::TurnCompleted { text, .. } if !text.trim().is_empty() => {
-                Some(serde_json::json!({"role": "assistant", "content": text}))
+            CoreEvent::TurnStarted { .. } => {
+                turn.get_or_insert_with(ProjectedTurn::default);
+            }
+            CoreEvent::ToolStarted {
+                call_id,
+                name,
+                args,
+                ..
+            } => {
+                turn.get_or_insert_with(ProjectedTurn::default)
+                    .calls
+                    .push(ProjectedCall {
+                        id: call_id.clone(),
+                        name: name.clone(),
+                        arguments: serde_json::to_string(args).unwrap_or_else(|_| "{}".to_owned()),
+                    });
             }
             CoreEvent::ToolCompleted {
                 call_id,
                 name,
-                ok,
                 summary,
                 output,
                 ..
-            } => Some(serde_json::json!({
+            } => {
+                turn.get_or_insert_with(ProjectedTurn::default)
+                    .results
+                    .push(ProjectedResult {
+                        call_id: call_id.clone(),
+                        name: name.clone(),
+                        text: output
+                            .as_deref()
+                            .filter(|value| !value.is_empty())
+                            .unwrap_or(summary)
+                            .to_owned(),
+                    });
+            }
+            CoreEvent::TurnCompleted { text, .. } if !text.trim().is_empty() => {
+                turn.get_or_insert_with(ProjectedTurn::default).final_text = text.clone();
+            }
+            CoreEvent::ContextCompacted {
+                summary: Some(summary),
+                ..
+            } if !summary.trim().is_empty() => {
+                flush_projected_turn(&mut turn, &mut messages);
+                messages.push(text_message("system", summary));
+            }
+            _ => {}
+        }
+    }
+    flush_projected_turn(&mut turn, &mut messages);
+    messages
+}
+
+#[derive(Debug, Default)]
+struct ProjectedTurn {
+    calls: Vec<ProjectedCall>,
+    results: Vec<ProjectedResult>,
+    final_text: String,
+}
+
+#[derive(Debug)]
+struct ProjectedCall {
+    id: String,
+    name: String,
+    arguments: String,
+}
+
+#[derive(Debug)]
+struct ProjectedResult {
+    call_id: String,
+    name: String,
+    text: String,
+}
+
+fn flush_projected_turn(turn: &mut Option<ProjectedTurn>, messages: &mut Vec<Value>) {
+    let Some(mut turn) = turn.take() else {
+        return;
+    };
+    for result in &turn.results {
+        if !turn.calls.iter().any(|call| call.id == result.call_id) {
+            turn.calls.push(ProjectedCall {
+                id: result.call_id.clone(),
+                name: result.name.clone(),
+                arguments: "{}".to_owned(),
+            });
+        }
+    }
+    turn.calls
+        .retain(|call| turn.results.iter().any(|result| result.call_id == call.id));
+    if !turn.calls.is_empty() {
+        messages.push(serde_json::json!({
+            "role": "assistant",
+            "content": [],
+            "tool_calls": turn.calls.iter().map(|call| serde_json::json!({
+                "id": call.id,
+                "name": call.name,
+                "arguments": call.arguments,
+            })).collect::<Vec<_>>(),
+        }));
+        for result in &turn.results {
+            messages.push(serde_json::json!({
                 "role": "tool",
-                "tool_call_id": call_id,
-                "name": name,
-                "content": output.as_deref().unwrap_or(summary.as_str()),
-                "ok": ok,
-            })),
-            _ => None,
-        })
-        .collect()
+                "tool_call_id": result.call_id,
+                "content": [{"type": "text", "data": result.text}],
+            }));
+        }
+    }
+    if !turn.final_text.trim().is_empty() {
+        messages.push(text_message("assistant", &turn.final_text));
+    }
+}
+
+fn text_message(role: &str, text: &str) -> Value {
+    serde_json::json!({
+        "role": role,
+        "content": [{"type": "text", "data": text}],
+    })
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -578,7 +678,7 @@ mod tests {
     }
 
     #[test]
-    fn projects_messages_in_event_order() {
+    fn projects_tool_calls_and_results_as_valid_pairs() {
         let events = vec![
             stored_event(
                 1,
@@ -589,13 +689,11 @@ mod tests {
             ),
             stored_event(
                 2,
-                CoreEvent::TurnCompleted {
+                CoreEvent::ToolStarted {
                     turn_id: "turn-1".to_owned(),
-                    status: "completed".to_owned(),
-                    text: "done".to_owned(),
-                    input_tokens: 0,
-                    output_tokens: 0,
-                    cost_usd: None,
+                    call_id: "call-1".to_owned(),
+                    name: "read_file".to_owned(),
+                    args: serde_json::json!({"path": "a.txt"}),
                 },
             ),
             stored_event(
@@ -610,20 +708,38 @@ mod tests {
                     diff: None,
                 },
             ),
+            stored_event(
+                4,
+                CoreEvent::TurnCompleted {
+                    turn_id: "turn-1".to_owned(),
+                    status: "completed".to_owned(),
+                    text: "done".to_owned(),
+                    input_tokens: 0,
+                    output_tokens: 0,
+                    cost_usd: None,
+                },
+            ),
         ];
 
         assert_eq!(
             project_messages(&events),
             vec![
-                serde_json::json!({"role": "user", "content": "fix it"}),
-                serde_json::json!({"role": "assistant", "content": "done"}),
+                text_message("user", "fix it"),
+                serde_json::json!({
+                    "role": "assistant",
+                    "content": [],
+                    "tool_calls": [{
+                        "id": "call-1",
+                        "name": "read_file",
+                        "arguments": "{\"path\":\"a.txt\"}"
+                    }]
+                }),
                 serde_json::json!({
                     "role": "tool",
                     "tool_call_id": "call-1",
-                    "name": "read_file",
-                    "content": "file text",
-                    "ok": true,
+                    "content": [{"type": "text", "data": "file text"}]
                 }),
+                text_message("assistant", "done"),
             ]
         );
     }
@@ -650,17 +766,6 @@ mod tests {
             ),
             stored_event(
                 3,
-                CoreEvent::TurnCompleted {
-                    turn_id: "old-turn".to_owned(),
-                    status: "completed".to_owned(),
-                    text: "old answer".to_owned(),
-                    input_tokens: 0,
-                    output_tokens: 0,
-                    cost_usd: None,
-                },
-            ),
-            stored_event(
-                4,
                 CoreEvent::ToolCompleted {
                     turn_id: "old-turn".to_owned(),
                     call_id: "old-call".to_owned(),
@@ -671,19 +776,37 @@ mod tests {
                     diff: None,
                 },
             ),
+            stored_event(
+                4,
+                CoreEvent::TurnCompleted {
+                    turn_id: "old-turn".to_owned(),
+                    status: "completed".to_owned(),
+                    text: "old answer".to_owned(),
+                    input_tokens: 0,
+                    output_tokens: 0,
+                    cost_usd: None,
+                },
+            ),
         ];
 
         assert_eq!(
             project_messages(&events),
             vec![
-                serde_json::json!({"role": "assistant", "content": "old answer"}),
+                serde_json::json!({
+                    "role": "assistant",
+                    "content": [],
+                    "tool_calls": [{
+                        "id": "old-call",
+                        "name": "grep",
+                        "arguments": "{}"
+                    }]
+                }),
                 serde_json::json!({
                     "role": "tool",
                     "tool_call_id": "old-call",
-                    "name": "grep",
-                    "content": "no matches",
-                    "ok": false,
+                    "content": [{"type": "text", "data": "no matches"}]
                 }),
+                text_message("assistant", "old answer"),
             ]
         );
     }
@@ -723,34 +846,51 @@ mod tests {
         assert_eq!(
             store.project_messages(&data.meta.id).unwrap(),
             vec![
-                serde_json::json!({"role": "user", "content": "fix it"}),
-                serde_json::json!({"role": "assistant", "content": "done"}),
+                text_message("user", "fix it"),
+                text_message("assistant", "done")
             ]
         );
     }
 
     #[test]
-    fn load_falls_back_to_event_projection_when_state_is_missing_or_empty() {
+    fn load_falls_back_to_paired_tools_and_compaction_summary() {
         let temp = tempfile::tempdir().unwrap();
         let store = SessionStore::new(temp.path()).unwrap();
         let data = store
             .create("D:\\work", "openai", "gpt-test", "high")
             .unwrap();
-        store
-            .append_event(
-                &data.meta.id,
+        for (seq, event) in [
+            (
                 1,
-                &CoreEvent::UserMessage {
+                CoreEvent::UserMessage {
                     turn_id: "turn-1".to_owned(),
                     text: "fix it".to_owned(),
                 },
-            )
-            .unwrap();
-        store
-            .append_event(
-                &data.meta.id,
+            ),
+            (
                 2,
-                &CoreEvent::TurnCompleted {
+                CoreEvent::ToolStarted {
+                    turn_id: "turn-1".to_owned(),
+                    call_id: "call-1".to_owned(),
+                    name: "read_file".to_owned(),
+                    args: serde_json::json!({"path": "a.txt"}),
+                },
+            ),
+            (
+                3,
+                CoreEvent::ToolCompleted {
+                    turn_id: "turn-1".to_owned(),
+                    call_id: "call-1".to_owned(),
+                    name: "read_file".to_owned(),
+                    ok: true,
+                    summary: "read a file".to_owned(),
+                    output: Some("file text".to_owned()),
+                    diff: None,
+                },
+            ),
+            (
+                4,
+                CoreEvent::TurnCompleted {
                     turn_id: "turn-1".to_owned(),
                     status: "completed".to_owned(),
                     text: "done".to_owned(),
@@ -758,19 +898,40 @@ mod tests {
                     output_tokens: 0,
                     cost_usd: None,
                 },
-            )
-            .unwrap();
-        let expected = vec![
-            serde_json::json!({"role": "user", "content": "fix it"}),
-            serde_json::json!({"role": "assistant", "content": "done"}),
-        ];
+            ),
+            (
+                5,
+                CoreEvent::ContextCompacted {
+                    trigger: "auto".to_owned(),
+                    omitted_messages: 2,
+                    estimated_tokens: 100,
+                    summary_used: true,
+                    summary: Some("Earlier work summary".to_owned()),
+                },
+            ),
+        ] {
+            store.append_event(&data.meta.id, seq, &event).unwrap();
+        }
         let state_path = temp.path().join(&data.meta.id).join("state.json");
 
         std::fs::remove_file(&state_path).unwrap();
-        assert_eq!(store.load(&data.meta.id).unwrap().messages, expected);
+        let messages = store.load(&data.meta.id).unwrap().messages;
+        let roles: Vec<_> = messages
+            .iter()
+            .map(|message| message["role"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            roles,
+            vec!["user", "assistant", "tool", "assistant", "system"]
+        );
+        assert_eq!(
+            messages[1]["tool_calls"][0]["id"],
+            messages[2]["tool_call_id"]
+        );
+        assert_eq!(messages[4]["content"][0]["data"], "Earlier work summary");
 
         std::fs::write(&state_path, r#"{"messages":[]}"#).unwrap();
-        assert_eq!(store.load(&data.meta.id).unwrap().messages, expected);
+        assert_eq!(store.load(&data.meta.id).unwrap().messages, messages);
     }
 
     #[test]

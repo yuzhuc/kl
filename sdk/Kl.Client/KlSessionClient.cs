@@ -242,6 +242,12 @@ public sealed class KlSessionClient : IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         Client.SessionHistoryAsync(SessionId, limit, cancellationToken);
 
+    public Task<JsonElement> RequestAsync(
+        string method,
+        object? parameters,
+        CancellationToken cancellationToken = default) =>
+        Client.RequestAsync(method, parameters, cancellationToken);
+
     public Task<JsonElement> ListSessionsAsync(CancellationToken cancellationToken = default) =>
         Client.ListSessionsAsync(cancellationToken);
 

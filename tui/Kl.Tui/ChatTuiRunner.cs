@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
@@ -135,7 +134,7 @@ public static class ChatTuiRunner
                 SplashScreen.Update(
                     CanUseTui,
                     ChatTexts.StartupStage(language, "loading-transcript"));
-                await LoadTranscriptAsync(connection.Session, options, state, cancellationToken)
+                await LoadTranscriptAsync(connection.Session, state, cancellationToken)
                     .ConfigureAwait(false);
                 SplashScreen.Update(
                     CanUseTui,
@@ -790,7 +789,6 @@ public static class ChatTuiRunner
                                     state.Agent);
                                 await LoadTranscriptAsync(
                                     connection.Session,
-                                    options,
                                     state,
                                     cancellationToken).ConfigureAwait(false);
                                 state.History = await LoadHistoryAsync(
@@ -827,7 +825,6 @@ public static class ChatTuiRunner
                                     state.Agent);
                                 await LoadTranscriptAsync(
                                     connection.Session,
-                                    options,
                                     state,
                                     cancellationToken).ConfigureAwait(false);
                                 state.History = await LoadHistoryAsync(
@@ -1796,7 +1793,6 @@ public static class ChatTuiRunner
             state = NewState(connection.Session, options.Verbose, language, state.Agent);
             await LoadTranscriptAsync(
                 connection.Session,
-                options,
                 state,
                 cancellationToken).ConfigureAwait(false);
             state.History = await LoadHistoryAsync(connection.Session, state)
@@ -1864,7 +1860,6 @@ public static class ChatTuiRunner
             state = NewState(connection.Session, options.Verbose, language, state.Agent);
             await LoadTranscriptAsync(
                 connection.Session,
-                options,
                 state,
                 cancellationToken).ConfigureAwait(false);
             state.History = await LoadHistoryAsync(connection.Session, state)
@@ -1923,7 +1918,6 @@ public static class ChatTuiRunner
             state = NewState(connection.Session, options.Verbose, language, state.Agent);
             await LoadTranscriptAsync(
                 connection.Session,
-                options,
                 state,
                 cancellationToken).ConfigureAwait(false);
             state.History = await LoadHistoryAsync(connection.Session, state)
@@ -2477,7 +2471,6 @@ public static class ChatTuiRunner
 
     private static async Task LoadTranscriptAsync(
         KlSessionClient session,
-        TuiOptions options,
         ChatTuiState state,
         CancellationToken cancellationToken)
     {
@@ -2485,12 +2478,10 @@ public static class ChatTuiRunner
         {
             var result = await session.HistoryAsync(20, cancellationToken)
                 .ConfigureAwait(false);
-            var historyEvents = await LoadHistoryEventsAsync(
-                options,
-                session.SessionId,
-                cancellationToken).ConfigureAwait(false);
+            var messages = ChatTuiState.ParseHistory(result);
+            var historyEvents = ChatTuiState.BuildHistoryEvents(messages);
             state.AddHistory(
-                ChatTuiState.ParseHistory(result),
+                messages,
                 historyEvents.Reasoning,
                 historyEvents.Tools);
         }
@@ -2503,48 +2494,12 @@ public static class ChatTuiRunner
         }
     }
 
-    private static async Task<HistoryEvents> LoadHistoryEventsAsync(
-        TuiOptions options,
-        string sessionId,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            var path = Path.Combine(
-                SettingsTuiRunner.HomePath(options),
-                "sessions",
-                sessionId,
-                "events.jsonl");
-            if (!File.Exists(path))
-            {
-                return new HistoryEvents([], []);
-            }
-            var lines = await File.ReadAllLinesAsync(path, cancellationToken)
-                .ConfigureAwait(false);
-            return ChatTuiState.ParseHistoryEvents(lines);
-        }
-        catch (Exception error)
-            when (error is IOException or UnauthorizedAccessException)
-        {
-            return new HistoryEvents([], []);
-        }
-    }
-
     private static Task<JsonElement> RequestCoreAsync(
         KlSessionClient session,
         string method,
         object? parameters,
-        CancellationToken cancellationToken)
-    {
-        var field = typeof(KlSessionClient).GetField(
-            "_client",
-            BindingFlags.Instance | BindingFlags.NonPublic);
-        if (field?.GetValue(session) is not KlCoreClient client)
-        {
-            throw new InvalidOperationException("core client unavailable");
-        }
-        return client.RequestAsync(method, parameters, cancellationToken);
-    }
+        CancellationToken cancellationToken) =>
+        session.RequestAsync(method, parameters, cancellationToken);
 
     private static async Task<JsonElement> RequestStandaloneAsync(
         TuiOptions options,
