@@ -2981,6 +2981,7 @@ fn build_session_history(
 ) -> Vec<SessionHistoryEntry> {
     let mut entries = Vec::new();
     let mut cursor = 0;
+    let mut turn_id = None;
     for message in messages {
         let role = message
             .get("role")
@@ -2988,14 +2989,25 @@ fn build_session_history(
             .unwrap_or_default();
         match role {
             "user" => {
-                let text = history_message_text(message);
+                let event = next_history_event(events, &mut cursor, |event| {
+                    matches!(event, CoreEvent::UserMessage { .. })
+                });
+                let text = event
+                    .and_then(|event| match &event.event {
+                        CoreEvent::UserMessage { turn_id, text } => {
+                            Some((turn_id.clone(), text.clone()))
+                        }
+                        _ => None,
+                    })
+                    .map(|(id, text)| {
+                        turn_id = Some(id);
+                        text
+                    })
+                    .unwrap_or_else(|| history_message_text(message));
                 if text.trim().is_empty() {
                     continue;
                 }
-                let event = next_history_event(events, &mut cursor, |event| {
-                    matches!(event, CoreEvent::TurnStarted { .. })
-                });
-                entries.push(history_entry("user", text, event, None));
+                entries.push(history_entry("user", text, event, None, None));
             }
             "assistant" => {
                 let text = history_message_text(message);
@@ -3003,7 +3015,10 @@ fn build_session_history(
                     continue;
                 }
                 let event = next_assistant_event(events, &mut cursor);
-                entries.push(history_entry("assistant", text, event, None));
+                let reasoning = turn_id
+                    .as_deref()
+                    .and_then(|id| history_reasoning(events, id));
+                entries.push(history_entry("assistant", text, event, None, reasoning));
             }
             "tool" => {
                 let event = next_history_event(events, &mut cursor, |event| {
@@ -3011,7 +3026,12 @@ fn build_session_history(
                 });
                 if let Some(event) = event {
                     if let CoreEvent::ToolCompleted {
-                        name, ok, summary, ..
+                        name,
+                        ok,
+                        summary,
+                        output,
+                        diff,
+                        ..
                     } = &event.event
                     {
                         entries.push(history_entry(
@@ -3022,7 +3042,10 @@ fn build_session_history(
                                 name: name.clone(),
                                 ok: *ok,
                                 summary: summary.clone(),
+                                output: output.clone(),
+                                diff: diff.clone(),
                             }),
+                            None,
                         ));
                     }
                 }
@@ -3031,6 +3054,21 @@ fn build_session_history(
         }
     }
     entries
+}
+
+fn history_reasoning(events: &[StoredSessionEvent], turn_id: &str) -> Option<String> {
+    let text = events
+        .iter()
+        .filter_map(|stored| match &stored.event {
+            CoreEvent::TurnReasoning {
+                turn_id: event_turn,
+                text,
+            } if event_turn == turn_id => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<String>();
+    let text = text.trim();
+    (!text.is_empty()).then(|| text.to_owned())
 }
 
 fn next_assistant_event<'a>(
@@ -3087,6 +3125,7 @@ fn history_entry(
     text: String,
     event: Option<&StoredSessionEvent>,
     tool: Option<SessionHistoryToolSummary>,
+    reasoning: Option<String>,
 ) -> SessionHistoryEntry {
     SessionHistoryEntry {
         role: role.to_owned(),
@@ -3094,6 +3133,7 @@ fn history_entry(
         timestamp: event.map(|event| event.at.clone()),
         seq: event.map(|event| event.seq),
         tool,
+        reasoning,
     }
 }
 
@@ -4493,6 +4533,117 @@ auto_approve_plugins = true
     }
 
     #[test]
+    fn session_history_uses_raw_user_text_reasoning_and_tool_details() {
+        let messages = vec![
+            json!({
+                "role": "user",
+                "content": [{"type": "text", "data": "skills\nOriginal prompt"}]
+            }),
+            json!({
+                "role": "assistant",
+                "content": [],
+                "tool_calls": [{"id": "call-1", "name": "read_file", "arguments": "{}"}]
+            }),
+            json!({
+                "role": "tool",
+                "tool_call_id": "call-1",
+                "content": [{"type": "text", "data": "file text"}]
+            }),
+            json!({
+                "role": "assistant",
+                "content": [{"type": "text", "data": "done"}]
+            }),
+        ];
+        let event = |seq, event| StoredSessionEvent {
+            seq,
+            at: format!("2026-10-26T00:00:{seq:02}.000Z"),
+            event,
+        };
+        let events = vec![
+            event(
+                1,
+                CoreEvent::UserMessage {
+                    turn_id: "turn-1".to_owned(),
+                    text: "Original prompt".to_owned(),
+                },
+            ),
+            event(
+                2,
+                CoreEvent::TurnStarted {
+                    turn_id: "turn-1".to_owned(),
+                },
+            ),
+            event(
+                3,
+                CoreEvent::TurnReasoning {
+                    turn_id: "turn-1".to_owned(),
+                    text: "Check ".to_owned(),
+                },
+            ),
+            event(
+                4,
+                CoreEvent::TurnReasoning {
+                    turn_id: "turn-1".to_owned(),
+                    text: "files.".to_owned(),
+                },
+            ),
+            event(
+                5,
+                CoreEvent::ToolStarted {
+                    turn_id: "turn-1".to_owned(),
+                    call_id: "call-1".to_owned(),
+                    name: "read_file".to_owned(),
+                    args: json!({"path": "a.txt"}),
+                },
+            ),
+            event(
+                6,
+                CoreEvent::ToolCompleted {
+                    turn_id: "turn-1".to_owned(),
+                    call_id: "call-1".to_owned(),
+                    name: "read_file".to_owned(),
+                    ok: true,
+                    summary: "read a file".to_owned(),
+                    output: Some("file text".to_owned()),
+                    diff: Some("+new".to_owned()),
+                },
+            ),
+            event(
+                7,
+                CoreEvent::TurnDelta {
+                    turn_id: "turn-1".to_owned(),
+                    text: "done".to_owned(),
+                },
+            ),
+            event(
+                8,
+                CoreEvent::TurnCompleted {
+                    turn_id: "turn-1".to_owned(),
+                    status: "completed".to_owned(),
+                    text: "done".to_owned(),
+                    input_tokens: 1,
+                    output_tokens: 1,
+                    cost_usd: None,
+                },
+            ),
+        ];
+
+        let history = build_session_history(&messages, &events);
+        assert_eq!(history.len(), 3);
+        assert_eq!(history[0].role, "user");
+        assert_eq!(history[0].text, "Original prompt");
+        assert_eq!(history[0].seq, Some(1));
+        assert_eq!(history[1].role, "tool");
+        assert_eq!(history[1].seq, Some(6));
+        let tool = history[1].tool.as_ref().unwrap();
+        assert_eq!(tool.output.as_deref(), Some("file text"));
+        assert_eq!(tool.diff.as_deref(), Some("+new"));
+        assert_eq!(history[2].role, "assistant");
+        assert_eq!(history[2].seq, Some(7));
+        assert_eq!(history[2].reasoning.as_deref(), Some("Check files."));
+    }
+
+    #[test]
     fn memory_methods_round_trip_and_reject_unsafe_input() {
         let temp = tempfile::tempdir().unwrap();
         let workspace = temp.path().join("workspace");
@@ -4748,12 +4899,16 @@ auto_approve_plugins = true
         }))
         .unwrap();
         wait_for_threads(&mut core);
+        let first = {
+            let sessions = core.sessions.lock().unwrap();
+            sessions[&session_id].messages[0].text()
+        };
+        assert!(first.starts_with(AgentPreset::Plan.prompt_prefix()));
+        assert!(first.ends_with("hello"));
         let history = core
             .session_history(json!({"session_id": session_id}))
             .unwrap();
-        let first = history["messages"][0]["text"].as_str().unwrap();
-        assert!(first.starts_with(AgentPreset::Plan.prompt_prefix()));
-        assert!(first.ends_with("hello"));
+        assert_eq!(history["messages"][0]["text"], "hello");
     }
 
     #[test]
@@ -4782,14 +4937,18 @@ auto_approve_plugins = true
         }))
         .unwrap();
         wait_for_threads(&mut core);
-        let history = core
-            .session_history(json!({"session_id": session_id}))
-            .unwrap();
-        let first = history["messages"][0]["text"].as_str().unwrap();
+        let first = {
+            let sessions = core.sessions.lock().unwrap();
+            sessions[&session_id].messages[0].text()
+        };
         assert!(first.starts_with("alpha: Alpha description\n"));
         assert!(first.ends_with("hello"));
         assert_eq!(first.matches("Alpha description").count(), 1);
         assert!(!first.contains("SECRET BODY"));
+        let history = core
+            .session_history(json!({"session_id": session_id}))
+            .unwrap();
+        assert_eq!(history["messages"][0]["text"], "hello");
     }
 
     #[test]

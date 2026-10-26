@@ -252,7 +252,7 @@ auto_approve_shell = true
 }
 
 #[test]
-fn history_replays_after_restart_and_omits_sensitive_fields() {
+fn history_replays_after_restart_without_tool_arguments() {
     let temp = tempfile::tempdir().unwrap();
     let workspace = temp.path().join("workspace");
     std::fs::create_dir_all(&workspace).unwrap();
@@ -379,7 +379,7 @@ auto_approve_shell = true
     );
 
     let serialized = serde_json::to_string(&history["result"]).unwrap();
-    for forbidden in ["args", "output", "diff", "api_key", "history-secret-token"] {
+    for forbidden in ["args", "api_key", "history-secret-token"] {
         assert!(
             !serialized.contains(forbidden),
             "history leaked {forbidden}: {serialized}"

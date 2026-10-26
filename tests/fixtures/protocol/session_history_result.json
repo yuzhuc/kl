@@ -19,14 +19,17 @@
         "tool": {
           "name": "shell",
           "ok": true,
-          "summary": "exit 0 in 5 ms"
+          "summary": "exit 0 in 5 ms",
+          "output": "line1\nline2\n",
+          "diff": "+new"
         }
       },
       {
         "role": "assistant",
         "text": "done",
         "timestamp": "2026-10-17T10:00:02.000Z",
-        "seq": 5
+        "seq": 5,
+        "reasoning": "Check the files."
       }
     ]
   }
