@@ -1,0 +1,1234 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:DeepSeekHarness.Gui.ViewModels"
+        xmlns:controls="using:DeepSeekHarness.Gui.Controls"
+        mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="820"
+        x:Class="DeepSeekHarness.Gui.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="DeepSeek Harness"
+        Icon="/Assets/app.png"
+        Width="1280" Height="820" MinWidth="960" MinHeight="700"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource SidebarFill}"
+        KeyDown="OnWindowKeyDown"
+        Closing="OnWindowClosing">
+
+    <Window.Resources>
+        <StreamGeometry x:Key="StopIcon">M7 7H17V17H7Z</StreamGeometry>
+        <StreamGeometry x:Key="TrashIcon">M4 7H20 M9 4H15 M7 7L8 21H16L17 7 M10 11V17 M14 11V17</StreamGeometry>
+        <StreamGeometry x:Key="ClockIcon">M12 3A9 9 0 1 0 12 21A9 9 0 1 0 12 3 M12 7V12L15 14</StreamGeometry>
+        <StreamGeometry x:Key="SparkIcon">M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5Z</StreamGeometry>
+        <StreamGeometry x:Key="WarningIcon">M12 3L22 20H2Z M12 9V14 M12 17V17.2</StreamGeometry>
+        <StreamGeometry x:Key="CopyIcon">M8 8H20V20H8Z M4 16V4H16</StreamGeometry>
+
+        <DataTemplate x:Key="SessionRowTemplate" x:DataType="vm:SessionItemViewModel">
+            <Grid IsVisible="{Binding IsVisible}" Width="235" Margin="0,0,0,1" ColumnDefinitions="*,Auto">
+                <Button Classes="session-row"
+                        HorizontalAlignment="Stretch"
+                        Classes.active="{Binding IsSelected}"
+                        Click="OnSessionClicked"
+                        ToolTip.Tip="{Binding Title}">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="Medium"
+                                   Foreground="{StaticResource TextSecondary}"
+                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding UpdatedLabel}" FontSize="10"
+                                   Foreground="{StaticResource TextCaption}" VerticalAlignment="Center" />
+                    </Grid>
+                </Button>
+
+                <Button Grid.Column="1" Classes="icon" Width="26" Height="26"
+                        Background="Transparent" ToolTip.Tip="会话操作">
+                    <Path Width="14" Height="14" Data="{StaticResource MoreIcon}" Stretch="Uniform"
+                          Stroke="{StaticResource TextCaption}" StrokeThickness="1.35"
+                          StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                    <Button.Flyout>
+                        <MenuFlyout Placement="BottomEdgeAlignedRight">
+                            <MenuItem Header="重命名" Click="OnRenameSessionClicked" Tag="{Binding}" />
+                            <MenuItem Header="删除" Click="OnDeleteSessionClicked" Tag="{Binding}" />
+                        </MenuFlyout>
+                    </Button.Flyout>
+                </Button>
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="WorkspaceTemplate" x:DataType="vm:WorkspaceItemViewModel">
+            <StackPanel IsVisible="{Binding IsVisible}" Spacing="2" Margin="0,0,0,8">
+                <Grid ColumnDefinitions="*,Auto">
+                    <Button Classes="session-row" Click="OnWorkspaceClicked"
+                            HorizontalAlignment="Stretch" ToolTip.Tip="{Binding Path}">
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                            <Path Width="15" Height="15" Data="{StaticResource FolderIcon}" Stretch="Uniform"
+                                  Stroke="{StaticResource TextSecondary}" StrokeThickness="1.35"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                  VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextSecondary}"
+                                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                            <Path Grid.Column="2" Width="10" Height="10"
+                                  Data="{StaticResource ChevronDownIcon}"
+                                  Stretch="Uniform" Stroke="{StaticResource TextCaption}" StrokeThickness="1.3"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                  VerticalAlignment="Center" />
+                        </Grid>
+                    </Button>
+                    <Button Grid.Column="1" Classes="icon" Width="26" Height="26"
+                            Click="OnNewWorkspaceSessionClicked" ToolTip.Tip="在此工作区新建会话">
+                        <Path Width="13" Height="13" Data="{StaticResource PlusIcon}" Stretch="Uniform"
+                              Stroke="{StaticResource TextSecondary}" StrokeThickness="1.4"
+                              StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                    </Button>
+                </Grid>
+
+                <ItemsControl ItemsSource="{Binding Sessions}"
+                              ItemTemplate="{StaticResource SessionRowTemplate}"
+                              Margin="20,1,0,0"
+                              IsVisible="{Binding ShowSessions}" />
+            </StackPanel>
+        </DataTemplate>
+
+        <DataTemplate x:Key="AttachmentChipTemplate" x:DataType="vm:AttachmentItemViewModel">
+            <Border Background="#353538" CornerRadius="8" Padding="8,5" Margin="0,0,6,4">
+                <Grid ColumnDefinitions="Auto,Auto,Auto" ColumnSpacing="6">
+                    <Path Width="13" Height="13" Data="{StaticResource FolderIcon}" Stretch="Uniform"
+                          Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3"
+                          StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                          VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5">
+                        <TextBlock Text="{Binding Name}" FontSize="11" Foreground="{StaticResource TextSecondary}" />
+                        <TextBlock Text="{Binding SizeLabel}" FontSize="10" Foreground="{StaticResource TextCaption}" />
+                    </StackPanel>
+                    <Button Grid.Column="2" Classes="icon" Width="18" Height="18"
+                            Click="OnRemoveAttachmentClicked" ToolTip.Tip="移除附件">
+                        <TextBlock Text="×" FontSize="13" Foreground="{StaticResource TextCaption}" />
+                    </Button>
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ChatItemTemplate" x:DataType="vm:ChatItemViewModel">
+            <Grid Margin="0,0,0,12">
+                <Border IsVisible="{Binding IsUser}" HorizontalAlignment="Right"
+                        MaxWidth="480" Background="{StaticResource BubbleFill}"
+                        CornerRadius="20" Padding="16,10">
+                    <SelectableTextBlock Text="{Binding Text}"
+                                         FontSize="{DynamicResource ChatContentFontSize}"
+                                         LineHeight="{DynamicResource ChatContentLineHeight}"
+                                         Foreground="{StaticResource TextPrimary}"
+                                         TextWrapping="Wrap" />
+                </Border>
+
+                <StackPanel IsVisible="{Binding IsAssistant}" Spacing="6">
+                    <controls:MarkdownTextBlock Text="{Binding Text}"
+                                                ContentFontSize="{DynamicResource ChatContentFontSize}"
+                                                ContentLineHeight="{DynamicResource ChatContentLineHeight}" />
+                    <TextBlock Text="{Binding StatusText}" FontSize="11"
+                               Foreground="{StaticResource TextCaption}"
+                               IsVisible="{Binding HasStatus}" />
+                    <Button Classes="message-action" IsVisible="{Binding ShowAssistantActions}"
+                            Click="OnCopyMessageClicked" ToolTip.Tip="复制回复">
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <Path Width="12" Height="12" Data="{StaticResource CopyIcon}" Stretch="Uniform"
+                                  Stroke="{StaticResource TextCaption}" StrokeThickness="1.3"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                            <TextBlock Text="复制" FontSize="11" Foreground="{StaticResource TextCaption}" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+
+                <Border IsVisible="{Binding IsError}" Background="#2A1F2020"
+                        BorderBrush="#554D2B2B" BorderThickness="0.5"
+                        CornerRadius="12" Padding="12,10">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
+                        <Path Width="15" Height="15" Data="{StaticResource WarningIcon}" Stretch="Uniform"
+                              Stroke="#E6A0A0" StrokeThickness="1.4"
+                              StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                              VerticalAlignment="Top" Margin="0,3,0,0" />
+                        <SelectableTextBlock Grid.Column="1" Text="{Binding Text}" FontSize="13" LineHeight="20"
+                                             Foreground="#E6B4B4" TextWrapping="Wrap" />
+                    </Grid>
+                </Border>
+
+                <Grid IsVisible="{Binding IsActivity}" RowDefinitions="Auto,Auto">
+                    <Button Classes="activity-header" Click="OnActivityClicked">
+                        <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="6">
+                            <Path Width="15" Height="15" Data="{StaticResource ThoughtIcon}" Stretch="Uniform"
+                                  Stroke="{StaticResource TextTertiary}" StrokeThickness="1.25"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                  IsVisible="{Binding IsReasoning}" VerticalAlignment="Center" />
+                            <Path Width="15" Height="15" Data="{StaticResource ToolIcon}" Stretch="Uniform"
+                                  Stroke="{StaticResource TextTertiary}" StrokeThickness="1.25"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                  IsVisible="{Binding IsTool}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding Header}" FontSize="13" FontWeight="Medium"
+                                       Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="2" Text="{Binding CollapsedText}" FontSize="12.5"
+                                       Foreground="{StaticResource TextCaption}"
+                                       TextTrimming="CharacterEllipsis" Margin="8,0,0,0"
+                                       IsVisible="{Binding ShowCollapsed}"
+                                       VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="3" Text="{Binding StatusText}" FontSize="11"
+                                       Foreground="{StaticResource TextCaption}"
+                                       IsVisible="{Binding HasStatus}" VerticalAlignment="Center" Margin="8,0,4,0" />
+                            <Path Grid.Column="4" Width="11" Height="11"
+                                  Data="{StaticResource ChevronDownIcon}" Stretch="Uniform"
+                                  Stroke="{StaticResource TextCaption}" StrokeThickness="1.35"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                  IsVisible="{Binding ShowChevronDown}" VerticalAlignment="Center" />
+                            <Path Grid.Column="4" Width="11" Height="11"
+                                  Data="{StaticResource ChevronUpIcon}" Stretch="Uniform"
+                                  Stroke="{StaticResource TextCaption}" StrokeThickness="1.35"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                  IsVisible="{Binding ShowChevronUp}" VerticalAlignment="Center" />
+                        </Grid>
+                    </Button>
+
+                    <StackPanel Grid.Row="1" IsVisible="{Binding ShowExpanded}"
+                                Margin="23,7,0,3" Spacing="8">
+                        <SelectableTextBlock Text="{Binding Text}" FontSize="13" LineHeight="21"
+                                             Foreground="{StaticResource TextTertiary}"
+                                             TextWrapping="Wrap" IsVisible="{Binding HasText}" />
+                        <SelectableTextBlock Text="{Binding Detail}" FontSize="12" LineHeight="19"
+                                             Foreground="{StaticResource TextCaption}"
+                                             TextWrapping="Wrap" IsVisible="{Binding HasDetail}" />
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Window.Styles>
+        <Style Selector="Button.primary">
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="14,6" />
+            <Setter Property="CornerRadius" Value="16" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="Foreground" Value="#151517" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.primary:pointerover">
+            <Setter Property="Background" Value="#E7E9EC" />
+        </Style>
+        <Style Selector="Button.subtle">
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.subtle:pointerover">
+            <Setter Property="Background" Value="{DynamicResource HoverFill}" />
+        </Style>
+        <Style Selector="Button.secondary">
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="12,5" />
+            <Setter Property="CornerRadius" Value="16" />
+            <Setter Property="BorderBrush" Value="#505157" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.secondary:pointerover">
+            <Setter Property="Background" Value="{DynamicResource HoverFill}" />
+        </Style>
+        <Style Selector="Button.filter">
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Padding" Value="10,3" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{StaticResource TextTertiary}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.filter:pointerover">
+            <Setter Property="Background" Value="{DynamicResource HoverFill}" />
+        </Style>
+        <Style Selector="Button.filter.active">
+            <Setter Property="Background" Value="{DynamicResource HoverFill}" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        </Style>
+        <Style Selector="Button.danger">
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="Padding" Value="15,7" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="#A94F4F" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.danger:pointerover">
+            <Setter Property="Background" Value="#BD5C5C" />
+        </Style>
+        <Style Selector="Button.stop">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="17" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="#3A3A3D" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.stop:pointerover">
+            <Setter Property="Background" Value="#4A4A4E" />
+        </Style>
+        <Style Selector="TextBox.field">
+            <Setter Property="MinHeight" Value="38" />
+            <Setter Property="Padding" Value="10,7" />
+            <Setter Property="Background" Value="#232325" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="BorderBrush" Value="#353538" />
+            <Setter Property="BorderThickness" Value="0.5" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+        </Style>
+        <Style Selector="ComboBox.field">
+            <Setter Property="MinHeight" Value="38" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="Background" Value="#232325" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="BorderBrush" Value="#353538" />
+            <Setter Property="BorderThickness" Value="0.5" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.composer-pill">
+            <Setter Property="MinHeight" Value="28" />
+            <Setter Property="Padding" Value="7,4" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.composer-pill:pointerover">
+            <Setter Property="Background" Value="{DynamicResource HoverFill}" />
+        </Style>
+        <Style Selector="Button.message-action">
+            <Setter Property="MinHeight" Value="24" />
+            <Setter Property="Padding" Value="6,2" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="Opacity" Value="0.72" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.message-action:pointerover">
+            <Setter Property="Background" Value="{DynamicResource HoverFill}" />
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="TextBox.search">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+        </Style>
+        <Style Selector="TextBox.search /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="TextBox.search:focus /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+    </Window.Styles>
+
+    <Grid>
+        <Grid ColumnDefinitions="280,*">
+            <Border Grid.Column="0" Background="{StaticResource SidebarFill}">
+                <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" Margin="12,14,12,12">
+                    <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9" Margin="6,0,4,16">
+                        <Path Width="23" Height="23" Data="{StaticResource FishLogoPath}" Stretch="Uniform"
+                              Fill="{StaticResource TextPrimary}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="deepseek" FontSize="17" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center" />
+                        <Border Grid.Column="2" BorderBrush="#4A4A4E" BorderThickness="0.5"
+                                CornerRadius="2" Padding="3,1" VerticalAlignment="Center">
+                            <TextBlock Text="HARNESS" FontSize="7" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextSecondary}" />
+                        </Border>
+                    </Grid>
+
+                    <Button Grid.Row="1" Classes="new-session" Click="OnNewSessionClicked" Margin="0,0,0,12">
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
+                            <Path Width="15" Height="15" Data="{StaticResource EditIcon}" Stretch="Uniform"
+                                  Stroke="{StaticResource TextPrimary}" StrokeThickness="1.35"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                            <TextBlock Grid.Column="1" Text="新会话" FontSize="14" FontWeight="Medium"
+                                       Foreground="{StaticResource TextPrimary}" />
+                            <TextBlock Grid.Column="2" Text="Ctrl+N" FontSize="10"
+                                       Foreground="{StaticResource TextCaption}" VerticalAlignment="Center" />
+                        </Grid>
+                    </Button>
+
+                    <StackPanel Grid.Row="2" Spacing="2">
+                        <Button Classes="nav" Classes.active="{Binding IsChatPage}" Click="OnNavChatClicked"
+                                Height="36" Padding="10,7">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
+                                <Path Width="17" Height="17" Data="{StaticResource ChatIcon}" Stretch="Uniform"
+                                      Stroke="{StaticResource TextSecondary}" StrokeThickness="1.35"
+                                      StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                                <TextBlock Grid.Column="1" Text="聊天" FontSize="14"
+                                           Foreground="{StaticResource TextSecondary}" />
+                            </Grid>
+                        </Button>
+                        <Button Classes="nav" Classes.active="{Binding IsPluginsPage}" Click="OnNavPluginsClicked"
+                                Height="34" Padding="10,7">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
+                                <Path Width="17" Height="17" Data="{StaticResource PluginIcon}" Stretch="Uniform"
+                                      Stroke="{StaticResource TextSecondary}" StrokeThickness="1.35"
+                                      StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                                <TextBlock Grid.Column="1" Text="插件" FontSize="14"
+                                           Foreground="{StaticResource TextSecondary}" />
+                            </Grid>
+                        </Button>
+                        <Button Classes="nav" Classes.active="{Binding IsAutomationPage}" Click="OnNavAutomationClicked"
+                                Height="34" Padding="10,7">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
+                                <Path Width="17" Height="17" Data="{StaticResource AutomationIcon}" Stretch="Uniform"
+                                      Stroke="{StaticResource TextSecondary}" StrokeThickness="1.35"
+                                      StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                                <TextBlock Grid.Column="1" Text="自动化任务" FontSize="14"
+                                           Foreground="{StaticResource TextSecondary}" />
+                            </Grid>
+                        </Button>
+                    </StackPanel>
+
+                    <Grid Grid.Row="3" ColumnDefinitions="*,Auto" Margin="0,15,0,7">
+                        <TextBlock Text="工作区" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextCaption}" Margin="7,0,0,0"
+                                   VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Classes="icon" Width="24" Height="24"
+                                Click="OnAddWorkspaceClicked" ToolTip.Tip="添加工作区">
+                            <Path Width="13" Height="13" Data="{StaticResource PlusIcon}" Stretch="Uniform"
+                                  Stroke="{StaticResource TextSecondary}" StrokeThickness="1.4"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                        </Button>
+                    </Grid>
+
+                    <Grid Grid.Row="4" RowDefinitions="Auto,*">
+                        <Border Background="#232325" CornerRadius="8" Padding="8,3" Margin="0,0,0,8">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="7">
+                                <Path Width="13" Height="13" Data="{StaticResource SearchIcon}" Stretch="Uniform"
+                                      Stroke="{StaticResource TextCaption}" StrokeThickness="1.35"
+                                      StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                      VerticalAlignment="Center" />
+                                <TextBox x:Name="SearchBox" Grid.Column="1" Classes="search" Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         Background="Transparent" BorderThickness="0" Padding="0"
+                                         MinHeight="25" FontSize="12" Foreground="{StaticResource TextPrimary}"
+                                         CaretBrush="{StaticResource AccentBlue}"
+                                         PlaceholderText="搜索会话" FocusAdorner="{x:Null}" />
+                            </Grid>
+                        </Border>
+
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel Spacing="2" Margin="0,0,2,0">
+                                <ItemsControl ItemsSource="{Binding Workspaces}"
+                                              ItemTemplate="{StaticResource WorkspaceTemplate}" />
+                                <TextBlock Text="暂无会话"
+                                           IsVisible="{Binding ShowNoSessions}"
+                                           FontSize="12" Foreground="{StaticResource TextCaption}"
+                                           Margin="8,8" />
+                                <TextBlock Text="没有匹配的会话"
+                                           IsVisible="{Binding ShowNoSearchResults}"
+                                           FontSize="12" Foreground="{StaticResource TextCaption}"
+                                           Margin="8,8" />
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+
+                    <Button Grid.Row="5" Classes="nav" Classes.active="{Binding IsSettingsOpen}"
+                            Click="OnNavSettingsClicked" Margin="0,9,0,0" Height="40" Padding="10,9">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
+                            <Path Width="17" Height="17" Data="{StaticResource SettingsIcon}" Stretch="Uniform"
+                                  Stroke="{StaticResource TextSecondary}" StrokeThickness="1.3"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                            <TextBlock Grid.Column="1" Text="设置" FontSize="14"
+                                       Foreground="{StaticResource TextSecondary}" />
+                        </Grid>
+                    </Button>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="1" Margin="8,8,8,8" Background="{StaticResource BgBase}"
+                    CornerRadius="16" ClipToBounds="True">
+            <Grid RowDefinitions="Auto,*">
+                <Border Grid.Row="0" IsVisible="{Binding ShowConversationHeader}"
+                        BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1"
+                        Padding="20,10,20,0">
+                    <Grid RowDefinitions="30,24">
+                    <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding HeaderTitle}" FontSize="14" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimary}"
+                                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4"
+                                    VerticalAlignment="Center">
+                            <Button Classes="icon" Width="30" Height="30" Background="Transparent"
+                                    IsVisible="{Binding HasConversation}" ToolTip.Tip="会话操作">
+                                <Path Width="15" Height="15" Data="{StaticResource MoreIcon}" Stretch="Uniform"
+                                      Stroke="{StaticResource TextTertiary}" StrokeThickness="1.35"
+                                      StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                                <Button.Flyout>
+                                    <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                        <MenuItem Header="重命名当前会话" Click="OnRenameActiveSessionClicked" />
+                                        <MenuItem Header="删除当前会话" Click="OnDeleteActiveSessionClicked" />
+                                    </MenuFlyout>
+                                </Button.Flyout>
+                            </Button>
+                            <Button Classes="icon" Width="30" Height="30" Background="Transparent"
+                                    Click="OnNewSessionClicked" ToolTip.Tip="新会话">
+                                <Path Width="16" Height="16" Data="{StaticResource EditIcon}" Stretch="Uniform"
+                                      Stroke="{StaticResource TextTertiary}" StrokeThickness="1.35"
+                                      StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                    <Border Grid.Row="1" BorderBrush="#3A3B40" BorderThickness="0,0,0,1"
+                            VerticalAlignment="Bottom" Padding="20,0">
+                        <StackPanel Orientation="Horizontal" Height="24">
+                            <Border BorderBrush="{StaticResource TextPrimary}" BorderThickness="0,0,0,1"
+                                    Padding="2,0,2,0">
+                                <TextBlock Text="对话" FontSize="12" Foreground="{StaticResource TextPrimary}"
+                                           VerticalAlignment="Center" />
+                            </Border>
+                        </StackPanel>
+                    </Border>
+                    </Grid>
+                </Border>
+
+                <Grid Grid.Row="1">
+                    <Grid IsVisible="{Binding IsChatPage}" RowDefinitions="*,Auto">
+                        <Grid Grid.Row="0">
+                            <Grid IsVisible="{Binding IsEmpty}">
+                                <StackPanel MaxWidth="712" Spacing="12" VerticalAlignment="Center"
+                                            HorizontalAlignment="Stretch" Margin="16,20,16,52">
+                                    <StackPanel Orientation="Horizontal" Spacing="11"
+                                                HorizontalAlignment="Center">
+                                        <Path Width="28" Height="28" Data="{StaticResource FishLogoPath}"
+                                              Stretch="Uniform" Fill="{StaticResource TextPrimary}"
+                                              VerticalAlignment="Center" />
+                                        <TextBlock Text="探索未至之境" FontSize="26" FontWeight="Medium"
+                                                   Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center" />
+                                        <Border Background="#34415B" CornerRadius="10" Padding="7,1"
+                                                VerticalAlignment="Top">
+                                            <TextBlock Text="预览版" FontSize="11" Foreground="#FAFAFA" />
+                                        </Border>
+                                    </StackPanel>
+
+                                    <Button Classes="composer-pill" HorizontalAlignment="Left"
+                                            Click="OnWorkspacePickerClicked" ToolTip.Tip="{Binding WorkspacePath}">
+                                        <StackPanel Orientation="Horizontal" Spacing="7">
+                                            <Path Width="15" Height="15" Data="{StaticResource FolderIcon}" Stretch="Uniform"
+                                                  Stroke="{StaticResource TextTertiary}" StrokeThickness="1.35"
+                                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                                            <TextBlock Text="{Binding WorkspaceName}" FontSize="12"
+                                                       Foreground="{StaticResource TextSecondary}" />
+                                            <Path Width="9" Height="9" Data="{StaticResource ChevronDownIcon}" Stretch="Uniform"
+                                                  Stroke="{StaticResource TextCaption}" StrokeThickness="1.3"
+                                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                                        </StackPanel>
+                                    </Button>
+
+                                    <Border Background="{StaticResource ElevatedFill}" CornerRadius="28"
+                                            Padding="8,8,8,6" BoxShadow="0 10 34 0 #55000000">
+                                        <Grid RowDefinitions="Auto,Auto,Auto">
+                                            <ItemsControl Grid.Row="0" ItemsSource="{Binding PendingAttachments}"
+                                                          ItemTemplate="{StaticResource AttachmentChipTemplate}"
+                                                          IsVisible="{Binding HasPendingAttachments}"
+                                                          Margin="12,4,12,0">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <WrapPanel Orientation="Horizontal" />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                            </ItemsControl>
+                                            <TextBox Grid.Row="1" x:Name="HeroComposerBox" Classes="composer"
+                                                     Text="{Binding Composer, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                     PlaceholderText="描述你想要构建的内容, / 调用指令, @ 文件或对话"
+                                                     AcceptsReturn="True" TextWrapping="Wrap"
+                                                     MinHeight="52" MaxHeight="180"
+                                                     KeyDown="OnComposerKeyDown" />
+                                            <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto,Auto,Auto" Margin="4,4,4,2">
+                                                <Button Classes="attach" Click="OnAttachFilesClicked" ToolTip.Tip="添加文本或代码附件">
+                                                    <Path Width="13" Height="13" Data="{StaticResource PlusIcon}" Stretch="Uniform"
+                                                          Stroke="{StaticResource TextPrimary}" StrokeThickness="1.4"
+                                                          StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                                                </Button>
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2"
+                                                            HorizontalAlignment="Left" Margin="8,0,0,0">
+                                                    <Button Classes="composer-pill">
+                                                        <StackPanel Orientation="Horizontal" Spacing="3">
+                                                            <TextBlock Text="{Binding ActiveModeLabel}" FontSize="12"
+                                                                       Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" />
+                                                            <Path Width="9" Height="9" Data="{StaticResource ChevronDownIcon}"
+                                                                  Stretch="Uniform" Stroke="{StaticResource TextCaption}" StrokeThickness="1.3"
+                                                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                                                  VerticalAlignment="Center" />
+                                                        </StackPanel>
+                                                        <Button.Flyout>
+                                                            <MenuFlyout Placement="TopEdgeAlignedLeft">
+                                                                <MenuItem Header="Chat" Click="OnChatModeClicked" />
+                                                                <MenuItem Header="Work" Click="OnWorkModeClicked" />
+                                                            </MenuFlyout>
+                                                        </Button.Flyout>
+                                                    </Button>
+                                                    <Button Classes="composer-pill" Click="OnNavSettingsClicked"
+                                                            Content="{Binding PermissionMode}" />
+                                                </StackPanel>
+                                                <Button Grid.Column="2" Classes="composer-pill" Click="OnOpenModelSettingsClicked">
+                                                        <StackPanel Orientation="Horizontal" Spacing="3">
+                                                            <TextBlock Text="{Binding ModelName}" FontSize="12"
+                                                                       Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" />
+                                                            <Path Width="9" Height="9" Data="{StaticResource ChevronDownIcon}"
+                                                                  Stretch="Uniform" Stroke="{StaticResource TextCaption}" StrokeThickness="1.3"
+                                                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                                                  VerticalAlignment="Center" />
+                                                        </StackPanel>
+                                                    </Button>
+                                                <Button Grid.Column="4" Classes="send" Click="OnSendClicked"
+                                                        IsEnabled="{Binding CanSend}" ToolTip.Tip="发送 Ctrl+Enter">
+                                                    <Path Width="15" Height="15" Data="{StaticResource SendIcon}" Stretch="Uniform"
+                                                          Stroke="White" StrokeThickness="1.8"
+                                                          StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                                                </Button>
+                                            </Grid>
+                                        </Grid>
+                                    </Border>
+                                </StackPanel>
+                            </Grid>
+
+                            <ScrollViewer x:Name="TranscriptScroller" IsVisible="{Binding HasConversation}"
+                                          VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                          Padding="16,16,16,12">
+                                <ItemsControl ItemsSource="{Binding Messages}"
+                                              ItemTemplate="{StaticResource ChatItemTemplate}"
+                                              MaxWidth="680" Margin="0,0,0,0" />
+                            </ScrollViewer>
+                        </Grid>
+
+                        <Border Grid.Row="1" IsVisible="{Binding HasConversation}" Padding="16,8,16,12">
+                            <Border MaxWidth="712" Background="{StaticResource ElevatedFill}" CornerRadius="28"
+                                    Padding="8,8,8,6" BoxShadow="0 10 34 0 #3D000000">
+                                <Grid RowDefinitions="Auto,Auto,Auto">
+                                    <ItemsControl Grid.Row="0" ItemsSource="{Binding PendingAttachments}"
+                                                  ItemTemplate="{StaticResource AttachmentChipTemplate}"
+                                                  IsVisible="{Binding HasPendingAttachments}"
+                                                  Margin="12,4,12,0">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel Orientation="Horizontal" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                    </ItemsControl>
+                                    <TextBox Grid.Row="1" x:Name="ChatComposerBox" Classes="composer"
+                                             Text="{Binding Composer, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             PlaceholderText="描述你想要构建的内容, / 调用指令, @ 文件或对话"
+                                             AcceptsReturn="True" TextWrapping="Wrap"
+                                             MinHeight="48" MaxHeight="160"
+                                             KeyDown="OnComposerKeyDown" />
+                                    <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto,Auto,Auto" Margin="4,4,4,2">
+                                        <Button Classes="attach" Click="OnAttachFilesClicked" ToolTip.Tip="添加文本或代码附件">
+                                            <Path Width="13" Height="13" Data="{StaticResource PlusIcon}" Stretch="Uniform"
+                                                  Stroke="{StaticResource TextPrimary}" StrokeThickness="1.4"
+                                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                                        </Button>
+                                        <Button Grid.Column="1" Classes="composer-pill" HorizontalAlignment="Left"
+                                                Margin="8,0,0,0" Click="OnNavSettingsClicked"
+                                                Content="{Binding PermissionMode}" />
+                                        <Button Grid.Column="2" Classes="composer-pill"
+                                                Click="OnNavSettingsClicked"
+                                                Content="{Binding ModelName}" />
+                                        <Button Grid.Column="4" Classes="stop" Width="34" Height="34"
+                                                IsVisible="{Binding IsBusy}" Click="OnCancelClicked"
+                                                ToolTip.Tip="停止生成">
+                                            <Path Width="14" Height="14" Data="{StaticResource StopIcon}" Stretch="Uniform"
+                                                  Fill="{StaticResource TextPrimary}" />
+                                        </Button>
+                                        <Button Grid.Column="4" Classes="send" IsVisible="{Binding !IsBusy}"
+                                                Click="OnSendClicked"
+                                                IsEnabled="{Binding CanSend}" ToolTip.Tip="发送 Ctrl+Enter">
+                                            <Path Width="15" Height="15" Data="{StaticResource SendIcon}" Stretch="Uniform"
+                                                  Stroke="White" StrokeThickness="1.8"
+                                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                                        </Button>
+                                    </Grid>
+                                </Grid>
+                            </Border>
+                        </Border>
+                    </Grid>
+
+                    <ScrollViewer IsVisible="{Binding IsPluginsPage}" VerticalScrollBarVisibility="Auto">
+                        <StackPanel MaxWidth="960" Spacing="0" Margin="40,0,40,40">
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,28,0,4">
+                                <StackPanel Spacing="3">
+                                    <TextBlock Text="插件" FontSize="20" FontWeight="Medium"
+                                               Foreground="{StaticResource TextPrimary}" />
+                                    <TextBlock Text="管理本地插件清单与目录。"
+                                               FontSize="13" Foreground="{StaticResource TextTertiary}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
+                                            VerticalAlignment="Center">
+                                    <Button Classes="icon" Width="32" Height="32"
+                                            Click="OnRefreshPluginsClicked" ToolTip.Tip="刷新插件">
+                                        <Path Width="15" Height="15" Data="{StaticResource AutomationIcon}"
+                                              Stretch="Uniform" Stroke="{StaticResource TextSecondary}"
+                                              StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round"
+                                              Fill="Transparent" />
+                                    </Button>
+                                    <Button Classes="secondary" Click="OnOpenPluginDirectoryClicked"
+                                            Content="打开目录" />
+                                    <Button Classes="primary" Click="OnImportPluginClicked"
+                                            Content="+ 导入插件" />
+                                </StackPanel>
+                            </Grid>
+
+                            <SelectableTextBlock Text="{Binding PluginDirectoryPath}" FontSize="11"
+                                                 Foreground="{StaticResource TextCaption}"
+                                                 TextTrimming="CharacterEllipsis" Margin="0,0,0,24" />
+
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+                                <TextBlock Text="本地插件" FontSize="14" FontWeight="Medium"
+                                           Foreground="{StaticResource TextPrimary}" />
+                                <TextBlock Grid.Column="1" Text="{Binding PluginStatus}" FontSize="11"
+                                           Foreground="{StaticResource TextCaption}" />
+                            </Grid>
+
+                            <Border IsVisible="{Binding ShowNoPlugins}" Padding="0,84,0,0">
+                                <StackPanel Spacing="10" HorizontalAlignment="Center">
+                                    <Path Width="30" Height="30" Data="{StaticResource PluginIcon}" Stretch="Uniform"
+                                          Stroke="{StaticResource TextTertiary}" StrokeThickness="1.1"
+                                          StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                          HorizontalAlignment="Center" />
+                                    <TextBlock Text="暂无本地插件" FontSize="14"
+                                               Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center" />
+                                    <TextBlock Text="在插件目录下创建子目录并放入 plugin.json"
+                                               FontSize="12" Foreground="{StaticResource TextCaption}" HorizontalAlignment="Center" />
+                                    <Button Classes="secondary" Click="OnOpenPluginDirectoryClicked"
+                                            Content="打开插件目录" HorizontalAlignment="Center" />
+                                </StackPanel>
+                            </Border>
+
+                            <ItemsControl ItemsSource="{Binding Plugins}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:PluginItemViewModel">
+                                        <Border Background="Transparent" BorderBrush="{StaticResource Line}"
+                                                BorderThickness="0,0,0,0.5" Padding="8,14">
+                                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                                                <Border Width="36" Height="36" Background="#2B2C30" CornerRadius="10">
+                                                    <Path Width="18" Height="18" Data="{StaticResource PluginIcon}"
+                                                          Stretch="Uniform" Stroke="{StaticResource TextSecondary}"
+                                                          StrokeThickness="1.3" StrokeLineCap="Round"
+                                                          StrokeJoin="Round" Fill="Transparent" />
+                                                </Border>
+                                                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="Medium"
+                                                               Foreground="{StaticResource TextPrimary}" />
+                                                    <TextBlock Text="{Binding Description}" FontSize="12"
+                                                               Foreground="{StaticResource TextTertiary}"
+                                                               TextWrapping="Wrap" />
+                                                </StackPanel>
+                                                <Border Grid.Column="2" Background="#25282D" CornerRadius="5"
+                                                        Padding="7,2" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Version}" FontSize="10"
+                                                               Foreground="{StaticResource TextCaption}" />
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <ScrollViewer IsVisible="{Binding IsAutomationPage}" VerticalScrollBarVisibility="Auto">
+                        <StackPanel MaxWidth="960" Spacing="0" Margin="28,0,28,40">
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,28,0,24">
+                                <TextBlock Text="自动化任务" FontSize="20" FontWeight="Medium"
+                                           Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center" />
+                                <Button Grid.Column="1" Classes="primary" Click="OnNewAutomationClicked"
+                                        Content="+ 新建" VerticalAlignment="Center" />
+                            </Grid>
+
+                            <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,0,0,14">
+                                <Button Classes="filter" Classes.active="{Binding IsAutomationFilterAll}"
+                                        Click="OnAutomationFilterAllClicked" Content="全部" />
+                                <Button Classes="filter" Classes.active="{Binding IsAutomationFilterActive}"
+                                        Click="OnAutomationFilterActiveClicked" Content="已开启" />
+                                <Button Classes="filter" Classes.active="{Binding IsAutomationFilterEnded}"
+                                        Click="OnAutomationFilterEndedClicked" Content="已结束" />
+                            </StackPanel>
+
+                            <Border Height="36" Background="Transparent" BorderBrush="#45474D"
+                                    BorderThickness="0.8" CornerRadius="12" Padding="10,0" Margin="0,0,0,16">
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                    <Path Width="14" Height="14" Data="{StaticResource SearchIcon}" Stretch="Uniform"
+                                          Stroke="{StaticResource TextCaption}" StrokeThickness="1.35"
+                                          StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                          VerticalAlignment="Center" />
+                                    <TextBox x:Name="AutomationSearchBox" Grid.Column="1" Classes="search"
+                                             Text="{Binding AutomationSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             Background="Transparent" BorderThickness="0" Padding="0"
+                                             FontSize="13" Foreground="{StaticResource TextPrimary}"
+                                             CaretBrush="{StaticResource TextSecondary}"
+                                             PlaceholderText="搜索自动化任务" FocusAdorner="{x:Null}" />
+                                </Grid>
+                            </Border>
+
+                            <Border IsVisible="{Binding ShowNoAutomations}" Padding="0,50,0,0">
+                                <StackPanel Spacing="12" HorizontalAlignment="Center">
+                                    <Path Width="28" Height="28" Data="{StaticResource ClockIcon}" Stretch="Uniform"
+                                          Stroke="{StaticResource TextTertiary}" StrokeThickness="1.1"
+                                          StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                          HorizontalAlignment="Center" />
+                                    <StackPanel Spacing="4" HorizontalAlignment="Center">
+                                        <TextBlock Text="{Binding AutomationEmptyTitle}" FontSize="14"
+                                                   Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center" />
+                                        <TextBlock Text="{Binding AutomationEmptyDescription}" FontSize="12"
+                                                   Foreground="{StaticResource TextCaption}" HorizontalAlignment="Center" />
+                                    </StackPanel>
+                                    <Button Classes="secondary" Click="OnNewAutomationClicked"
+                                            Content="新建自动化任务" HorizontalAlignment="Center" />
+                                </StackPanel>
+                            </Border>
+
+                            <ItemsControl ItemsSource="{Binding Automations}" IsVisible="{Binding HasAutomations}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:AutomationItemViewModel">
+                                        <Border IsVisible="{Binding IsVisible}"
+                                                Background="Transparent" BorderBrush="{StaticResource Line}"
+                                                BorderThickness="0,0,0,0.5" Padding="10,16">
+                                            <StackPanel Spacing="10">
+                                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                                                    <Path Width="20" Height="20" Data="{StaticResource ClockIcon}" Stretch="Uniform"
+                                                          Stroke="{StaticResource TextTertiary}" StrokeThickness="1.15"
+                                                          StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                                          VerticalAlignment="Center" />
+                                                    <StackPanel Grid.Column="1" Spacing="3">
+                                                        <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="Medium"
+                                                                   Foreground="{StaticResource TextPrimary}" />
+                                                        <TextBlock Text="{Binding Prompt}" FontSize="12"
+                                                                   Foreground="{StaticResource TextTertiary}"
+                                                                   TextWrapping="Wrap" MaxHeight="40" />
+                                                    </StackPanel>
+                                                    <Border Grid.Column="2" Background="#25282D" CornerRadius="5"
+                                                            Padding="8,3" VerticalAlignment="Top">
+                                                        <TextBlock Text="{Binding StateLabel}" FontSize="10"
+                                                                   Foreground="{StaticResource TextCaption}" />
+                                                    </Border>
+                                                </Grid>
+
+                                                <Grid ColumnDefinitions="Auto,Auto,Auto,*" ColumnSpacing="16" Margin="32,0,0,0">
+                                                    <TextBlock Text="{Binding IntervalLabel}" FontSize="10"
+                                                               Foreground="{StaticResource TextCaption}" />
+                                                    <TextBlock Grid.Column="1" Text="{Binding NextRunLabel}" FontSize="10"
+                                                               Foreground="{StaticResource TextCaption}" />
+                                                    <TextBlock Grid.Column="2" Text="{Binding LastRunLabel}" FontSize="10"
+                                                               Foreground="{StaticResource TextCaption}" />
+                                                    <TextBlock Grid.Column="3" Text="{Binding StatusLabel}" FontSize="10"
+                                                               Foreground="{StaticResource TextCaption}" />
+                                                </Grid>
+
+                                                <Border IsVisible="{Binding HasLastResult}" Background="#202123"
+                                                        CornerRadius="8" Padding="12,9" Margin="32,0,0,0">
+                                                    <ScrollViewer MaxHeight="96" VerticalScrollBarVisibility="Auto">
+                                                        <SelectableTextBlock Text="{Binding LastResult}" FontSize="11"
+                                                                             LineHeight="18" Foreground="{StaticResource TextTertiary}"
+                                                                             TextWrapping="Wrap" />
+                                                    </ScrollViewer>
+                                                </Border>
+
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                                                    <Button Classes="secondary" Click="OnRunAutomationClicked"
+                                                            IsEnabled="{Binding CanRun}" Content="{Binding RunButtonLabel}" />
+                                                    <Button Classes="secondary" Click="OnToggleAutomationClicked"
+                                                            IsEnabled="{Binding CanEdit}" Content="{Binding ToggleLabel}" />
+                                                    <Button Classes="secondary" Click="OnEditAutomationClicked"
+                                                            IsEnabled="{Binding CanEdit}" Content="编辑" />
+                                                    <Button Classes="secondary" Click="OnDeleteAutomationClicked"
+                                                            IsEnabled="{Binding CanEdit}" Content="删除" />
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <Border IsVisible="{Binding HasError}" VerticalAlignment="Top"
+                            HorizontalAlignment="Center" MaxWidth="760" Margin="20,12,20,0"
+                            Background="#2A1F2020" BorderBrush="#554D2B2B" BorderThickness="0.5"
+                            CornerRadius="10" Padding="12,9" ZIndex="20">
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                            <Path Width="14" Height="14" Data="{StaticResource WarningIcon}" Stretch="Uniform"
+                                  Stroke="#E6A0A0" StrokeThickness="1.3"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                  VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding ErrorMessage}" FontSize="12"
+                                       Foreground="#E6B4B4" TextWrapping="Wrap" VerticalAlignment="Center" />
+                            <Button Grid.Column="2" Classes="icon" Width="24" Height="24"
+                                    Click="OnDismissErrorClicked" ToolTip.Tip="关闭">
+                                <TextBlock Text="×" FontSize="16" Foreground="{StaticResource TextTertiary}" />
+                            </Button>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Grid>
+            </Border>
+        </Grid>
+
+        <Grid IsVisible="{Binding IsSettingsOpen}" Background="#99000000">
+            <Border Width="800" Height="640" Background="{StaticResource ElevatedFill}"
+                    CornerRadius="28" ClipToBounds="True" BoxShadow="0 18 50 0 #66000000"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Grid ColumnDefinitions="188,*">
+                    <StackPanel Margin="12,22,12,0" Spacing="18">
+                        <TextBlock Text="设置" FontSize="16" FontWeight="Medium"
+                                   Foreground="{StaticResource TextPrimary}" Margin="12,0" />
+                        <StackPanel Spacing="4">
+                            <Button Classes="nav" Classes.active="{Binding IsSettingsGeneral}"
+                                    Click="OnSettingsGeneralClicked" Height="40" Padding="12,9" CornerRadius="12">
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                    <Path Width="16" Height="16" Data="{StaticResource SettingsIcon}" Stretch="Uniform"
+                                          Stroke="{StaticResource TextSecondary}" StrokeThickness="1.3"
+                                          StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                                    <TextBlock Grid.Column="1" Text="通用设置" FontSize="14"
+                                               Foreground="{StaticResource TextPrimary}" />
+                                </Grid>
+                            </Button>
+                            <Button Classes="nav" Classes.active="{Binding IsSettingsModels}"
+                                    Click="OnSettingsModelsClicked" Height="40" Padding="12,9" CornerRadius="12">
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                    <Path Width="16" Height="16" Data="{StaticResource SparkIcon}" Stretch="Uniform"
+                                          Stroke="{StaticResource TextSecondary}" StrokeThickness="1.2"
+                                          StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                                    <TextBlock Grid.Column="1" Text="模型与连接" FontSize="14"
+                                               Foreground="{StaticResource TextPrimary}" />
+                                </Grid>
+                            </Button>
+                            <Button Classes="nav" Classes.active="{Binding IsSettingsData}"
+                                    Click="OnSettingsDataClicked" Height="40" Padding="12,9" CornerRadius="12">
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                    <Path Width="16" Height="16" Data="{StaticResource FolderIcon}" Stretch="Uniform"
+                                          Stroke="{StaticResource TextSecondary}" StrokeThickness="1.3"
+                                          StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                                    <TextBlock Grid.Column="1" Text="本地数据" FontSize="14"
+                                               Foreground="{StaticResource TextPrimary}" />
+                                </Grid>
+                            </Button>
+                            <Button Classes="nav" Classes.active="{Binding IsSettingsAbout}"
+                                    Click="OnSettingsAboutClicked" Height="40" Padding="12,9" CornerRadius="12">
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                    <Path Width="16" Height="16" Data="{StaticResource ChatIcon}" Stretch="Uniform"
+                                          Stroke="{StaticResource TextSecondary}" StrokeThickness="1.3"
+                                          StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                                    <TextBlock Grid.Column="1" Text="关于与快捷键" FontSize="14"
+                                               Foreground="{StaticResource TextPrimary}" />
+                                </Grid>
+                            </Button>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <Grid Grid.Column="1" RowDefinitions="54,*">
+                        <Grid RowDefinitions="Auto" ColumnDefinitions="*,Auto" Margin="10,14,14,8">
+                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding SettingsPaneTitle}" FontSize="20" FontWeight="Medium"
+                                           Foreground="{StaticResource TextPrimary}" />
+                                <TextBlock Text="{Binding SettingsPaneSubtitle}" FontSize="12"
+                                           Foreground="{StaticResource TextTertiary}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                <Button Classes="secondary" Click="OnOpenStateDirectoryClicked"
+                                        Content="打开配置目录" Height="28" Padding="10,4" />
+                                <Button Classes="icon" Width="28" Height="28" Click="OnCloseSettingsClicked"
+                                        ToolTip.Tip="关闭设置">
+                                    <TextBlock Text="×" FontSize="18" Foreground="{StaticResource TextPrimary}" />
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="10,0,24,24">
+                            <Grid>
+                                <StackPanel IsVisible="{Binding IsSettingsGeneral}" Spacing="0">
+                                    <Grid ColumnDefinitions="*,240" Margin="0,0,0,18">
+                                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                                            <TextBlock Text="权限" FontSize="14" Foreground="{StaticResource TextPrimary}" />
+                                            <TextBlock Text="选择新会话默认的工具与文件访问方式"
+                                                       FontSize="12" Foreground="{StaticResource TextTertiary}" />
+                                        </StackPanel>
+                                        <ComboBox Grid.Column="1" Classes="field"
+                                                  ItemsSource="{Binding PermissionModes}"
+                                                  SelectedItem="{Binding SettingsPermissionMode, Mode=TwoWay}" />
+                                    </Grid>
+                                    <Border Height="0.5" Background="{StaticResource Line}" Margin="0,0,0,18" />
+
+                                    <Grid ColumnDefinitions="*,100" Margin="0,0,0,18">
+                                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                                            <TextBlock Text="内容字号" FontSize="14" Foreground="{StaticResource TextPrimary}" />
+                                            <TextBlock Text="仅影响对话正文与用户消息"
+                                                       FontSize="12" Foreground="{StaticResource TextTertiary}" />
+                                        </StackPanel>
+                                        <ComboBox Grid.Column="1" Classes="field"
+                                                  ItemsSource="{Binding ContentFontSizes}"
+                                                  SelectedItem="{Binding SettingsContentFontSize, Mode=TwoWay}" />
+                                    </Grid>
+                                    <Border Height="0.5" Background="{StaticResource Line}" Margin="0,0,0,18" />
+
+                                    <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,18">
+                                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                                            <TextBlock Text="工作模式" FontSize="14" Foreground="{StaticResource TextPrimary}" />
+                                            <TextBlock Text="Work 面向任务，Chat 更轻量；可在左侧栏切换"
+                                                       FontSize="12" Foreground="{StaticResource TextTertiary}" />
+                                        </StackPanel>
+                                        <Border Grid.Column="1" Background="#25282D" CornerRadius="8"
+                                                Padding="12,6" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding ActiveModeLabel}" FontSize="12"
+                                                       Foreground="{StaticResource TextSecondary}" />
+                                        </Border>
+                                    </Grid>
+                                    <Border Height="0.5" Background="{StaticResource Line}" Margin="0,0,0,18" />
+
+                                    <StackPanel Spacing="10">
+                                        <TextBlock Text="快捷键" FontSize="14" Foreground="{StaticResource TextPrimary}" />
+                                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="10">
+                                            <TextBlock Text="新建会话" FontSize="12" Foreground="{StaticResource TextTertiary}" />
+                                            <TextBlock Grid.Column="1" Text="Ctrl+N" FontSize="11" Foreground="{StaticResource TextCaption}" />
+                                            <TextBlock Grid.Row="1" Text="发送消息" FontSize="12" Foreground="{StaticResource TextTertiary}" />
+                                            <TextBlock Grid.Row="1" Grid.Column="1" Text="Ctrl+Enter" FontSize="11" Foreground="{StaticResource TextCaption}" />
+                                            <TextBlock Grid.Row="2" Text="搜索会话" FontSize="12" Foreground="{StaticResource TextTertiary}" />
+                                            <TextBlock Grid.Row="2" Grid.Column="1" Text="Ctrl+F" FontSize="11" Foreground="{StaticResource TextCaption}" />
+                                            <TextBlock Grid.Row="3" Text="打开设置" FontSize="12" Foreground="{StaticResource TextTertiary}" />
+                                            <TextBlock Grid.Row="3" Grid.Column="1" Text="Ctrl+," FontSize="11" Foreground="{StaticResource TextCaption}" />
+                                        </Grid>
+                                    </StackPanel>
+                                    <Button Classes="primary" Click="OnSaveSettingsClicked"
+                                            Content="保存通用设置" HorizontalAlignment="Left" Margin="0,24,0,0" />
+                                </StackPanel>
+
+                                <StackPanel IsVisible="{Binding IsSettingsModels}" Spacing="0">
+                                    <StackPanel Spacing="6" Margin="0,0,0,15">
+                                        <TextBlock Text="API Endpoint" FontSize="12" Foreground="{StaticResource TextSecondary}" />
+                                        <TextBox Classes="field"
+                                                 Text="{Binding SettingsEndpoint, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                 PlaceholderText="https://api.deepseek.com" />
+                                    </StackPanel>
+                                    <StackPanel Spacing="6" Margin="0,0,0,15">
+                                        <TextBlock Text="模型名称" FontSize="12" Foreground="{StaticResource TextSecondary}" />
+                                        <TextBox Classes="field"
+                                                 Text="{Binding SettingsModel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                 PlaceholderText="deepseek-chat" />
+                                    </StackPanel>
+                                    <StackPanel Spacing="6" Margin="0,0,0,15">
+                                        <TextBlock Text="API Key" FontSize="12" Foreground="{StaticResource TextSecondary}" />
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                            <TextBox x:Name="ApiKeyBox" Classes="field"
+                                                     Text="{Binding SettingsApiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                     PlaceholderText="sk-..." />
+                                            <Button Grid.Column="1" Classes="secondary"
+                                                    Click="OnClearApiKeyClicked"
+                                                    IsEnabled="{Binding HasStoredApiKey}"
+                                                    Content="清除已保存密钥" />
+                                        </Grid>
+                                        <TextBlock Text="{Binding ApiKeyStatus}" FontSize="11"
+                                                   Foreground="{StaticResource TextCaption}" TextWrapping="Wrap" />
+                                        <TextBlock Text="API Key 会直接保存在本机状态文件中。"
+                                                   FontSize="10" Foreground="{StaticResource TextCaption}" TextWrapping="Wrap" />
+                                    </StackPanel>
+
+                                    <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8" Margin="0,8,0,0">
+                                        <StackPanel VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="{Binding SettingsStatus}" FontSize="11"
+                                                       Foreground="#E6A0A0" TextWrapping="Wrap"
+                                                       IsVisible="{Binding IsSettingsStatusError}" />
+                                            <TextBlock Text="{Binding SettingsStatus}" FontSize="11"
+                                                       Foreground="#8FC7A4" TextWrapping="Wrap"
+                                                       IsVisible="{Binding IsSettingsStatusSuccess}" />
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Classes="secondary" Click="OnResetSettingsClicked"
+                                                Content="恢复默认值" />
+                                        <Button Grid.Column="2" Classes="secondary" Click="OnTestConnectionClicked"
+                                                IsEnabled="{Binding CanTestConnection}"
+                                                Content="{Binding TestConnectionButtonText}" />
+                                        <Button Grid.Column="3" Classes="primary" Click="OnSaveSettingsClicked"
+                                                Content="保存设置" />
+                                    </Grid>
+                                </StackPanel>
+
+                                <StackPanel IsVisible="{Binding IsSettingsData}" Spacing="0">
+                                    <StackPanel Spacing="7" Margin="0,0,0,18">
+                                        <TextBlock Text="状态文件" FontSize="12" Foreground="{StaticResource TextSecondary}" />
+                                        <SelectableTextBlock Text="{Binding StateFilePath}" FontSize="11"
+                                                             Foreground="{StaticResource TextCaption}"
+                                                             TextWrapping="Wrap" />
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Button Classes="secondary" Click="OnCopyStatePathClicked" Content="复制路径" />
+                                            <Button Classes="secondary" Click="OnOpenStateDirectoryClicked" Content="打开目录" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                    <Border Height="0.5" Background="{StaticResource Line}" Margin="0,0,0,18" />
+                                    <Grid ColumnDefinitions="*,*,*,Auto" ColumnSpacing="18">
+                                        <StackPanel Spacing="3">
+                                            <TextBlock Text="工作区" FontSize="11" Foreground="{StaticResource TextCaption}" />
+                                            <TextBlock Text="{Binding WorkspaceCount}" FontSize="20" FontWeight="Medium"
+                                                       Foreground="{StaticResource TextPrimary}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Spacing="3">
+                                            <TextBlock Text="已保存会话" FontSize="11" Foreground="{StaticResource TextCaption}" />
+                                            <TextBlock Text="{Binding SavedSessionCount}" FontSize="20" FontWeight="Medium"
+                                                       Foreground="{StaticResource TextPrimary}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2" Spacing="3">
+                                            <TextBlock Text="自动化" FontSize="11" Foreground="{StaticResource TextCaption}" />
+                                            <TextBlock Text="{Binding AutomationCount}" FontSize="20" FontWeight="Medium"
+                                                       Foreground="{StaticResource TextPrimary}" />
+                                        </StackPanel>
+                                        <Button Grid.Column="3" Classes="secondary"
+                                                Click="OnAddWorkspaceClicked" Content="添加工作区"
+                                                VerticalAlignment="Bottom" />
+                                    </Grid>
+                                </StackPanel>
+
+                                <StackPanel IsVisible="{Binding IsSettingsAbout}" Spacing="0">
+                                    <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,0,0,8">
+                                        <Path Width="26" Height="26" Data="{StaticResource FishLogoPath}" Stretch="Uniform"
+                                              Fill="{StaticResource TextPrimary}" />
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="DeepSeek Harness GUI" FontSize="16" FontWeight="Medium"
+                                                       Foreground="{StaticResource TextPrimary}" />
+                                            <TextBlock Text="{Binding VersionLabel, StringFormat='版本 {0}'}"
+                                                       FontSize="11" Foreground="{StaticResource TextCaption}" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                    <TextBlock Text="Avalonia 桌面客户端，独立于原始 DSH 仓库。支持 OpenAI 兼容流式聊天、本地会话、插件目录和自动化任务。"
+                                               FontSize="12" Foreground="{StaticResource TextTertiary}"
+                                               TextWrapping="Wrap" LineHeight="20" Margin="0,0,0,22" />
+                                    <TextBlock Text="隐私与安全" FontSize="14" Foreground="{StaticResource TextPrimary}"
+                                               Margin="0,0,0,8" />
+                                    <TextBlock Text="API Key、聊天记录和自动化结果都保存在本机状态与数据目录中。"
+                                               FontSize="12" Foreground="{StaticResource TextTertiary}"
+                                               TextWrapping="Wrap" LineHeight="20" />
+                                </StackPanel>
+                            </Grid>
+                        </ScrollViewer>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <Grid IsVisible="{Binding IsRenameDialogOpen}" Background="#99000000">
+            <Border Width="420" Background="{StaticResource SidebarFill}" BorderBrush="#3A3A3D"
+                    BorderThickness="0.5" CornerRadius="14" Padding="20"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <StackPanel Spacing="14">
+                    <TextBlock Text="重命名会话" FontSize="17" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextPrimary}" />
+                    <TextBox x:Name="RenameBox" Classes="field"
+                             Text="{Binding RenameTitle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             KeyDown="OnRenameKeyDown" />
+                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                        <Button Classes="subtle" HorizontalAlignment="Left" Click="OnCloseDialogClicked"
+                                Content="取消" />
+                        <Button Grid.Column="2" Classes="primary" Click="OnConfirmRenameClicked"
+                                Content="保存" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Grid IsVisible="{Binding IsAutomationDialogOpen}" Background="#99000000">
+            <Border Width="520" Background="{StaticResource SidebarFill}" BorderBrush="#3A3A3D"
+                    BorderThickness="0.5" CornerRadius="14" Padding="20"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <StackPanel Spacing="14">
+                    <TextBlock Text="{Binding AutomationDialogTitle}" FontSize="17" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextPrimary}" />
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="任务名称" FontSize="11" Foreground="{StaticResource TextSecondary}" />
+                        <TextBox x:Name="AutomationNameBox" Classes="field"
+                                 Text="{Binding AutomationName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 PlaceholderText="例如：每日项目摘要" />
+                    </StackPanel>
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="发送给模型的指令" FontSize="11" Foreground="{StaticResource TextSecondary}" />
+                        <TextBox Classes="field" MinHeight="130" MaxHeight="220"
+                                 AcceptsReturn="True" TextWrapping="Wrap"
+                                 Text="{Binding AutomationPrompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 PlaceholderText="检查当前工作区并总结今天需要处理的事项。" />
+                    </StackPanel>
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="运行间隔" FontSize="11" Foreground="{StaticResource TextSecondary}" />
+                        <ComboBox Classes="field" HorizontalAlignment="Stretch"
+                                  ItemsSource="{Binding AutomationIntervals}"
+                                  SelectedItem="{Binding SelectedAutomationInterval, Mode=TwoWay}" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding AutomationDialogStatus}" FontSize="11" Foreground="#E6A0A0"
+                               IsVisible="{Binding HasAutomationDialogStatus}" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                        <Button Classes="subtle" Click="OnCloseDialogClicked" Content="取消" />
+                        <Button Classes="primary" Click="OnSaveAutomationClicked" Content="保存任务" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Grid IsVisible="{Binding IsAutomationDeleteDialogOpen}" Background="#99000000">
+            <Border Width="420" Background="{StaticResource SidebarFill}" BorderBrush="#3A3A3D"
+                    BorderThickness="0.5" CornerRadius="14" Padding="20"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <StackPanel Spacing="16">
+                    <StackPanel Spacing="7">
+                        <TextBlock Text="删除自动化任务" FontSize="17" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextPrimary}" />
+                        <TextBlock Text="{Binding AutomationDeletePrompt}" FontSize="12"
+                                   Foreground="{StaticResource TextTertiary}" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                        <Button Classes="subtle" Click="OnCloseDialogClicked" Content="取消" />
+                        <Button Classes="danger" Click="OnConfirmDeleteAutomationClicked" Content="删除" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Grid IsVisible="{Binding IsDeleteDialogOpen}" Background="#99000000">
+            <Border Width="420" Background="{StaticResource SidebarFill}" BorderBrush="#3A3A3D"
+                    BorderThickness="0.5" CornerRadius="14" Padding="20"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <StackPanel Spacing="16">
+                    <StackPanel Spacing="7">
+                        <TextBlock Text="删除会话" FontSize="17" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextPrimary}" />
+                        <TextBlock Text="{Binding DeletePrompt}" FontSize="12"
+                                   Foreground="{StaticResource TextTertiary}" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                        <Button Classes="subtle" Click="OnCloseDialogClicked" Content="取消" />
+                        <Button Classes="danger" Click="OnConfirmDeleteClicked" Content="删除" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>
+
+
+
+
+
+
+
+

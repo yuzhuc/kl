@@ -23,3 +23,12 @@ dotnet run --project gui/Kl.Gui
 Add a project reference to `sdk/Kl.Client` and build the shell incrementally
 from the slices in [`../docs/gui/mvp-spec.md`](../docs/gui/mvp-spec.md). Do not
 start a separate Core process from Avalonia code.
+## DeepSeek Harness GUI
+
+`DeepSeekHarness.Gui` is a standalone Avalonia desktop client for OpenAI-compatible
+streaming chat, workspaces, sessions, settings, local plugins, and automation.
+
+```powershell
+dotnet build gui/DeepSeekHarness.Gui/DeepSeekHarness.Gui.csproj
+dotnet test gui/DeepSeekHarness.Gui.Tests/DeepSeekHarness.Gui.Tests.csproj
+```
