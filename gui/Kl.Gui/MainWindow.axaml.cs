@@ -3,7 +3,6 @@ using Avalonia;
 using System.Diagnostics;
 using System.ComponentModel;
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives.PopupPositioning;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
@@ -17,15 +16,16 @@ public partial class MainWindow : Window
 {
     private readonly MainWindowViewModel _viewModel = new();
     private readonly DispatcherTimer _automationTimer = new() { Interval = TimeSpan.FromSeconds(30) };
+    private readonly DispatcherTimer _railHintOpenTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private readonly DispatcherTimer _moreMenuOpenTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
     private readonly DispatcherTimer _moreMenuCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
+    private Control? _railHintTarget;
     private bool _moreMenuPinned;
     private bool _moreMenuHovered;
 
     public MainWindow()
     {
         InitializeComponent();
-        ConfigureRailTooltips();
         DataContext = _viewModel;
         ApplyContentFontResources();
         _viewModel.Messages.CollectionChanged += OnMessagesChanged;
@@ -36,32 +36,67 @@ public partial class MainWindow : Window
         _automationTimer.Tick += OnAutomationTimerTick;
         _automationTimer.Start();
         MorePopup.PlacementTarget = MoreButton;
+        _railHintOpenTimer.Tick += OnRailHintOpenTimerTick;
         _moreMenuOpenTimer.Tick += OnMoreMenuOpenTimerTick;
         _moreMenuCloseTimer.Tick += OnMoreMenuCloseTimerTick;
     }
 
-    private void ConfigureRailTooltips()
+
+    private void OnRailHintPointerEntered(object? sender, PointerEventArgs eventArgs)
     {
-        var callback = new CustomPopupPlacementCallback(PlaceRailTooltip);
-        foreach (var button in new[] { ChatRailButton, PluginsRailButton, AutomationRailButton, SettingsRailButton })
+        if (sender is not Control { Tag: string label } target)
         {
-            ToolTip.SetPlacement(button, PlacementMode.Custom);
-            ToolTip.SetCustomPopupPlacementCallback(button, callback);
+            return;
+        }
+
+        _railHintOpenTimer.Stop();
+        _railHintTarget = target;
+        RailHintText.Text = label;
+        _railHintOpenTimer.Start();
+    }
+
+    private void OnRailHintPointerExited(object? sender, PointerEventArgs eventArgs)
+    {
+        if (ReferenceEquals(sender, _railHintTarget))
+        {
+            HideRailHint();
         }
     }
 
-    private static void PlaceRailTooltip(CustomPopupPlacement placement)
+    private void OnRailHintOpenTimerTick(object? sender, EventArgs eventArgs)
     {
-        var target = placement.Target;
-        var targetBounds = target.Bounds;
-        placement.AnchorRectangle = new Rect(0, 0, targetBounds.Width, targetBounds.Height);
-        placement.Anchor = PopupAnchor.Right;
-        placement.Gravity = PopupGravity.Right;
-        placement.Offset = new Point(8, 14);
+        _railHintOpenTimer.Stop();
+        if (_railHintTarget?.IsPointerOver != true)
+        {
+            return;
+        }
+
+        RailHintCard.IsVisible = true;
+        RailHintCard.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        var position = _railHintTarget.TranslatePoint(
+            new Point(_railHintTarget.Bounds.Width + 8, 0),
+            this);
+        if (position is null)
+        {
+            HideRailHint();
+            return;
+        }
+
+        var top = position.Value.Y + ((_railHintTarget.Bounds.Height - RailHintCard.DesiredSize.Height) / 2);
+        Canvas.SetLeft(RailHintCard, position.Value.X);
+        Canvas.SetTop(RailHintCard, top);
+    }
+
+    private void HideRailHint()
+    {
+        _railHintOpenTimer.Stop();
+        _railHintTarget = null;
+        RailHintCard.IsVisible = false;
     }
 
     private void OnMoreButtonPointerEntered(object? sender, PointerEventArgs eventArgs)
     {
+        HideRailHint();
         _moreMenuHovered = true;
         _moreMenuCloseTimer.Stop();
         if (!_moreMenuPinned && !MorePopup.IsOpen)
@@ -109,6 +144,7 @@ public partial class MainWindow : Window
 
     private void OnMoreButtonClicked(object? sender, RoutedEventArgs eventArgs)
     {
+        HideRailHint();
         _moreMenuOpenTimer.Stop();
         _moreMenuCloseTimer.Stop();
         if (_moreMenuPinned)
@@ -158,6 +194,12 @@ public partial class MainWindow : Window
         _moreMenuPinned = false;
         _moreMenuHovered = false;
         MorePopup.IsOpen = false;
+    }
+
+    private void HideRailHintAndMoreMenu()
+    {
+        HideRailHint();
+        CloseMoreMenu();
     }
 
     private async void OnAttachFilesClicked(object? sender, RoutedEventArgs eventArgs)
@@ -571,6 +613,7 @@ public partial class MainWindow : Window
 
     private void OnWindowPointerPressed(object? sender, PointerPressedEventArgs eventArgs)
     {
+        HideRailHint();
         if (!MorePopup.IsOpen || MoreButton.IsPointerOver || MoreMenuCard.IsPointerOver)
         {
             return;
@@ -579,7 +622,8 @@ public partial class MainWindow : Window
         CloseMoreMenu();
     }
 
-    private void OnWindowDeactivated(object? sender, EventArgs eventArgs) => CloseMoreMenu();
+    private void OnWindowDeactivated(object? sender, EventArgs eventArgs) =>
+        HideRailHintAndMoreMenu();
 
     private void OnWindowKeyDown(object? sender, KeyEventArgs eventArgs)
     {

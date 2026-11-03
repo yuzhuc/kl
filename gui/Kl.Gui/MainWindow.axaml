@@ -375,23 +375,23 @@
                     BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0">
                 <Grid RowDefinitions="Auto,*,Auto" Margin="8,10,8,10">
                     <StackPanel Grid.Row="0" Spacing="5">
-                        <Button x:Name="ChatRailButton" Classes="rail" Classes.active="{Binding IsChatPage}"
-                                Click="OnNavChatClicked" ToolTip.Tip="聊天"
-                                ToolTip.Placement="Custom" ToolTip.ShowDelay="250">
+                        <Button Classes="rail" Classes.active="{Binding IsChatPage}"
+                                Click="OnNavChatClicked" Tag="聊天"
+                                PointerEntered="OnRailHintPointerEntered" PointerExited="OnRailHintPointerExited">
                             <Path Width="20" Height="20" Data="{StaticResource ChatIcon}" Stretch="Uniform"
                                   Stroke="{StaticResource TextTertiary}" StrokeThickness="1.45"
                                   StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
                         </Button>
-                        <Button x:Name="PluginsRailButton" Classes="rail" Classes.active="{Binding IsPluginsPage}"
-                                Click="OnNavPluginsClicked" ToolTip.Tip="插件"
-                                ToolTip.Placement="Custom" ToolTip.ShowDelay="250">
+                        <Button Classes="rail" Classes.active="{Binding IsPluginsPage}"
+                                Click="OnNavPluginsClicked" Tag="插件"
+                                PointerEntered="OnRailHintPointerEntered" PointerExited="OnRailHintPointerExited">
                             <Path Width="20" Height="20" Data="{StaticResource PluginIcon}" Stretch="Uniform"
                                   Stroke="{StaticResource TextTertiary}" StrokeThickness="1.45"
                                   StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
                         </Button>
-                        <Button x:Name="AutomationRailButton" Classes="rail" Classes.active="{Binding IsAutomationPage}"
-                                Click="OnNavAutomationClicked" ToolTip.Tip="自动化任务"
-                                ToolTip.Placement="Custom" ToolTip.ShowDelay="250">
+                        <Button Classes="rail" Classes.active="{Binding IsAutomationPage}"
+                                Click="OnNavAutomationClicked" Tag="自动化任务"
+                                PointerEntered="OnRailHintPointerEntered" PointerExited="OnRailHintPointerExited">
                             <Path Width="20" Height="20" Data="{StaticResource AutomationIcon}" Stretch="Uniform"
                                   Stroke="{StaticResource TextTertiary}" StrokeThickness="1.45"
                                   StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
@@ -411,9 +411,9 @@
                         <Border Height="1" Background="{StaticResource Line}" Margin="2,8,2,0" />
                     </StackPanel>
 
-                    <Button x:Name="SettingsRailButton" Grid.Row="2" Classes="rail" Classes.active="{Binding IsSettingsOpen}"
-                            Click="OnNavSettingsClicked" ToolTip.Tip="设置"
-                            ToolTip.Placement="Custom" ToolTip.ShowDelay="250">
+                    <Button Grid.Row="2" Classes="rail" Classes.active="{Binding IsSettingsOpen}"
+                            Click="OnNavSettingsClicked" Tag="设置"
+                            PointerEntered="OnRailHintPointerEntered" PointerExited="OnRailHintPointerExited">
                         <Path Width="20" Height="20" Data="{StaticResource SettingsIcon}" Stretch="Uniform"
                               Stroke="{StaticResource TextTertiary}" StrokeThickness="1.45"
                               StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
@@ -1149,6 +1149,17 @@
                 </Grid>
             </Border>
         </Grid>
+
+        <Canvas x:Name="RailHintLayer" IsHitTestVisible="False">
+            <Border x:Name="RailHintCard" IsVisible="False"
+                    Background="{StaticResource ElevatedFill}"
+                    BorderBrush="{StaticResource LineStrong}" BorderThickness="1"
+                    CornerRadius="8" Padding="10,6"
+                    BoxShadow="0 6 20 0 #66000000">
+                <TextBlock x:Name="RailHintText" FontSize="12"
+                           Foreground="{StaticResource TextPrimary}" />
+            </Border>
+        </Canvas>
 
         <primitives:Popup x:Name="MorePopup" Placement="Right" HorizontalOffset="8"
                           IsLightDismissEnabled="False" ShouldUseOverlayLayer="True"
