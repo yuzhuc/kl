@@ -370,14 +370,8 @@
         <Grid ColumnDefinitions="56,280,*">
             <Border Grid.Column="0" Background="{StaticResource SidebarRailFill}"
                     BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0">
-                <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="8,10,8,10">
-                    <Button Grid.Row="0" Classes="rail" Click="OnNavChatClicked" ToolTip.Tip="kl">
-                        <Border Width="34" Height="34" Background="#1C1C1F" CornerRadius="10" ClipToBounds="True">
-                            <Image Width="34" Height="34" Source="/Assets/kl.png" Stretch="UniformToFill" />
-                        </Border>
-                    </Button>
-
-                    <StackPanel Grid.Row="1" Spacing="5" Margin="0,16,0,0">
+                <Grid RowDefinitions="Auto,*,Auto" Margin="8,10,8,10">
+                    <StackPanel Grid.Row="0" Spacing="5">
                         <Button Classes="rail" Classes.active="{Binding IsChatPage}"
                                 Click="OnNavChatClicked" ToolTip.Tip="聊天">
                             <Path Width="20" Height="20" Data="{StaticResource ChatIcon}" Stretch="Uniform"
@@ -396,10 +390,14 @@
                                   Stroke="{StaticResource TextTertiary}" StrokeThickness="1.45"
                                   StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
                         </Button>
-                        <Button Classes="rail" ToolTip.Tip="更多">
-                            <Path Width="20" Height="20" Data="{StaticResource MoreIcon}" Stretch="Uniform"
-                                  Stroke="{StaticResource TextTertiary}" StrokeThickness="1.45"
-                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                        <Button Classes="rail" ToolTip.Tip="更多"
+                                HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0">
+                            <StackPanel Orientation="Horizontal" Spacing="3"
+                                        HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Ellipse Width="3.5" Height="3.5" Fill="{StaticResource TextTertiary}" />
+                                <Ellipse Width="3.5" Height="3.5" Fill="{StaticResource TextTertiary}" />
+                                <Ellipse Width="3.5" Height="3.5" Fill="{StaticResource TextTertiary}" />
+                            </StackPanel>
                             <Button.Flyout>
                                 <MenuFlyout Placement="Right">
                                     <MenuItem Header="添加项目" Click="OnAddWorkspaceClicked" />
@@ -410,7 +408,7 @@
                         <Border Height="1" Background="{StaticResource Line}" Margin="2,8,2,0" />
                     </StackPanel>
 
-                    <Button Grid.Row="3" Classes="rail" Classes.active="{Binding IsSettingsOpen}"
+                    <Button Grid.Row="2" Classes="rail" Classes.active="{Binding IsSettingsOpen}"
                             Click="OnNavSettingsClicked" ToolTip.Tip="设置">
                         <Path Width="20" Height="20" Data="{StaticResource SettingsIcon}" Stretch="Uniform"
                               Stroke="{StaticResource TextTertiary}" StrokeThickness="1.45"
