@@ -71,6 +71,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        RailHintCard.Opacity = 0;
         RailHintCard.IsVisible = true;
         RailHintCard.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         var position = _railHintTarget.TranslatePoint(
@@ -85,12 +86,14 @@ public partial class MainWindow : Window
         var top = position.Value.Y + ((_railHintTarget.Bounds.Height - RailHintCard.DesiredSize.Height) / 2);
         Canvas.SetLeft(RailHintCard, position.Value.X);
         Canvas.SetTop(RailHintCard, top);
+        RailHintCard.Opacity = 1;
     }
 
     private void HideRailHint()
     {
         _railHintOpenTimer.Stop();
         _railHintTarget = null;
+        RailHintCard.Opacity = 0;
         RailHintCard.IsVisible = false;
     }
 
@@ -112,6 +115,18 @@ public partial class MainWindow : Window
         ScheduleMoreMenuClose();
     }
 
+    private void OnMoreMenuRowPointerEntered(object? sender, PointerEventArgs eventArgs)
+    {
+        var pin = ReferenceEquals(sender, ProjectMenuRow) ? ProjectPinButton : CodeReviewPinButton;
+        pin.Opacity = 1;
+    }
+
+    private void OnMoreMenuRowPointerExited(object? sender, PointerEventArgs eventArgs)
+    {
+        var pin = ReferenceEquals(sender, ProjectMenuRow) ? ProjectPinButton : CodeReviewPinButton;
+        pin.Opacity = 0;
+    }
+
     private void OnMoreMenuPointerEntered(object? sender, PointerEventArgs eventArgs)
     {
         _moreMenuHovered = true;
@@ -129,7 +144,7 @@ public partial class MainWindow : Window
         _moreMenuOpenTimer.Stop();
         if (!_moreMenuPinned && _moreMenuHovered)
         {
-            MorePopup.IsOpen = true;
+            OpenMoreMenu();
         }
     }
 
@@ -155,11 +170,21 @@ public partial class MainWindow : Window
         }
 
         _moreMenuPinned = true;
-        MorePopup.IsOpen = true;
+        OpenMoreMenu();
+    }
+
+    private void OnMorePopupOpened(object? sender, EventArgs eventArgs)
+    {
+        MoreButton.Classes.Set("open", true);
+        Dispatcher.UIThread.Post(() => MoreMenuCard.Opacity = 1);
     }
 
     private void OnMorePopupClosed(object? sender, EventArgs eventArgs)
     {
+        MoreButton.Classes.Set("open", false);
+        MoreMenuCard.Opacity = 0;
+        ProjectPinButton.Opacity = 0;
+        CodeReviewPinButton.Opacity = 0;
         _moreMenuOpenTimer.Stop();
         _moreMenuCloseTimer.Stop();
         _moreMenuPinned = false;
@@ -192,6 +217,17 @@ public partial class MainWindow : Window
             _moreMenuCloseTimer.Stop();
             _moreMenuCloseTimer.Start();
         }
+    }
+
+    private void OpenMoreMenu()
+    {
+        if (MorePopup.IsOpen)
+        {
+            return;
+        }
+
+        MoreMenuCard.Opacity = 0;
+        MorePopup.IsOpen = true;
     }
 
     private void CloseMoreMenu()

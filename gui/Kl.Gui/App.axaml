@@ -19,6 +19,12 @@
         <SolidColorBrush x:Key="BlueHover" Color="#80B2FF" />
         <SolidColorBrush x:Key="BubbleFill" Color="#262729" />
         <SolidColorBrush x:Key="HoverFill" Color="#202024" />
+        <SolidColorBrush x:Key="RailIcon" Color="#8B8C90" />
+        <SolidColorBrush x:Key="RailIconHover" Color="#D2D3D5" />
+        <SolidColorBrush x:Key="RailIconActive" Color="#E6E7E9" />
+        <SolidColorBrush x:Key="RailHoverFill" Color="#18181A" />
+        <SolidColorBrush x:Key="RailActiveFill" Color="#1C1C1E" />
+        <SolidColorBrush x:Key="MenuFill" Color="#202022" />
         <x:Double x:Key="ChatContentFontSize">14</x:Double>
         <x:Double x:Key="ChatContentLineHeight">24</x:Double>
         <x:Double x:Key="ChatSecondaryFontSize">13</x:Double>
@@ -26,8 +32,11 @@
         <StreamGeometry x:Key="PlusIcon">M12 4V20 M4 12H20</StreamGeometry>
         <StreamGeometry x:Key="EditIcon">M4 20L8.5 19L20 7.5L16.5 4L5 15.5Z M14.5 6L18 9.5</StreamGeometry>
         <StreamGeometry x:Key="ChatIcon">M5 5H19V17H10L5 21V5Z</StreamGeometry>
+        <StreamGeometry x:Key="RailChatIcon">M14 9A2 2 0 0 1 12 11H6L2 15V4A2 2 0 0 1 4 2H12A2 2 0 0 1 14 4Z M18 9H20A2 2 0 0 1 22 11V22L18 18H12A2 2 0 0 1 10 16V15</StreamGeometry>
         <StreamGeometry x:Key="PluginIcon">M4 4H10V10H4Z M14 4H20V10H14Z M9 14H15V20H9Z</StreamGeometry>
+        <StreamGeometry x:Key="RailPluginIcon">M3.5 3.5H10V10H3.5Z M14 3.5H20.5V10H14Z M3.5 14H10V20.5H3.5Z M14 14H20.5V20.5H14Z</StreamGeometry>
         <StreamGeometry x:Key="AutomationIcon">M20 8A9 9 0 1 0 21 15 M20 3V8H15</StreamGeometry>
+        <StreamGeometry x:Key="RailAutomationIcon">M21 12A9 9 0 1 1 12 3 M12 7V12L15.5 14</StreamGeometry>
         <StreamGeometry x:Key="FolderIcon">M3 5H9L11 7H21V19H3Z</StreamGeometry>
         <StreamGeometry x:Key="AddProjectIcon">M3 5H9L11 7H21V19H3Z M12 10V16 M9 13H15</StreamGeometry>
         <StreamGeometry x:Key="CodeReviewIcon">M5 4H15L20 9V20H5Z M15 4V9H20 M8 13H17 M8 17H14</StreamGeometry>
@@ -64,10 +73,15 @@
         </Style>
 
         <Style Selector="Border.more-menu-row">
-            <Setter Property="Height" Value="40" />
+            <Setter Property="Height" Value="38" />
             <Setter Property="CornerRadius" Value="8" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="ClipToBounds" Value="True" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
         </Style>
         <Style Selector="Border.more-menu-row:pointerover">
             <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
@@ -82,8 +96,8 @@
             <Setter Property="Fill" Value="{DynamicResource TextPrimary}" />
         </Style>
         <Style Selector="Button.more-menu-item">
-            <Setter Property="Height" Value="40" />
-            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="Height" Value="38" />
+            <Setter Property="Padding" Value="10,7" />
             <Setter Property="CornerRadius" Value="8" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
@@ -108,10 +122,11 @@
             <Setter Property="Background" Value="Transparent" />
         </Style>
         <Style Selector="Button.more-menu-pin">
-            <Setter Property="Width" Value="32" />
-            <Setter Property="Height" Value="32" />
+            <Setter Property="Width" Value="30" />
+            <Setter Property="Height" Value="30" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="Margin" Value="0" />
+            <Setter Property="Opacity" Value="0" />
             <Setter Property="HorizontalAlignment" Value="Center" />
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
@@ -121,6 +136,11 @@
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="FocusAdorner" Value="{x:Null}" />
             <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.10" />
+                </Transitions>
+            </Setter>
             <Setter Property="Template">
                 <ControlTemplate>
                     <Border Background="{TemplateBinding Background}"

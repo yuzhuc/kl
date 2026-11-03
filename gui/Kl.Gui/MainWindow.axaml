@@ -228,15 +228,62 @@
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="FocusAdorner" Value="{x:Null}" />
             <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.rail Path">
+            <Setter Property="Stroke" Value="{DynamicResource RailIcon}" />
+            <Setter Property="Fill" Value="Transparent" />
+            <Setter Property="StrokeThickness" Value="1.35" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Stroke" Duration="0:0:0.12" />
+                    <BrushTransition Property="Fill" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.rail Ellipse">
+            <Setter Property="Fill" Value="{DynamicResource RailIcon}" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Fill" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
         </Style>
         <Style Selector="Button.rail:pointerover">
-            <Setter Property="Background" Value="{DynamicResource HoverFill}" />
+            <Setter Property="Background" Value="{DynamicResource RailHoverFill}" />
+        </Style>
+        <Style Selector="Button.rail:pointerover Path">
+            <Setter Property="Stroke" Value="{DynamicResource RailIconHover}" />
+        </Style>
+        <Style Selector="Button.rail:pointerover Ellipse">
+            <Setter Property="Fill" Value="{DynamicResource RailIconHover}" />
         </Style>
         <Style Selector="Button.rail.active">
-            <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
+            <Setter Property="Background" Value="{DynamicResource RailActiveFill}" />
         </Style>
         <Style Selector="Button.rail.active Path">
-            <Setter Property="Stroke" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="Stroke" Value="{DynamicResource RailIconActive}" />
+        </Style>
+        <Style Selector="Button.rail.active Path.rail-fill">
+            <Setter Property="Fill" Value="{DynamicResource RailIconActive}" />
+        </Style>
+        <Style Selector="Button.rail.active Ellipse">
+            <Setter Property="Fill" Value="{DynamicResource RailIconActive}" />
+        </Style>
+        <Style Selector="Button.rail.open">
+            <Setter Property="Background" Value="{DynamicResource RailActiveFill}" />
+        </Style>
+        <Style Selector="Button.rail.open Path">
+            <Setter Property="Stroke" Value="{DynamicResource RailIconActive}" />
+        </Style>
+        <Style Selector="Button.rail.open Ellipse">
+            <Setter Property="Fill" Value="{DynamicResource RailIconActive}" />
         </Style>
 
         <Style Selector="Button.subtle">
@@ -372,66 +419,59 @@
 
     <Grid>
         <Grid ColumnDefinitions="56,280,*">
-            <Border Grid.Column="0" Background="{StaticResource SidebarRailFill}"
-                    BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0">
-                <Grid RowDefinitions="Auto,*,Auto" Margin="8,10,8,10">
+            <Border Grid.Column="0" Background="{StaticResource SidebarRailFill}" BorderThickness="0">
+                <Grid RowDefinitions="Auto,*,Auto" Margin="8,18,8,10">
                     <StackPanel Grid.Row="0" Spacing="5">
                         <Button Classes="rail" Classes.active="{Binding IsChatPage}"
                                 Click="OnNavChatClicked" Tag="聊天"
                                 PointerEntered="OnRailHintPointerEntered" PointerExited="OnRailHintPointerExited">
-                            <Path Width="20" Height="20" Data="{StaticResource ChatIcon}" Stretch="Uniform"
-                                  Stroke="{StaticResource TextTertiary}" StrokeThickness="1.45"
-                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                            <Path Classes="rail-icon rail-fill" Width="18" Height="18"
+                                  Data="{StaticResource RailChatIcon}" Stretch="Uniform" />
                         </Button>
                         <Button Classes="rail" Classes.active="{Binding IsPluginsPage}"
                                 Click="OnNavPluginsClicked" Tag="插件"
                                 PointerEntered="OnRailHintPointerEntered" PointerExited="OnRailHintPointerExited">
-                            <Path Width="20" Height="20" Data="{StaticResource PluginIcon}" Stretch="Uniform"
-                                  Stroke="{StaticResource TextTertiary}" StrokeThickness="1.45"
-                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                            <Path Classes="rail-icon rail-fill" Width="18" Height="18"
+                                  Data="{StaticResource RailPluginIcon}" Stretch="Uniform" />
                         </Button>
                         <Button Classes="rail" Classes.active="{Binding IsAutomationPage}"
                                 Click="OnNavAutomationClicked" Tag="自动化任务"
                                 PointerEntered="OnRailHintPointerEntered" PointerExited="OnRailHintPointerExited">
-                            <Path Width="20" Height="20" Data="{StaticResource AutomationIcon}" Stretch="Uniform"
-                                  Stroke="{StaticResource TextTertiary}" StrokeThickness="1.45"
-                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                            <Path Classes="rail-icon" Width="18" Height="18"
+                                  Data="{StaticResource RailAutomationIcon}" Stretch="Uniform" />
                         </Button>
                         <Button x:Name="MoreButton" Classes="rail"
                                 HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0"
                                 PointerEntered="OnMoreButtonPointerEntered" PointerExited="OnMoreButtonPointerExited"
                                 Click="OnMoreButtonClicked">
-                            <StackPanel Orientation="Horizontal" Spacing="3"
+                            <StackPanel Orientation="Horizontal" Spacing="3.5"
                                         HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <Ellipse Width="3.5" Height="3.5" Fill="{StaticResource TextTertiary}" />
-                                <Ellipse Width="3.5" Height="3.5" Fill="{StaticResource TextTertiary}" />
-                                <Ellipse Width="3.5" Height="3.5" Fill="{StaticResource TextTertiary}" />
+                                <Ellipse Width="3" Height="3" />
+                                <Ellipse Width="3" Height="3" />
+                                <Ellipse Width="3" Height="3" />
                             </StackPanel>
-
                         </Button>
-                        <Border Height="1" Background="{StaticResource Line}" Margin="2,8,2,0" />
+                        <Border Width="28" Height="1" HorizontalAlignment="Center"
+                                Background="{StaticResource Line}" Margin="0,8,0,3" />
                         <Button IsVisible="{Binding IsAddProjectPinned}" Classes="rail"
                                 Click="OnMoreAddWorkspaceClicked" Tag="项目"
                                 PointerEntered="OnRailHintPointerEntered" PointerExited="OnRailHintPointerExited">
-                            <Path Width="20" Height="20" Data="{StaticResource AddProjectIcon}" Stretch="Uniform"
-                                  Stroke="{StaticResource TextTertiary}" StrokeThickness="1.45"
-                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                            <Path Classes="rail-icon" Width="18" Height="18"
+                                  Data="{StaticResource AddProjectIcon}" Stretch="Uniform" />
                         </Button>
                         <Button IsVisible="{Binding IsCodeReviewPinned}" Classes="rail"
                                 Click="OnMoreCodeReviewClicked" Tag="代码审查"
                                 PointerEntered="OnRailHintPointerEntered" PointerExited="OnRailHintPointerExited">
-                            <Path Width="20" Height="20" Data="{StaticResource CodeReviewIcon}" Stretch="Uniform"
-                                  Stroke="{StaticResource TextTertiary}" StrokeThickness="1.45"
-                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                            <Path Classes="rail-icon" Width="18" Height="18"
+                                  Data="{StaticResource CodeReviewIcon}" Stretch="Uniform" />
                         </Button>
                     </StackPanel>
 
                     <Button Grid.Row="2" Classes="rail" Classes.active="{Binding IsSettingsOpen}"
                             Click="OnNavSettingsClicked" Tag="设置"
                             PointerEntered="OnRailHintPointerEntered" PointerExited="OnRailHintPointerExited">
-                        <Path Width="20" Height="20" Data="{StaticResource SettingsIcon}" Stretch="Uniform"
-                              Stroke="{StaticResource TextTertiary}" StrokeThickness="1.45"
-                              StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                        <Path Classes="rail-icon" Width="18" Height="18"
+                              Data="{StaticResource SettingsIcon}" Stretch="Uniform" />
                     </Button>
                 </Grid>
             </Border>
@@ -1166,61 +1206,74 @@
         </Grid>
 
         <Canvas x:Name="RailHintLayer" IsHitTestVisible="False">
-            <Border x:Name="RailHintCard" IsVisible="False"
-                    Background="{StaticResource ElevatedFill}"
-                    BorderBrush="{StaticResource LineStrong}" BorderThickness="1"
-                    CornerRadius="8" Padding="10,6"
+            <Border x:Name="RailHintCard" IsVisible="False" Opacity="0"
+                    Background="{DynamicResource MenuFill}" BorderThickness="0"
+                    CornerRadius="8" Padding="9,5"
                     BoxShadow="0 6 20 0 #66000000">
+                <Border.Transitions>
+                    <Transitions>
+                        <DoubleTransition Property="Opacity" Duration="0:0:0.10" />
+                    </Transitions>
+                </Border.Transitions>
                 <TextBlock x:Name="RailHintText" FontSize="12"
                            Foreground="{StaticResource TextPrimary}" />
             </Border>
         </Canvas>
 
-        <primitives:Popup x:Name="MorePopup" Placement="RightEdgeAlignedTop" HorizontalOffset="8"
+        <primitives:Popup x:Name="MorePopup" Placement="RightEdgeAlignedTop" HorizontalOffset="0"
                           IsLightDismissEnabled="False" ShouldUseOverlayLayer="True"
-                          Closed="OnMorePopupClosed">
-            <Border x:Name="MoreMenuCard" MinWidth="210"
-                    Background="{StaticResource ElevatedFill}"
-                    BorderBrush="{StaticResource LineStrong}" BorderThickness="1"
-                    CornerRadius="10" Padding="6"
+                          Opened="OnMorePopupOpened" Closed="OnMorePopupClosed">
+            <Border x:Name="MoreMenuCard" MinWidth="220"
+                    Background="{DynamicResource MenuFill}" BorderThickness="0"
+                    CornerRadius="10" Padding="5" Opacity="0"
+                    BoxShadow="0 8 24 0 #55000000"
                     PointerEntered="OnMoreMenuPointerEntered"
                     PointerExited="OnMoreMenuPointerExited">
-                <StackPanel Spacing="2">
-                    <Border Classes="more-menu-row">
-                        <Grid ColumnDefinitions="*,36">
+                <Border.Transitions>
+                    <Transitions>
+                        <DoubleTransition Property="Opacity" Duration="0:0:0.12" />
+                    </Transitions>
+                </Border.Transitions>
+                <StackPanel Spacing="1">
+                    <Border x:Name="ProjectMenuRow" Classes="more-menu-row"
+                            PointerEntered="OnMoreMenuRowPointerEntered"
+                            PointerExited="OnMoreMenuRowPointerExited">
+                        <Grid ColumnDefinitions="*,34">
                             <Button Classes="more-menu-item" Click="OnMoreAddWorkspaceClicked">
                                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
-                                    <Path Classes="more-menu-icon" Width="17" Height="17"
+                                    <Path Classes="more-menu-icon" Width="16" Height="16"
                                           Data="{StaticResource FolderIcon}" Stretch="Uniform"
                                           Stroke="{StaticResource TextSecondary}" StrokeThickness="1.4"
                                           StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
-                                    <TextBlock Grid.Column="1" Text="项目" FontSize="13"
+                                    <TextBlock Grid.Column="1" Text="项目" FontSize="13.5"
                                                Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" />
                                 </Grid>
                             </Button>
-                            <Button Grid.Column="1" Classes="more-menu-pin"
+                            <Button x:Name="ProjectPinButton" Grid.Column="1" Classes="more-menu-pin"
                                     Click="OnToggleAddProjectPinnedClicked">
-                                <Path Classes="more-menu-pin-icon" Width="15" Height="15"
+                                <Path Classes="more-menu-pin-icon" Width="14" Height="14"
                                       Data="{StaticResource PinIcon}" Stretch="Uniform"
                                       Fill="{StaticResource TextTertiary}" />
                             </Button>
                         </Grid>
                     </Border>
-                    <Border Classes="more-menu-row">
-                        <Grid ColumnDefinitions="*,36">
+                    <Border x:Name="CodeReviewMenuRow" Classes="more-menu-row"
+                            PointerEntered="OnMoreMenuRowPointerEntered"
+                            PointerExited="OnMoreMenuRowPointerExited">
+                        <Grid ColumnDefinitions="*,34">
                             <Button Classes="more-menu-item" Click="OnMoreCodeReviewClicked">
                                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
-                                    <Path Classes="more-menu-icon" Width="17" Height="17"
+                                    <Path Classes="more-menu-icon" Width="16" Height="16"
                                           Data="{StaticResource CodeReviewIcon}" Stretch="Uniform"
                                           Stroke="{StaticResource TextSecondary}" StrokeThickness="1.4"
                                           StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
-                                    <TextBlock Grid.Column="1" Text="代码审查" FontSize="13"
+                                    <TextBlock Grid.Column="1" Text="代码审查" FontSize="13.5"
                                                Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" />
                                 </Grid>
                             </Button>
-                            <Button Grid.Column="1" Classes="more-menu-pin"
+                            <Button x:Name="CodeReviewPinButton" Grid.Column="1" Classes="more-menu-pin"
                                     Click="OnToggleCodeReviewPinnedClicked">
-                                <Path Classes="more-menu-pin-icon" Width="15" Height="15"
+                                <Path Classes="more-menu-pin-icon" Width="14" Height="14"
                                       Data="{StaticResource PinIcon}" Stretch="Uniform"
                                       Fill="{StaticResource TextTertiary}" />
                             </Button>
