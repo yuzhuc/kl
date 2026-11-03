@@ -218,14 +218,14 @@ public partial class MainWindow : Window
         _moreMenuHovered = MoreButton.IsPointerOver;
     }
 
-    private async void OnMoreAddWorkspaceClicked(object? sender, RoutedEventArgs eventArgs)
-    {
-        CloseMoreMenu();
-        await PickWorkspaceAsync();
-    }
-
     private void OnToggleAddProjectPinnedClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.ToggleAddProjectPinned();
+
+    private void OnMoreProjectClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        CloseMoreMenu();
+        ActivateRailSection(AppSection.Projects);
+    }
 
     private void OnToggleCodeReviewPinnedClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.ToggleCodeReviewPinned();
@@ -461,6 +461,7 @@ public partial class MainWindow : Window
     private void SetRailSection(AppSection section)
     {
         ChatRailButton.Classes.Set("active", section == AppSection.Chat);
+        ProjectRailButton.Classes.Set("active", section == AppSection.Projects);
         PluginsRailButton.Classes.Set("active", section == AppSection.Plugins);
         AutomationRailButton.Classes.Set("active", section == AppSection.Automation);
         SettingsRailButton.Classes.Set("active", false);
@@ -527,9 +528,6 @@ public partial class MainWindow : Window
 
     private void OnNavSettingsClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.OpenSettings();
-
-    private void OnCloseSettingsClicked(object? sender, RoutedEventArgs eventArgs) =>
-        _viewModel.CloseSettings();
 
     private void OnOpenModelSettingsClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.OpenSettings(SettingsPane.Models);

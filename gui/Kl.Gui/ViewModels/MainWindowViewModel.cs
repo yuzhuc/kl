@@ -9,6 +9,7 @@ namespace Kl.Gui.ViewModels;
 public enum AppSection
 {
     Chat,
+    Projects,
     Plugins,
     Automation,
     Settings
@@ -518,6 +519,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private string _deletePrompt = string.Empty;
     private bool _isBusy;
     private bool _isChatPage = true;
+    private bool _isProjectsPage;
     private bool _isPluginsPage;
     private bool _isAutomationPage;
     private bool _isSettingsPage;
@@ -604,6 +606,7 @@ public sealed class MainWindowViewModel : ObservableObject
     public bool HasConversation => !IsEmpty;
     public bool IsConversationEmpty => IsEmpty;
     public bool IsChatPage => _isChatPage;
+    public bool IsProjectsPage => _isProjectsPage;
     public bool IsPluginsPage => _isPluginsPage;
     public bool IsAutomationPage => _isAutomationPage;
     public bool IsSettingsPage => _isSettingsPage;
@@ -767,7 +770,7 @@ public sealed class MainWindowViewModel : ObservableObject
         }
     }
     public string HeaderTitle => IsChatPage ? SessionTitle : SectionTitle;
-    public string SectionTitle => IsPluginsPage ? "插件" : IsAutomationPage ? "自动化任务" : IsSettingsPage ? "设置" : "聊天";
+    public string SectionTitle => IsProjectsPage ? "项目" : IsPluginsPage ? "插件" : IsAutomationPage ? "自动化任务" : IsSettingsPage ? "设置" : "聊天";
     public string WorkspaceName => _activeWorkspace.Name;
     public string WorkspacePath => _activeWorkspace.Path;
     public string ModelName => _state.Model;
@@ -919,10 +922,13 @@ public sealed class MainWindowViewModel : ObservableObject
         }
 
         _isChatPage = section == AppSection.Chat;
+        _isProjectsPage = section == AppSection.Projects;
         _isPluginsPage = section == AppSection.Plugins;
         _isAutomationPage = section == AppSection.Automation;
         _isSettingsPage = false;
+        IsSettingsOpen = false;
         OnPropertyChanged(nameof(IsChatPage));
+        OnPropertyChanged(nameof(IsProjectsPage));
         OnPropertyChanged(nameof(IsPluginsPage));
         OnPropertyChanged(nameof(IsAutomationPage));
         OnPropertyChanged(nameof(IsSettingsPage));

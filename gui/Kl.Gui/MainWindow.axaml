@@ -460,8 +460,8 @@
                         </Button>
                         <Border Width="28" Height="1" HorizontalAlignment="Center"
                                 Background="{StaticResource Line}" Margin="0,8,0,3" />
-                        <Button IsVisible="{Binding IsAddProjectPinned}" Classes="rail"
-                                Click="OnMoreAddWorkspaceClicked" Tag="项目"
+                        <Button x:Name="ProjectRailButton" IsVisible="{Binding IsAddProjectPinned}" Classes="rail"
+                                Classes.active="{Binding IsProjectsPage}" Click="OnMoreProjectClicked" Tag="项目"
                                 PointerEntered="OnRailHintPointerEntered" PointerExited="OnRailHintPointerExited">
                             <Path Classes="rail-icon" Width="18" Height="18"
                                   Data="{StaticResource FolderIcon}" Stretch="Uniform" />
@@ -755,6 +755,51 @@
                         </Border>
                     </Grid>
 
+                    <ScrollViewer IsVisible="{Binding IsProjectsPage}" VerticalScrollBarVisibility="Auto">
+                        <StackPanel MaxWidth="960" Spacing="0" Margin="40,0,40,40">
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,28,0,8">
+                                <StackPanel Spacing="3">
+                                    <TextBlock Text="项目" FontSize="20" FontWeight="Medium"
+                                               Foreground="{StaticResource TextPrimary}" />
+                                    <TextBlock Text="选择项目进入对话，或添加新的本地项目。"
+                                               FontSize="13" Foreground="{StaticResource TextTertiary}" />
+                                </StackPanel>
+                                <Button Grid.Column="1" Classes="primary" Click="OnAddWorkspaceClicked"
+                                        Content="+ 添加项目" VerticalAlignment="Center" />
+                            </Grid>
+
+                            <TextBlock Text="本地项目" FontSize="12" Foreground="{StaticResource TextCaption}"
+                                       Margin="2,18,0,10" />
+                            <ItemsControl ItemsSource="{Binding Workspaces}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:WorkspaceItemViewModel">
+                                        <Button Classes="nav" Height="64" Padding="0" Margin="0,0,0,8"
+                                                HorizontalContentAlignment="Stretch" Click="OnWorkspaceClicked">
+                                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Margin="12,8">
+                                                <Border Width="36" Height="36" Background="#25282D" CornerRadius="10">
+                                                    <Path Width="17" Height="17" Data="{StaticResource FolderIcon}"
+                                                          Stretch="Uniform" Stroke="{StaticResource TextSecondary}"
+                                                          StrokeThickness="1.35" StrokeLineCap="Round"
+                                                          StrokeJoin="Round" Fill="Transparent" />
+                                                </Border>
+                                                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="Medium"
+                                                               Foreground="{StaticResource TextPrimary}" />
+                                                    <TextBlock Text="{Binding Path}" FontSize="11"
+                                                               Foreground="{StaticResource TextTertiary}"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                </StackPanel>
+                                                <TextBlock Grid.Column="2" Text="打开" FontSize="12"
+                                                           Foreground="{StaticResource TextSecondary}"
+                                                           VerticalAlignment="Center" Margin="0,0,8,0" />
+                                            </Grid>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </ScrollViewer>
+
                     <ScrollViewer IsVisible="{Binding IsPluginsPage}" VerticalScrollBarVisibility="Auto">
                         <StackPanel MaxWidth="960" Spacing="0" Margin="40,0,40,40">
                             <Grid ColumnDefinitions="*,Auto" Margin="0,28,0,4">
@@ -975,17 +1020,20 @@
             </Border>
         </Grid>
 
-        <Grid IsVisible="{Binding IsSettingsOpen}" Background="#99000000">
-            <Border Width="800" Height="640" Background="{StaticResource ElevatedFill}"
-                    CornerRadius="28" ClipToBounds="True" BoxShadow="0 18 50 0 #66000000"
-                    HorizontalAlignment="Center" VerticalAlignment="Center">
-                <Grid ColumnDefinitions="188,*">
-                    <StackPanel Margin="12,22,12,0" Spacing="18">
-                        <TextBlock Text="设置" FontSize="16" FontWeight="Medium"
-                                   Foreground="{StaticResource TextPrimary}" Margin="12,0" />
-                        <StackPanel Spacing="4">
+        <Grid IsVisible="{Binding IsSettingsOpen}" Margin="52,0,0,0"
+              Background="{StaticResource BgBase}">
+            <Border Background="{StaticResource BgBase}" ClipToBounds="True">
+                <Grid ColumnDefinitions="280,*">
+                    <Border Background="{StaticResource SidebarFill}"
+                            BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0">
+                        <StackPanel Margin="16,22,16,0" Spacing="16">
+                            <TextBlock Text="设置" FontSize="20" FontWeight="Medium"
+                                       Foreground="{StaticResource TextPrimary}" Margin="2,0" />
+                            <TextBlock Text="个人" FontSize="12" Foreground="{StaticResource TextCaption}"
+                                       Margin="2,8,0,0" />
+                            <StackPanel Spacing="3">
                             <Button Classes="nav" Classes.active="{Binding IsSettingsGeneral}"
-                                    Click="OnSettingsGeneralClicked" Height="40" Padding="12,9" CornerRadius="12">
+                                    Click="OnSettingsGeneralClicked" Height="36" Padding="10,7" CornerRadius="9">
                                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
                                     <Path Width="16" Height="16" Data="{StaticResource SettingsIcon}" Stretch="Uniform"
                                           Stroke="{StaticResource TextSecondary}" StrokeThickness="1.3"
@@ -995,7 +1043,7 @@
                                 </Grid>
                             </Button>
                             <Button Classes="nav" Classes.active="{Binding IsSettingsModels}"
-                                    Click="OnSettingsModelsClicked" Height="40" Padding="12,9" CornerRadius="12">
+                                    Click="OnSettingsModelsClicked" Height="36" Padding="10,7" CornerRadius="9">
                                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
                                     <Path Width="16" Height="16" Data="{StaticResource SparkIcon}" Stretch="Uniform"
                                           Stroke="{StaticResource TextSecondary}" StrokeThickness="1.2"
@@ -1005,7 +1053,7 @@
                                 </Grid>
                             </Button>
                             <Button Classes="nav" Classes.active="{Binding IsSettingsData}"
-                                    Click="OnSettingsDataClicked" Height="40" Padding="12,9" CornerRadius="12">
+                                    Click="OnSettingsDataClicked" Height="36" Padding="10,7" CornerRadius="9">
                                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
                                     <Path Width="16" Height="16" Data="{StaticResource FolderIcon}" Stretch="Uniform"
                                           Stroke="{StaticResource TextSecondary}" StrokeThickness="1.3"
@@ -1015,7 +1063,7 @@
                                 </Grid>
                             </Button>
                             <Button Classes="nav" Classes.active="{Binding IsSettingsAbout}"
-                                    Click="OnSettingsAboutClicked" Height="40" Padding="12,9" CornerRadius="12">
+                                    Click="OnSettingsAboutClicked" Height="36" Padding="10,7" CornerRadius="9">
                                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
                                     <Path Width="16" Height="16" Data="{StaticResource ChatIcon}" Stretch="Uniform"
                                           Stroke="{StaticResource TextSecondary}" StrokeThickness="1.3"
@@ -1025,7 +1073,8 @@
                                 </Grid>
                             </Button>
                         </StackPanel>
-                    </StackPanel>
+                        </StackPanel>
+                    </Border>
 
                     <Grid Grid.Column="1" RowDefinitions="54,*">
                         <Grid RowDefinitions="Auto" ColumnDefinitions="*,Auto" Margin="10,14,14,8">
@@ -1035,14 +1084,9 @@
                                 <TextBlock Text="{Binding SettingsPaneSubtitle}" FontSize="12"
                                            Foreground="{StaticResource TextTertiary}" />
                             </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                                <Button Classes="secondary" Click="OnOpenStateDirectoryClicked"
-                                        Content="打开配置目录" Height="28" Padding="10,4" />
-                                <Button Classes="icon" Width="28" Height="28" Click="OnCloseSettingsClicked"
-                                        ToolTip.Tip="关闭设置">
-                                    <TextBlock Text="×" FontSize="18" Foreground="{StaticResource TextPrimary}" />
-                                </Button>
-                            </StackPanel>
+                            <Button Grid.Column="1" Classes="secondary" Click="OnOpenStateDirectoryClicked"
+                                    Content="打开配置目录" Height="28" Padding="10,4"
+                                    VerticalAlignment="Center" />
                         </Grid>
 
                         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="10,0,24,24">
@@ -1254,7 +1298,7 @@
                             PointerEntered="OnMoreMenuRowPointerEntered"
                             PointerExited="OnMoreMenuRowPointerExited">
                         <Grid ColumnDefinitions="*,34">
-                            <Button Grid.ColumnSpan="2" Classes="more-menu-item" Click="OnMoreAddWorkspaceClicked">
+                            <Button Grid.ColumnSpan="2" Classes="more-menu-item" Click="OnMoreProjectClicked">
                                 <Grid ColumnDefinitions="Auto,*,34" ColumnSpacing="10">
                                     <Path Classes="more-menu-icon" Width="16" Height="16"
                                           Data="{StaticResource FolderIcon}" Stretch="Uniform"

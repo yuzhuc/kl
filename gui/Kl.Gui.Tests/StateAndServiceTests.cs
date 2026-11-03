@@ -630,6 +630,22 @@ public sealed class ViewModelTests
     }
 
     [Fact]
+    public void ProjectNavigationUsesInAppPageAndClosesSettings()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        Seed(store, temp.Path);
+        var vm = CreateViewModel(store, new ScriptedChatService());
+
+        vm.OpenSettings();
+        vm.Navigate(AppSection.Projects);
+
+        Assert.True(vm.IsProjectsPage);
+        Assert.False(vm.IsSettingsOpen);
+        Assert.False(vm.IsChatPage);
+    }
+
+    [Fact]
     public void CodeReviewActionPreparesDraftPrompt()
     {
         using var temp = new TempDirectory();
