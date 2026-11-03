@@ -1,15 +1,15 @@
-# DeepSeek Harness GUI
+# kl
 
-Avalonia 桌面客户端，界面与交互对照 DeepSeek Harness 0.2.1-rc.1 实机界面和源码实现。
-项目独立于原始 React/Electron checkout，不会修改 D:\kl\demo\deepseek-harness。
+Avalonia 桌面客户端，采用 kl 品牌和 Codex 风格界面。
+项目为独立 Avalonia 实现，不依赖原始外部 checkout。
 
 ## 界面
 
 - 56px 图标导航栏 + 280px 项目/会话栏 + 自适应对话区，三栏结构与 Codex 对齐
 - 内嵌圆角主面板，空会话居中输入，开始会话后输入框停靠底部
 - 用户气泡、Markdown 助手正文、代码块、复制操作、折叠思考和工具调用
-- DeepSeek 风格设置模态：通用设置、模型、本地数据、关于与快捷键
-- 插件页、自动化任务页与实机 DeepSeek Harness 对齐的标题、筛选和列表结构
+- kl 设置模态：通用设置、模型、本地数据、关于与快捷键
+- 插件页、自动化任务页采用统一的 kl 深色视觉和列表结构
 
 ## 功能
 
@@ -33,7 +33,7 @@ Avalonia 桌面客户端，界面与交互对照 DeepSeek Harness 0.2.1-rc.1 实
 
 API Key 在设置页面直接填写，并保存在本机状态文件中。
 
-    dotnet run --project .\DeepSeekHarness.Gui.csproj
+    dotnet run --project .\Kl.Gui.csproj
 
 GUI 数据统一位于 `%USERPROFILE%\.kl\gui`：
 
@@ -47,13 +47,13 @@ GUI 数据统一位于 `%USERPROFILE%\.kl\gui`：
 
 环境变量覆盖：
 
-- DEEPSEEK_HARNESS_GUI_STATE：状态文件路径
-- DEEPSEEK_HARNESS_WORKSPACE：首次启动工作区
-- DEEPSEEK_HARNESS_GUI_PLUGINS：本地插件目录
+- KL_GUI_STATE：状态文件路径
+- KL_GUI_WORKSPACE：首次启动工作区
+- KL_GUI_PLUGINS：本地插件目录
 
 ## 测试
 
-    dotnet test ..\DeepSeekHarness.Gui.Tests\DeepSeekHarness.Gui.Tests.csproj
+    dotnet test ..\Kl.Gui.Tests\Kl.Gui.Tests.csproj
 
 ## 发布
 

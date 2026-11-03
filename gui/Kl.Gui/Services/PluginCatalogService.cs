@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace DeepSeekHarness.Gui.Services;
+namespace Kl.Gui.Services;
 
 public sealed record LocalPluginInfo(
     string Name,
@@ -26,7 +26,7 @@ public sealed class LocalPluginCatalogService : IPluginCatalogService
 
         var paths = dataPaths ?? KlDataPaths.Default;
         paths.EnsureInitialized();
-        DirectoryPath = Environment.GetEnvironmentVariable("DEEPSEEK_HARNESS_GUI_PLUGINS")
+        DirectoryPath = Environment.GetEnvironmentVariable("KL_GUI_PLUGINS")
             ?? paths.PluginsDirectoryPath;
     }
 

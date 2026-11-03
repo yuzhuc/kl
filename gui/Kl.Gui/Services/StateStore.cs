@@ -1,8 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using DeepSeekHarness.Gui.Models;
+using Kl.Gui.Models;
 
-namespace DeepSeekHarness.Gui.Services;
+namespace Kl.Gui.Services;
 
 public sealed class StateStore
 {
@@ -28,7 +28,7 @@ public sealed class StateStore
 
         var paths = dataPaths ?? KlDataPaths.Default;
         paths.EnsureInitialized();
-        _path = Environment.GetEnvironmentVariable("DEEPSEEK_HARNESS_GUI_STATE")
+        _path = Environment.GetEnvironmentVariable("KL_GUI_STATE")
             ?? paths.StateFilePath;
         _credentialPath = credentialPath ?? paths.ApiKeyFilePath;
     }

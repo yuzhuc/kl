@@ -4,7 +4,7 @@ using Avalonia.Controls.Documents;
 using Avalonia.Media;
 using Avalonia.Threading;
 
-namespace DeepSeekHarness.Gui.Controls;
+namespace Kl.Gui.Controls;
 
 public sealed class MarkdownTextBlock : UserControl
 {

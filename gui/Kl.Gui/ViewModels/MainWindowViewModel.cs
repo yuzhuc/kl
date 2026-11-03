@@ -1,10 +1,10 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
-using DeepSeekHarness.Gui.Models;
-using DeepSeekHarness.Gui.Services;
+using Kl.Gui.Models;
+using Kl.Gui.Services;
 
-namespace DeepSeekHarness.Gui.ViewModels;
+namespace Kl.Gui.ViewModels;
 
 public enum AppSection
 {
@@ -184,7 +184,7 @@ public sealed class ChatItemViewModel : ObservableObject
         new(ChatItemKind.User, "你", text, detail: apiText ?? string.Empty);
 
     public static ChatItemViewModel Assistant(string text) =>
-        new(ChatItemKind.Assistant, "DeepSeek", text);
+        new(ChatItemKind.Assistant, "kl", text);
 
     public static ChatItemViewModel Reasoning(string text = "") =>
         new(ChatItemKind.Reasoning, "思考", text);
@@ -1964,7 +1964,7 @@ public sealed class MainWindowViewModel : ObservableObject
 
         if (_state.Workspaces.Count == 0)
         {
-            var workspacePath = Environment.GetEnvironmentVariable("DEEPSEEK_HARNESS_WORKSPACE");
+            var workspacePath = Environment.GetEnvironmentVariable("KL_GUI_WORKSPACE");
             if (string.IsNullOrWhiteSpace(workspacePath) && Directory.Exists(@"D:\kl"))
             {
                 workspacePath = @"D:\kl";

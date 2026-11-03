@@ -2,6 +2,10 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>kl</AssemblyName>
+    <RootNamespace>Kl.Gui</RootNamespace>
+    <AssemblyTitle>kl</AssemblyTitle>
+    <Product>kl</Product>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>

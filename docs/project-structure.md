@@ -43,8 +43,8 @@ sibling `bin/` directory, while benchmark workspaces are disposable.
 |---|---|
 | `tui/Kl.Tui` | Terminal.Gui v2 UI, commands, approvals and terminal rendering |
 | `tui/Kl.Tui.Tests` | TUI, protocol, server and core integration tests |
-| `gui/DeepSeekHarness.Gui` | Avalonia desktop chat client |
-| `gui/DeepSeekHarness.Gui.Tests` | GUI state and service tests |
+| `gui/Kl.Gui` | Avalonia desktop chat client |
+| `gui/Kl.Gui.Tests` | GUI state and service tests |
 | `sdk/Kl.Client` | JSON-RPC connection, session client, DTOs and endpoint discovery |
 
 The TUI uses `Kl.Client` and does not own an agent loop. `KlSessionClient`
@@ -65,7 +65,7 @@ uses an OpenAI-compatible provider directly and can adopt this client later.
 
 - Rust: `cargo build --release -p kl-core`.
 - TUI: `dotnet build tui/Kl.Tui/Kl.Tui.csproj`.
-- GUI: `dotnet build gui/DeepSeekHarness.Gui/DeepSeekHarness.Gui.csproj`.
+- GUI: `dotnet build gui/Kl.Gui/Kl.Gui.csproj`.
 - Build: `python scripts/build.py` publishes final GUI/TUI files to the sibling `bin` directory.
 - Packaging: `python scripts/package.py` builds a self-contained release archive.
 - Release: only `main` pushes, tag `v<version>-rcN`, archives only.

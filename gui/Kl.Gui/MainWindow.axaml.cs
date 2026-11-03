@@ -8,9 +8,9 @@ using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
-using DeepSeekHarness.Gui.ViewModels;
+using Kl.Gui.ViewModels;
 
-namespace DeepSeekHarness.Gui;
+namespace Kl.Gui;
 
 public partial class MainWindow : Window
 {

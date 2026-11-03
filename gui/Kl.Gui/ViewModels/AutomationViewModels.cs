@@ -1,6 +1,6 @@
-using DeepSeekHarness.Gui.Models;
+using Kl.Gui.Models;
 
-namespace DeepSeekHarness.Gui.ViewModels;
+namespace Kl.Gui.ViewModels;
 
 public sealed record AutomationIntervalOption(int Minutes, string Label);
 

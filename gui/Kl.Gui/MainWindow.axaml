@@ -2,10 +2,10 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:vm="using:DeepSeekHarness.Gui.ViewModels"
-        xmlns:controls="using:DeepSeekHarness.Gui.Controls"
+        xmlns:vm="using:Kl.Gui.ViewModels"
+        xmlns:controls="using:Kl.Gui.Controls"
         mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="820"
-        x:Class="DeepSeekHarness.Gui.MainWindow"
+        x:Class="Kl.Gui.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="kl"
         Icon="/Assets/kl.png"
@@ -1119,7 +1119,7 @@
                                     <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,0,0,8">
                                         <Image Width="26" Height="26" Source="/Assets/kl.png" Stretch="Uniform" />
                                         <StackPanel Spacing="2">
-                                            <TextBlock Text="DeepSeek Harness GUI" FontSize="16" FontWeight="Medium"
+                                            <TextBlock Text="kl" FontSize="16" FontWeight="Medium"
                                                        Foreground="{StaticResource TextPrimary}" />
                                             <TextBlock Text="{Binding VersionLabel, StringFormat='版本 {0}'}"
                                                        FontSize="11" Foreground="{StaticResource TextCaption}" />

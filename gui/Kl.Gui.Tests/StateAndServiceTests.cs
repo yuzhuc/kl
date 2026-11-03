@@ -2,11 +2,11 @@ using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
-using DeepSeekHarness.Gui.Models;
-using DeepSeekHarness.Gui.Services;
-using DeepSeekHarness.Gui.ViewModels;
+using Kl.Gui.Models;
+using Kl.Gui.Services;
+using Kl.Gui.ViewModels;
 
-namespace DeepSeekHarness.Gui.Tests;
+namespace Kl.Gui.Tests;
 
 public sealed class StateAndServiceTests
 {
@@ -761,7 +761,7 @@ public sealed class TempDirectory : IDisposable
     {
         Path = System.IO.Path.Combine(
             System.IO.Path.GetTempPath(),
-            "DeepSeekHarnessGuiTests",
+            "KlGuiTests",
             Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Path);
     }

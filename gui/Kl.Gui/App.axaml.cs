@@ -2,7 +2,7 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 
-namespace DeepSeekHarness.Gui;
+namespace Kl.Gui;
 
 public partial class App : Application
 {

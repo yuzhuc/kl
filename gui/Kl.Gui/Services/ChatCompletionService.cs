@@ -3,7 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 
-namespace DeepSeekHarness.Gui.Services;
+namespace Kl.Gui.Services;
 
 public sealed record ChatRequestMessage(string Role, string Content);
 

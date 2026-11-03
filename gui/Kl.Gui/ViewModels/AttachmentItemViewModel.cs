@@ -1,4 +1,4 @@
-namespace DeepSeekHarness.Gui.ViewModels;
+namespace Kl.Gui.ViewModels;
 
 public sealed class AttachmentItemViewModel
 {

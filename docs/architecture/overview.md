@@ -3,7 +3,7 @@
 ## Process model
 
 ```text
-TUI (tui/Kl.Tui)     Headless/CI       DeepSeek GUI
+TUI (tui/Kl.Tui)     Headless/CI       kl GUI
         \                  /            (standalone)
          \             Kl.Client              |
           \                |                  v
@@ -41,7 +41,7 @@ directly and is not yet wired to Core.
 | `kl-plugin-host` | Sidecar/WASM plugin supervision and integrity checks |
 | `Kl.Client` | C# JSON-RPC/session client used by the TUI |
 | `Kl.Tui` | Terminal.Gui v2 terminal client and approval presentation |
-| `DeepSeekHarness.Gui` | Standalone Avalonia desktop chat client |
+| `Kl.Gui` | Standalone Avalonia desktop chat client |
 
 ## Protocol and transports
 

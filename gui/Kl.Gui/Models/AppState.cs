@@ -1,4 +1,4 @@
-namespace DeepSeekHarness.Gui.Models;
+namespace Kl.Gui.Models;
 
 public sealed class AppState
 {

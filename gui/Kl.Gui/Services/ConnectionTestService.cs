@@ -1,7 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
 
-namespace DeepSeekHarness.Gui.Services;
+namespace Kl.Gui.Services;
 
 public sealed record ConnectionTestResult(bool Success, string Message);
 

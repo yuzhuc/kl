@@ -1,4 +1,4 @@
-namespace DeepSeekHarness.Gui.Services;
+namespace Kl.Gui.Services;
 
 public sealed class KlDataPaths
 {

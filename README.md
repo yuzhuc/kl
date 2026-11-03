@@ -4,7 +4,7 @@ KL is a local-first AI coding agent with a Rust trusted core and C# clients.
 
 - **Core:** Rust, JSON-RPC 2.0 over stdio or a local named-pipe/UDS server.
 - **TUI:** C# Terminal.Gui v2 client in `tui/Kl.Tui`.
-- **GUI:** Avalonia 12.1.4 desktop client in `gui/DeepSeekHarness.Gui`.
+- **GUI:** Avalonia 12.1.4 desktop client in `gui/Kl.Gui`.
 - **Shared client:** `sdk/Kl.Client`, used by the TUI and available for future GUI integration.
 
 The project is designed around local execution, explicit approvals, bounded
@@ -22,7 +22,7 @@ smoke still needs credentials or a configured local server.
 ## Architecture
 
 ```text
-TUI (tui/Kl.Tui)     Headless/CI       DeepSeek GUI
+TUI (tui/Kl.Tui)     Headless/CI       kl GUI
         \                  /            (standalone)
          \             Kl.Client              |
           \                |                  v
@@ -45,7 +45,7 @@ directly. See [`docs/architecture/overview.md`](docs/architecture/overview.md).
 | `crates/` | Rust core and capability crates |
 | `tui/Kl.Tui` | C# terminal client |
 | `tui/Kl.Tui.Tests` | TUI, protocol and core integration tests |
-| `gui/DeepSeekHarness.Gui` | Avalonia desktop chat client |
+| `gui/Kl.Gui` | Avalonia desktop chat client |
 | `sdk/Kl.Client` | reusable C# JSON-RPC/session client |
 | `schemas/` | protocol and plugin JSON schemas |
 | `benchmarks/` | acceptance tasks and fixtures |

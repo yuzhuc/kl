@@ -80,7 +80,7 @@ def publish_apps(
         "-p:DebugType=None",
         "-p:DebugSymbols=false",
     ]
-    run(["dotnet", "publish", "gui/DeepSeekHarness.Gui/DeepSeekHarness.Gui.csproj", *common, "-o", str(gui_output)], env)
+    run(["dotnet", "publish", "gui/Kl.Gui/Kl.Gui.csproj", *common, "-o", str(gui_output)], env)
     run(["dotnet", "publish", "tui/Kl.Tui/Kl.Tui.csproj", *common, "-o", str(tui_output)], env)
 
     if not core.is_file():
@@ -97,7 +97,7 @@ def publish_apps(
 
     if runtime.startswith("win"):
         (output / "run-gui.bat").write_text(
-            '@echo off\nstart "" "%~dp0gui\\DeepSeekHarness.Gui.exe"\n',
+            '@echo off\nstart "" "%~dp0gui\\kl.exe"\n',
             encoding="utf-8",
             newline="\r\n",
         )
@@ -110,7 +110,7 @@ def publish_apps(
         gui_launcher = output / "run-gui.sh"
         tui_launcher = output / "run-tui.sh"
         gui_launcher.write_text(
-            '#!/usr/bin/env sh\nSCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\nexec "$SCRIPT_DIR/gui/DeepSeekHarness.Gui" "$@"\n',
+            '#!/usr/bin/env sh\nSCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\nexec "$SCRIPT_DIR/gui/kl" "$@"\n',
             encoding="utf-8",
             newline="\n",
         )

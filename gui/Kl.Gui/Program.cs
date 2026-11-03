@@ -1,7 +1,7 @@
-﻿using Avalonia;
+using Avalonia;
 using System;
 
-namespace DeepSeekHarness.Gui;
+namespace Kl.Gui;
 
 class Program
 {
