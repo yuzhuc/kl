@@ -428,7 +428,7 @@
         <Grid ColumnDefinitions="56,280,*">
             <Border Grid.Column="0" Background="{StaticResource SidebarRailFill}" BorderThickness="0">
                 <Grid RowDefinitions="Auto,*,Auto" Margin="8,18,8,10">
-                    <StackPanel Grid.Row="0" Spacing="5">
+                    <StackPanel Grid.Row="0" Spacing="4">
                         <Button x:Name="ChatRailButton" Classes="rail" Classes.active="{Binding IsChatPage}"
                                 Click="OnNavChatClicked" Tag="聊天"
                                 PointerEntered="OnRailHintPointerEntered" PointerExited="OnRailHintPointerExited">
@@ -1232,7 +1232,7 @@
                           Opened="OnMorePopupOpened" Closed="OnMorePopupClosed">
             <Border x:Name="MoreMenuCard" MinWidth="220"
                     Background="{DynamicResource MenuFill}" BorderThickness="0"
-                    CornerRadius="10" Padding="5" Opacity="0"
+                    CornerRadius="10" Padding="4" Opacity="0"
                     PointerEntered="OnMoreMenuPointerEntered"
                     PointerExited="OnMoreMenuPointerExited">
                 <Border.RenderTransform>
@@ -1266,7 +1266,7 @@
                             </Button>
                             <Button x:Name="ProjectPinButton" Grid.Column="1" Classes="more-menu-pin"
                                     Click="OnToggleAddProjectPinnedClicked">
-                                <Path Classes="more-menu-pin-icon" Width="14" Height="14"
+                                <Path Classes="more-menu-pin-icon" Width="13" Height="13"
                                       Data="{StaticResource PinIcon}" Stretch="Uniform"
                                       Fill="{StaticResource TextTertiary}" />
                             </Button>
@@ -1288,7 +1288,7 @@
                             </Button>
                             <Button x:Name="CodeReviewPinButton" Grid.Column="1" Classes="more-menu-pin"
                                     Click="OnToggleCodeReviewPinnedClicked">
-                                <Path Classes="more-menu-pin-icon" Width="14" Height="14"
+                                <Path Classes="more-menu-pin-icon" Width="13" Height="13"
                                       Data="{StaticResource PinIcon}" Stretch="Uniform"
                                       Fill="{StaticResource TextTertiary}" />
                             </Button>
