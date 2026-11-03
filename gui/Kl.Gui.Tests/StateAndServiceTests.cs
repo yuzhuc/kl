@@ -24,6 +24,7 @@ public sealed class StateAndServiceTests
             ApiKeyEnvironmentVariable = "TEST_KEY",
             PermissionMode = "按需确认",
             InteractionMode = "chat",
+            IsAddProjectPinned = true,
             ActiveWorkspaceId = workspaceId,
             ActiveSessionId = sessionId,
             Workspaces =
@@ -56,6 +57,7 @@ public sealed class StateAndServiceTests
         Assert.Equal("http://localhost:9999", loaded.Endpoint);
         Assert.Equal("chat", loaded.InteractionMode);
         Assert.Equal("按需确认", loaded.PermissionMode);
+        Assert.True(loaded.IsAddProjectPinned);
         Assert.Equal("持久化会话", Assert.Single(loaded.Workspaces).Sessions[0].Title);
         Assert.Equal("你好，世界", loaded.Workspaces[0].Sessions[0].Messages[1].Text);
     }

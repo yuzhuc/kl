@@ -29,6 +29,8 @@
         <StreamGeometry x:Key="PluginIcon">M4 4H10V10H4Z M14 4H20V10H14Z M9 14H15V20H9Z</StreamGeometry>
         <StreamGeometry x:Key="AutomationIcon">M20 8A9 9 0 1 0 21 15 M20 3V8H15</StreamGeometry>
         <StreamGeometry x:Key="FolderIcon">M3 5H9L11 7H21V19H3Z</StreamGeometry>
+        <StreamGeometry x:Key="AddProjectIcon">M3 5H9L11 7H21V19H3Z M12 10V16 M9 13H15</StreamGeometry>
+        <StreamGeometry x:Key="PinIcon">M16 12V4H17V2H7V4H8V12L6 14V16H11.2V22H12.8V16H18V14L16 12Z</StreamGeometry>
         <StreamGeometry x:Key="SearchIcon">M10.5 4A6.5 6.5 0 1 0 10.5 17A6.5 6.5 0 1 0 10.5 4 M15.5 15.5L21 21</StreamGeometry>
         <StreamGeometry x:Key="MoreIcon">M5 12A1.5 1.5 0 1 0 8 12A1.5 1.5 0 1 0 5 12 M10.5 12A1.5 1.5 0 1 0 13.5 12A1.5 1.5 0 1 0 10.5 12 M16 12A1.5 1.5 0 1 0 19 12A1.5 1.5 0 1 0 16 12</StreamGeometry>
         <StreamGeometry x:Key="PanelIcon">M4 4H20V20H4Z M9 4V20</StreamGeometry>
@@ -60,6 +62,15 @@
             <Setter Property="FontSize" Value="12" />
         </Style>
 
+        <Style Selector="Border.more-menu-row">
+            <Setter Property="Height" Value="34" />
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="ClipToBounds" Value="True" />
+        </Style>
+        <Style Selector="Border.more-menu-row:pointerover">
+            <Setter Property="Background" Value="{DynamicResource HoverFill}" />
+        </Style>
         <Style Selector="Button.more-menu-item">
             <Setter Property="Height" Value="34" />
             <Setter Property="Padding" Value="10,7" />
@@ -70,7 +81,23 @@
             <Setter Property="FocusAdorner" Value="{x:Null}" />
         </Style>
         <Style Selector="Button.more-menu-item:pointerover">
-            <Setter Property="Background" Value="{DynamicResource HoverFill}" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.more-menu-pin">
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.more-menu-pin:pointerover">
+            <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
+        </Style>
+        <Style Selector="Button.more-menu-pin.active Path">
+            <Setter Property="Fill" Value="{DynamicResource AccentBlue}" />
         </Style>
 
         <Style Selector="Button.icon">

@@ -9,6 +9,7 @@ public sealed class AppState
     public string PermissionMode { get; set; } = "完全访问";
     public int ContentFontSize { get; set; } = 14;
     public string InteractionMode { get; set; } = "work";
+    public bool IsAddProjectPinned { get; set; }
     public string? ActiveWorkspaceId { get; set; }
     public string? ActiveSessionId { get; set; }
     public List<WorkspaceState> Workspaces { get; set; } = [];

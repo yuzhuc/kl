@@ -607,6 +607,7 @@ public sealed class MainWindowViewModel : ObservableObject
     public bool IsPluginsPage => _isPluginsPage;
     public bool IsAutomationPage => _isAutomationPage;
     public bool IsSettingsPage => _isSettingsPage;
+    public bool IsAddProjectPinned => _state.IsAddProjectPinned;
     public bool ShowConversationHeader => IsChatPage && HasConversation;
     public bool IsSettingsOpen
     {
@@ -939,6 +940,13 @@ public sealed class MainWindowViewModel : ObservableObject
             }
             ApplyAutomationFilter();
         }
+    }
+
+    public void ToggleAddProjectPinned()
+    {
+        _state.IsAddProjectPinned = !_state.IsAddProjectPinned;
+        SaveState();
+        OnPropertyChanged(nameof(IsAddProjectPinned));
     }
 
     public void OpenSettings(SettingsPane pane = SettingsPane.General)
