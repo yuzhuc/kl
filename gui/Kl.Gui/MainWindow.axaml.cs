@@ -3,6 +3,7 @@ using Avalonia;
 using System.Diagnostics;
 using System.ComponentModel;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives.PopupPositioning;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
@@ -24,6 +25,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        ConfigureRailTooltips();
         DataContext = _viewModel;
         ApplyContentFontResources();
         _viewModel.Messages.CollectionChanged += OnMessagesChanged;
@@ -36,6 +38,26 @@ public partial class MainWindow : Window
         MorePopup.PlacementTarget = MoreButton;
         _moreMenuOpenTimer.Tick += OnMoreMenuOpenTimerTick;
         _moreMenuCloseTimer.Tick += OnMoreMenuCloseTimerTick;
+    }
+
+    private void ConfigureRailTooltips()
+    {
+        var callback = new CustomPopupPlacementCallback(PlaceRailTooltip);
+        foreach (var button in new[] { ChatRailButton, PluginsRailButton, AutomationRailButton, SettingsRailButton })
+        {
+            ToolTip.SetPlacement(button, PlacementMode.Custom);
+            ToolTip.SetCustomPopupPlacementCallback(button, callback);
+        }
+    }
+
+    private static void PlaceRailTooltip(CustomPopupPlacement placement)
+    {
+        var target = placement.Target;
+        var targetBounds = target.Bounds;
+        placement.AnchorRectangle = new Rect(0, 0, targetBounds.Width, targetBounds.Height);
+        placement.Anchor = PopupAnchor.Right;
+        placement.Gravity = PopupGravity.Right;
+        placement.Offset = new Point(8, 14);
     }
 
     private void OnMoreButtonPointerEntered(object? sender, PointerEventArgs eventArgs)
