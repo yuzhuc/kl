@@ -1232,16 +1232,30 @@
                           Opened="OnMorePopupOpened" Closed="OnMorePopupClosed">
             <Border x:Name="MoreMenuCard" MinWidth="220"
                     Background="{DynamicResource MenuFill}" BorderThickness="0"
-                    CornerRadius="10" Padding="5"
+                    CornerRadius="10" Padding="5" Opacity="0"
                     PointerEntered="OnMoreMenuPointerEntered"
                     PointerExited="OnMoreMenuPointerExited">
+                <Border.RenderTransform>
+                    <TranslateTransform X="-3">
+                        <TranslateTransform.Transitions>
+                            <Transitions>
+                                <DoubleTransition Property="X" Duration="0:0:0.10" />
+                            </Transitions>
+                        </TranslateTransform.Transitions>
+                    </TranslateTransform>
+                </Border.RenderTransform>
+                <Border.Transitions>
+                    <Transitions>
+                        <DoubleTransition Property="Opacity" Duration="0:0:0.10" />
+                    </Transitions>
+                </Border.Transitions>
                 <StackPanel Spacing="1">
                     <Border x:Name="ProjectMenuRow" Classes="more-menu-row"
                             PointerEntered="OnMoreMenuRowPointerEntered"
                             PointerExited="OnMoreMenuRowPointerExited">
                         <Grid ColumnDefinitions="*,34">
-                            <Button Classes="more-menu-item" Click="OnMoreAddWorkspaceClicked">
-                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                            <Button Grid.ColumnSpan="2" Classes="more-menu-item" Click="OnMoreAddWorkspaceClicked">
+                                <Grid ColumnDefinitions="Auto,*,34" ColumnSpacing="10">
                                     <Path Classes="more-menu-icon" Width="16" Height="16"
                                           Data="{StaticResource FolderIcon}" Stretch="Uniform"
                                           Stroke="{StaticResource TextSecondary}" StrokeThickness="1.4"
@@ -1262,8 +1276,8 @@
                             PointerEntered="OnMoreMenuRowPointerEntered"
                             PointerExited="OnMoreMenuRowPointerExited">
                         <Grid ColumnDefinitions="*,34">
-                            <Button Classes="more-menu-item" Click="OnMoreCodeReviewClicked">
-                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                            <Button Grid.ColumnSpan="2" Classes="more-menu-item" Click="OnMoreCodeReviewClicked">
+                                <Grid ColumnDefinitions="Auto,*,34" ColumnSpacing="10">
                                     <Path Classes="more-menu-icon" Width="16" Height="16"
                                           Data="{StaticResource CodeReviewIcon}" Stretch="Uniform"
                                           Stroke="{StaticResource TextSecondary}" StrokeThickness="1.4"

@@ -6,6 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Kl.Gui.ViewModels;
@@ -197,11 +198,18 @@ public partial class MainWindow : Window
     private void OnMorePopupOpened(object? sender, EventArgs eventArgs)
     {
         MoreButton.Classes.Set("open", true);
+        Dispatcher.UIThread.Post(() =>
+        {
+            MoreMenuCard.Opacity = 1;
+            SetMoreMenuSlide(0);
+        });
     }
 
     private void OnMorePopupClosed(object? sender, EventArgs eventArgs)
     {
         MoreButton.Classes.Set("open", false);
+        MoreMenuCard.Opacity = 0;
+        SetMoreMenuSlide(-3);
         ProjectPinButton.Opacity = 0;
         CodeReviewPinButton.Opacity = 0;
         _moreMenuOpenTimer.Stop();
@@ -245,7 +253,17 @@ public partial class MainWindow : Window
             return;
         }
 
+        MoreMenuCard.Opacity = 0;
+        SetMoreMenuSlide(-3);
         MorePopup.IsOpen = true;
+    }
+
+    private void SetMoreMenuSlide(double x)
+    {
+        if (MoreMenuCard.RenderTransform is TranslateTransform transform)
+        {
+            transform.X = x;
+        }
     }
 
     private void CloseMoreMenu()
