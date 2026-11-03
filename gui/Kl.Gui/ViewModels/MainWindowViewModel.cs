@@ -608,6 +608,7 @@ public sealed class MainWindowViewModel : ObservableObject
     public bool IsAutomationPage => _isAutomationPage;
     public bool IsSettingsPage => _isSettingsPage;
     public bool IsAddProjectPinned => _state.IsAddProjectPinned;
+    public bool IsCodeReviewPinned => _state.IsCodeReviewPinned;
     public bool ShowConversationHeader => IsChatPage && HasConversation;
     public bool IsSettingsOpen
     {
@@ -947,6 +948,20 @@ public sealed class MainWindowViewModel : ObservableObject
         _state.IsAddProjectPinned = !_state.IsAddProjectPinned;
         SaveState();
         OnPropertyChanged(nameof(IsAddProjectPinned));
+    }
+
+    public void ToggleCodeReviewPinned()
+    {
+        _state.IsCodeReviewPinned = !_state.IsCodeReviewPinned;
+        SaveState();
+        OnPropertyChanged(nameof(IsCodeReviewPinned));
+    }
+
+    public void StartCodeReviewDraft()
+    {
+        Navigate(AppSection.Chat);
+        StartDraftSession();
+        Composer = "请审查当前项目的代码变更，重点检查潜在 bug、回归风险、安全问题和缺失测试。";
     }
 
     public void OpenSettings(SettingsPane pane = SettingsPane.General)

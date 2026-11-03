@@ -25,6 +25,7 @@ public sealed class StateAndServiceTests
             PermissionMode = "按需确认",
             InteractionMode = "chat",
             IsAddProjectPinned = true,
+            IsCodeReviewPinned = true,
             ActiveWorkspaceId = workspaceId,
             ActiveSessionId = sessionId,
             Workspaces =
@@ -58,6 +59,7 @@ public sealed class StateAndServiceTests
         Assert.Equal("chat", loaded.InteractionMode);
         Assert.Equal("按需确认", loaded.PermissionMode);
         Assert.True(loaded.IsAddProjectPinned);
+        Assert.True(loaded.IsCodeReviewPinned);
         Assert.Equal("持久化会话", Assert.Single(loaded.Workspaces).Sessions[0].Title);
         Assert.Equal("你好，世界", loaded.Workspaces[0].Sessions[0].Messages[1].Text);
     }
@@ -625,6 +627,21 @@ public sealed class ViewModelTests
         Assert.Equal("按需确认", loaded.PermissionMode);
         Assert.Equal(16, loaded.ContentFontSize);
         Assert.Equal("chat", loaded.InteractionMode);
+    }
+
+    [Fact]
+    public void CodeReviewActionPreparesDraftPrompt()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        Seed(store, temp.Path);
+        var vm = CreateViewModel(store, new ScriptedChatService());
+
+        vm.StartCodeReviewDraft();
+
+        Assert.True(vm.IsChatPage);
+        Assert.Empty(vm.Messages);
+        Assert.Contains("请审查", vm.Composer);
     }
 
     private static MainWindowViewModel CreateViewModel(

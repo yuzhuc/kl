@@ -175,10 +175,14 @@ public partial class MainWindow : Window
     private void OnToggleAddProjectPinnedClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.ToggleAddProjectPinned();
 
-    private void OnMoreSettingsClicked(object? sender, RoutedEventArgs eventArgs)
+    private void OnToggleCodeReviewPinnedClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.ToggleCodeReviewPinned();
+
+    private void OnMoreCodeReviewClicked(object? sender, RoutedEventArgs eventArgs)
     {
         CloseMoreMenu();
-        _viewModel.OpenSettings();
+        _viewModel.StartCodeReviewDraft();
+        FocusComposer();
     }
 
     private void ScheduleMoreMenuClose()

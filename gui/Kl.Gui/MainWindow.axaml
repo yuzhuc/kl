@@ -227,6 +227,7 @@
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="FocusAdorner" Value="{x:Null}" />
+            <Setter Property="Cursor" Value="Hand" />
         </Style>
         <Style Selector="Button.rail:pointerover">
             <Setter Property="Background" Value="{DynamicResource HoverFill}" />
@@ -410,9 +411,16 @@
                         </Button>
                         <Border Height="1" Background="{StaticResource Line}" Margin="2,8,2,0" />
                         <Button IsVisible="{Binding IsAddProjectPinned}" Classes="rail"
-                                Click="OnMoreAddWorkspaceClicked" Tag="添加项目"
+                                Click="OnMoreAddWorkspaceClicked" Tag="项目"
                                 PointerEntered="OnRailHintPointerEntered" PointerExited="OnRailHintPointerExited">
                             <Path Width="20" Height="20" Data="{StaticResource AddProjectIcon}" Stretch="Uniform"
+                                  Stroke="{StaticResource TextTertiary}" StrokeThickness="1.45"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                        </Button>
+                        <Button IsVisible="{Binding IsCodeReviewPinned}" Classes="rail"
+                                Click="OnMoreCodeReviewClicked" Tag="代码审查"
+                                PointerEntered="OnRailHintPointerEntered" PointerExited="OnRailHintPointerExited">
+                            <Path Width="20" Height="20" Data="{StaticResource CodeReviewIcon}" Stretch="Uniform"
                                   Stroke="{StaticResource TextTertiary}" StrokeThickness="1.45"
                                   StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
                         </Button>
@@ -1171,7 +1179,7 @@
         <primitives:Popup x:Name="MorePopup" Placement="RightEdgeAlignedTop" HorizontalOffset="8"
                           IsLightDismissEnabled="False" ShouldUseOverlayLayer="True"
                           Closed="OnMorePopupClosed">
-            <Border x:Name="MoreMenuCard" MinWidth="190"
+            <Border x:Name="MoreMenuCard" MinWidth="210"
                     Background="{StaticResource ElevatedFill}"
                     BorderBrush="{StaticResource LineStrong}" BorderThickness="1"
                     CornerRadius="10" Padding="6"
@@ -1179,35 +1187,44 @@
                     PointerExited="OnMoreMenuPointerExited">
                 <StackPanel Spacing="2">
                     <Border Classes="more-menu-row">
-                        <Grid ColumnDefinitions="*,28">
+                        <Grid ColumnDefinitions="*,36">
                             <Button Classes="more-menu-item" Click="OnMoreAddWorkspaceClicked">
-                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
-                                    <Path Width="16" Height="16" Data="{StaticResource FolderIcon}" Stretch="Uniform"
-                                          Stroke="{StaticResource TextSecondary}" StrokeThickness="1.35"
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                                    <Path Classes="more-menu-icon" Width="17" Height="17"
+                                          Data="{StaticResource FolderIcon}" Stretch="Uniform"
+                                          Stroke="{StaticResource TextSecondary}" StrokeThickness="1.4"
                                           StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
-                                    <TextBlock Grid.Column="1" Text="添加项目" FontSize="13"
+                                    <TextBlock Grid.Column="1" Text="项目" FontSize="13"
                                                Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" />
                                 </Grid>
                             </Button>
                             <Button Grid.Column="1" Classes="more-menu-pin"
-                                    Classes.active="{Binding IsAddProjectPinned}"
-                                    Click="OnToggleAddProjectPinnedClicked"
-                                    ToolTip.Tip="固定到侧边栏">
-                                <Path Width="14" Height="14" Data="{StaticResource PinIcon}" Stretch="Uniform"
+                                    Click="OnToggleAddProjectPinnedClicked">
+                                <Path Classes="more-menu-pin-icon" Width="15" Height="15"
+                                      Data="{StaticResource PinIcon}" Stretch="Uniform"
                                       Fill="{StaticResource TextTertiary}" />
                             </Button>
                         </Grid>
                     </Border>
                     <Border Classes="more-menu-row">
-                        <Button Classes="more-menu-item" Click="OnMoreSettingsClicked">
-                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
-                                <Path Width="16" Height="16" Data="{StaticResource SettingsIcon}" Stretch="Uniform"
-                                      Stroke="{StaticResource TextSecondary}" StrokeThickness="1.35"
-                                      StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
-                                <TextBlock Grid.Column="1" Text="设置" FontSize="13"
-                                           Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" />
-                            </Grid>
-                        </Button>
+                        <Grid ColumnDefinitions="*,36">
+                            <Button Classes="more-menu-item" Click="OnMoreCodeReviewClicked">
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                                    <Path Classes="more-menu-icon" Width="17" Height="17"
+                                          Data="{StaticResource CodeReviewIcon}" Stretch="Uniform"
+                                          Stroke="{StaticResource TextSecondary}" StrokeThickness="1.4"
+                                          StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                                    <TextBlock Grid.Column="1" Text="代码审查" FontSize="13"
+                                               Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" />
+                                </Grid>
+                            </Button>
+                            <Button Grid.Column="1" Classes="more-menu-pin"
+                                    Click="OnToggleCodeReviewPinnedClicked">
+                                <Path Classes="more-menu-pin-icon" Width="15" Height="15"
+                                      Data="{StaticResource PinIcon}" Stretch="Uniform"
+                                      Fill="{StaticResource TextTertiary}" />
+                            </Button>
+                        </Grid>
                     </Border>
                 </StackPanel>
             </Border>
