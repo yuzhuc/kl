@@ -16,7 +16,7 @@ public partial class MainWindow : Window
 {
     private readonly MainWindowViewModel _viewModel = new();
     private readonly DispatcherTimer _automationTimer = new() { Interval = TimeSpan.FromSeconds(30) };
-    private readonly DispatcherTimer _railHintOpenTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
+    private readonly DispatcherTimer _railHintOpenTimer = new() { Interval = TimeSpan.FromMilliseconds(80) };
     private readonly DispatcherTimer _moreMenuOpenTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
     private readonly DispatcherTimer _moreMenuCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
     private Control? _railHintTarget;
