@@ -61,6 +61,28 @@ public sealed class StateAndServiceTests
     }
 
     [Fact]
+    public void StateStoreKeepsApiKeyOutsideStateJson()
+    {
+        using var temp = new TempDirectory();
+        var statePath = Path.Combine(temp.Path, "gui", "state.json");
+        var credentialPath = Path.Combine(temp.Path, "credentials", "deepseek.key");
+        var store = new StateStore(statePath, credentialPath: credentialPath);
+        var state = new AppState { ApiKey = "secret-key" };
+
+        store.Save(state);
+
+        Assert.True(File.Exists(credentialPath));
+        Assert.Equal("secret-key", File.ReadAllText(credentialPath));
+        Assert.DoesNotContain("secret-key", File.ReadAllText(statePath));
+        Assert.DoesNotContain("\"ApiKey\"", File.ReadAllText(statePath));
+        Assert.Equal("secret-key", store.Load().ApiKey);
+
+        state.ApiKey = string.Empty;
+        store.Save(state);
+        Assert.False(File.Exists(credentialPath));
+    }
+
+    [Fact]
     public async Task StreamingClientParsesReasoningToolCallsAndContent()
     {
         var sse = string.Join("\n", new[]
@@ -118,6 +140,23 @@ public sealed class StateAndServiceTests
     }
 
     [Fact]
+    public void LocalPluginCatalogLoadsKlManifest()
+    {
+        using var temp = new TempDirectory();
+        var pluginRoot = Path.Combine(temp.Path, "plugins");
+        var pluginDirectory = Path.Combine(pluginRoot, "installed", "core-sample", "1.0.0");
+        Directory.CreateDirectory(pluginDirectory);
+        File.WriteAllText(
+            Path.Combine(pluginDirectory, "manifest.json"),
+            @"{""id"":""core-sample"",""version"":""1.0.0"",""kind"":""tool""}");
+
+        var plugin = Assert.Single(new LocalPluginCatalogService(pluginRoot).Load());
+
+        Assert.Equal("core-sample", plugin.Name);
+        Assert.Equal("1.0.0", plugin.Version);
+    }
+
+    [Fact]
     public void KlDataPathsInitializesGuiDataAndMigratesLegacyAppData()
     {
         using var temp = new TempDirectory();
@@ -142,7 +181,8 @@ public sealed class StateAndServiceTests
 
         Assert.Equal(Path.Combine(home, "gui"), paths.GuiDirectory);
         Assert.Equal(Path.Combine(home, "gui", "state.json"), paths.StateFilePath);
-        Assert.Equal(Path.Combine(home, "gui", "plugins"), paths.PluginsDirectoryPath);
+        Assert.Equal(Path.Combine(home, "credentials", "deepseek.key"), paths.ApiKeyFilePath);
+        Assert.Equal(Path.Combine(home, "plugins"), paths.PluginsDirectoryPath);
         Assert.Equal(paths.StateFilePath, new StateStore(dataPaths: paths).Path);
         Assert.Equal(paths.PluginsDirectoryPath, new LocalPluginCatalogService(dataPaths: paths).DirectoryPath);
         Assert.True(File.Exists(paths.StateFilePath));
@@ -578,7 +618,8 @@ public sealed class ViewModelTests
         Assert.Equal("custom-model", loaded.Model);
         Assert.Equal("sk-custom-secret", loaded.ApiKey);
         Assert.Empty(loaded.ApiKeyEnvironmentVariable);
-        Assert.Contains("sk-custom-secret", File.ReadAllText(store.Path));
+        Assert.DoesNotContain("sk-custom-secret", File.ReadAllText(store.Path));
+        Assert.Equal("sk-custom-secret", File.ReadAllText(store.CredentialPath));
         Assert.Equal("按需确认", loaded.PermissionMode);
         Assert.Equal(16, loaded.ContentFontSize);
         Assert.Equal("chat", loaded.InteractionMode);

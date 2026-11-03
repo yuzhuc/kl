@@ -38,7 +38,8 @@ API Key 在设置页面直接填写，并保存在本机状态文件中。
 GUI 数据统一位于 `%USERPROFILE%\.kl\gui`：
 
 - 状态文件：`%USERPROFILE%\.kl\gui\state.json`
-- 插件目录：`%USERPROFILE%\.kl\gui\plugins`
+- API Key：`%USERPROFILE%\.kl\credentials\deepseek.key`
+- 插件目录：`%USERPROFILE%\.kl\plugins`
 - 旧版设置：`%USERPROFILE%\.kl\gui\gui-settings.json`
 
 旧版 `%LOCALAPPDATA%\DeepSeekHarnessGui` 和

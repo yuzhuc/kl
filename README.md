@@ -144,7 +144,7 @@ KL reads user configuration from `~/.kl/`:
 - `skills/` — user-level skills.
 - `mcp.toml` — enabled MCP stdio servers.
 - `gui/state.json` — desktop GUI state and conversations.
-- `gui/plugins/` — desktop GUI local plugins.
+- `plugins/` — shared local plugin directory used by the GUI and Core.
 
 The GUI automatically migrates legacy `%LOCALAPPDATA%\DeepSeekHarnessGui`
 data into `~/.kl/gui` and removes the old directory.

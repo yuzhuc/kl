@@ -4,7 +4,7 @@ The active desktop client is `DeepSeekHarness.Gui`, an Avalonia client for
 OpenAI-compatible streaming chat, workspaces, sessions, settings, local plugins,
 and automation.
 
-GUI data, sessions, settings, and local plugins are stored under `~/.kl/gui`.
+GUI state lives under `~/.kl/gui`; credentials and plugins use the shared `~/.kl/credentials` and `~/.kl/plugins` directories.
 
 ```powershell
 dotnet build gui/DeepSeekHarness.Gui/DeepSeekHarness.Gui.csproj

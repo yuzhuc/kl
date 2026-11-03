@@ -1118,7 +1118,7 @@
                                                TextWrapping="Wrap" LineHeight="20" Margin="0,0,0,22" />
                                     <TextBlock Text="隐私与安全" FontSize="14" Foreground="{StaticResource TextPrimary}"
                                                Margin="0,0,0,8" />
-                                    <TextBlock Text="API Key、聊天记录和自动化结果都保存在本机状态与数据目录中。"
+                                    <TextBlock Text="API Key 保存在 .kl\credentials，聊天记录和自动化结果保存在 .kl\gui，插件目录为 .kl\plugins。"
                                                FontSize="12" Foreground="{StaticResource TextTertiary}"
                                                TextWrapping="Wrap" LineHeight="20" />
                                 </StackPanel>

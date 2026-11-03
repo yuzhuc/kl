@@ -25,7 +25,9 @@ public sealed class KlDataPaths
         HomeDirectory = Path.GetFullPath(homeDirectory);
         GuiDirectory = Path.Combine(HomeDirectory, "gui");
         StateFilePath = Path.Combine(GuiDirectory, "state.json");
-        PluginsDirectoryPath = Path.Combine(GuiDirectory, "plugins");
+        PluginsDirectoryPath = Path.Combine(HomeDirectory, "plugins");
+        CredentialsDirectoryPath = Path.Combine(HomeDirectory, "credentials");
+        ApiKeyFilePath = Path.Combine(CredentialsDirectoryPath, "deepseek.key");
         _legacyHarnessDirectory = Path.Combine(
             Path.GetFullPath(localApplicationDataDirectory),
             "DeepSeekHarnessGui");
@@ -38,6 +40,8 @@ public sealed class KlDataPaths
     public string GuiDirectory { get; }
     public string StateFilePath { get; }
     public string PluginsDirectoryPath { get; }
+    public string CredentialsDirectoryPath { get; }
+    public string ApiKeyFilePath { get; }
 
     public void EnsureInitialized()
     {
@@ -50,9 +54,30 @@ public sealed class KlDataPaths
 
             Directory.CreateDirectory(GuiDirectory);
             Directory.CreateDirectory(PluginsDirectoryPath);
+            Directory.CreateDirectory(CredentialsDirectoryPath);
+            MigrateGuiPluginsDirectory();
             MigrateLegacyHarnessData();
             MigrateLegacyKlData();
             _initialized = true;
+        }
+    }
+
+    private void MigrateGuiPluginsDirectory()
+    {
+        var legacyGuiPlugins = Path.Combine(GuiDirectory, "plugins");
+        if (!Directory.Exists(legacyGuiPlugins))
+        {
+            return;
+        }
+
+        try
+        {
+            CopyDirectoryMissing(legacyGuiPlugins, PluginsDirectoryPath);
+            Directory.Delete(legacyGuiPlugins, recursive: true);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            // Keep the source directory if the plugin files are still in use.
         }
     }
 
@@ -65,7 +90,19 @@ public sealed class KlDataPaths
 
         try
         {
-            CopyDirectoryMissing(_legacyHarnessDirectory, GuiDirectory);
+            foreach (var item in Directory.EnumerateFileSystemEntries(_legacyHarnessDirectory))
+            {
+                var name = Path.GetFileName(item);
+                if (Directory.Exists(item) && string.Equals(name, "plugins", StringComparison.OrdinalIgnoreCase))
+                {
+                    CopyDirectoryMissing(item, PluginsDirectoryPath);
+                }
+                else
+                {
+                    CopyEntryMissing(item, Path.Combine(GuiDirectory, name));
+                }
+            }
+
             Directory.Delete(_legacyHarnessDirectory, recursive: true);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)

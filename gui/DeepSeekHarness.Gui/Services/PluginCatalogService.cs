@@ -36,14 +36,16 @@ public sealed class LocalPluginCatalogService : IPluginCatalogService
     {
         Directory.CreateDirectory(DirectoryPath);
         var plugins = new List<LocalPluginInfo>();
-        foreach (var manifestPath in Directory.EnumerateFiles(DirectoryPath, "plugin.json", SearchOption.AllDirectories))
+        var manifests = Directory.EnumerateFiles(DirectoryPath, "plugin.json", SearchOption.AllDirectories)
+            .Concat(Directory.EnumerateFiles(DirectoryPath, "manifest.json", SearchOption.AllDirectories));
+        foreach (var manifestPath in manifests)
         {
             try
             {
                 using var document = JsonDocument.Parse(File.ReadAllText(manifestPath));
                 var root = document.RootElement;
                 var fallbackName = new DirectoryInfo(Path.GetDirectoryName(manifestPath)!).Name;
-                var name = GetString(root, "name") ?? fallbackName;
+                var name = GetString(root, "name") ?? GetString(root, "id") ?? fallbackName;
                 var version = GetString(root, "version") ?? "未标注版本";
                 var description = GetString(root, "description") ?? "未提供说明";
                 plugins.Add(new LocalPluginInfo(name, version, description, manifestPath));

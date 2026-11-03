@@ -1798,9 +1798,10 @@ public sealed class MainWindowViewModel : ObservableObject
         {
             var source = Path.GetFullPath(sourceDirectory)
                 .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            if (!File.Exists(Path.Combine(source, "plugin.json")))
+            if (!File.Exists(Path.Combine(source, "plugin.json"))
+                && !File.Exists(Path.Combine(source, "manifest.json")))
             {
-                ErrorMessage = "所选目录中没有 plugin.json。";
+                ErrorMessage = "所选目录中没有 plugin.json 或 manifest.json。";
                 return false;
             }
 
