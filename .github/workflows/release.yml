@@ -95,7 +95,7 @@ jobs:
         shell: pwsh
         run: Add-Content $env:GITHUB_PATH "C:\Program Files\LLVM\bin"
       - name: Package
-        run: python scripts/package.py --rid ${{ matrix.rid }} --rust-target ${{ matrix.rust }}
+        run: python scripts/package.py --self-contained --rid ${{ matrix.rid }} --rust-target ${{ matrix.rust }}
       - name: Verify package
         run: python scripts/verify_package.py --rid ${{ matrix.rid }}
       - if: matrix.rid == 'win-x64'
@@ -145,7 +145,7 @@ jobs:
             cargo install cargo-zigbuild --locked
           fi
       - name: Package
-        run: python scripts/package.py --rid ${{ matrix.rid }} --rust-target ${{ matrix.rust }} --zig
+        run: python scripts/package.py --self-contained --rid ${{ matrix.rid }} --rust-target ${{ matrix.rust }} --zig
       - name: Verify package
         run: python scripts/verify_package.py --rid ${{ matrix.rid }}
       - if: matrix.rid == 'linux-x64'
@@ -184,7 +184,7 @@ jobs:
         with:
           shared-key: release-${{ matrix.rid }}
       - name: Package
-        run: python scripts/package.py --rid ${{ matrix.rid }} --rust-target ${{ matrix.rust }}
+        run: python scripts/package.py --self-contained --rid ${{ matrix.rid }} --rust-target ${{ matrix.rust }}
       - name: Verify package
         run: python scripts/verify_package.py --rid ${{ matrix.rid }}
       - if: matrix.rid == 'osx-arm64'

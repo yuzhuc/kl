@@ -42,6 +42,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rid", required=True)
     parser.add_argument("--rust-target", required=True)
     parser.add_argument("--zig", action="store_true")
+    parser.add_argument("--self-contained", action="store_true", help="include the .NET runtime in the package")
     parser.add_argument("--output")
     return parser.parse_args()
 
@@ -70,7 +71,7 @@ def main() -> int:
             "-r",
             args.rid,
             "--self-contained",
-            "true",
+            str(args.self_contained).lower(),
             "-p:DebugType=None",
             "-p:DebugSymbols=false",
             "-o",

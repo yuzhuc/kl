@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
+import platform
 import shutil
 import subprocess
 import sys
@@ -12,6 +13,18 @@ from package_format import is_diagnostic_file
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUTPUT = ROOT.parent / "bin"
+
+
+def host_runtime() -> str:
+    machine = platform.machine().lower()
+    arch = "arm64" if machine in {"arm64", "aarch64"} else "x64"
+    if sys.platform.startswith("win"):
+        return f"win-{arch}"
+    if sys.platform == "darwin":
+        return f"osx-{arch}"
+    if sys.platform.startswith("linux"):
+        return f"linux-{arch}"
+    raise SystemExit(f"unsupported host platform: {sys.platform} ({machine})")
 
 
 def run(command: list[str], env: dict[str, str] | None = None) -> None:
@@ -42,7 +55,13 @@ def remove_diagnostics(path: Path) -> None:
             item.unlink()
 
 
-def publish_apps(configuration: str, runtime: str, output: Path, env: dict[str, str]) -> Path:
+def publish_apps(
+    configuration: str,
+    runtime: str,
+    output: Path,
+    env: dict[str, str],
+    self_contained: bool,
+) -> Path:
     cargo_profile = "release" if configuration.lower() == "release" else "debug"
     core_name = "kl-core.exe" if runtime.startswith("win") else "kl-core"
     core = ROOT / "target" / cargo_profile / core_name
@@ -58,7 +77,7 @@ def publish_apps(configuration: str, runtime: str, output: Path, env: dict[str, 
         "-r",
         runtime,
         "--self-contained",
-        "true",
+        str(self_contained).lower(),
         "-p:DebugType=None",
         "-p:DebugSymbols=false",
     ]
@@ -67,7 +86,6 @@ def publish_apps(configuration: str, runtime: str, output: Path, env: dict[str, 
 
     if not core.is_file():
         raise SystemExit(f"core binary not found: {core}")
-    shutil.copy2(core, gui_output / core_name)
     shutil.copy2(core, tui_output / core_name)
 
     schema_target = tui_output / "schemas"
@@ -89,14 +107,30 @@ def publish_apps(configuration: str, runtime: str, output: Path, env: dict[str, 
             encoding="utf-8",
             newline="\r\n",
         )
+    else:
+        gui_launcher = output / "run-gui.sh"
+        tui_launcher = output / "run-tui.sh"
+        gui_launcher.write_text(
+            '#!/usr/bin/env sh\nSCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\nexec "$SCRIPT_DIR/gui/DeepSeekHarness.Gui" "$@"\n',
+            encoding="utf-8",
+            newline="\n",
+        )
+        tui_launcher.write_text(
+            '#!/usr/bin/env sh\nSCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\nexec "$SCRIPT_DIR/tui/kl" "$@"\n',
+            encoding="utf-8",
+            newline="\n",
+        )
+        gui_launcher.chmod(0o755)
+        tui_launcher.chmod(0o755)
     return core
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build KL, keep caches in the repository, and stage final files in bin.")
     parser.add_argument("--configuration", choices=("Debug", "Release"), default="Release")
-    parser.add_argument("--runtime", default="win-x64", help="dotnet publish runtime identifier")
+    parser.add_argument("--runtime", default=host_runtime(), help="dotnet publish runtime identifier")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--self-contained", action="store_true", help="include the .NET runtime for portable output")
     parser.add_argument("--skip-checks", action="store_true")
     return parser.parse_args()
 
@@ -118,12 +152,13 @@ def main() -> int:
         cargo_build.append("--release")
     run(cargo_build, env)
 
-    core = publish_apps(args.configuration, args.runtime, output, env)
+    core = publish_apps(args.configuration, args.runtime, output, env, args.self_contained)
     print(f"\nCaches: {ROOT / 'target'}")
     print(f"Final outputs: {output}")
     print(f"GUI: {output / 'gui'}")
     print(f"TUI: {output / 'tui'}")
     print(f"Core source: {core}")
+    print(f"Deployment: {'self-contained' if args.self_contained else 'framework-dependent'}")
     return 0
 
 

@@ -78,6 +78,17 @@ Caches:        D:\kl\kl\target, project bin/obj directories
 Final outputs: D:\kl\bin\gui, D:\kl\bin\tui
 ```
 
+The default build is framework-dependent and requires the .NET 10 Runtime on the
+target machine (on Windows, the .NET 10 Desktop Runtime includes it). This
+removes the bundled `System.*` runtime DLLs and keeps only application
+dependencies. The script detects the current OS/architecture automatically and
+creates `.bat` launchers on Windows or `.sh` launchers on Linux/macOS. Use the
+portable mode when the runtime may be absent:
+
+```powershell
+python scripts/build.py --self-contained
+```
+
 For component-level development:
 
 ```powershell
