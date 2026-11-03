@@ -377,21 +377,21 @@
                     <StackPanel Grid.Row="0" Spacing="5">
                         <Button Classes="rail" Classes.active="{Binding IsChatPage}"
                                 Click="OnNavChatClicked" ToolTip.Tip="聊天"
-                                ToolTip.Placement="Right" ToolTip.HorizontalOffset="8" ToolTip.ShowDelay="250">
+                                ToolTip.Placement="Right" ToolTip.HorizontalOffset="8" ToolTip.VerticalOffset="4" ToolTip.ShowDelay="250">
                             <Path Width="20" Height="20" Data="{StaticResource ChatIcon}" Stretch="Uniform"
                                   Stroke="{StaticResource TextTertiary}" StrokeThickness="1.45"
                                   StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
                         </Button>
                         <Button Classes="rail" Classes.active="{Binding IsPluginsPage}"
                                 Click="OnNavPluginsClicked" ToolTip.Tip="插件"
-                                ToolTip.Placement="Right" ToolTip.HorizontalOffset="8" ToolTip.ShowDelay="250">
+                                ToolTip.Placement="Right" ToolTip.HorizontalOffset="8" ToolTip.VerticalOffset="4" ToolTip.ShowDelay="250">
                             <Path Width="20" Height="20" Data="{StaticResource PluginIcon}" Stretch="Uniform"
                                   Stroke="{StaticResource TextTertiary}" StrokeThickness="1.45"
                                   StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
                         </Button>
                         <Button Classes="rail" Classes.active="{Binding IsAutomationPage}"
                                 Click="OnNavAutomationClicked" ToolTip.Tip="自动化任务"
-                                ToolTip.Placement="Right" ToolTip.HorizontalOffset="8" ToolTip.ShowDelay="250">
+                                ToolTip.Placement="Right" ToolTip.HorizontalOffset="8" ToolTip.VerticalOffset="4" ToolTip.ShowDelay="250">
                             <Path Width="20" Height="20" Data="{StaticResource AutomationIcon}" Stretch="Uniform"
                                   Stroke="{StaticResource TextTertiary}" StrokeThickness="1.45"
                                   StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
@@ -413,7 +413,7 @@
 
                     <Button Grid.Row="2" Classes="rail" Classes.active="{Binding IsSettingsOpen}"
                             Click="OnNavSettingsClicked" ToolTip.Tip="设置"
-                            ToolTip.Placement="Right" ToolTip.HorizontalOffset="8" ToolTip.ShowDelay="250">
+                            ToolTip.Placement="Right" ToolTip.HorizontalOffset="8" ToolTip.VerticalOffset="4" ToolTip.ShowDelay="250">
                         <Path Width="20" Height="20" Data="{StaticResource SettingsIcon}" Stretch="Uniform"
                               Stroke="{StaticResource TextTertiary}" StrokeThickness="1.45"
                               StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
