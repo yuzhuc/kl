@@ -118,6 +118,42 @@ public sealed class StateAndServiceTests
     }
 
     [Fact]
+    public void KlDataPathsInitializesGuiDataAndMigratesLegacyAppData()
+    {
+        using var temp = new TempDirectory();
+        var home = Path.Combine(temp.Path, "home", ".kl");
+        var localAppData = Path.Combine(temp.Path, "localappdata");
+        var legacyHarness = Path.Combine(localAppData, "DeepSeekHarnessGui");
+        var legacyPlugins = Path.Combine(legacyHarness, "plugins", "sample");
+        var legacyKl = Path.Combine(localAppData, "Kl");
+        Directory.CreateDirectory(legacyPlugins);
+        Directory.CreateDirectory(legacyKl);
+        File.WriteAllText(
+            Path.Combine(legacyHarness, "state.json"),
+            @"{""Endpoint"":""http://localhost:1234"",""Model"":""migrated""}");
+        File.WriteAllText(
+            Path.Combine(legacyPlugins, "plugin.json"),
+            @"{""name"":""Migrated Plugin"",""version"":""1.0.0"",""description"":""legacy""}");
+        File.WriteAllText(Path.Combine(legacyHarness, "extra.txt"), "keep me");
+        File.WriteAllText(Path.Combine(legacyKl, "gui-settings.json"), @"{""mode"":""chat""}");
+
+        var paths = new KlDataPaths(home, localAppData);
+        paths.EnsureInitialized();
+
+        Assert.Equal(Path.Combine(home, "gui"), paths.GuiDirectory);
+        Assert.Equal(Path.Combine(home, "gui", "state.json"), paths.StateFilePath);
+        Assert.Equal(Path.Combine(home, "gui", "plugins"), paths.PluginsDirectoryPath);
+        Assert.Equal(paths.StateFilePath, new StateStore(dataPaths: paths).Path);
+        Assert.Equal(paths.PluginsDirectoryPath, new LocalPluginCatalogService(dataPaths: paths).DirectoryPath);
+        Assert.True(File.Exists(paths.StateFilePath));
+        Assert.True(File.Exists(Path.Combine(paths.PluginsDirectoryPath, "sample", "plugin.json")));
+        Assert.True(File.Exists(Path.Combine(paths.GuiDirectory, "extra.txt")));
+        Assert.True(File.Exists(Path.Combine(paths.GuiDirectory, "gui-settings.json")));
+        Assert.False(Directory.Exists(legacyHarness));
+        Assert.False(Directory.Exists(legacyKl));
+    }
+
+    [Fact]
     public async Task ConnectionTestUsesModelsEndpointAndReportsModelCount()
     {
         var handler = new CaptureHandler(

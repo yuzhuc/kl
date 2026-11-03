@@ -7,7 +7,7 @@
         mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="820"
         x:Class="DeepSeekHarness.Gui.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="DeepSeek Harness"
+        Title="kl"
         Icon="/Assets/app.png"
         Width="1280" Height="820" MinWidth="960" MinHeight="700"
         WindowStartupLocation="CenterScreen"

@@ -16,14 +16,18 @@ public interface IPluginCatalogService
 
 public sealed class LocalPluginCatalogService : IPluginCatalogService
 {
-    public LocalPluginCatalogService(string? directoryPath = null)
+    public LocalPluginCatalogService(string? directoryPath = null, KlDataPaths? dataPaths = null)
     {
-        DirectoryPath = directoryPath
-            ?? Environment.GetEnvironmentVariable("DEEPSEEK_HARNESS_GUI_PLUGINS")
-            ?? Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "DeepSeekHarnessGui",
-                "plugins");
+        if (directoryPath is not null)
+        {
+            DirectoryPath = directoryPath;
+            return;
+        }
+
+        var paths = dataPaths ?? KlDataPaths.Default;
+        paths.EnsureInitialized();
+        DirectoryPath = Environment.GetEnvironmentVariable("DEEPSEEK_HARNESS_GUI_PLUGINS")
+            ?? paths.PluginsDirectoryPath;
     }
 
     public string DirectoryPath { get; }

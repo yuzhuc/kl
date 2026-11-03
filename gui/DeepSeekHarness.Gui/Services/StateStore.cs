@@ -13,14 +13,18 @@ public sealed class StateStore
 
     private readonly string _path;
 
-    public StateStore(string? path = null)
+    public StateStore(string? path = null, KlDataPaths? dataPaths = null)
     {
-        _path = path
-            ?? Environment.GetEnvironmentVariable("DEEPSEEK_HARNESS_GUI_STATE")
-            ?? System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "DeepSeekHarnessGui",
-                "state.json");
+        if (path is not null)
+        {
+            _path = path;
+            return;
+        }
+
+        var paths = dataPaths ?? KlDataPaths.Default;
+        paths.EnsureInitialized();
+        _path = Environment.GetEnvironmentVariable("DEEPSEEK_HARNESS_GUI_STATE")
+            ?? paths.StateFilePath;
     }
 
     public string Path => _path;

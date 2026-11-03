@@ -35,9 +35,14 @@ API Key 在设置页面直接填写，并保存在本机状态文件中。
 
     dotnet run --project .\DeepSeekHarness.Gui.csproj
 
-状态文件默认位于：
+GUI 数据统一位于 `%USERPROFILE%\.kl\gui`：
 
-    %LOCALAPPDATA%\DeepSeekHarnessGui\state.json
+- 状态文件：`%USERPROFILE%\.kl\gui\state.json`
+- 插件目录：`%USERPROFILE%\.kl\gui\plugins`
+- 旧版设置：`%USERPROFILE%\.kl\gui\gui-settings.json`
+
+旧版 `%LOCALAPPDATA%\DeepSeekHarnessGui` 和
+`%LOCALAPPDATA%\Kl\gui-settings.json` 会在首次启动时自动迁移，随后删除旧目录。
 
 环境变量覆盖：
 
@@ -51,8 +56,11 @@ API Key 在设置页面直接填写，并保存在本机状态文件中。
 
 ## 发布
 
-    E:\kl\build-deepseek-gui.bat
-    E:\kl\run-latest.bat
+在仓库根目录运行：
 
-构建脚本先运行 Release 测试，再发布到新的 E:\kl\deepseek-gui-yyyyMMdd-HHmmss 目录并更新启动脚本。
+```powershell
+python scripts/build.py
+```
+
+最终 GUI 发布到 `D:\kl\bin\gui`，启动脚本为 `D:\kl\bin\run-gui.bat`。
 

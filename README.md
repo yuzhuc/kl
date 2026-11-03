@@ -143,6 +143,11 @@ KL reads user configuration from `~/.kl/`:
 - `agents/*.toml` — custom agent presets.
 - `skills/` — user-level skills.
 - `mcp.toml` — enabled MCP stdio servers.
+- `gui/state.json` — desktop GUI state and conversations.
+- `gui/plugins/` — desktop GUI local plugins.
+
+The GUI automatically migrates legacy `%LOCALAPPDATA%\DeepSeekHarnessGui`
+data into `~/.kl/gui` and removes the old directory.
 
 Workspace-level `AGENTS.md`, `.kl/memory/` and project skills are discovered.
 See [`docs/security/policy.md`](docs/security/policy.md) for the permission
