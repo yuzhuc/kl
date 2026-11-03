@@ -16,6 +16,10 @@ public partial class MainWindow : Window
 {
     private readonly MainWindowViewModel _viewModel = new();
     private readonly DispatcherTimer _automationTimer = new() { Interval = TimeSpan.FromSeconds(30) };
+    private readonly DispatcherTimer _moreMenuOpenTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
+    private readonly DispatcherTimer _moreMenuCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
+    private bool _moreMenuPinned;
+    private bool _moreMenuHovered;
 
     public MainWindow()
     {
@@ -29,6 +33,109 @@ public partial class MainWindow : Window
         }
         _automationTimer.Tick += OnAutomationTimerTick;
         _automationTimer.Start();
+        MorePopup.PlacementTarget = MoreButton;
+        _moreMenuOpenTimer.Tick += OnMoreMenuOpenTimerTick;
+        _moreMenuCloseTimer.Tick += OnMoreMenuCloseTimerTick;
+    }
+
+    private void OnMoreButtonPointerEntered(object? sender, PointerEventArgs eventArgs)
+    {
+        _moreMenuHovered = true;
+        _moreMenuCloseTimer.Stop();
+        if (!_moreMenuPinned && !MorePopup.IsOpen)
+        {
+            _moreMenuOpenTimer.Start();
+        }
+    }
+
+    private void OnMoreButtonPointerExited(object? sender, PointerEventArgs eventArgs)
+    {
+        _moreMenuHovered = false;
+        _moreMenuOpenTimer.Stop();
+        ScheduleMoreMenuClose();
+    }
+
+    private void OnMoreMenuPointerEntered(object? sender, PointerEventArgs eventArgs)
+    {
+        _moreMenuHovered = true;
+        _moreMenuCloseTimer.Stop();
+    }
+
+    private void OnMoreMenuPointerExited(object? sender, PointerEventArgs eventArgs)
+    {
+        _moreMenuHovered = false;
+        ScheduleMoreMenuClose();
+    }
+
+    private void OnMoreMenuOpenTimerTick(object? sender, EventArgs eventArgs)
+    {
+        _moreMenuOpenTimer.Stop();
+        if (!_moreMenuPinned && _moreMenuHovered)
+        {
+            MorePopup.IsOpen = true;
+        }
+    }
+
+    private void OnMoreMenuCloseTimerTick(object? sender, EventArgs eventArgs)
+    {
+        _moreMenuCloseTimer.Stop();
+        if (!_moreMenuPinned && !_moreMenuHovered)
+        {
+            MorePopup.IsOpen = false;
+        }
+    }
+
+    private void OnMoreButtonClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        _moreMenuOpenTimer.Stop();
+        _moreMenuCloseTimer.Stop();
+        if (_moreMenuPinned)
+        {
+            _moreMenuPinned = false;
+            MorePopup.IsOpen = false;
+            return;
+        }
+
+        _moreMenuPinned = true;
+        MorePopup.IsOpen = true;
+    }
+
+    private void OnMorePopupClosed(object? sender, EventArgs eventArgs)
+    {
+        _moreMenuOpenTimer.Stop();
+        _moreMenuCloseTimer.Stop();
+        _moreMenuPinned = false;
+        _moreMenuHovered = MoreButton.IsPointerOver;
+    }
+
+    private async void OnMoreAddWorkspaceClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        CloseMoreMenu();
+        await PickWorkspaceAsync();
+    }
+
+    private void OnMoreSettingsClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        CloseMoreMenu();
+        _viewModel.OpenSettings();
+    }
+
+    private void ScheduleMoreMenuClose()
+    {
+        if (!_moreMenuPinned)
+        {
+            _moreMenuCloseTimer.Stop();
+            _moreMenuCloseTimer.Start();
+        }
+    }
+
+    private void CloseMoreMenu()
+    {
+        _moreMenuOpenTimer.Stop();
+        _moreMenuCloseTimer.Stop();
+        _moreMenuPinned = false;
+        _moreMenuHovered = false;
+        MorePopup.IsOpen = false;
     }
 
     private async void OnAttachFilesClicked(object? sender, RoutedEventArgs eventArgs)
@@ -439,6 +546,18 @@ public partial class MainWindow : Window
         FocusComposer();
         ScrollTranscript();
     }
+
+    private void OnWindowPointerPressed(object? sender, PointerPressedEventArgs eventArgs)
+    {
+        if (!MorePopup.IsOpen || MoreButton.IsPointerOver || MoreMenuCard.IsPointerOver)
+        {
+            return;
+        }
+
+        CloseMoreMenu();
+    }
+
+    private void OnWindowDeactivated(object? sender, EventArgs eventArgs) => CloseMoreMenu();
 
     private void OnWindowKeyDown(object? sender, KeyEventArgs eventArgs)
     {

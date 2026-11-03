@@ -4,6 +4,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:Kl.Gui.ViewModels"
         xmlns:controls="using:Kl.Gui.Controls"
+        xmlns:primitives="using:Avalonia.Controls.Primitives"
         mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="820"
         x:Class="Kl.Gui.MainWindow"
         x:DataType="vm:MainWindowViewModel"
@@ -13,6 +14,8 @@
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource BgBase}"
         KeyDown="OnWindowKeyDown"
+        PointerPressed="OnWindowPointerPressed"
+        Deactivated="OnWindowDeactivated"
         Closing="OnWindowClosing">
 
     <Window.Resources>
@@ -373,43 +376,44 @@
                 <Grid RowDefinitions="Auto,*,Auto" Margin="8,10,8,10">
                     <StackPanel Grid.Row="0" Spacing="5">
                         <Button Classes="rail" Classes.active="{Binding IsChatPage}"
-                                Click="OnNavChatClicked" ToolTip.Tip="聊天">
+                                Click="OnNavChatClicked" ToolTip.Tip="聊天"
+                                ToolTip.Placement="Right" ToolTip.HorizontalOffset="8" ToolTip.ShowDelay="250">
                             <Path Width="20" Height="20" Data="{StaticResource ChatIcon}" Stretch="Uniform"
                                   Stroke="{StaticResource TextTertiary}" StrokeThickness="1.45"
                                   StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
                         </Button>
                         <Button Classes="rail" Classes.active="{Binding IsPluginsPage}"
-                                Click="OnNavPluginsClicked" ToolTip.Tip="插件">
+                                Click="OnNavPluginsClicked" ToolTip.Tip="插件"
+                                ToolTip.Placement="Right" ToolTip.HorizontalOffset="8" ToolTip.ShowDelay="250">
                             <Path Width="20" Height="20" Data="{StaticResource PluginIcon}" Stretch="Uniform"
                                   Stroke="{StaticResource TextTertiary}" StrokeThickness="1.45"
                                   StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
                         </Button>
                         <Button Classes="rail" Classes.active="{Binding IsAutomationPage}"
-                                Click="OnNavAutomationClicked" ToolTip.Tip="自动化任务">
+                                Click="OnNavAutomationClicked" ToolTip.Tip="自动化任务"
+                                ToolTip.Placement="Right" ToolTip.HorizontalOffset="8" ToolTip.ShowDelay="250">
                             <Path Width="20" Height="20" Data="{StaticResource AutomationIcon}" Stretch="Uniform"
                                   Stroke="{StaticResource TextTertiary}" StrokeThickness="1.45"
                                   StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
                         </Button>
-                        <Button Classes="rail" ToolTip.Tip="更多"
-                                HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0">
+                        <Button x:Name="MoreButton" Classes="rail"
+                                HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0"
+                                PointerEntered="OnMoreButtonPointerEntered" PointerExited="OnMoreButtonPointerExited"
+                                Click="OnMoreButtonClicked">
                             <StackPanel Orientation="Horizontal" Spacing="3"
                                         HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <Ellipse Width="3.5" Height="3.5" Fill="{StaticResource TextTertiary}" />
                                 <Ellipse Width="3.5" Height="3.5" Fill="{StaticResource TextTertiary}" />
                                 <Ellipse Width="3.5" Height="3.5" Fill="{StaticResource TextTertiary}" />
                             </StackPanel>
-                            <Button.Flyout>
-                                <MenuFlyout Placement="Right">
-                                    <MenuItem Header="添加项目" Click="OnAddWorkspaceClicked" />
-                                    <MenuItem Header="设置" Click="OnNavSettingsClicked" />
-                                </MenuFlyout>
-                            </Button.Flyout>
+
                         </Button>
                         <Border Height="1" Background="{StaticResource Line}" Margin="2,8,2,0" />
                     </StackPanel>
 
                     <Button Grid.Row="2" Classes="rail" Classes.active="{Binding IsSettingsOpen}"
-                            Click="OnNavSettingsClicked" ToolTip.Tip="设置">
+                            Click="OnNavSettingsClicked" ToolTip.Tip="设置"
+                            ToolTip.Placement="Right" ToolTip.HorizontalOffset="8" ToolTip.ShowDelay="250">
                         <Path Width="20" Height="20" Data="{StaticResource SettingsIcon}" Stretch="Uniform"
                               Stroke="{StaticResource TextTertiary}" StrokeThickness="1.45"
                               StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
@@ -1145,6 +1149,38 @@
                 </Grid>
             </Border>
         </Grid>
+
+        <primitives:Popup x:Name="MorePopup" Placement="Right" HorizontalOffset="8"
+                          IsLightDismissEnabled="False" ShouldUseOverlayLayer="True"
+                          Closed="OnMorePopupClosed">
+            <Border x:Name="MoreMenuCard" MinWidth="168"
+                    Background="{StaticResource ElevatedFill}"
+                    BorderBrush="{StaticResource LineStrong}" BorderThickness="1"
+                    CornerRadius="10" Padding="6"
+                    PointerEntered="OnMoreMenuPointerEntered"
+                    PointerExited="OnMoreMenuPointerExited">
+                <StackPanel Spacing="2">
+                    <Button Classes="more-menu-item" Click="OnMoreAddWorkspaceClicked">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
+                            <Path Width="16" Height="16" Data="{StaticResource FolderIcon}" Stretch="Uniform"
+                                  Stroke="{StaticResource TextSecondary}" StrokeThickness="1.35"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                            <TextBlock Grid.Column="1" Text="添加项目" FontSize="13"
+                                       Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" />
+                        </Grid>
+                    </Button>
+                    <Button Classes="more-menu-item" Click="OnMoreSettingsClicked">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
+                            <Path Width="16" Height="16" Data="{StaticResource SettingsIcon}" Stretch="Uniform"
+                                  Stroke="{StaticResource TextSecondary}" StrokeThickness="1.35"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                            <TextBlock Grid.Column="1" Text="设置" FontSize="13"
+                                       Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" />
+                        </Grid>
+                    </Button>
+                </StackPanel>
+            </Border>
+        </primitives:Popup>
 
         <Grid IsVisible="{Binding IsRenameDialogOpen}" Background="#99000000">
             <Border Width="420" Background="{StaticResource SidebarFill}" BorderBrush="#3A3A3D"
