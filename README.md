@@ -4,8 +4,8 @@ KL is a local-first AI coding agent with a Rust trusted core and C# clients.
 
 - **Core:** Rust, JSON-RPC 2.0 over stdio or a local named-pipe/UDS server.
 - **TUI:** C# Terminal.Gui v2 client in `tui/Kl.Tui`.
-- **GUI:** Avalonia 12.1.4 client shell in `gui/Kl.Gui`; chat integration is paused.
-- **Shared client:** `sdk/Kl.Client`, used by the TUI and intended for the GUI.
+- **GUI:** Avalonia 12.1.4 desktop client in `gui/DeepSeekHarness.Gui`.
+- **Shared client:** `sdk/Kl.Client`, used by the TUI and available for future GUI integration.
 
 The project is designed around local execution, explicit approvals, bounded
 context, auditable tool calls and provider neutrality. It does not use Python.
@@ -13,28 +13,29 @@ context, auditable tool calls and provider neutrality. It does not use Python.
 ## Status
 
 Core, TUI, security, context/memory tools, local multi-client transport and
-release packaging are implemented. The GUI has a static Avalonia shell but is
-not yet connected to `Kl.Client`. Real provider/MCP live smoke still needs
-credentials or a configured local server.
+release packaging are implemented. The GUI provides streaming chat, sessions,
+settings, plugins and automation through an OpenAI-compatible provider. Its
+`Kl.Client` integration remains a separate future step. Real provider/MCP live
+smoke still needs credentials or a configured local server.
 
 ## Architecture
 
 ```text
-TUI (tui/Kl.Tui)     GUI (gui/Kl.Gui)     Headless/CI
-        \                  |                  /
-         \             Kl.Client             /
-          \                |                /
+TUI (tui/Kl.Tui)     Headless/CI       DeepSeek GUI
+        \                  /            (standalone)
+         \             Kl.Client              |
+          \                |                  v
            +-- JSON-RPC / stdio or local socket --+
                             |
-                     Rust Core (kl-core)
+                     Rust Core (kl-core)     OpenAI-compatible API
               Protocol / Session / Events / Audit
               Agent / Tools / Policy / Sandbox
               Skills / Hooks / MCP / Plugins
 ```
 
 The Core owns sessions, events, policy, sandboxing, audit and tool execution.
-Clients never call a model or execute a tool directly. See
-[`docs/architecture/overview.md`](docs/architecture/overview.md).
+TUI and headless clients access it through `Kl.Client` and do not execute tools
+directly. See [`docs/architecture/overview.md`](docs/architecture/overview.md).
 
 ## Repository layout
 
@@ -43,7 +44,7 @@ Clients never call a model or execute a tool directly. See
 | `crates/` | Rust core and capability crates |
 | `tui/Kl.Tui` | C# terminal client |
 | `tui/Kl.Tui.Tests` | TUI, protocol and core integration tests |
-| `gui/Kl.Gui` | Avalonia GUI shell |
+| `gui/DeepSeekHarness.Gui` | Avalonia desktop chat client |
 | `sdk/Kl.Client` | reusable C# JSON-RPC/session client |
 | `schemas/` | protocol and plugin JSON schemas |
 | `benchmarks/` | acceptance tasks and fixtures |
@@ -80,14 +81,11 @@ dotnet run --project tui/Kl.Tui -- review --workspace .
 dotnet run --project tui/Kl.Tui -- serve
 ```
 
-The GUI shell can be started with:
+The desktop GUI can be started with:
 
 ```powershell
-dotnet run --project gui/Kl.Gui
+dotnet run --project gui/DeepSeekHarness.Gui
 ```
-
-It currently displays the shell layout only; session, streaming, tools,
-approvals, diff and settings are not connected yet.
 
 ## Main capabilities
 
@@ -164,8 +162,8 @@ and the release matrix in
 - Real Provider/MCP live smoke requires credentials or a local MCP server.
 - Windows release packaging still needs `kl-sandbox-runner.exe` included and a
   packaged `kl serve` smoke test.
-- GUI is a static Avalonia shell; `Kl.Client` integration and the full MVP
-  remain in progress.
+- GUI uses an OpenAI-compatible provider directly; `Kl.Client` integration
+  remains in progress.
 - Provider prompt caching and session rewind/revert are not complete.
 - MCP servers start in the Core startup workspace, not a per-session workspace.
 - PTY under Windows AppContainer fails closed because that backend cannot be

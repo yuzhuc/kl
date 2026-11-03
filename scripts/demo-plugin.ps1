@@ -8,7 +8,9 @@ if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
 dotnet build kl.sln
 if ($LASTEXITCODE -ne 0) { throw "dotnet build failed" }
 
-$target = (Resolve-Path (Join-Path $root "target")).Path
+$metadataJson = cargo metadata --no-deps --format-version 1
+if ($LASTEXITCODE -ne 0) { throw "cargo metadata failed" }
+$target = ($metadataJson | ConvertFrom-Json).target_directory
 $base = Join-Path $target "plugin-demo"
 if (-not $base.StartsWith($target, [StringComparison]::OrdinalIgnoreCase)) {
     throw "refusing to operate outside target/: $base"

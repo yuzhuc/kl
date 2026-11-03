@@ -25,7 +25,18 @@ const layout = layoutFor(rid);
 const useZig = process.argv.includes("--zig");
 const output = path.resolve(root, option("--output", path.join("dist", rid)));
 const archive = path.join(root, "dist", `kl-${rid}${layout.ext}`);
-const cargoTarget = path.resolve(root, process.env.CARGO_TARGET_DIR ?? path.join(root, "target"));
+function cargoTargetDirectory() {
+  const result = spawnSync("cargo", ["metadata", "--no-deps", "--format-version", "1"], {
+    cwd: root,
+    env: process.env,
+    encoding: "utf8",
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(result.stderr || "cargo metadata failed");
+  return JSON.parse(result.stdout).target_directory;
+}
+
+const cargoTarget = cargoTargetDirectory();
 
 function run(command, args, cwd = root) {
   console.log(`\n== ${command} ${args.join(" ")} ==`);

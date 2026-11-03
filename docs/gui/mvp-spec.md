@@ -10,8 +10,9 @@ The GUI is intended to be a desktop client for local KL sessions. It must use
 the shared `Kl.Client` transport and session event contract, not a separate
 agent loop or direct core integration.
 
-The current `gui/Kl.Gui` is a static shell only. It has no session list,
-streaming chat, tool activity, approvals, diff or settings wiring.
+`gui/DeepSeekHarness.Gui` currently runs as a standalone OpenAI-compatible
+chat client. This specification defines the later step that wires it to
+`Kl.Client` for local KL sessions.
 
 ## 2. Transport
 

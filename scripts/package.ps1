@@ -38,7 +38,10 @@ $coreName = if ($Runtime.StartsWith("win", [StringComparison]::OrdinalIgnoreCase
 } else {
     "kl-core"
 }
-$coreSource = Join-Path $root "target\release\$coreName"
+$metadataJson = cargo metadata --no-deps --format-version 1
+if ($LASTEXITCODE -ne 0) { throw "cargo metadata failed" }
+$cargoTarget = ($metadataJson | ConvertFrom-Json).target_directory
+$coreSource = Join-Path $cargoTarget "release\$coreName"
 if (-not (Test-Path -LiteralPath $coreSource)) {
     throw "core binary not found: $coreSource"
 }

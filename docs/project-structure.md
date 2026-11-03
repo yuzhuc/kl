@@ -5,7 +5,7 @@
 ```text
 crates/       Rust core and capability crates
 tui/          C# Terminal.Gui client and tests
-gui/          C# Avalonia GUI shell
+gui/          C# Avalonia desktop client and tests
 sdk/          reusable C# client library
 schemas/      protocol and plugin schemas
 benchmarks/   acceptance tasks and fixtures
@@ -42,13 +42,15 @@ workspaces is ignored or treated as disposable.
 |---|---|
 | `tui/Kl.Tui` | Terminal.Gui v2 UI, commands, approvals and terminal rendering |
 | `tui/Kl.Tui.Tests` | TUI, protocol, server and core integration tests |
-| `gui/Kl.Gui` | Avalonia 12.1.4 static shell; client integration paused |
+| `gui/DeepSeekHarness.Gui` | Avalonia desktop chat client |
+| `gui/DeepSeekHarness.Gui.Tests` | GUI state and service tests |
 | `sdk/Kl.Client` | JSON-RPC connection, session client, DTOs and endpoint discovery |
 
-The TUI and GUI share `Kl.Client`; neither owns an agent loop. `KlSessionClient`
+The TUI uses `Kl.Client` and does not own an agent loop. `KlSessionClient`
 supports stdio, local-server connect, attach/replay, sequence de-duplication,
 reconnect from `LastSeq`, protocol-backed rich history and read-only observer
-sessions when another client holds the write lease.
+sessions when another client holds the write lease. The standalone GUI currently
+uses an OpenAI-compatible provider directly and can adopt this client later.
 
 ## Protocol and fixtures
 
@@ -62,6 +64,6 @@ sessions when another client holds the write lease.
 
 - Rust: `cargo build --release -p kl-core`.
 - TUI: `dotnet build tui/Kl.Tui/Kl.Tui.csproj`.
-- GUI shell: `dotnet build gui/Kl.Gui/Kl.Gui.csproj`.
+- GUI: `dotnet build gui/DeepSeekHarness.Gui/DeepSeekHarness.Gui.csproj`.
 - Packaging: `scripts/package.mjs` builds a self-contained TUI bundle.
 - Release: only `main` pushes, tag `v<version>-rcN`, archives only.

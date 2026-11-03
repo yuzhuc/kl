@@ -3,13 +3,13 @@
 ## Process model
 
 ```text
-TUI (tui/Kl.Tui)     GUI (gui/Kl.Gui)     Headless/CI
-        \                  |                  /
-         \             Kl.Client             /
-          \                |                /
+TUI (tui/Kl.Tui)     Headless/CI       DeepSeek GUI
+        \                  /            (standalone)
+         \             Kl.Client              |
+          \                |                  v
            +-- JSON-RPC / stdio or local socket --+
                             |
-                     Rust core (kl-core)
+                     Rust core (kl-core)     OpenAI-compatible API
               Emitter + JSON-RPC request handling
               ProviderRouter + Agent runtime
               SessionStore + EventHub
@@ -19,8 +19,9 @@ TUI (tui/Kl.Tui)     GUI (gui/Kl.Gui)     Headless/CI
 ```
 
 The Rust Core is the only process that executes tools, calls providers, writes
-sessions or evaluates policy. TUI, GUI and headless clients are protocol
-clients. `Kl.Client` owns the C# transport and session API.
+sessions or evaluates policy for protocol clients. TUI and headless clients use
+`Kl.Client`. The standalone GUI currently uses an OpenAI-compatible provider
+directly and is not yet wired to Core.
 
 ## Repository boundaries
 
@@ -38,9 +39,9 @@ clients. `Kl.Client` owns the C# transport and session API.
 | `kl-review` | Diff, security and optional LLM review pipeline |
 | `kl-index` | Shallow repository symbols and test selection hints |
 | `kl-plugin-host` | Sidecar/WASM plugin supervision and integrity checks |
-| `Kl.Client` | C# JSON-RPC/session client used by the TUI and GUI |
+| `Kl.Client` | C# JSON-RPC/session client used by the TUI |
 | `Kl.Tui` | Terminal.Gui v2 terminal client and approval presentation |
-| `Kl.Gui` | Avalonia shell; chat integration is paused |
+| `DeepSeekHarness.Gui` | Standalone Avalonia desktop chat client |
 
 ## Protocol and transports
 

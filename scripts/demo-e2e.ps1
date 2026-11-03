@@ -9,7 +9,9 @@ if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
 dotnet build kl.sln
 if ($LASTEXITCODE -ne 0) { throw "dotnet build failed" }
 
-$target = Join-Path $root "target"
+$metadataJson = cargo metadata --no-deps --format-version 1
+if ($LASTEXITCODE -ne 0) { throw "cargo metadata failed" }
+$target = ($metadataJson | ConvertFrom-Json).target_directory
 New-Item -ItemType Directory -Force -Path $target | Out-Null
 $targetFull = (Resolve-Path $target).Path
 $demo = Join-Path $targetFull "e2e-demo"

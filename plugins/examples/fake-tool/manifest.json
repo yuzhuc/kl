@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "api": 1,
   "kind": "tool",
-  "entrypoint": "../../../target/debug/fake_plugin.exe",
+  "entrypoint": "../../../../bin/debug/fake_plugin.exe",
   "runtime": "sidecar",
   "capabilities": ["tool"],
   "permissions": {
