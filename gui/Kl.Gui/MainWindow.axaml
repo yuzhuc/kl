@@ -457,7 +457,7 @@
                                 Click="OnMoreAddWorkspaceClicked" Tag="项目"
                                 PointerEntered="OnRailHintPointerEntered" PointerExited="OnRailHintPointerExited">
                             <Path Classes="rail-icon" Width="18" Height="18"
-                                  Data="{StaticResource AddProjectIcon}" Stretch="Uniform" />
+                                  Data="{StaticResource FolderIcon}" Stretch="Uniform" />
                         </Button>
                         <Button IsVisible="{Binding IsCodeReviewPinned}" Classes="rail"
                                 Click="OnMoreCodeReviewClicked" Tag="代码审查"
