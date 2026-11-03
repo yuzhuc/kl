@@ -228,10 +228,18 @@
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="FocusAdorner" Value="{x:Null}" />
             <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition Property="Background" Duration="0:0:0.12" />
-                </Transitions>
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                    </Border>
+                </ControlTemplate>
             </Setter>
         </Style>
         <Style Selector="Button.rail Path">
@@ -240,20 +248,9 @@
             <Setter Property="StrokeThickness" Value="1.35" />
             <Setter Property="StrokeLineCap" Value="Round" />
             <Setter Property="StrokeJoin" Value="Round" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition Property="Stroke" Duration="0:0:0.12" />
-                    <BrushTransition Property="Fill" Duration="0:0:0.12" />
-                </Transitions>
-            </Setter>
         </Style>
         <Style Selector="Button.rail Ellipse">
             <Setter Property="Fill" Value="{DynamicResource RailIcon}" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition Property="Fill" Duration="0:0:0.12" />
-                </Transitions>
-            </Setter>
         </Style>
         <Style Selector="Button.rail:pointerover">
             <Setter Property="Background" Value="{DynamicResource RailHoverFill}" />
