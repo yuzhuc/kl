@@ -60,7 +60,6 @@ def publish_apps(
     runtime: str,
     output: Path,
     env: dict[str, str],
-    self_contained: bool,
 ) -> Path:
     cargo_profile = "release" if configuration.lower() == "release" else "debug"
     core_name = "kl-core.exe" if runtime.startswith("win") else "kl-core"
@@ -77,7 +76,7 @@ def publish_apps(
         "-r",
         runtime,
         "--self-contained",
-        str(self_contained).lower(),
+        "false",
         "-p:DebugType=None",
         "-p:DebugSymbols=false",
     ]
@@ -130,7 +129,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--configuration", choices=("Debug", "Release"), default="Release")
     parser.add_argument("--runtime", default=host_runtime(), help="dotnet publish runtime identifier")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
-    parser.add_argument("--self-contained", action="store_true", help="include the .NET runtime for portable output")
     parser.add_argument("--skip-checks", action="store_true")
     return parser.parse_args()
 
@@ -152,13 +150,13 @@ def main() -> int:
         cargo_build.append("--release")
     run(cargo_build, env)
 
-    core = publish_apps(args.configuration, args.runtime, output, env, args.self_contained)
+    core = publish_apps(args.configuration, args.runtime, output, env)
     print(f"\nCaches: {ROOT / 'target'}")
     print(f"Final outputs: {output}")
     print(f"GUI: {output / 'gui'}")
     print(f"TUI: {output / 'tui'}")
     print(f"Core source: {core}")
-    print(f"Deployment: {'self-contained' if args.self_contained else 'framework-dependent'}")
+    print("Deployment: framework-dependent (lean local build)")
     return 0
 
 

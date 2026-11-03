@@ -5,7 +5,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <ApplicationIcon>Assets\kl.ico</ApplicationIcon>
     <Version>0.3.0</Version>
     <FileVersion>0.3.0.1</FileVersion>
     <InformationalVersion>0.3.0-gui.1</InformationalVersion>

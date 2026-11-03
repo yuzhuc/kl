@@ -8,7 +8,7 @@
         x:Class="DeepSeekHarness.Gui.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="kl"
-        Icon="/Assets/app.png"
+        Icon="/Assets/kl.png"
         Width="1280" Height="820" MinWidth="960" MinHeight="700"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource BgBase}"
@@ -372,10 +372,8 @@
                     BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0">
                 <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="8,10,8,10">
                     <Button Grid.Row="0" Classes="rail" Click="OnNavChatClicked" ToolTip.Tip="kl">
-                        <Border Width="34" Height="34" Background="#1C1C1F" CornerRadius="10">
-                            <Path Width="21" Height="21" Data="{StaticResource FishLogoPath}" Stretch="Uniform"
-                                  Fill="{StaticResource TextPrimary}" HorizontalAlignment="Center"
-                                  VerticalAlignment="Center" />
+                        <Border Width="34" Height="34" Background="#1C1C1F" CornerRadius="10" ClipToBounds="True">
+                            <Image Width="34" Height="34" Source="/Assets/kl.png" Stretch="UniformToFill" />
                         </Border>
                     </Button>
 
@@ -532,10 +530,9 @@
                                             HorizontalAlignment="Stretch" Margin="16,20,16,52">
                                     <StackPanel Spacing="8" HorizontalAlignment="Center">
                                         <Border Width="42" Height="42" Background="#252525" CornerRadius="12"
-                                                HorizontalAlignment="Center">
-                                            <Path Width="25" Height="25" Data="{StaticResource FishLogoPath}"
-                                                  Stretch="Uniform" Fill="{StaticResource TextPrimary}"
-                                                  HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                HorizontalAlignment="Center" ClipToBounds="True">
+                                            <Image Width="42" Height="42" Source="/Assets/kl.png"
+                                                   Stretch="UniformToFill" />
                                         </Border>
                                         <TextBlock Text="今天想做什么？" FontSize="24" FontWeight="SemiBold"
                                                    Foreground="{StaticResource TextPrimary}"
@@ -1120,8 +1117,7 @@
 
                                 <StackPanel IsVisible="{Binding IsSettingsAbout}" Spacing="0">
                                     <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,0,0,8">
-                                        <Path Width="26" Height="26" Data="{StaticResource FishLogoPath}" Stretch="Uniform"
-                                              Fill="{StaticResource TextPrimary}" />
+                                        <Image Width="26" Height="26" Source="/Assets/kl.png" Stretch="Uniform" />
                                         <StackPanel Spacing="2">
                                             <TextBlock Text="DeepSeek Harness GUI" FontSize="16" FontWeight="Medium"
                                                        Foreground="{StaticResource TextPrimary}" />
