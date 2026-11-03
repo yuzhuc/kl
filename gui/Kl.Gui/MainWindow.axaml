@@ -1232,15 +1232,9 @@
                           Opened="OnMorePopupOpened" Closed="OnMorePopupClosed">
             <Border x:Name="MoreMenuCard" MinWidth="220"
                     Background="{DynamicResource MenuFill}" BorderThickness="0"
-                    CornerRadius="10" Padding="5" Opacity="0"
-                    BoxShadow="0 8 24 0 #55000000"
+                    CornerRadius="10" Padding="5"
                     PointerEntered="OnMoreMenuPointerEntered"
                     PointerExited="OnMoreMenuPointerExited">
-                <Border.Transitions>
-                    <Transitions>
-                        <DoubleTransition Property="Opacity" Duration="0:0:0.12" />
-                    </Transitions>
-                </Border.Transitions>
                 <StackPanel Spacing="1">
                     <Border x:Name="ProjectMenuRow" Classes="more-menu-row"
                             PointerEntered="OnMoreMenuRowPointerEntered"

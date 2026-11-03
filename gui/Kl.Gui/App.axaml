@@ -77,23 +77,15 @@
             <Setter Property="CornerRadius" Value="8" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="ClipToBounds" Value="True" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition Property="Background" Duration="0:0:0.12" />
-                </Transitions>
-            </Setter>
-        </Style>
-        <Style Selector="Border.more-menu-row:pointerover">
-            <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
         </Style>
         <Style Selector="Border.more-menu-row:pointerover TextBlock">
-            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="Foreground" Value="{DynamicResource RailIconActive}" />
         </Style>
         <Style Selector="Border.more-menu-row:pointerover Path.more-menu-icon">
-            <Setter Property="Stroke" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="Stroke" Value="{DynamicResource RailIconActive}" />
         </Style>
         <Style Selector="Border.more-menu-row:pointerover Path.more-menu-pin-icon">
-            <Setter Property="Fill" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="Fill" Value="{DynamicResource RailIconHover}" />
         </Style>
         <Style Selector="Button.more-menu-item">
             <Setter Property="Height" Value="38" />
@@ -136,11 +128,6 @@
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="FocusAdorner" Value="{x:Null}" />
             <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <DoubleTransition Property="Opacity" Duration="0:0:0.10" />
-                </Transitions>
-            </Setter>
             <Setter Property="Template">
                 <ControlTemplate>
                     <Border Background="{TemplateBinding Background}"

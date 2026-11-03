@@ -197,13 +197,11 @@ public partial class MainWindow : Window
     private void OnMorePopupOpened(object? sender, EventArgs eventArgs)
     {
         MoreButton.Classes.Set("open", true);
-        Dispatcher.UIThread.Post(() => MoreMenuCard.Opacity = 1);
     }
 
     private void OnMorePopupClosed(object? sender, EventArgs eventArgs)
     {
         MoreButton.Classes.Set("open", false);
-        MoreMenuCard.Opacity = 0;
         ProjectPinButton.Opacity = 0;
         CodeReviewPinButton.Opacity = 0;
         _moreMenuOpenTimer.Stop();
@@ -247,7 +245,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        MoreMenuCard.Opacity = 0;
         MorePopup.IsOpen = true;
     }
 
