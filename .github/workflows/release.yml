@@ -72,9 +72,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-python@v5
         with:
-          node-version: 22
+          python-version: "3.12"
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust }}
@@ -95,9 +95,9 @@ jobs:
         shell: pwsh
         run: Add-Content $env:GITHUB_PATH "C:\Program Files\LLVM\bin"
       - name: Package
-        run: node scripts/package.mjs --rid ${{ matrix.rid }} --rust-target ${{ matrix.rust }}
+        run: python scripts/package.py --rid ${{ matrix.rid }} --rust-target ${{ matrix.rust }}
       - name: Verify package
-        run: node scripts/verify-package.mjs --rid ${{ matrix.rid }}
+        run: python scripts/verify_package.py --rid ${{ matrix.rid }}
       - if: matrix.rid == 'win-x64'
         name: Smoke test
         run: dist\${{ matrix.rid }}\kl.exe --version
@@ -120,9 +120,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-python@v5
         with:
-          node-version: 22
+          python-version: "3.12"
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust }}
@@ -145,9 +145,9 @@ jobs:
             cargo install cargo-zigbuild --locked
           fi
       - name: Package
-        run: node scripts/package.mjs --rid ${{ matrix.rid }} --rust-target ${{ matrix.rust }} --zig
+        run: python scripts/package.py --rid ${{ matrix.rid }} --rust-target ${{ matrix.rust }} --zig
       - name: Verify package
-        run: node scripts/verify-package.mjs --rid ${{ matrix.rid }}
+        run: python scripts/verify_package.py --rid ${{ matrix.rid }}
       - if: matrix.rid == 'linux-x64'
         name: Smoke test
         run: dist/${{ matrix.rid }}/kl --version
@@ -169,9 +169,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-python@v5
         with:
-          node-version: 22
+          python-version: "3.12"
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust }}
@@ -184,9 +184,9 @@ jobs:
         with:
           shared-key: release-${{ matrix.rid }}
       - name: Package
-        run: node scripts/package.mjs --rid ${{ matrix.rid }} --rust-target ${{ matrix.rust }}
+        run: python scripts/package.py --rid ${{ matrix.rid }} --rust-target ${{ matrix.rust }}
       - name: Verify package
-        run: node scripts/verify-package.mjs --rid ${{ matrix.rid }}
+        run: python scripts/verify_package.py --rid ${{ matrix.rid }}
       - if: matrix.rid == 'osx-arm64'
         name: Smoke test
         run: dist/${{ matrix.rid }}/kl --version

@@ -59,7 +59,7 @@ directly and is not yet wired to Core.
 - Core events are notifications with `method: "event"` and a per-session,
   monotonically increasing `seq`. Clients de-duplicate by `session_id + seq`.
 - `schemas/protocol/v1` is the contract; Rust, schema and C# constants are
-  checked together by `scripts/check-protocol.mjs`.
+  checked together by `scripts/check_protocol.py`.
 - Shared fixtures live under `tests/fixtures/protocol`.
 
 Representative methods include `session.create`, `session.resume`,
@@ -164,7 +164,7 @@ The runtime identifier matrix is final:
 | Linux | linux-x64, linux-arm64 |
 | macOS | osx-arm64 |
 
-`scripts/package-format.mjs` accepts only these RIDs and verifies that the
+`scripts/package_format.py` accepts only these RIDs and verifies that the
 packaged binaries really match them. Adding or removing a RID requires an ADR
 ([`../adr/0011-release-rid-matrix.md`](../adr/0011-release-rid-matrix.md)).
 

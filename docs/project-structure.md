@@ -9,14 +9,15 @@ gui/          C# Avalonia desktop client and tests
 sdk/          reusable C# client library
 schemas/      protocol and plugin schemas
 benchmarks/   acceptance tasks and fixtures
-scripts/      package, benchmark and live-smoke scripts
+scripts/      Python build, validation and benchmark tooling
 docs/         architecture, security, plugin and ADR docs
 tests/        cross-language contract and provider fixtures
 plugins/      plugin examples
 ```
 
-Generated output such as `target/`, `bin/`, `obj/`, `dist/` and benchmark
-workspaces is ignored or treated as disposable.
+Cargo caches stay in `target/`; .NET intermediates stay in project `bin/` and
+`obj/` directories. `python scripts/build.py` stages final GUI/TUI files in the
+sibling `bin/` directory, while benchmark workspaces are disposable.
 
 ## Rust crates
 
@@ -65,5 +66,6 @@ uses an OpenAI-compatible provider directly and can adopt this client later.
 - Rust: `cargo build --release -p kl-core`.
 - TUI: `dotnet build tui/Kl.Tui/Kl.Tui.csproj`.
 - GUI: `dotnet build gui/DeepSeekHarness.Gui/DeepSeekHarness.Gui.csproj`.
-- Packaging: `scripts/package.mjs` builds a self-contained TUI bundle.
+- Build: `python scripts/build.py` publishes final GUI/TUI files to the sibling `bin` directory.
+- Packaging: `python scripts/package.py` builds a self-contained release archive.
 - Release: only `main` pushes, tag `v<version>-rcN`, archives only.

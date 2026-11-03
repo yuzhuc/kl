@@ -8,7 +8,8 @@ KL is a local-first AI coding agent with a Rust trusted core and C# clients.
 - **Shared client:** `sdk/Kl.Client`, used by the TUI and available for future GUI integration.
 
 The project is designed around local execution, explicit approvals, bounded
-context, auditable tool calls and provider neutrality. It does not use Python.
+context, auditable tool calls and provider neutrality. Python is allowed for
+development tooling, but product binaries and runtime do not depend on Python.
 
 ## Status
 
@@ -48,22 +49,36 @@ directly. See [`docs/architecture/overview.md`](docs/architecture/overview.md).
 | `sdk/Kl.Client` | reusable C# JSON-RPC/session client |
 | `schemas/` | protocol and plugin JSON schemas |
 | `benchmarks/` | acceptance tasks and fixtures |
-| `scripts/` | package, benchmark and live-smoke scripts |
+| `scripts/` | Python build, package, validation and benchmark scripts |
 | `docs/` | architecture, security, ADR and API docs |
 
-Generated output such as `target/`, `bin/`, `obj/` and `dist/` is ignored.
+Cargo and .NET intermediates remain in repository cache directories. Final local builds are staged to `D:\kl\bin`.
 
 ## Prerequisites
 
 - Rust stable (see `rust-toolchain.toml`)
 - .NET 10 SDK
-- Node.js 22+ for repository scripts
+- Python 3.11+ for development tooling only
 - Git
 
 Release bundles are self-contained or use the bundled runtime; users do not
 need a local Rust toolchain. Source builds need Rust and .NET.
 
 ## Build and run
+
+```powershell
+python scripts/build.py
+```
+
+The build script keeps Cargo and .NET caches inside the repository and publishes
+the final GUI/TUI files to the sibling `bin` directory:
+
+```text
+Caches:        D:\kl\kl\target, project bin/obj directories
+Final outputs: D:\kl\bin\gui, D:\kl\bin\tui
+```
+
+For component-level development:
 
 ```powershell
 cargo build --release -p kl-core
@@ -81,10 +96,10 @@ dotnet run --project tui/Kl.Tui -- review --workspace .
 dotnet run --project tui/Kl.Tui -- serve
 ```
 
-The desktop GUI can be started with:
+After `python scripts/build.py`, the desktop GUI can be started with:
 
 ```powershell
-dotnet run --project gui/DeepSeekHarness.Gui
+D:\kl\bin\run-gui.bat
 ```
 
 ## Main capabilities
