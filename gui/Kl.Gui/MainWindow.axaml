@@ -1161,7 +1161,7 @@
             </Border>
         </Canvas>
 
-        <primitives:Popup x:Name="MorePopup" Placement="Right" HorizontalOffset="8"
+        <primitives:Popup x:Name="MorePopup" Placement="RightEdgeAlignedTop" HorizontalOffset="8"
                           IsLightDismissEnabled="False" ShouldUseOverlayLayer="True"
                           Closed="OnMorePopupClosed">
             <Border x:Name="MoreMenuCard" MinWidth="168"
