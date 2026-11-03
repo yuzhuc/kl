@@ -228,6 +228,7 @@
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="FocusAdorner" Value="{x:Null}" />
             <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="ClickMode" Value="Press" />
             <Setter Property="Template">
                 <ControlTemplate>
                     <Border Background="{TemplateBinding Background}"
@@ -255,6 +256,9 @@
         <Style Selector="Button.rail:pointerover">
             <Setter Property="Background" Value="{DynamicResource RailHoverFill}" />
         </Style>
+        <Style Selector="Button.rail:pressed">
+            <Setter Property="Background" Value="{DynamicResource RailHoverFill}" />
+        </Style>
         <Style Selector="Button.rail:pointerover Path">
             <Setter Property="Stroke" Value="{DynamicResource RailIconHover}" />
         </Style>
@@ -262,6 +266,9 @@
             <Setter Property="Fill" Value="{DynamicResource RailIconHover}" />
         </Style>
         <Style Selector="Button.rail.active">
+            <Setter Property="Background" Value="{DynamicResource RailActiveFill}" />
+        </Style>
+        <Style Selector="Button.rail.active:pressed">
             <Setter Property="Background" Value="{DynamicResource RailActiveFill}" />
         </Style>
         <Style Selector="Button.rail.active Path">
@@ -274,6 +281,9 @@
             <Setter Property="Fill" Value="{DynamicResource RailIconActive}" />
         </Style>
         <Style Selector="Button.rail.open">
+            <Setter Property="Background" Value="{DynamicResource RailActiveFill}" />
+        </Style>
+        <Style Selector="Button.rail.open:pressed">
             <Setter Property="Background" Value="{DynamicResource RailActiveFill}" />
         </Style>
         <Style Selector="Button.rail.open Path">
@@ -419,25 +429,25 @@
             <Border Grid.Column="0" Background="{StaticResource SidebarRailFill}" BorderThickness="0">
                 <Grid RowDefinitions="Auto,*,Auto" Margin="8,18,8,10">
                     <StackPanel Grid.Row="0" Spacing="5">
-                        <Button Classes="rail" Classes.active="{Binding IsChatPage}"
+                        <Button x:Name="ChatRailButton" Classes="rail" Classes.active="{Binding IsChatPage}"
                                 Click="OnNavChatClicked" Tag="聊天"
                                 PointerEntered="OnRailHintPointerEntered" PointerExited="OnRailHintPointerExited">
                             <Path Classes="rail-icon rail-fill" Width="18" Height="18"
                                   Data="{StaticResource RailChatIcon}" Stretch="Uniform" />
                         </Button>
-                        <Button Classes="rail" Classes.active="{Binding IsPluginsPage}"
+                        <Button x:Name="PluginsRailButton" Classes="rail" Classes.active="{Binding IsPluginsPage}"
                                 Click="OnNavPluginsClicked" Tag="插件"
                                 PointerEntered="OnRailHintPointerEntered" PointerExited="OnRailHintPointerExited">
-                            <Path Classes="rail-icon rail-fill" Width="18" Height="18"
+                            <Path Classes="rail-icon" Width="18" Height="18"
                                   Data="{StaticResource RailPluginIcon}" Stretch="Uniform" />
                         </Button>
-                        <Button Classes="rail" Classes.active="{Binding IsAutomationPage}"
+                        <Button x:Name="AutomationRailButton" Classes="rail" Classes.active="{Binding IsAutomationPage}"
                                 Click="OnNavAutomationClicked" Tag="自动化任务"
                                 PointerEntered="OnRailHintPointerEntered" PointerExited="OnRailHintPointerExited">
                             <Path Classes="rail-icon" Width="18" Height="18"
                                   Data="{StaticResource RailAutomationIcon}" Stretch="Uniform" />
                         </Button>
-                        <Button x:Name="MoreButton" Classes="rail"
+                        <Button x:Name="MoreButton" Classes="rail" ClickMode="Release"
                                 HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0"
                                 PointerEntered="OnMoreButtonPointerEntered" PointerExited="OnMoreButtonPointerExited"
                                 Click="OnMoreButtonClicked">
@@ -464,7 +474,7 @@
                         </Button>
                     </StackPanel>
 
-                    <Button Grid.Row="2" Classes="rail" Classes.active="{Binding IsSettingsOpen}"
+                    <Button x:Name="SettingsRailButton" Grid.Row="2" Classes="rail" Classes.active="{Binding IsSettingsOpen}"
                             Click="OnNavSettingsClicked" Tag="设置"
                             PointerEntered="OnRailHintPointerEntered" PointerExited="OnRailHintPointerExited">
                         <Path Classes="rail-icon" Width="18" Height="18"

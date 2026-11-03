@@ -20,6 +20,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _moreMenuOpenTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
     private readonly DispatcherTimer _moreMenuCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
     private Control? _railHintTarget;
+    private long _lastRailPointerNavigation;
     private bool _moreMenuPinned;
     private bool _moreMenuHovered;
 
@@ -39,6 +40,26 @@ public partial class MainWindow : Window
         _railHintOpenTimer.Tick += OnRailHintOpenTimerTick;
         _moreMenuOpenTimer.Tick += OnMoreMenuOpenTimerTick;
         _moreMenuCloseTimer.Tick += OnMoreMenuCloseTimerTick;
+        ConfigureRailPointerNavigation();
+    }
+
+    private void ConfigureRailPointerNavigation()
+    {
+        ChatRailButton.AddHandler(
+            PointerPressedEvent,
+            (_, eventArgs) => ActivateRailSectionFromPointer(eventArgs, AppSection.Chat),
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
+        PluginsRailButton.AddHandler(
+            PointerPressedEvent,
+            (_, eventArgs) => ActivateRailSectionFromPointer(eventArgs, AppSection.Plugins),
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
+        AutomationRailButton.AddHandler(
+            PointerPressedEvent,
+            (_, eventArgs) => ActivateRailSectionFromPointer(eventArgs, AppSection.Automation),
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
     }
 
 
@@ -372,15 +393,63 @@ public partial class MainWindow : Window
 
     private void OnNavChatClicked(object? sender, RoutedEventArgs eventArgs)
     {
-        _viewModel.Navigate(AppSection.Chat);
-        FocusComposer();
+        if (SkipPointerGeneratedRailClick())
+        {
+            return;
+        }
+        ActivateRailSection(AppSection.Chat);
     }
 
-    private void OnNavPluginsClicked(object? sender, RoutedEventArgs eventArgs) =>
-        _viewModel.Navigate(AppSection.Plugins);
+    private void OnNavPluginsClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (SkipPointerGeneratedRailClick())
+        {
+            return;
+        }
+        ActivateRailSection(AppSection.Plugins);
+    }
 
-    private void OnNavAutomationClicked(object? sender, RoutedEventArgs eventArgs) =>
-        _viewModel.Navigate(AppSection.Automation);
+    private void OnNavAutomationClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (SkipPointerGeneratedRailClick())
+        {
+            return;
+        }
+        ActivateRailSection(AppSection.Automation);
+    }
+
+    private void ActivateRailSectionFromPointer(PointerPressedEventArgs eventArgs, AppSection section)
+    {
+        if (eventArgs.GetCurrentPoint(this).Properties.PointerUpdateKind
+            != PointerUpdateKind.LeftButtonPressed)
+        {
+            return;
+        }
+
+        _lastRailPointerNavigation = Environment.TickCount64;
+        ActivateRailSection(section);
+    }
+
+    private bool SkipPointerGeneratedRailClick() =>
+        Environment.TickCount64 - _lastRailPointerNavigation < 750;
+
+    private void ActivateRailSection(AppSection section)
+    {
+        SetRailSection(section);
+        _viewModel.Navigate(section);
+        if (section == AppSection.Chat)
+        {
+            FocusComposer();
+        }
+    }
+
+    private void SetRailSection(AppSection section)
+    {
+        ChatRailButton.Classes.Set("active", section == AppSection.Chat);
+        PluginsRailButton.Classes.Set("active", section == AppSection.Plugins);
+        AutomationRailButton.Classes.Set("active", section == AppSection.Automation);
+        SettingsRailButton.Classes.Set("active", false);
+    }
 
     private void OnAutomationFilterAllClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.SetAutomationFilter(AutomationFilter.All);
