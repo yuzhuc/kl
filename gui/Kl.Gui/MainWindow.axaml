@@ -396,11 +396,18 @@
                                   Stroke="{StaticResource TextTertiary}" StrokeThickness="1.45"
                                   StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
                         </Button>
-                        <Button Classes="rail" Click="OnAddWorkspaceClicked" ToolTip.Tip="添加项目">
-                            <Path Width="20" Height="20" Data="{StaticResource FolderIcon}" Stretch="Uniform"
+                        <Button Classes="rail" ToolTip.Tip="更多">
+                            <Path Width="20" Height="20" Data="{StaticResource MoreIcon}" Stretch="Uniform"
                                   Stroke="{StaticResource TextTertiary}" StrokeThickness="1.45"
                                   StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                            <Button.Flyout>
+                                <MenuFlyout Placement="Right">
+                                    <MenuItem Header="添加项目" Click="OnAddWorkspaceClicked" />
+                                    <MenuItem Header="设置" Click="OnNavSettingsClicked" />
+                                </MenuFlyout>
+                            </Button.Flyout>
                         </Button>
+                        <Border Height="1" Background="{StaticResource Line}" Margin="2,8,2,0" />
                     </StackPanel>
 
                     <Button Grid.Row="3" Classes="rail" Classes.active="{Binding IsSettingsOpen}"

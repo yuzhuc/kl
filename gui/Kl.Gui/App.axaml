@@ -46,6 +46,8 @@
         <Style Selector="Button">
             <Setter Property="FontFamily" Value="Inter" />
             <Setter Property="Transitions" Value="{x:Null}" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
 
         <Style Selector="Button.icon">
