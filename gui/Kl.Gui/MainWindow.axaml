@@ -525,7 +525,8 @@
                             </Grid>
                         </Button>
 
-                        <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto"
+                        <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Visible"
+                                      AllowAutoHide="False"
                                       IsVisible="{Binding !IsNotificationsVisible}"
                                       HorizontalScrollBarVisibility="Disabled">
                             <StackPanel>
@@ -618,7 +619,8 @@
 
                         <!-- notifications pane (Codex bell) -->
                         <ScrollViewer Grid.Row="3" IsVisible="{Binding IsNotificationsVisible}"
-                                      VerticalScrollBarVisibility="Auto"
+                                      VerticalScrollBarVisibility="Visible"
+                                      AllowAutoHide="False"
                                       HorizontalScrollBarVisibility="Disabled">
                             <StackPanel>
                                 <Grid Height="28" Margin="16,16,12,0">
@@ -916,7 +918,7 @@
                     </Grid>
 
                     <!-- drag handle: resize the sidebar from its right edge -->
-                    <Border Width="4" HorizontalAlignment="Right" Background="Transparent"
+                    <Border Width="3" HorizontalAlignment="Right" Background="Transparent"
                             Cursor="SizeWestEast" ZIndex="80"
                             PointerPressed="OnSidebarResizePressed"
                             PointerMoved="OnSidebarResizeMoved"
@@ -925,7 +927,7 @@
             </Border>
 
             <!-- drag handle: pull the collapsed sidebar back out past 3/4 of its minimum width -->
-            <Border Grid.Column="2" HorizontalAlignment="Left" Width="8" Background="Transparent"
+            <Border Grid.Column="2" HorizontalAlignment="Left" Width="3" Background="Transparent"
                     Cursor="SizeWestEast" ZIndex="80"
                     IsVisible="{Binding !IsSidebarVisible}"
                     PointerPressed="OnSidebarResizePressed"

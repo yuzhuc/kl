@@ -938,16 +938,16 @@
         <Style Selector="ScrollBar:vertical">
             <Setter Property="Width" Value="6" />
             <Setter Property="MinWidth" Value="6" />
-            <Setter Property="Margin" Value="0,0,2,0" />
-            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Margin" Value="0,0,3,0" />
+            <Setter Property="Background" Value="#1F1F20" />
         </Style>
         <Style Selector="ScrollBar:vertical /template/ Thumb">
-            <Setter Property="Background" Value="#1F1F20" />
+            <Setter Property="Background" Value="#2D2D2E" />
             <Setter Property="CornerRadius" Value="3" />
             <Setter Property="MinHeight" Value="24" />
         </Style>
         <Style Selector="ScrollBar:vertical:pointerover /template/ Thumb">
-            <Setter Property="Background" Value="#2C2C2F" />
+            <Setter Property="Background" Value="#3A3A3D" />
         </Style>
         <Style Selector="ScrollBar:vertical /template/ RepeatButton">
             <Setter Property="Height" Value="0" />
@@ -957,16 +957,16 @@
         <Style Selector="ScrollBar:horizontal">
             <Setter Property="Height" Value="6" />
             <Setter Property="MinHeight" Value="6" />
-            <Setter Property="Margin" Value="0,0,0,2" />
-            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Margin" Value="0,0,0,3" />
+            <Setter Property="Background" Value="#1F1F20" />
         </Style>
         <Style Selector="ScrollBar:horizontal /template/ Thumb">
-            <Setter Property="Background" Value="#1F1F20" />
+            <Setter Property="Background" Value="#2D2D2E" />
             <Setter Property="CornerRadius" Value="3" />
             <Setter Property="MinWidth" Value="24" />
         </Style>
         <Style Selector="ScrollBar:horizontal:pointerover /template/ Thumb">
-            <Setter Property="Background" Value="#2C2C2F" />
+            <Setter Property="Background" Value="#3A3A3D" />
         </Style>
         <Style Selector="ScrollBar:horizontal /template/ RepeatButton">
             <Setter Property="Width" Value="0" />
