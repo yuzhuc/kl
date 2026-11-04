@@ -81,9 +81,9 @@ public partial class MainWindow : Window
         _sectionSubmenuCloseTimer.Tick += (_, _) =>
         {
             _sectionSubmenuCloseTimer.Stop();
-            ProjectSectionSubmenuPopup.IsOpen = false;
+            ProjectSectionSubmenuCard.IsVisible = false;
         };
-        ProjectSectionMenuPopup.Closed += (_, _) => ProjectSectionSubmenuPopup.IsOpen = false;
+        ProjectSectionMenuPopup.Closed += (_, _) => ProjectSectionSubmenuCard.IsVisible = false;
         AddHandler(PointerWheelChangedEvent, OnWindowPointerWheelChanged, RoutingStrategies.Tunnel);
         AddHandler(PointerPressedEvent, OnPinnedDragPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
         AddHandler(PointerMovedEvent, OnPinnedDragMoved, RoutingStrategies.Tunnel, handledEventsToo: true);
@@ -559,7 +559,7 @@ public partial class MainWindow : Window
 
         ProjectSectionMenuPopup.PlacementTarget = anchor;
         ProjectSectionMenuPopup.IsOpen = !ProjectSectionMenuPopup.IsOpen;
-        ProjectSectionSubmenuPopup.IsOpen = false;
+        ProjectSectionSubmenuCard.IsVisible = false;
         eventArgs.Handled = true;
     }
 
@@ -1018,7 +1018,7 @@ public partial class MainWindow : Window
         }
 
         var organize = y < 37;
-        if (ProjectSectionSubmenuPopup.IsOpen && organize == _sectionSubmenuShowsOrganize)
+        if (ProjectSectionSubmenuCard.IsVisible && organize == _sectionSubmenuShowsOrganize)
         {
             return;
         }
@@ -1028,7 +1028,7 @@ public partial class MainWindow : Window
 
     private void OnProjectSectionMenuCardPointerExited(object? sender, PointerEventArgs eventArgs)
     {
-        if (!ProjectSectionSubmenuCard.IsPointerOver && !ProjectSectionSubmenuPopup.IsOpen)
+        if (!ProjectSectionSubmenuCard.IsPointerOver && !ProjectSectionSubmenuCard.IsVisible)
         {
             StartSectionSubmenuClose();
         }
@@ -1053,22 +1053,13 @@ public partial class MainWindow : Window
     }
 
     private bool _sectionSubmenuShowsOrganize;
-    private bool _sectionSubmenuInitialized;
 
     private void ShowProjectSectionSubmenu(Control? anchor, bool organize)
     {
         CancelSectionSubmenuClose();
-        if (!_sectionSubmenuInitialized)
-        {
-            // Keep one fixed placement target (the parent card) and move the
-            // submenu with VerticalOffset. Re-pointing PlacementTarget while a
-            // popup is open makes Avalonia close/reopen it, which caused the
-            // constant flicker when sliding between the two rows.
-            ProjectSectionSubmenuPopup.PlacementTarget = ProjectSectionMenuCard;
-            _sectionSubmenuInitialized = true;
-        }
-
-        if (ProjectSectionSubmenuPopup.IsOpen && organize == _sectionSubmenuShowsOrganize)
+        // The submenu card lives inside the same popup window as the parent
+        // menu, so showing/switching it cannot close or reopen any window.
+        if (ProjectSectionSubmenuCard.IsVisible && organize == _sectionSubmenuShowsOrganize)
         {
             return;
         }
@@ -1076,19 +1067,15 @@ public partial class MainWindow : Window
         _sectionSubmenuShowsOrganize = organize;
         OrganizeSidebarOptions.IsVisible = organize;
         SessionSortOptions.IsVisible = !organize;
-        // Keep the submenu at one fixed offset: re-positioning an open popup
-        // makes it close/reopen and flicker while the pointer slides between rows.
-        ProjectSectionSubmenuPopup.VerticalOffset = 6;
-        if (!ProjectSectionSubmenuPopup.IsOpen)
-        {
-            ProjectSectionSubmenuPopup.IsOpen = true;
-        }
+        // Align the card with the hovered row: 6px card padding, 30px rows, 1px gap.
+        ProjectSectionSubmenuCard.Margin = new Thickness(0, organize ? 6 : 37, 0, 0);
+        ProjectSectionSubmenuCard.IsVisible = true;
     }
 
     private void CloseProjectSectionMenus()
     {
+        ProjectSectionSubmenuCard.IsVisible = false;
         ProjectSectionMenuPopup.IsOpen = false;
-        ProjectSectionSubmenuPopup.IsOpen = false;
     }
 
     private void OnGroupByProjectClicked(object? sender, RoutedEventArgs eventArgs)

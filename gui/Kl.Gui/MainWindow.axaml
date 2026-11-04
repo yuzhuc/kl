@@ -850,6 +850,7 @@
                     <!-- project section menu (Codex-style) -->
                     <Popup x:Name="ProjectSectionMenuPopup" Placement="BottomEdgeAlignedLeft" VerticalOffset="4"
                            IsLightDismissEnabled="True">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Top">
                         <Border x:Name="ProjectSectionMenuCard" Width="216"
                                 Background="#202022"
                                 BorderBrush="#2E2E31" BorderThickness="1"
@@ -883,15 +884,13 @@
                                 </Button>
                             </StackPanel>
                         </Border>
-                    </Popup>
 
-                    <Popup x:Name="ProjectSectionSubmenuPopup" Placement="RightEdgeAlignedTop"
-                           HorizontalOffset="6" IsLightDismissEnabled="True">
-                        <Border x:Name="ProjectSectionSubmenuCard" Width="190"
+                        <Border x:Name="ProjectSectionSubmenuCard" IsVisible="False" Width="190"
                                 Background="#1E1E21"
                                 BorderBrush="#2C2C2F" BorderThickness="1"
                                 CornerRadius="12" Padding="6"
                                 BoxShadow="0 14 34 0 #99000000"
+                                Margin="0,6,0,0"
                                 PointerEntered="OnProjectSectionSubmenuPointerEntered"
                                 PointerExited="OnProjectSectionSubmenuPointerExited">
                             <Grid>
@@ -950,7 +949,7 @@
                                 </StackPanel>
                             </Grid>
                         </Border>
-                    </Popup>
+                        </StackPanel>                    </Popup>
 
                     <Popup x:Name="PinnedSectionMenuPopup" Placement="BottomEdgeAlignedRight"
                            VerticalOffset="4" IsLightDismissEnabled="True">
