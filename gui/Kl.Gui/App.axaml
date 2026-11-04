@@ -78,13 +78,9 @@
         <StreamGeometry x:Key="PluginIcon">M4 4H10V10H4Z M14 4H20V10H14Z M9 14H15V20H9Z</StreamGeometry>
         <StreamGeometry x:Key="AutomationIcon">M20 8A9 9 0 1 0 21 15 M20 3V8H15</StreamGeometry>
         <StreamGeometry x:Key="RailAutomationIcon">M12 1.33A10.67 10.67 0 1 0 12 22.67A10.67 10.67 0 1 0 12 1.33 M12 7.33V12 M12 12L9.33 13.33</StreamGeometry>
-        <StreamGeometry x:Key="RailImageIcon">M12 3H19A2 2 0 0 1 21 5V12A2 2 0 0 1 19 14H12A2 2 0 0 1 10 12V5A2 2 0 0 1 12 3Z M5 10H12A2 2 0 0 1 14 12V19A2 2 0 0 1 12 21H5A2 2 0 0 1 3 19V12A2 2 0 0 1 5 10Z M6.6 14.2H10.4V18H6.6Z</StreamGeometry>
         <StreamGeometry x:Key="RailLibraryIcon">M5 6.5A1.5 1.5 0 0 1 6.5 5H8A1.5 1.5 0 0 1 9.5 6.5V19H5Z M11 5.5A1.5 1.5 0 0 1 12.5 4H14A1.5 1.5 0 0 1 15.5 5.5V19H11Z M15.9 6.9L18.3 6.1L20.2 18.1L17.8 18.9Z</StreamGeometry>
         <StreamGeometry x:Key="RailPluginIcon">M12 1.33A10.67 10.67 0 1 0 12 22.67A10.67 10.67 0 1 0 12 1.33 M12 13.2A3.2 3.2 0 1 0 12 6.8A3.2 3.2 0 1 0 12 13.2 M15.2 8.4V12.4A2.4 2.4 0 0 0 19.4 13.6</StreamGeometry>
-        <StreamGeometry x:Key="RailMapIcon">M9.5 4.2L14.5 6.1V19.8L9.5 17.9Z M14.5 6.1L20 4V17.7L14.5 19.8 M4 6.2L9.5 4.2V17.9L4 19.9Z</StreamGeometry>
         <!-- filled variants for the active rail state -->
-        <StreamGeometry x:Key="RailImageSolidBack">M12 3H19A2 2 0 0 1 21 5V12A2 2 0 0 1 19 14H12A2 2 0 0 1 10 12V5A2 2 0 0 1 12 3Z</StreamGeometry>
-        <StreamGeometry x:Key="RailImageSolidFront">M5 10H12A2 2 0 0 1 14 12V19A2 2 0 0 1 12 21H5A2 2 0 0 1 3 19V12A2 2 0 0 1 5 10Z</StreamGeometry>
         <StreamGeometry x:Key="RailAutomationSolid">M12 1.33A10.67 10.67 0 1 0 12 22.67A10.67 10.67 0 1 0 12 1.33Z</StreamGeometry>
         <StreamGeometry x:Key="RailAutomationHands">M12 7.33V12 M12 12L9.33 13.33</StreamGeometry>
         <StreamGeometry x:Key="RailLibrarySolid">M5 6.5A1.5 1.5 0 0 1 6.5 5H8A1.5 1.5 0 0 1 9.5 6.5V19H5Z M11 5.5A1.5 1.5 0 0 1 12.5 4H14A1.5 1.5 0 0 1 15.5 5.5V19H11Z M15.9 6.9L18.3 6.1L20.2 18.1L17.8 18.9Z</StreamGeometry>

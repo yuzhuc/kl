@@ -233,12 +233,6 @@ public partial class MainWindow : Window
         _viewModel.ToggleAddProjectPinned();
     }
 
-    private void OnToggleMapPinnedClicked(object? sender, RoutedEventArgs eventArgs)
-    {
-        eventArgs.Handled = true;
-        _viewModel.ToggleMapPinned();
-    }
-
     private void OnToggleCodeReviewPinnedClicked(object? sender, RoutedEventArgs eventArgs)
     {
         eventArgs.Handled = true;
@@ -258,12 +252,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (item.IsMap)
-        {
-            ActivateRailSection(AppSection.Map);
-            return;
-        }
-
         CloseMoreMenu();
         _viewModel.StartCodeReviewDraft();
         FocusComposer();
@@ -273,12 +261,6 @@ public partial class MainWindow : Window
     {
         CloseMoreMenu();
         ActivateRailSection(AppSection.Projects);
-    }
-
-    private void OnMoreMapClicked(object? sender, RoutedEventArgs eventArgs)
-    {
-        CloseMoreMenu();
-        ActivateRailSection(AppSection.Map);
     }
 
     private void OnMoreCodeReviewClicked(object? sender, RoutedEventArgs eventArgs)
@@ -465,9 +447,6 @@ public partial class MainWindow : Window
         }
         ActivateRailSection(AppSection.Chat);
     }
-
-    private void OnNavImageClicked(object? sender, RoutedEventArgs eventArgs) =>
-        ActivateRailSection(AppSection.Image);
 
     private void OnNavLibraryClicked(object? sender, RoutedEventArgs eventArgs) =>
         ActivateRailSection(AppSection.Library);
@@ -886,7 +865,6 @@ public partial class MainWindow : Window
         }
 
         if (eventArgs.PropertyName is nameof(MainWindowViewModel.IsAddProjectPinned)
-            or nameof(MainWindowViewModel.IsMapPinned)
             or nameof(MainWindowViewModel.IsCodeReviewPinned))
         {
             UpdatePinGlyphs();
@@ -964,7 +942,6 @@ public partial class MainWindow : Window
         var idleBrush = new SolidColorBrush(Color.Parse("#737374"));
 
         Apply(PinProjectGlyph, _viewModel.IsAddProjectPinned);
-        Apply(PinMapGlyph, _viewModel.IsMapPinned);
         Apply(PinReviewGlyph, _viewModel.IsCodeReviewPinned);
 
         void Apply(Avalonia.Controls.Shapes.Path glyph, bool pinned)

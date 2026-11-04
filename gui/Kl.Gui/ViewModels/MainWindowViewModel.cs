@@ -542,9 +542,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private bool _isSearchVisible;
     private bool _isRecentExpanded = true;
     private bool _isChatPage = true;
-    private bool _isImagePage;
     private bool _isLibraryPage;
-    private bool _isMapPage;
     private bool _isCodeReviewDraftActive;
     private bool _isProjectsPage;
     private bool _isPluginsPage;
@@ -638,15 +636,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public bool HasConversation => !IsEmpty;
     public bool IsConversationEmpty => IsEmpty;
     public bool IsChatPage => _isChatPage;
-    public bool IsImagePage => _isImagePage;
     public bool IsLibraryPage => _isLibraryPage;
-    public bool IsMapPage => _isMapPage;
     public bool IsProjectsPage => _isProjectsPage;
     public bool IsPluginsPage => _isPluginsPage;
     public bool IsAutomationPage => _isAutomationPage;
     public bool IsSettingsPage => _isSettingsPage;
     public bool IsAddProjectPinned => _state.IsAddProjectPinned;
-    public bool IsMapPinned => _state.IsMapPinned;
     public bool IsCodeReviewPinned => _state.IsCodeReviewPinned;
     public bool ShowConversationHeader => IsChatPage && HasConversation;
 
@@ -855,7 +850,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
     public string HeaderTitle => IsChatPage ? SessionTitle : SectionTitle;
-    public string SectionTitle => IsImagePage ? "图像" : IsLibraryPage ? "资料库" : IsMapPage ? "地图" : IsProjectsPage ? "项目" : IsPluginsPage ? "插件" : IsAutomationPage ? "自动化任务" : IsSettingsPage ? "设置" : "聊天";
+    public string SectionTitle => IsLibraryPage ? "资料库" : IsProjectsPage ? "项目" : IsPluginsPage ? "插件" : IsAutomationPage ? "自动化任务" : IsSettingsPage ? "设置" : "聊天";
     public string WorkspaceName => _activeWorkspace.Name;
     public string WorkspacePath => _activeWorkspace.Path;
     public string ModelName => _core.IsSessionOpen
@@ -1017,9 +1012,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
 
         _isChatPage = section == AppSection.Chat;
-        _isImagePage = section == AppSection.Image;
         _isLibraryPage = section == AppSection.Library;
-        _isMapPage = section == AppSection.Map;
         _isCodeReviewDraftActive = false;
         _isProjectsPage = section == AppSection.Projects;
         _isPluginsPage = section == AppSection.Plugins;
@@ -1027,9 +1020,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _isSettingsPage = false;
         IsSettingsOpen = false;
         OnPropertyChanged(nameof(IsChatPage));
-        OnPropertyChanged(nameof(IsImagePage));
         OnPropertyChanged(nameof(IsLibraryPage));
-        OnPropertyChanged(nameof(IsMapPage));
         OnPropertyChanged(nameof(IsProjectsPage));
         OnPropertyChanged(nameof(IsPluginsPage));
         OnPropertyChanged(nameof(IsAutomationPage));
@@ -1063,34 +1054,25 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// <summary>Codex-style pinned shortcuts below the rail divider.</summary>
     public void RefreshPinnedRailItems()
     {
-        var desired = new List<PinnedRailItemViewModel>(3);
+        var desired = new List<PinnedRailItemViewModel>(2);
         if (_state.IsAddProjectPinned)
         {
-            desired.Add(new PinnedRailItemViewModel(isProject: true, isMap: false, label: "项目")
+            desired.Add(new PinnedRailItemViewModel(isProject: true, label: "项目")
             {
                 IsActive = IsProjectsPage
             });
         }
 
-        if (_state.IsMapPinned)
-        {
-            desired.Add(new PinnedRailItemViewModel(isProject: false, isMap: true, label: "地图")
-            {
-                IsActive = IsMapPage
-            });
-        }
-
         if (_state.IsCodeReviewPinned)
         {
-            desired.Add(new PinnedRailItemViewModel(isProject: false, isMap: false, label: "代码审查")
+            desired.Add(new PinnedRailItemViewModel(isProject: false, label: "代码审查")
             {
                 IsActive = _isCodeReviewDraftActive
             });
         }
 
         if (PinnedRailItems.Count == desired.Count
-            && PinnedRailItems.Zip(desired).All(pair =>
-                pair.First.IsProject == pair.Second.IsProject && pair.First.IsMap == pair.Second.IsMap))
+            && PinnedRailItems.Zip(desired).All(pair => pair.First.IsProject == pair.Second.IsProject))
         {
             UpdatePinnedRailActiveState();
             return;
@@ -1108,9 +1090,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         foreach (var item in PinnedRailItems)
         {
-            item.IsActive = item.IsProject ? IsProjectsPage
-                : item.IsMap ? IsMapPage
-                : _isCodeReviewDraftActive;
+            item.IsActive = item.IsProject ? IsProjectsPage : _isCodeReviewDraftActive;
         }
     }
 
@@ -1168,14 +1148,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         OnPropertyChanged(nameof(HasRecentSessions));
         OnPropertyChanged(nameof(ShowNoRecentSessions));
-    }
-
-    public void ToggleMapPinned()
-    {
-        _state.IsMapPinned = !_state.IsMapPinned;
-        SaveState();
-        OnPropertyChanged(nameof(IsMapPinned));
-        RefreshPinnedRailItems();
     }
 
     public void ToggleCodeReviewPinned()
@@ -2334,15 +2306,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
 }
 
 /// <summary>One Codex-style pinned shortcut rendered below the rail divider.</summary>
-public sealed class PinnedRailItemViewModel(bool isProject, bool isMap, string label) : INotifyPropertyChanged
+public sealed class PinnedRailItemViewModel(bool isProject, string label) : INotifyPropertyChanged
 {
     private bool _isActive;
 
     public bool IsProject { get; } = isProject;
-
-    public bool IsMap { get; } = isMap;
-
-    public bool IsCodeReview => !IsProject && !IsMap;
 
     public string Label { get; } = label;
 

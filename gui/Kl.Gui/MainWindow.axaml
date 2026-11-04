@@ -283,19 +283,6 @@
                                 </Canvas>
                             </Viewbox>
                         </Button>
-                        <Button Classes="rail" Classes.active="{Binding IsImagePage}"
-                                HorizontalAlignment="Center" Click="OnNavImageClicked" Tag="图像"
-                                ToolTip.Tip="图像" ToolTip.Placement="Right" ToolTip.HorizontalOffset="12"
-                                ToolTip.VerticalOffset="-2" ToolTip.ShowDelay="450">
-                            <Viewbox Width="24" Height="24">
-                                <Canvas Width="24" Height="24">
-                                    <Path Classes="rail-line" Data="{StaticResource RailImageIcon}" Stretch="None"
-                                          StrokeThickness="1.35" />
-                                    <Path Classes="rail-solid" Data="{StaticResource RailImageSolidBack}" Stretch="None" />
-                                    <Path Classes="rail-solid rail-seam" Data="{StaticResource RailImageSolidFront}" Stretch="None" />
-                                </Canvas>
-                            </Viewbox>
-                        </Button>
                         <Button x:Name="AutomationRailButton" Classes="rail" Classes.active="{Binding IsAutomationPage}"
                                 HorizontalAlignment="Center" Click="OnNavAutomationClicked" Tag="定时任务"
                                 ToolTip.Tip="定时任务" ToolTip.Placement="Right" ToolTip.HorizontalOffset="12" ToolTip.VerticalOffset="-2"
@@ -359,10 +346,8 @@
                                         <Grid>
                                             <Path Width="16" Height="16" Data="{StaticResource FolderIcon}"
                                                   Stretch="Uniform" IsVisible="{Binding IsProject}" />
-                                            <Path Width="16" Height="16" Data="{StaticResource RailMapIcon}"
-                                                  Stretch="Uniform" IsVisible="{Binding IsMap}" />
                                             <Path Width="15" Height="15" Data="{StaticResource CodeReviewIcon}"
-                                                  Stretch="Uniform" IsVisible="{Binding IsCodeReview}" />
+                                                  Stretch="Uniform" IsVisible="{Binding !IsProject}" />
                                         </Grid>
                                     </Button>
                                 </DataTemplate>
@@ -537,18 +522,6 @@
                         </StackPanel>
                     </Grid>
 
-                    <!-- image sidebar (Codex parity placeholder) -->
-                    <Grid IsVisible="{Binding IsImagePage}" RowDefinitions="Auto,*">
-                        <Grid Grid.Row="0" Height="44" Margin="16,0,10,0">
-                            <TextBlock Text="图像" FontSize="15" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center" />
-                        </Grid>
-                        <StackPanel Grid.Row="1" Margin="16,4,16,0" Spacing="8">
-                            <TextBlock Text="kl 暂未接入图像生成，先保留 Codex 入口。"
-                                       FontSize="11.5" Foreground="{StaticResource TextCaption}" TextWrapping="Wrap" />
-                        </StackPanel>
-                    </Grid>
-
                     <!-- library sidebar (Codex parity placeholder) -->
                     <Grid IsVisible="{Binding IsLibraryPage}" RowDefinitions="Auto,*">
                         <Grid Grid.Row="0" Height="44" Margin="16,0,10,0">
@@ -557,18 +530,6 @@
                         </Grid>
                         <StackPanel Grid.Row="1" Margin="16,4,16,0" Spacing="8">
                             <TextBlock Text="kl 暂未接入资料库，先保留 Codex 入口。"
-                                       FontSize="11.5" Foreground="{StaticResource TextCaption}" TextWrapping="Wrap" />
-                        </StackPanel>
-                    </Grid>
-
-                    <!-- map sidebar (Codex parity placeholder) -->
-                    <Grid IsVisible="{Binding IsMapPage}" RowDefinitions="Auto,*">
-                        <Grid Grid.Row="0" Height="44" Margin="16,0,10,0">
-                            <TextBlock Text="地图" FontSize="15" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center" />
-                        </Grid>
-                        <StackPanel Grid.Row="1" Margin="16,4,16,0" Spacing="8">
-                            <TextBlock Text="kl 暂未接入地图，先保留 Codex 入口。"
                                        FontSize="11.5" Foreground="{StaticResource TextCaption}" TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
@@ -596,27 +557,6 @@
                 </Grid>
 
                 <Grid Grid.Row="1">
-                    <!-- ===================== Image page (Codex parity placeholder) ===================== -->
-                    <Grid IsVisible="{Binding IsImagePage}" RowDefinitions="Auto,*">
-                        <Border Grid.Row="0" Height="50" BorderBrush="{StaticResource Line}"
-                                BorderThickness="0,0,0,1" Padding="16,0">
-                            <TextBlock Text="图像" FontSize="14" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center" />
-                        </Border>
-                        <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                    Spacing="10">
-                            <Path Width="30" Height="30" Data="{StaticResource RailImageIcon}" Stretch="Uniform"
-                                  Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3"
-                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                                  HorizontalAlignment="Center" />
-                            <TextBlock Text="图像" FontSize="20" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" />
-                            <TextBlock Text="kl 暂未接入图像生成，此入口先按 Codex 布局保留。"
-                                       FontSize="12.5" Foreground="{StaticResource TextTertiary}"
-                                       HorizontalAlignment="Center" />
-                        </StackPanel>
-                    </Grid>
-
                     <!-- ===================== Library page (Codex parity placeholder) ===================== -->
                     <Grid IsVisible="{Binding IsLibraryPage}" RowDefinitions="Auto,*">
                         <Border Grid.Row="0" Height="50" BorderBrush="{StaticResource Line}"
@@ -633,27 +573,6 @@
                             <TextBlock Text="资料库" FontSize="20" FontWeight="SemiBold"
                                        Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" />
                             <TextBlock Text="kl 暂未接入资料库，此入口先按 Codex 布局保留。"
-                                       FontSize="12.5" Foreground="{StaticResource TextTertiary}"
-                                       HorizontalAlignment="Center" />
-                        </StackPanel>
-                    </Grid>
-
-                    <!-- ===================== Map page (Codex parity placeholder) ===================== -->
-                    <Grid IsVisible="{Binding IsMapPage}" RowDefinitions="Auto,*">
-                        <Border Grid.Row="0" Height="50" BorderBrush="{StaticResource Line}"
-                                BorderThickness="0,0,0,1" Padding="16,0">
-                            <TextBlock Text="地图" FontSize="14" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center" />
-                        </Border>
-                        <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                    Spacing="10">
-                            <Path Width="30" Height="30" Data="{StaticResource RailMapIcon}" Stretch="Uniform"
-                                  Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3"
-                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                                  HorizontalAlignment="Center" />
-                            <TextBlock Text="地图" FontSize="20" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" />
-                            <TextBlock Text="kl 暂未接入地图，此入口先按 Codex 布局保留。"
                                        FontSize="12.5" Foreground="{StaticResource TextTertiary}"
                                        HorizontalAlignment="Center" />
                         </StackPanel>
@@ -1491,18 +1410,6 @@
                             <Button Grid.Column="2" Classes="more-menu-pin" Classes.pinned="{Binding IsAddProjectPinned}"
                                     Click="OnToggleAddProjectPinnedClicked">
                                 <Path x:Name="PinProjectGlyph" Width="12" Height="12"
-                                      Data="{StaticResource PinIcon}" Stretch="Uniform" />
-                            </Button>
-                        </Grid>
-                    </Button>
-                    <Button Classes="more-menu-item" Click="OnMoreMapClicked">
-                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
-                            <Path Width="16" Height="16" Data="{StaticResource RailMapIcon}" Stretch="Uniform" />
-                            <TextBlock Grid.Column="1" Text="地图" FontSize="13"
-                                       Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" />
-                            <Button Grid.Column="2" Classes="more-menu-pin" Classes.pinned="{Binding IsMapPinned}"
-                                    Click="OnToggleMapPinnedClicked">
-                                <Path x:Name="PinMapGlyph" Width="12" Height="12"
                                       Data="{StaticResource PinIcon}" Stretch="Uniform" />
                             </Button>
                         </Grid>

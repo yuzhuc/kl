@@ -10,7 +10,6 @@ public sealed class AppState
     public int ContentFontSize { get; set; } = 14;
     public string InteractionMode { get; set; } = "work";
     public bool IsAddProjectPinned { get; set; }
-    public bool IsMapPinned { get; set; }
     public bool IsCodeReviewPinned { get; set; }
     public string? ActiveWorkspaceId { get; set; }
     public string? ActiveSessionId { get; set; }
