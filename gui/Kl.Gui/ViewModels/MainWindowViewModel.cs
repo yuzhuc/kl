@@ -1364,9 +1364,34 @@ public sealed partial class MainWindowViewModel : ObservableObject
         private set => SetProperty(ref _deletePrompt, value);
     }
 
-    public string RenameDialogTitle
+    public string RenameDialogTitle => _renameWorkspaceTarget is null ? "重命名会话" : "编辑项目";
+
+    public bool IsEditingWorkspace => _renameWorkspaceTarget is not null;
+    public string RenameSourcePath => _renameWorkspaceTarget?.Path ?? string.Empty;
+    public string RenameSourceParentPath => _renameWorkspaceTarget?.ParentPath ?? string.Empty;
+
+    public void RemoveWorkspaceFromDialog()
     {
-        get => _renameWorkspaceTarget is null ? "重命名会话" : "重命名项目";
+        if (_renameWorkspaceTarget is not { } workspace)
+        {
+            return;
+        }
+
+        CloseDialogs();
+        RemoveWorkspace(workspace);
+    }
+
+    public void SetWorkspaceSourcePath(string path)
+    {
+        if (_renameWorkspaceTarget is not { } workspace || string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        workspace.State.Path = path;
+        OnPropertyChanged(nameof(RenameSourcePath));
+        OnPropertyChanged(nameof(RenameSourceParentPath));
+        SaveState();
     }
 
     public void Navigate(AppSection section)
