@@ -722,7 +722,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public void SetSidebarWidth(double width)
     {
-        var clamped = Math.Clamp(width, 284, 560);
+        var clamped = Math.Clamp(width, 284, 468);
         if (Math.Abs(_state.SidebarWidth - clamped) < 0.5)
         {
             return;

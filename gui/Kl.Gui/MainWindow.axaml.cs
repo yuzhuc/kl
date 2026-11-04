@@ -922,11 +922,11 @@ public partial class MainWindow : Window
     }
 
     private const double SidebarMinWidth = 284;
-    private const double SidebarMaxWidth = 560;
+    private const double SidebarMaxWidth = 468;
 
     // Dragging the splitter below 3/4 of the minimum width collapses the sidebar;
     // pulling the collapsed sidebar past the same offset expands it again.
-    private const double SidebarCollapseThreshold = SidebarMinWidth * 0.75;
+    private const double SidebarCollapseThreshold = SidebarMinWidth * 0.25;
 
     private bool _sidebarDragging;
     private double _sidebarDragStartX;
