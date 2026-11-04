@@ -25,8 +25,8 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _railHintOpenTimer = new() { Interval = TimeSpan.FromMilliseconds(80) };
     private readonly DispatcherTimer _moreMenuOpenTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
     private readonly DispatcherTimer _moreMenuCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
-    private readonly DispatcherTimer _previewCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(220) };
-    private readonly DispatcherTimer _previewShowTimer = new() { Interval = TimeSpan.FromMilliseconds(140) };
+    private readonly DispatcherTimer _previewCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(140) };
+    private readonly DispatcherTimer _previewShowTimer = new() { Interval = TimeSpan.FromMilliseconds(90) };
     private SessionItemViewModel? _pinnedDragSession;
     private SessionItemViewModel? _nestedDragSession;
     private WorkspaceItemViewModel? _workspaceDragTarget;
@@ -560,8 +560,16 @@ public partial class MainWindow : Window
             return;
         }
 
-        _previewShowTimer.Stop();
         _previewCloseTimer.Stop();
+        _previewShowTimer.Stop();
+        if (SessionPreviewCard.IsVisible || WorkspacePreviewCard.IsVisible)
+        {
+            // A bubble is already up: switch rows instantly so fast downward
+            // sweeps never feel one row behind the pointer.
+            ShowSessionPreview(row, session);
+            return;
+        }
+
         _previewPendingRow = row;
         _previewPendingSession = session;
         _previewPendingWorkspace = null;
@@ -781,8 +789,14 @@ public partial class MainWindow : Window
             return;
         }
 
-        _previewShowTimer.Stop();
         _previewCloseTimer.Stop();
+        _previewShowTimer.Stop();
+        if (SessionPreviewCard.IsVisible || WorkspacePreviewCard.IsVisible)
+        {
+            ShowWorkspacePreview(row, workspace);
+            return;
+        }
+
         _previewPendingRow = row;
         _previewPendingWorkspace = workspace;
         _previewPendingSession = null;
@@ -875,9 +889,14 @@ public partial class MainWindow : Window
 
     private void ShowPreviewCard(Control card)
     {
+        if (card.IsVisible && card.Opacity >= 0.99)
+        {
+            return;
+        }
+
         card.Opacity = 0;
         card.IsVisible = true;
-        Dispatcher.UIThread.Post(() => card.Opacity = 1, DispatcherPriority.Background);
+        Dispatcher.UIThread.Post(() => card.Opacity = 1, DispatcherPriority.Render);
     }
 
     private void PlacePreviewCard(Control row, Control card, bool overlap)
