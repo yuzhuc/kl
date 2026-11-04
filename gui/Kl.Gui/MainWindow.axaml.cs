@@ -1423,6 +1423,23 @@ public partial class MainWindow : Window
     private void OnCloseDialogClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.CloseDialogs();
 
+    private async void OnEditProjectAddFolderClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "选择文件夹",
+            AllowMultiple = false
+        });
+        var path = folders.FirstOrDefault()?.TryGetLocalPath();
+        if (!string.IsNullOrWhiteSpace(path))
+        {
+            _viewModel.SetWorkspaceSourcePath(path);
+        }
+    }
+
+    private void OnRemoveWorkspaceFromDialogClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.RemoveWorkspaceFromDialog();
+
     private void OnConfirmRenameClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.ConfirmRename();
 

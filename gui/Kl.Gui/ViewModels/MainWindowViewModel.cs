@@ -2203,6 +2203,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _renameWorkspaceTarget = workspace;
         RenameTitle = workspace.Name;
         OnPropertyChanged(nameof(RenameDialogTitle));
+        OnPropertyChanged(nameof(IsEditingWorkspace));
+        OnPropertyChanged(nameof(RenameSourcePath));
+        OnPropertyChanged(nameof(RenameSourceParentPath));
         IsRenameDialogOpen = true;
     }
 

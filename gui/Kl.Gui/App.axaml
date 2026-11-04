@@ -632,6 +632,23 @@
             <Setter Property="Foreground" Value="#E3E4E6" />
         </Style>
 
+        <Style Selector="Button.save-light">
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="15,6" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="#E9EAEC" />
+            <Setter Property="Foreground" Value="#111113" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="Medium" />
+        </Style>
+        <Style Selector="Button.save-light:pointerover">
+            <Setter Property="Background" Value="#FFFFFF" />
+        </Style>
+        <Style Selector="Button.save-light:pressed">
+            <Setter Property="Background" Value="#D6D7DA" />
+        </Style>
+
         <!-- context menus (Codex-like) -->
         <Style Selector="ContextMenu">
             <Setter Property="Background" Value="#202022" />
@@ -713,12 +730,12 @@
             <Setter Property="Padding" Value="14,6" />
             <Setter Property="CornerRadius" Value="8" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Background" Value="#A94F4F" />
-            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="#3A2226" />
+            <Setter Property="Foreground" Value="#E5837C" />
             <Setter Property="FontSize" Value="12.5" />
         </Style>
         <Style Selector="Button.danger:pointerover">
-            <Setter Property="Background" Value="#BD5C5C" />
+            <Setter Property="Background" Value="#482A2E" />
         </Style>
 
         <Style Selector="Button.send">
