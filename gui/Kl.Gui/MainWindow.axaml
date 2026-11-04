@@ -854,7 +854,9 @@
                                 Background="#202022"
                                 BorderBrush="#2E2E31" BorderThickness="1"
                                 CornerRadius="12" Padding="6"
-                                BoxShadow="0 18 44 0 #99000000">
+                                BoxShadow="0 18 44 0 #99000000"
+                                PointerMoved="OnProjectSectionMenuPointerMoved"
+                                PointerExited="OnProjectSectionMenuCardPointerExited">
                             <StackPanel Spacing="1">
                                 <Button Classes="more-menu-item" Click="OnOrganizeSidebarRowClicked"
                                         PointerEntered="OnOrganizeSidebarRowEntered"

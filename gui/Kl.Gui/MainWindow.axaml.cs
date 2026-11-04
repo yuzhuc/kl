@@ -28,7 +28,6 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _previewCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(140) };
     private readonly DispatcherTimer _previewShowTimer = new() { Interval = TimeSpan.FromMilliseconds(90) };
     private readonly DispatcherTimer _sectionSubmenuCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
-    private int _sectionSubmenuOpenToken;
     private SessionItemViewModel? _pinnedDragSession;
     private SessionItemViewModel? _nestedDragSession;
     private WorkspaceItemViewModel? _workspaceDragTarget;
@@ -999,7 +998,41 @@ public partial class MainWindow : Window
 
     private void OnProjectSectionMenuRowExited(object? sender, PointerEventArgs eventArgs)
     {
-        if (!ProjectSectionSubmenuCard.IsPointerOver)
+        // PointerExited can be delivered after the next row's PointerEntered while
+        // moving between rows; only schedule a close when the pointer left both
+        // the menu and the submenu, otherwise the submenu flickers shut.
+        if (!ProjectSectionMenuCard.IsPointerOver && !ProjectSectionSubmenuCard.IsPointerOver)
+        {
+            StartSectionSubmenuClose();
+        }
+    }
+
+    private void OnProjectSectionMenuPointerMoved(object? sender, PointerEventArgs eventArgs)
+    {
+        // Row PointerEntered can be unreliable while a popup window owns the
+        // pointer, so drive the submenu from the card's pointer position too.
+        var y = eventArgs.GetPosition(ProjectSectionMenuCard).Y;
+        if (y < 6 || y > 68)
+        {
+            return;
+        }
+
+        var organize = y < 37;
+        if (ProjectSectionSubmenuPopup.IsOpen && organize == _sectionSubmenuShowsOrganize)
+        {
+            return;
+        }
+
+        ShowProjectSectionSubmenu(null, organize);
+    }
+
+    private void OnProjectSectionMenuCardPointerExited(object? sender, PointerEventArgs eventArgs)
+    {
+        if (!ProjectSectionSubmenuCard.IsPointerOver && !ProjectSectionSubmenuPopup.IsOpen)
+        {
+            StartSectionSubmenuClose();
+        }
+        else if (!ProjectSectionSubmenuCard.IsPointerOver)
         {
             StartSectionSubmenuClose();
         }
@@ -1019,29 +1052,37 @@ public partial class MainWindow : Window
         _sectionSubmenuCloseTimer.Start();
     }
 
+    private bool _sectionSubmenuShowsOrganize;
+    private bool _sectionSubmenuInitialized;
+
     private void ShowProjectSectionSubmenu(Control? anchor, bool organize)
     {
-        if (anchor is null)
+        CancelSectionSubmenuClose();
+        if (!_sectionSubmenuInitialized)
+        {
+            // Keep one fixed placement target (the parent card) and move the
+            // submenu with VerticalOffset. Re-pointing PlacementTarget while a
+            // popup is open makes Avalonia close/reopen it, which caused the
+            // constant flicker when sliding between the two rows.
+            ProjectSectionSubmenuPopup.PlacementTarget = ProjectSectionMenuCard;
+            _sectionSubmenuInitialized = true;
+        }
+
+        if (ProjectSectionSubmenuPopup.IsOpen && organize == _sectionSubmenuShowsOrganize)
         {
             return;
         }
 
-        CancelSectionSubmenuClose();
-        // Avalonia popups do not always re-place when the placement target changes
-        // while open; close first and reopen on the next UI pass so the submenu
-        // always tracks the row the pointer is on.
-        var token = ++_sectionSubmenuOpenToken;
-        ProjectSectionSubmenuPopup.IsOpen = false;
-        ProjectSectionSubmenuPopup.PlacementTarget = anchor;
+        _sectionSubmenuShowsOrganize = organize;
         OrganizeSidebarOptions.IsVisible = organize;
         SessionSortOptions.IsVisible = !organize;
-        Dispatcher.UIThread.Post(() =>
+        // Keep the submenu at one fixed offset: re-positioning an open popup
+        // makes it close/reopen and flicker while the pointer slides between rows.
+        ProjectSectionSubmenuPopup.VerticalOffset = 6;
+        if (!ProjectSectionSubmenuPopup.IsOpen)
         {
-            if (token == _sectionSubmenuOpenToken)
-            {
-                ProjectSectionSubmenuPopup.IsOpen = true;
-            }
-        }, DispatcherPriority.Background);
+            ProjectSectionSubmenuPopup.IsOpen = true;
+        }
     }
 
     private void CloseProjectSectionMenus()
