@@ -934,6 +934,9 @@ public partial class MainWindow : Window
     private const double SidebarCollapseThreshold = SidebarMinWidth * 0.5;
 
     private bool _sidebarDragging;
+    private CancellationTokenSource? _sidebarAnimationCts;
+    private double _sidebarAnimationTarget;
+    private bool _sidebarAnimating;
 
     /// <summary>Codex-style slide: the sidebar column animates instead of jumping.</summary>
     private void AnimateSidebar(bool visible)
@@ -941,47 +944,89 @@ public partial class MainWindow : Window
         var expandedWidth = double.IsNaN(_viewModel.SidebarWidth)
             ? SidebarMinWidth
             : Math.Clamp(_viewModel.SidebarWidth, SidebarMinWidth, SidebarMaxWidth);
-        var target = visible ? expandedWidth : 0;
-        var current = SidebarPanelBorder.Width;
-        var start = double.IsNaN(current) ? (visible ? 0 : expandedWidth) : current;
+        AnimateSidebarTo(visible ? expandedWidth : 0, visible);
+    }
 
-        // While the splitter is being dragged the width follows the pointer directly.
-        if (_sidebarDragging)
-        {
-            SidebarPanelBorder.Width = target;
-            SidebarPanelBorder.BorderThickness = visible ? new Thickness(0, 0, 1, 0) : default;
-            return;
-        }
+    /// <summary>
+    /// Animates the sidebar width with a cancellable timer loop, so a new
+    /// show/hide request interrupts the running animation and continues from
+    /// whatever width is visible right now instead of restarting from an end.
+    /// </summary>
+    private async void AnimateSidebarTo(double target, bool visible)
+    {
+        CancelSidebarAnimation();
+
+        var current = SidebarPanelBorder.Width;
+        var start = double.IsNaN(current) ? (visible ? 0 : SidebarMinWidth) : current;
+        _sidebarAnimationTarget = target;
+
+        // Keep the divider line painted while the column slides, so it reads as a
+        // moving edge instead of the panel popping in or out.
+        SidebarPanelBorder.BorderThickness = new Thickness(0, 0, 1, 0);
 
         if (Math.Abs(start - target) < 0.5)
         {
             SidebarPanelBorder.Width = target;
-            SidebarPanelBorder.BorderThickness = visible ? new Thickness(0, 0, 1, 0) : default;
             return;
         }
 
-        SidebarPanelBorder.BorderThickness = visible ? new Thickness(0, 0, 1, 0) : default;
-        var animation = new Animation
-        {
-            Duration = TimeSpan.FromMilliseconds(200),
-            Easing = new CubicEaseOut(),
-            FillMode = FillMode.Forward,
-            Children =
-            {
-                new KeyFrame
-                {
-                    Cue = new Cue(0d),
-                    Setters = { new Setter(Border.WidthProperty, start) },
-                },
-                new KeyFrame
-                {
-                    Cue = new Cue(1d),
-                    Setters = { new Setter(Border.WidthProperty, target) },
-                },
-            },
-        };
+        var cts = new CancellationTokenSource();
+        _sidebarAnimationCts = cts;
+        _sidebarAnimating = true;
 
-        _ = RunSidebarAnimationAsync(animation, target, visible);
+        var stopwatch = Stopwatch.StartNew();
+        const double durationMilliseconds = 200;
+        try
+        {
+            while (!cts.IsCancellationRequested)
+            {
+                var progress = Math.Min(1, stopwatch.Elapsed.TotalMilliseconds / durationMilliseconds);
+                var eased = 1 - Math.Pow(1 - progress, 3);
+                SidebarPanelBorder.Width = start + ((target - start) * eased);
+                if (progress >= 1)
+                {
+                    break;
+                }
+
+                await Task.Delay(10, cts.Token);
+            }
+
+            if (!cts.IsCancellationRequested)
+            {
+                SidebarPanelBorder.Width = target;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer animation; it continues from the current width.
+        }
+        finally
+        {
+            if (ReferenceEquals(_sidebarAnimationCts, cts))
+            {
+                _sidebarAnimationCts = null;
+                _sidebarAnimating = false;
+            }
+
+            cts.Dispose();
+        }
+    }
+
+    private void CancelSidebarAnimation(bool snapToTarget = false)
+    {
+        if (_sidebarAnimationCts is not { } cts)
+        {
+            return;
+        }
+
+        _sidebarAnimationCts = null;
+        _sidebarAnimating = false;
+        cts.Cancel();
+
+        if (snapToTarget)
+        {
+            SidebarPanelBorder.Width = _sidebarAnimationTarget;
+        }
     }
 
     private void OnSidebarResizePressed(object? sender, PointerPressedEventArgs eventArgs)
@@ -996,6 +1041,8 @@ public partial class MainWindow : Window
             eventArgs.Pointer.Capture(handle);
         }
 
+        // Grabbing the splitter mid-animation stops it where it is.
+        CancelSidebarAnimation(snapToTarget: false);
         _sidebarDragging = true;
         eventArgs.Handled = true;
     }
@@ -1015,8 +1062,10 @@ public partial class MainWindow : Window
         {
             if (pointerWidth >= SidebarCollapseThreshold)
             {
+                // Slide open to the minimum width (not the last saved width): the
+                // pressed splitter should land where the drag is, not restore wide.
                 _viewModel.SetSidebarVisible(true);
-                SidebarPanelBorder.Width = SidebarMinWidth;
+                AnimateSidebarTo(SidebarMinWidth, true);
             }
 
             eventArgs.Handled = true;
@@ -1025,9 +1074,16 @@ public partial class MainWindow : Window
 
         if (pointerWidth < SidebarCollapseThreshold)
         {
-            // Past half of the minimum width: collapse straight to the rail.
+            // Past half of the minimum width: slide shut to the rail.
             _viewModel.SetSidebarVisible(false);
-            SidebarPanelBorder.Width = 0;
+            eventArgs.Handled = true;
+            return;
+        }
+
+        // While the open animation is still playing, let it finish rather than
+        // fighting the pointer; it is cancelled if the pointer crosses back.
+        if (_sidebarAnimating)
+        {
             eventArgs.Handled = true;
             return;
         }
@@ -1051,6 +1107,9 @@ public partial class MainWindow : Window
             eventArgs.Pointer.Capture(null);
         }
 
+        // A show/hide animation that was still running finishes immediately on release.
+        CancelSidebarAnimation(snapToTarget: true);
+
         if (_viewModel.IsSidebarVisible)
         {
             var width = SidebarPanelBorder.Width;
@@ -1066,13 +1125,6 @@ public partial class MainWindow : Window
         }
 
         eventArgs.Handled = true;
-    }
-
-    private async Task RunSidebarAnimationAsync(Animation animation, double target, bool visible)
-    {
-        await animation.RunAsync(SidebarPanelBorder);
-        SidebarPanelBorder.Width = target;
-        SidebarPanelBorder.BorderThickness = visible ? new Thickness(0, 0, 1, 0) : default;
     }
 
     /// <summary>Filled pushpin when pinned, outline when not.</summary>
