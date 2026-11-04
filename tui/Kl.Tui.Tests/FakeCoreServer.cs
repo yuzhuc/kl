@@ -11,6 +11,8 @@ namespace Kl.Tui.Tests;
 /// </summary>
 internal sealed class FakeCoreServer : IAsyncDisposable
 {
+    private readonly TaskCompletionSource _ready =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Task _acceptLoop;
     private readonly List<StreamWriter> _writers = new();
@@ -19,12 +21,22 @@ internal sealed class FakeCoreServer : IAsyncDisposable
     private readonly Queue<JsonElement[]> _attachReplays = new();
     private readonly object _sync = new();
     private readonly string _endpoint;
+    private int _disposeState;
     private StreamWriter? _leaseOwner;
 
-    public FakeCoreServer(string sessionId = "session-1")
+    /// <param name="sessionId">Session id this fake core answers.</param>
+    /// <param name="endpoint">
+    /// Optional fixed endpoint, used to restart a fake core on the same pipe or
+    /// socket so a client can reconnect after its transport died.
+    /// </param>
+    public FakeCoreServer(string sessionId = "session-1", string? endpoint = null)
     {
         SessionId = sessionId;
-        if (OperatingSystem.IsWindows())
+        if (!string.IsNullOrWhiteSpace(endpoint))
+        {
+            _endpoint = endpoint;
+        }
+        else if (OperatingSystem.IsWindows())
         {
             _endpoint = "kl-fake-" + Guid.NewGuid().ToString("N");
         }
@@ -45,6 +57,9 @@ internal sealed class FakeCoreServer : IAsyncDisposable
 
     /// <summary>Endpoint the client must be pointed at.</summary>
     public string Endpoint => _endpoint;
+
+    /// <summary>Completes once the transport is accepting connections.</summary>
+    public Task Ready => _ready.Task;
 
     /// <summary>Methods received by this fake server, in request order.</summary>
     public IReadOnlyList<string> RequestMethods
@@ -133,6 +148,7 @@ internal sealed class FakeCoreServer : IAsyncDisposable
                     System.IO.Pipes.NamedPipeServerStream.MaxAllowedServerInstances,
                     System.IO.Pipes.PipeTransmissionMode.Byte,
                     System.IO.Pipes.PipeOptions.Asynchronous);
+                _ready.TrySetResult();
                 try
                 {
                     server.WaitForConnectionAsync(_shutdown.Token).GetAwaiter().GetResult();
@@ -150,6 +166,7 @@ internal sealed class FakeCoreServer : IAsyncDisposable
         var listener = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         listener.Bind(new UnixDomainSocketEndPoint(_endpoint));
         listener.Listen(8);
+        _ready.TrySetResult();
         try
         {
             while (!_shutdown.IsCancellationRequested)
@@ -326,6 +343,10 @@ internal sealed class FakeCoreServer : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposeState, 1) != 0)
+        {
+            return;
+        }
         _shutdown.Cancel();
         StreamWriter[] writers;
         lock (_sync)

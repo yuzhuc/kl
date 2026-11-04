@@ -17,6 +17,10 @@ public enum SessionEventKind
     Error
 }
 
+/// <summary>
+/// One presenter-facing session event. All correlation and ordering fields are
+/// additive and optional, so existing consumers keep compiling unchanged.
+/// </summary>
 public sealed record SessionEvent(
     SessionEventKind Kind,
     string Text = "",
@@ -34,7 +38,10 @@ public sealed record SessionEvent(
     string? TurnId = null,
     long InputTokens = 0,
     long OutputTokens = 0,
-    double? CostUsd = null);
+    double? CostUsd = null,
+    long Seq = 0,
+    string? CallId = null,
+    string? Output = null);
 
 public sealed record ApprovalRequestEvent(
     string ApprovalId,

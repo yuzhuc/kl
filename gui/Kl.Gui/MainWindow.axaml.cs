@@ -2,20 +2,24 @@ using System.Collections.Specialized;
 using Avalonia;
 using System.Diagnostics;
 using System.ComponentModel;
+using Avalonia.Animation;
+using Avalonia.Animation.Easings;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
+using Avalonia.Styling;
 using Avalonia.Threading;
+using Kl.Gui.Services;
 using Kl.Gui.ViewModels;
 
 namespace Kl.Gui;
 
 public partial class MainWindow : Window
 {
-    private readonly MainWindowViewModel _viewModel = new();
+    private readonly MainWindowViewModel _viewModel;
     private readonly DispatcherTimer _automationTimer = new() { Interval = TimeSpan.FromSeconds(30) };
     private readonly DispatcherTimer _railHintOpenTimer = new() { Interval = TimeSpan.FromMilliseconds(80) };
     private readonly DispatcherTimer _moreMenuOpenTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
@@ -27,9 +31,17 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
+        _viewModel = new MainWindowViewModel(
+            coreSessionService: new CoreSessionService(),
+            dispatcher: action => Dispatcher.UIThread.Post(action));
         InitializeComponent();
         DataContext = _viewModel;
+        // Popup contents live in their own visual tree; give the More menu the
+        // view-model explicitly so the pin bindings (Classes.pinned) resolve.
+        MoreMenuCard.DataContext = _viewModel;
         ApplyContentFontResources();
+        UpdatePinGlyphs();
+        SidebarPanelBorder.Width = _viewModel.IsSidebarVisible ? SidebarExpandedWidth : 0;
         _viewModel.Messages.CollectionChanged += OnMessagesChanged;
         foreach (var item in _viewModel.Messages)
         {
@@ -37,6 +49,7 @@ public partial class MainWindow : Window
         }
         _automationTimer.Tick += OnAutomationTimerTick;
         _automationTimer.Start();
+        _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         MorePopup.PlacementTarget = MoreButton;
         _railHintOpenTimer.Tick += OnRailHintOpenTimerTick;
         _moreMenuOpenTimer.Tick += OnMoreMenuOpenTimerTick;
@@ -137,18 +150,6 @@ public partial class MainWindow : Window
         ScheduleMoreMenuClose();
     }
 
-    private void OnMoreMenuRowPointerEntered(object? sender, PointerEventArgs eventArgs)
-    {
-        var pin = ReferenceEquals(sender, ProjectMenuRow) ? ProjectPinButton : CodeReviewPinButton;
-        pin.Opacity = 1;
-    }
-
-    private void OnMoreMenuRowPointerExited(object? sender, PointerEventArgs eventArgs)
-    {
-        var pin = ReferenceEquals(sender, ProjectMenuRow) ? ProjectPinButton : CodeReviewPinButton;
-        pin.Opacity = 0;
-    }
-
     private void OnMoreMenuPointerEntered(object? sender, PointerEventArgs eventArgs)
     {
         _moreMenuHovered = true;
@@ -210,16 +211,63 @@ public partial class MainWindow : Window
         MoreButton.Classes.Set("open", false);
         MoreMenuCard.Opacity = 0;
         SetMoreMenuSlide(-3);
-        ProjectPinButton.Opacity = 0;
-        CodeReviewPinButton.Opacity = 0;
         _moreMenuOpenTimer.Stop();
         _moreMenuCloseTimer.Stop();
         _moreMenuPinned = false;
         _moreMenuHovered = MoreButton.IsPointerOver;
     }
 
-    private void OnToggleAddProjectPinnedClicked(object? sender, RoutedEventArgs eventArgs) =>
+    private void OnMoreMenuRowPointerEntered(object? sender, PointerEventArgs eventArgs)
+    {
+        // Kept for the pre-Codex popup markup; the new popup rows do not use pins.
+    }
+
+    private void OnMoreMenuRowPointerExited(object? sender, PointerEventArgs eventArgs)
+    {
+    }
+
+    private void OnToggleAddProjectPinnedClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        // Pin buttons sit inside a clickable row: stop the row navigation.
+        eventArgs.Handled = true;
         _viewModel.ToggleAddProjectPinned();
+    }
+
+    private void OnToggleMapPinnedClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        eventArgs.Handled = true;
+        _viewModel.ToggleMapPinned();
+    }
+
+    private void OnToggleCodeReviewPinnedClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        eventArgs.Handled = true;
+        _viewModel.ToggleCodeReviewPinned();
+    }
+
+    private void OnPinnedRailItemClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is not Button { DataContext: PinnedRailItemViewModel item })
+        {
+            return;
+        }
+
+        if (item.IsProject)
+        {
+            ActivateRailSection(AppSection.Projects);
+            return;
+        }
+
+        if (item.IsMap)
+        {
+            ActivateRailSection(AppSection.Map);
+            return;
+        }
+
+        CloseMoreMenu();
+        _viewModel.StartCodeReviewDraft();
+        FocusComposer();
+    }
 
     private void OnMoreProjectClicked(object? sender, RoutedEventArgs eventArgs)
     {
@@ -227,8 +275,11 @@ public partial class MainWindow : Window
         ActivateRailSection(AppSection.Projects);
     }
 
-    private void OnToggleCodeReviewPinnedClicked(object? sender, RoutedEventArgs eventArgs) =>
-        _viewModel.ToggleCodeReviewPinned();
+    private void OnMoreMapClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        CloseMoreMenu();
+        ActivateRailSection(AppSection.Map);
+    }
 
     private void OnMoreCodeReviewClicked(object? sender, RoutedEventArgs eventArgs)
     {
@@ -320,40 +371,40 @@ public partial class MainWindow : Window
         await _viewModel.CancelAsync();
     }
 
-    private void OnNewSessionClicked(object? sender, RoutedEventArgs eventArgs)
+    private async void OnNewSessionClicked(object? sender, RoutedEventArgs eventArgs)
     {
         _viewModel.Navigate(AppSection.Chat);
-        _viewModel.NewSession();
+        await _viewModel.NewSessionAsync();
         FocusComposer();
     }
 
-    private void OnSessionClicked(object? sender, RoutedEventArgs eventArgs)
+    private async void OnSessionClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (sender is Button { DataContext: SessionItemViewModel session })
         {
             _viewModel.Navigate(AppSection.Chat);
-            _viewModel.OpenSession(session);
+            await _viewModel.OpenSessionAsync(session);
             FocusComposer();
         }
     }
 
-    private void OnWorkspaceClicked(object? sender, RoutedEventArgs eventArgs)
+    private async void OnWorkspaceClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (sender is Button { DataContext: WorkspaceItemViewModel workspace })
         {
             _viewModel.Navigate(AppSection.Chat);
-            _viewModel.SelectWorkspace(workspace);
+            await _viewModel.SelectWorkspaceAsync(workspace);
             FocusComposer();
         }
     }
 
-    private void OnNewWorkspaceSessionClicked(object? sender, RoutedEventArgs eventArgs)
+    private async void OnNewWorkspaceSessionClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (sender is Button { DataContext: WorkspaceItemViewModel workspace })
         {
             _viewModel.Navigate(AppSection.Chat);
-            _viewModel.SelectWorkspace(workspace);
-            _viewModel.NewSession();
+            await _viewModel.SelectWorkspaceAsync(workspace);
+            await _viewModel.NewSessionAsync();
             FocusComposer();
         }
     }
@@ -415,6 +466,12 @@ public partial class MainWindow : Window
         ActivateRailSection(AppSection.Chat);
     }
 
+    private void OnNavImageClicked(object? sender, RoutedEventArgs eventArgs) =>
+        ActivateRailSection(AppSection.Image);
+
+    private void OnNavLibraryClicked(object? sender, RoutedEventArgs eventArgs) =>
+        ActivateRailSection(AppSection.Library);
+
     private void OnNavPluginsClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (SkipPointerGeneratedRailClick())
@@ -450,6 +507,7 @@ public partial class MainWindow : Window
 
     private void ActivateRailSection(AppSection section)
     {
+        CloseMoreMenu();
         SetRailSection(section);
         _viewModel.Navigate(section);
         if (section == AppSection.Chat)
@@ -461,10 +519,8 @@ public partial class MainWindow : Window
     private void SetRailSection(AppSection section)
     {
         ChatRailButton.Classes.Set("active", section == AppSection.Chat);
-        ProjectRailButton.Classes.Set("active", section == AppSection.Projects);
         PluginsRailButton.Classes.Set("active", section == AppSection.Plugins);
         AutomationRailButton.Classes.Set("active", section == AppSection.Automation);
-        SettingsRailButton.Classes.Set("active", false);
     }
 
     private void OnAutomationFilterAllClicked(object? sender, RoutedEventArgs eventArgs) =>
@@ -526,8 +582,11 @@ public partial class MainWindow : Window
         await _viewModel.RunDueAutomationsAsync();
     }
 
-    private void OnNavSettingsClicked(object? sender, RoutedEventArgs eventArgs) =>
+    private void OnNavSettingsClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        CloseMoreMenu();
         _viewModel.OpenSettings();
+    }
 
     private void OnOpenModelSettingsClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.OpenSettings(SettingsPane.Models);
@@ -542,9 +601,9 @@ public partial class MainWindow : Window
         foreach (var workspace in _viewModel.Workspaces)
         {
             var item = new MenuItem { Header = workspace.Name };
-            item.Click += (_, _) =>
+            item.Click += async (_, _) =>
             {
-                _viewModel.SelectWorkspace(workspace);
+                await _viewModel.SelectWorkspaceAsync(workspace);
                 FocusComposer();
             };
             flyout.Items.Add(item);
@@ -587,9 +646,8 @@ public partial class MainWindow : Window
 
     private async void OnSaveSettingsClicked(object? sender, RoutedEventArgs eventArgs)
     {
-        _viewModel.SaveSettings();
+        await _viewModel.SaveSettingsAsync();
         ApplyContentFontResources();
-        await Task.CompletedTask;
     }
 
     private async void OnTestConnectionClicked(object? sender, RoutedEventArgs eventArgs)
@@ -597,11 +655,22 @@ public partial class MainWindow : Window
         await _viewModel.TestConnectionAsync();
     }
 
+    private async void OnRetryCoreClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        await _viewModel.RetryCoreAsync();
+    }
+
+    private async void OnApprovalAllowClicked(object? sender, RoutedEventArgs eventArgs) =>
+        await _viewModel.RespondApprovalAsync("allow");
+
+    private async void OnApprovalAllowSessionClicked(object? sender, RoutedEventArgs eventArgs) =>
+        await _viewModel.RespondApprovalAsync("allow_session");
+
+    private async void OnApprovalDenyClicked(object? sender, RoutedEventArgs eventArgs) =>
+        await _viewModel.RespondApprovalAsync("deny");
+
     private void OnResetSettingsClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.ResetSettingsDefaults();
-
-    private void OnClearApiKeyClicked(object? sender, RoutedEventArgs eventArgs) =>
-        _viewModel.ClearStoredApiKey();
 
     private void OnOpenStateDirectoryClicked(object? sender, RoutedEventArgs eventArgs) =>
         OpenDirectory(_viewModel.StateDirectory, "数据目录");
@@ -752,6 +821,13 @@ public partial class MainWindow : Window
 
     private void OnWindowKeyDown(object? sender, KeyEventArgs eventArgs)
     {
+        if (eventArgs.Key == Key.Escape && _viewModel.IsApprovalOpen)
+        {
+            eventArgs.Handled = true;
+            _ = _viewModel.RespondApprovalAsync("deny");
+            return;
+        }
+
         if (eventArgs.Key == Key.Escape && _viewModel.IsSettingsOpen)
         {
             eventArgs.Handled = true;
@@ -797,6 +873,104 @@ public partial class MainWindow : Window
         if (_viewModel.IsBusy)
         {
             _ = _viewModel.CancelAsync();
+        }
+        _ = _viewModel.ShutdownAsync();
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs eventArgs)
+    {
+        if (eventArgs.PropertyName == nameof(MainWindowViewModel.IsSidebarVisible))
+        {
+            AnimateSidebar(_viewModel.IsSidebarVisible);
+            return;
+        }
+
+        if (eventArgs.PropertyName is nameof(MainWindowViewModel.IsAddProjectPinned)
+            or nameof(MainWindowViewModel.IsMapPinned)
+            or nameof(MainWindowViewModel.IsCodeReviewPinned))
+        {
+            UpdatePinGlyphs();
+            return;
+        }
+
+        if (eventArgs.PropertyName != nameof(MainWindowViewModel.IsApprovalOpen))
+        {
+            return;
+        }
+
+        if (!_viewModel.IsApprovalOpen)
+        {
+            return;
+        }
+
+        CloseMoreMenu();
+        Dispatcher.UIThread.Post(() =>
+        {
+            ApprovalAllowButton.Focus();
+        }, DispatcherPriority.Background);
+    }
+
+    private const double SidebarExpandedWidth = 284;
+
+    /// <summary>Codex-style slide: the sidebar column animates instead of jumping.</summary>
+    private void AnimateSidebar(bool visible)
+    {
+        var target = visible ? SidebarExpandedWidth : 0;
+        var current = SidebarPanelBorder.Width;
+        var start = double.IsNaN(current) ? (visible ? 0 : SidebarExpandedWidth) : current;
+
+        if (Math.Abs(start - target) < 0.5)
+        {
+            SidebarPanelBorder.Width = target;
+            SidebarPanelBorder.BorderThickness = visible ? new Thickness(0, 0, 1, 0) : default;
+            return;
+        }
+
+        SidebarPanelBorder.BorderThickness = visible ? new Thickness(0, 0, 1, 0) : default;
+        var animation = new Animation
+        {
+            Duration = TimeSpan.FromMilliseconds(200),
+            Easing = new CubicEaseOut(),
+            FillMode = FillMode.Forward,
+            Children =
+            {
+                new KeyFrame
+                {
+                    Cue = new Cue(0d),
+                    Setters = { new Setter(Border.WidthProperty, start) },
+                },
+                new KeyFrame
+                {
+                    Cue = new Cue(1d),
+                    Setters = { new Setter(Border.WidthProperty, target) },
+                },
+            },
+        };
+
+        _ = RunSidebarAnimationAsync(animation, target, visible);
+    }
+
+    private async Task RunSidebarAnimationAsync(Animation animation, double target, bool visible)
+    {
+        await animation.RunAsync(SidebarPanelBorder);
+        SidebarPanelBorder.Width = target;
+        SidebarPanelBorder.BorderThickness = visible ? new Thickness(0, 0, 1, 0) : default;
+    }
+
+    /// <summary>Filled pushpin when pinned, outline when not.</summary>
+    private void UpdatePinGlyphs()
+    {
+        var pinnedBrush = new SolidColorBrush(Color.Parse("#C6C7C9"));
+        var idleBrush = new SolidColorBrush(Color.Parse("#737374"));
+
+        Apply(PinProjectGlyph, _viewModel.IsAddProjectPinned);
+        Apply(PinMapGlyph, _viewModel.IsMapPinned);
+        Apply(PinReviewGlyph, _viewModel.IsCodeReviewPinned);
+
+        void Apply(Avalonia.Controls.Shapes.Path glyph, bool pinned)
+        {
+            glyph.Fill = pinned ? pinnedBrush : Brushes.Transparent;
+            glyph.Stroke = pinned ? pinnedBrush : idleBrush;
         }
     }
 
@@ -870,6 +1044,92 @@ public partial class MainWindow : Window
                 ChatComposerBox.Focus();
             }
         }, DispatcherPriority.Background);
+    }
+
+    // ---- Codex-style frameless title bar ---------------------------------
+
+    private void OnTitleBarPointerPressed(object? sender, PointerPressedEventArgs eventArgs)
+    {
+        if (!eventArgs.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        try
+        {
+            BeginMoveDrag(eventArgs);
+        }
+        catch (InvalidOperationException)
+        {
+            // The window manager rejected the drag (e.g. during a state change).
+        }
+    }
+
+    private void OnTitleBarDoubleTapped(object? sender, Avalonia.Input.TappedEventArgs eventArgs)
+    {
+        ToggleWindowState();
+        eventArgs.Handled = true;
+    }
+
+    private void OnMinimizeClicked(object? sender, RoutedEventArgs eventArgs) =>
+        WindowState = WindowState.Minimized;
+
+    private void OnMaximizeClicked(object? sender, RoutedEventArgs eventArgs) =>
+        ToggleWindowState();
+
+    private void OnCloseWindowClicked(object? sender, RoutedEventArgs eventArgs) => Close();
+
+    private void ToggleWindowState()
+    {
+        WindowState = WindowState == WindowState.Maximized
+            ? WindowState.Normal
+            : WindowState.Maximized;
+        UpdateMaximizeGlyph();
+    }
+
+    private void UpdateMaximizeGlyph()
+    {
+        if (this.FindControl<Avalonia.Controls.Shapes.Path>("MaximizeGlyph") is not { } glyph)
+        {
+            return;
+        }
+
+        glyph.Data = StreamGeometry.Parse(WindowState == WindowState.Maximized
+            ? "M8 4H20V16 M4 8H16V20H4Z"
+            : "M4 4H20V20H4Z");
+    }
+
+    private void OnToggleSidebarClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.ToggleSidebar();
+
+    private void OnToggleSearchClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        _viewModel.ToggleSearch();
+        if (_viewModel.IsSearchVisible)
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                SearchBox.Focus();
+                SearchBox.SelectAll();
+            }, DispatcherPriority.Background);
+        }
+    }
+
+    private void OnToggleRecentClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.ToggleRecent();
+
+    private void OnShowAboutClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.OpenSettings(SettingsPane.About);
+
+    private void OnExitClicked(object? sender, RoutedEventArgs eventArgs) => Close();
+
+    private void OnEditUserMessageClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is Button { DataContext: ChatItemViewModel item })
+        {
+            _viewModel.BeginEditUserMessage(item);
+            FocusComposer();
+        }
     }
 
     private static SessionItemViewModel? GetSession(object? sender) =>

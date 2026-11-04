@@ -85,7 +85,8 @@ def publish_apps(
 
     if not core.is_file():
         raise SystemExit(f"core binary not found: {core}")
-    shutil.copy2(core, tui_output / core_name)
+    for app_output in (tui_output, gui_output):
+        shutil.copy2(core, app_output / core_name)
 
     schema_target = tui_output / "schemas"
     if schema_target.exists():

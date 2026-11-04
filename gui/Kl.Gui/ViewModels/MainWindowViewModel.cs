@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using Kl.Client;
 using Kl.Gui.Models;
 using Kl.Gui.Services;
 
@@ -9,6 +10,9 @@ namespace Kl.Gui.ViewModels;
 public enum AppSection
 {
     Chat,
+    Image,
+    Library,
+    Map,
     Projects,
     Plugins,
     Automation,
@@ -46,6 +50,7 @@ public sealed class ChatItemViewModel : ObservableObject
     private string _detail;
     private string _summary;
     private string _statusText;
+    private string _timestampLabel;
     private bool _isRunning;
     private bool _isExpanded;
 
@@ -55,7 +60,8 @@ public sealed class ChatItemViewModel : ObservableObject
         string text = "",
         string detail = "",
         string summary = "",
-        string status = "")
+        string status = "",
+        string timestampLabel = "")
     {
         Kind = kind;
         _header = header;
@@ -63,6 +69,7 @@ public sealed class ChatItemViewModel : ObservableObject
         _detail = detail;
         _summary = summary;
         _statusText = status;
+        _timestampLabel = timestampLabel;
     }
 
     public ChatItemKind Kind { get; }
@@ -77,6 +84,13 @@ public sealed class ChatItemViewModel : ObservableObject
     public bool HasStatus => !string.IsNullOrWhiteSpace(StatusText);
     public bool ShowAssistantActions => IsAssistant && HasText && !IsRunning;
     public string ApiText => IsUser && !string.IsNullOrWhiteSpace(Detail) ? Detail : Text;
+
+    /// <summary>Short local time label shown under user messages (Codex-style).</summary>
+    public string TimestampLabel
+    {
+        get => _timestampLabel;
+        private set => SetProperty(ref _timestampLabel, value);
+    }
 
     public string Header
     {
@@ -181,8 +195,18 @@ public sealed class ChatItemViewModel : ObservableObject
         }
     }
 
-    public static ChatItemViewModel User(string text, string? apiText = null) =>
-        new(ChatItemKind.User, "你", text, detail: apiText ?? string.Empty);
+    public static ChatItemViewModel User(
+        string text,
+        string? apiText = null,
+        DateTimeOffset? timestamp = null) =>
+        new(
+            ChatItemKind.User,
+            "你",
+            text,
+            detail: apiText ?? string.Empty,
+            timestampLabel: timestamp is null
+                ? string.Empty
+                : timestamp.Value.ToLocalTime().ToString("HH:mm"));
 
     public static ChatItemViewModel Assistant(string text) =>
         new(ChatItemKind.Assistant, "kl", text);
@@ -231,7 +255,8 @@ public sealed class ChatItemViewModel : ObservableObject
             text,
             detail,
             summary,
-            message.Status);
+            message.Status,
+            message.Timestamp);
     }
 
     public StoredMessage ToStored() => new()
@@ -241,7 +266,8 @@ public sealed class ChatItemViewModel : ObservableObject
         Text = Text,
         Detail = Detail,
         Summary = Summary,
-        Status = StatusText
+        Status = StatusText,
+        Timestamp = TimestampLabel
     };
 
     public void Start(string status = "进行中")
@@ -353,6 +379,8 @@ public sealed class SessionItemViewModel : ObservableObject
     }
 
     public void RefreshTime() => OnPropertyChanged(nameof(UpdatedLabel));
+
+    public void RefreshTitle() => OnPropertyChanged(nameof(Title));
 
     public bool Matches(string query)
     {
@@ -481,7 +509,7 @@ public sealed class PluginItemViewModel
     public string ManifestPath { get; }
 }
 
-public sealed class MainWindowViewModel : ObservableObject
+public sealed partial class MainWindowViewModel : ObservableObject
 {
     private static readonly string[] SupportedPermissionModes = ["完全访问", "按需确认"];
     private static readonly HashSet<string> SupportedAttachmentExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -493,32 +521,31 @@ public sealed class MainWindowViewModel : ObservableObject
     private const int MaxAttachmentCount = 8;
     private const int MaxAttachmentCharacters = 100_000;
     private readonly StateStore _stateStore;
-    private readonly IChatCompletionService _chatService;
-    private readonly IConnectionTestService _connectionTestService;
     private readonly IPluginCatalogService _pluginCatalogService;
-    private readonly Func<string, string?> _getEnvironmentVariable;
-    private readonly Dictionary<int, ChatItemViewModel> _activeTools = [];
     private AppState _state;
     private WorkspaceItemViewModel _activeWorkspace;
     private SessionState? _activeSession;
     private SessionItemViewModel? _activeSessionItem;
     private SessionItemViewModel? _dialogTarget;
-    private CancellationTokenSource? _streamCancellation;
     private ChatItemViewModel? _activeReasoning;
     private ChatItemViewModel? _activeAssistant;
     private string _composer = string.Empty;
     private string _searchText = string.Empty;
     private string _sessionTitle = "新会话";
-    private string _settingsEndpoint = string.Empty;
-    private string _settingsModel = string.Empty;
-    private string _settingsApiKey = string.Empty;
     private string _settingsPermissionMode = "完全访问";
     private int _settingsContentFontSize = 14;
     private string _settingsStatus = string.Empty;
     private string _renameTitle = string.Empty;
     private string _deletePrompt = string.Empty;
     private bool _isBusy;
+    private bool _isSidebarVisible = true;
+    private bool _isSearchVisible;
+    private bool _isRecentExpanded = true;
     private bool _isChatPage = true;
+    private bool _isImagePage;
+    private bool _isLibraryPage;
+    private bool _isMapPage;
+    private bool _isCodeReviewDraftActive;
     private bool _isProjectsPage;
     private bool _isPluginsPage;
     private bool _isAutomationPage;
@@ -546,18 +573,18 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public MainWindowViewModel(
         StateStore? stateStore = null,
-        IChatCompletionService? chatService = null,
-        Func<string, string?>? getEnvironmentVariable = null,
-        IConnectionTestService? connectionTestService = null,
-        IPluginCatalogService? pluginCatalogService = null)
+        IPluginCatalogService? pluginCatalogService = null,
+        ICoreSessionService? coreSessionService = null,
+        Action<Action>? dispatcher = null)
     {
         _stateStore = stateStore ?? new StateStore();
-        _chatService = chatService ?? new OpenAiCompatibleChatService();
-        _connectionTestService = connectionTestService ?? new OpenAiCompatibleConnectionTestService();
         _pluginCatalogService = pluginCatalogService ?? new LocalPluginCatalogService();
-        _getEnvironmentVariable = getEnvironmentVariable ?? Environment.GetEnvironmentVariable;
+        _core = coreSessionService ?? new UnavailableCoreSessionService();
+        _dispatch = dispatcher ?? (static action => action());
+        _core.EventReceived += OnCoreEventReceived;
         _state = _stateStore.Load();
         NormalizeState();
+        RefreshPinnedRailItems();
         BuildWorkspaceItems();
         _activeWorkspace = Workspaces.First(workspace => workspace.Id == _state.ActiveWorkspaceId);
         _activeWorkspace.IsSelected = true;
@@ -581,13 +608,18 @@ public sealed class MainWindowViewModel : ObservableObject
             OnPropertyChanged(nameof(HasConversation));
             OnPropertyChanged(nameof(IsConversationEmpty));
             OnPropertyChanged(nameof(ShowConversationHeader));
+            OnPropertyChanged(nameof(ComposerPlaceholder));
         };
+
+        _ = InitializeCoreAsync();
     }
 
     public ObservableCollection<WorkspaceItemViewModel> Workspaces { get; } = [];
     public ObservableCollection<ChatItemViewModel> Messages { get; } = [];
     public ObservableCollection<AttachmentItemViewModel> PendingAttachments { get; } = [];
     public ObservableCollection<PluginItemViewModel> Plugins { get; } = [];
+    public ObservableCollection<SessionItemViewModel> RecentSessions { get; } = [];
+    public ObservableCollection<PinnedRailItemViewModel> PinnedRailItems { get; } = [];
     public ObservableCollection<AutomationItemViewModel> Automations { get; } = [];
     public IReadOnlyList<AutomationIntervalOption> AutomationIntervals { get; } =
     [
@@ -606,13 +638,66 @@ public sealed class MainWindowViewModel : ObservableObject
     public bool HasConversation => !IsEmpty;
     public bool IsConversationEmpty => IsEmpty;
     public bool IsChatPage => _isChatPage;
+    public bool IsImagePage => _isImagePage;
+    public bool IsLibraryPage => _isLibraryPage;
+    public bool IsMapPage => _isMapPage;
     public bool IsProjectsPage => _isProjectsPage;
     public bool IsPluginsPage => _isPluginsPage;
     public bool IsAutomationPage => _isAutomationPage;
     public bool IsSettingsPage => _isSettingsPage;
     public bool IsAddProjectPinned => _state.IsAddProjectPinned;
+    public bool IsMapPinned => _state.IsMapPinned;
     public bool IsCodeReviewPinned => _state.IsCodeReviewPinned;
     public bool ShowConversationHeader => IsChatPage && HasConversation;
+
+    public bool IsSidebarVisible
+    {
+        get => _isSidebarVisible;
+        private set => SetProperty(ref _isSidebarVisible, value);
+    }
+
+    public bool IsSearchVisible
+    {
+        get => _isSearchVisible;
+        private set => SetProperty(ref _isSearchVisible, value);
+    }
+
+    public bool IsRecentExpanded
+    {
+        get => _isRecentExpanded;
+        private set => SetProperty(ref _isRecentExpanded, value);
+    }
+
+    public bool HasRecentSessions => RecentSessions.Count > 0;
+    public bool ShowNoRecentSessions => !HasRecentSessions;
+
+    public string UserInitials
+    {
+        get
+        {
+            var name = Environment.UserName;
+            var letters = new string(name.Where(char.IsLetter).ToArray());
+            if (letters.Length >= 2)
+            {
+                return letters[..2].ToLowerInvariant();
+            }
+
+            return letters.Length == 1 ? letters.ToLowerInvariant() : "kl";
+        }
+    }
+
+    public string UserDisplayName
+    {
+        get
+        {
+            var name = Environment.UserName;
+            return string.IsNullOrWhiteSpace(name) ? "本地用户" : name;
+        }
+    }
+
+    public string AccountPlanLabel => "Local";
+
+    public string ComposerPlaceholder => HasConversation ? "和 kl 一起工作" : "随心输入";
     public bool IsSettingsOpen
     {
         get => _isSettingsOpen;
@@ -631,8 +716,8 @@ public sealed class MainWindowViewModel : ObservableObject
     };
     public string SettingsPaneSubtitle => _settingsPane switch
     {
-        SettingsPane.Models => "填入 OpenAI 兼容接口与 API Key。",
-        SettingsPane.Data => "会话、工作区、自动化与设置保存在本机状态文件中。",
+        SettingsPane.Models => "查看 KL Core 运行时、模型与连接状态。",
+        SettingsPane.Data => "GUI 本地状态保存在 ~/.kl/gui；会话与消息真值由 KL Core 保存在 ~/.kl/sessions。",
         SettingsPane.About => "版本、隐私和常用快捷键。",
         _ => "调整权限模式和当前工作方式。"
     };
@@ -770,33 +855,65 @@ public sealed class MainWindowViewModel : ObservableObject
         }
     }
     public string HeaderTitle => IsChatPage ? SessionTitle : SectionTitle;
-    public string SectionTitle => IsProjectsPage ? "项目" : IsPluginsPage ? "插件" : IsAutomationPage ? "自动化任务" : IsSettingsPage ? "设置" : "聊天";
+    public string SectionTitle => IsImagePage ? "图像" : IsLibraryPage ? "资料库" : IsMapPage ? "地图" : IsProjectsPage ? "项目" : IsPluginsPage ? "插件" : IsAutomationPage ? "自动化任务" : IsSettingsPage ? "设置" : "聊天";
     public string WorkspaceName => _activeWorkspace.Name;
     public string WorkspacePath => _activeWorkspace.Path;
-    public string ModelName => _state.Model;
-    public string PermissionMode => _state.PermissionMode;
-    public int ContentFontSize => _state.ContentFontSize;
-    public bool HasStoredApiKey => !string.IsNullOrWhiteSpace(_state.ApiKey);
-    public string ApiKeyStatus
+    public string ModelName => _core.IsSessionOpen
+        ? _core.Model
+        : string.IsNullOrWhiteSpace(CoreCatalogModel) ? _state.Model : CoreCatalogModel;
+
+    /// <summary>Codex-style provider/model label for the composer picker.</summary>
+    public string ProviderModelLabel
     {
         get
         {
-            if (!string.IsNullOrWhiteSpace(SettingsApiKey))
+            var provider = _core.IsSessionOpen ? _core.Provider : CoreCatalogProvider;
+            var model = _core.IsSessionOpen ? _core.Model : CoreCatalogModel;
+            if (string.IsNullOrWhiteSpace(model))
             {
-                if (HasStoredApiKey
-                    && string.Equals(_state.ApiKey, SettingsApiKey.Trim(), StringComparison.Ordinal))
-                {
-                    return "API Key 已保存。";
-                }
-                return HasStoredApiKey
-                    ? "API Key 已填写；保存后会更新本机密钥。"
-                    : "API Key 已填写，保存后生效。";
+                return string.IsNullOrWhiteSpace(_state.Model) ? "未连接" : _state.Model;
             }
-            return HasStoredApiKey
-                ? "已保存 API Key；输入框留空时保存不会覆盖现有密钥。"
-                : "尚未填写 API Key。";
+
+            if (string.IsNullOrWhiteSpace(provider))
+            {
+                return PrettifyWords(model);
+            }
+
+            var normalizedProvider = PrettifyWords(provider);
+            return model.StartsWith(provider, StringComparison.OrdinalIgnoreCase)
+                ? PrettifyWords(model)
+                : $"{normalizedProvider} {PrettifyWords(model)}";
         }
     }
+
+    private static string PrettifyWords(string value)
+    {
+        var parts = value
+            .Replace('_', ' ')
+            .Replace('-', ' ')
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+        {
+            return value;
+        }
+
+        var builder = new System.Text.StringBuilder();
+        foreach (var part in parts)
+        {
+            if (builder.Length > 0)
+            {
+                builder.Append(' ');
+            }
+            builder.Append(char.ToUpperInvariant(part[0]));
+            if (part.Length > 1)
+            {
+                builder.Append(part[1..]);
+            }
+        }
+        return builder.ToString();
+    }
+    public string PermissionMode => _state.PermissionMode;
+    public int ContentFontSize => _state.ContentFontSize;
 
     public string Composer
     {
@@ -837,7 +954,9 @@ public sealed class MainWindowViewModel : ObservableObject
         }
     }
 
-    public bool CanSend => !IsBusy && (!string.IsNullOrWhiteSpace(Composer) || HasPendingAttachments);
+    public bool CanSend => !IsBusy
+        && !IsCoreReadOnly
+        && (!string.IsNullOrWhiteSpace(Composer) || HasPendingAttachments);
     public bool HasPendingAttachments => PendingAttachments.Count > 0;
     public bool CanCancel => IsBusy;
 
@@ -849,30 +968,6 @@ public sealed class MainWindowViewModel : ObservableObject
             if (SetProperty(ref _errorMessage, value))
             {
                 OnPropertyChanged(nameof(HasError));
-            }
-        }
-    }
-
-    public string SettingsEndpoint
-    {
-        get => _settingsEndpoint;
-        set => SetProperty(ref _settingsEndpoint, value);
-    }
-
-    public string SettingsModel
-    {
-        get => _settingsModel;
-        set => SetProperty(ref _settingsModel, value);
-    }
-
-    public string SettingsApiKey
-    {
-        get => _settingsApiKey;
-        set
-        {
-            if (SetProperty(ref _settingsApiKey, value))
-            {
-                OnPropertyChanged(nameof(ApiKeyStatus));
             }
         }
     }
@@ -922,12 +1017,19 @@ public sealed class MainWindowViewModel : ObservableObject
         }
 
         _isChatPage = section == AppSection.Chat;
+        _isImagePage = section == AppSection.Image;
+        _isLibraryPage = section == AppSection.Library;
+        _isMapPage = section == AppSection.Map;
+        _isCodeReviewDraftActive = false;
         _isProjectsPage = section == AppSection.Projects;
         _isPluginsPage = section == AppSection.Plugins;
         _isAutomationPage = section == AppSection.Automation;
         _isSettingsPage = false;
         IsSettingsOpen = false;
         OnPropertyChanged(nameof(IsChatPage));
+        OnPropertyChanged(nameof(IsImagePage));
+        OnPropertyChanged(nameof(IsLibraryPage));
+        OnPropertyChanged(nameof(IsMapPage));
         OnPropertyChanged(nameof(IsProjectsPage));
         OnPropertyChanged(nameof(IsPluginsPage));
         OnPropertyChanged(nameof(IsAutomationPage));
@@ -935,6 +1037,7 @@ public sealed class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowConversationHeader));
         OnPropertyChanged(nameof(HeaderTitle));
         OnPropertyChanged(nameof(SectionTitle));
+        UpdatePinnedRailActiveState();
         if (section == AppSection.Plugins)
         {
             RefreshPlugins();
@@ -954,6 +1057,125 @@ public sealed class MainWindowViewModel : ObservableObject
         _state.IsAddProjectPinned = !_state.IsAddProjectPinned;
         SaveState();
         OnPropertyChanged(nameof(IsAddProjectPinned));
+        RefreshPinnedRailItems();
+    }
+
+    /// <summary>Codex-style pinned shortcuts below the rail divider.</summary>
+    public void RefreshPinnedRailItems()
+    {
+        var desired = new List<PinnedRailItemViewModel>(3);
+        if (_state.IsAddProjectPinned)
+        {
+            desired.Add(new PinnedRailItemViewModel(isProject: true, isMap: false, label: "项目")
+            {
+                IsActive = IsProjectsPage
+            });
+        }
+
+        if (_state.IsMapPinned)
+        {
+            desired.Add(new PinnedRailItemViewModel(isProject: false, isMap: true, label: "地图")
+            {
+                IsActive = IsMapPage
+            });
+        }
+
+        if (_state.IsCodeReviewPinned)
+        {
+            desired.Add(new PinnedRailItemViewModel(isProject: false, isMap: false, label: "代码审查")
+            {
+                IsActive = _isCodeReviewDraftActive
+            });
+        }
+
+        if (PinnedRailItems.Count == desired.Count
+            && PinnedRailItems.Zip(desired).All(pair =>
+                pair.First.IsProject == pair.Second.IsProject && pair.First.IsMap == pair.Second.IsMap))
+        {
+            UpdatePinnedRailActiveState();
+            return;
+        }
+
+        PinnedRailItems.Clear();
+        foreach (var item in desired)
+        {
+            PinnedRailItems.Add(item);
+        }
+    }
+
+    /// <summary>Keeps the pinned rail icons highlighted for the current section.</summary>
+    public void UpdatePinnedRailActiveState()
+    {
+        foreach (var item in PinnedRailItems)
+        {
+            item.IsActive = item.IsProject ? IsProjectsPage
+                : item.IsMap ? IsMapPage
+                : _isCodeReviewDraftActive;
+        }
+    }
+
+    public void ToggleSidebar() => IsSidebarVisible = !IsSidebarVisible;
+
+    public void ToggleSearch() => IsSearchVisible = !IsSearchVisible;
+
+    public void ToggleRecent() => IsRecentExpanded = !IsRecentExpanded;
+
+    /// <summary>Codex-style edit action: put a user message back into the composer.</summary>
+    public void BeginEditUserMessage(ChatItemViewModel item)
+    {
+        if (!item.IsUser)
+        {
+            return;
+        }
+
+        Composer = item.Text;
+    }
+
+    public void RefreshRecentSessions()
+    {
+        var query = SearchText.Trim();
+        var items = Workspaces
+            .SelectMany(workspace => workspace.Sessions)
+            .Where(item => query.Length == 0 || item.Matches(query))
+            .OrderByDescending(item => item.State.UpdatedAt)
+            .Take(100)
+            .ToList();
+
+        // Rebuilding the observable collection on every save makes Avalonia's
+        // item container generator re-render identical rows; only publish a
+        // change when the visible sequence actually differs.
+        var unchanged = items.Count == RecentSessions.Count;
+        if (unchanged)
+        {
+            for (var index = 0; index < items.Count; index++)
+            {
+                if (!ReferenceEquals(items[index], RecentSessions[index]))
+                {
+                    unchanged = false;
+                    break;
+                }
+            }
+        }
+
+        if (!unchanged)
+        {
+            RecentSessions.Clear();
+            foreach (var item in items)
+            {
+                RecentSessions.Add(item);
+            }
+        }
+
+        OnPropertyChanged(nameof(HasRecentSessions));
+        OnPropertyChanged(nameof(ShowNoRecentSessions));
+    }
+
+    public void ToggleMapPinned()
+    {
+        _state.IsMapPinned = !_state.IsMapPinned;
+        SaveState();
+        OnPropertyChanged(nameof(IsMapPinned));
+        RefreshPinnedRailItems();
     }
 
     public void ToggleCodeReviewPinned()
@@ -961,19 +1183,22 @@ public sealed class MainWindowViewModel : ObservableObject
         _state.IsCodeReviewPinned = !_state.IsCodeReviewPinned;
         SaveState();
         OnPropertyChanged(nameof(IsCodeReviewPinned));
+        RefreshPinnedRailItems();
     }
 
     public void StartCodeReviewDraft()
     {
         Navigate(AppSection.Chat);
+        _ = CloseCoreSessionQuietlyAsync();
         StartDraftSession();
         Composer = "请审查当前项目的代码变更，重点检查潜在 bug、回归风险、安全问题和缺失测试。";
+        _isCodeReviewDraftActive = true;
+        UpdatePinnedRailActiveState();
     }
 
     public void OpenSettings(SettingsPane pane = SettingsPane.General)
     {
         RefreshSettingsDraft();
-        RefreshApiKeyStatus();
         SelectSettingsPane(pane);
         IsSettingsOpen = true;
     }
@@ -1014,19 +1239,9 @@ public sealed class MainWindowViewModel : ObservableObject
         SaveState();
     }
 
-    public void NewSession()
+    public async Task SelectWorkspaceAsync(WorkspaceItemViewModel workspace)
     {
-        if (IsBusy)
-        {
-            return;
-        }
-        StartDraftSession();
-        SaveState();
-    }
-
-    public void SelectWorkspace(WorkspaceItemViewModel workspace)
-    {
-        if (IsBusy || workspace.Id == _activeWorkspace.Id && _activeSession is null)
+        if (IsBusy || (workspace.Id == _activeWorkspace.Id && _activeSession is null))
         {
             return;
         }
@@ -1036,6 +1251,10 @@ public sealed class MainWindowViewModel : ObservableObject
         _activeWorkspace.IsSelected = true;
         _activeWorkspace.IsExpanded = true;
         _state.ActiveWorkspaceId = workspace.Id;
+        OnPropertyChanged(nameof(WorkspaceName));
+        OnPropertyChanged(nameof(WorkspacePath));
+
+        await CloseCoreSessionQuietlyAsync().ConfigureAwait(true);
         var recent = workspace.Sessions.FirstOrDefault();
         if (recent is null)
         {
@@ -1043,10 +1262,9 @@ public sealed class MainWindowViewModel : ObservableObject
         }
         else
         {
-            OpenSession(recent, save: false);
+            await OpenSessionAsync(recent, save: false).ConfigureAwait(true);
         }
-        OnPropertyChanged(nameof(WorkspaceName));
-        OnPropertyChanged(nameof(WorkspacePath));
+
         SaveState();
     }
 
@@ -1079,7 +1297,7 @@ public sealed class MainWindowViewModel : ObservableObject
             string.Equals(workspace.Path, fullPath, StringComparison.OrdinalIgnoreCase));
         if (existing is not null)
         {
-            SelectWorkspace(existing);
+            _ = SelectWorkspaceAsync(existing);
             return true;
         }
 
@@ -1100,22 +1318,9 @@ public sealed class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(WorkspaceCount));
         OnPropertyChanged(nameof(HasSessions));
         OnPropertyChanged(nameof(ShowNoSessions));
-        SelectWorkspace(workspaceVm);
+        _ = SelectWorkspaceAsync(workspaceVm);
         SaveState();
         return true;
-    }
-
-    public void OpenSession(SessionItemViewModel session, bool save = true)
-    {
-        if (IsBusy)
-        {
-            return;
-        }
-        SelectSession(session.Workspace, session.State);
-        if (save)
-        {
-            SaveState();
-        }
     }
 
     public async Task CancelAsync()
@@ -1124,8 +1329,16 @@ public sealed class MainWindowViewModel : ObservableObject
         {
             return;
         }
-        _streamCancellation?.Cancel();
-        await Task.Yield();
+
+        _turnCancellation?.Cancel();
+        try
+        {
+            await _core.CancelAsync(CancellationToken.None).ConfigureAwait(true);
+        }
+        catch (Exception error) when (error is JsonRpcException or IOException or InvalidOperationException)
+        {
+            ErrorMessage = $"取消请求失败：{error.Message}";
+        }
     }
 
     public async Task SendAsync()
@@ -1139,16 +1352,34 @@ public sealed class MainWindowViewModel : ObservableObject
         var attachments = PendingAttachments.ToList();
         var modelPrompt = BuildModelPrompt(prompt, attachments);
         var displayPrompt = BuildDisplayPrompt(prompt, attachments);
-        Composer = string.Empty;
-        ClearAttachments();
         ErrorMessage = string.Empty;
         SettingsStatus = string.Empty;
-        _activeTools.Clear();
+        _activeToolItem = null;
         _activeReasoning = null;
         _activeAssistant = null;
 
-        var session = _activeSession ?? throw new InvalidOperationException("当前没有可用会话。");
-        EnsureSessionPersisted();
+        if (!await EnsureCoreSessionAsync(CancellationToken.None).ConfigureAwait(true))
+        {
+            // Keep the draft text so a failed core start does not lose user input.
+            return;
+        }
+
+        if (IsCoreReadOnly)
+        {
+            ErrorMessage = "另一客户端持有该会话的写权限，当前窗口只能观察。";
+            return;
+        }
+
+        Composer = string.Empty;
+        ClearAttachments();
+
+        var session = _activeSession;
+        if (session is null)
+        {
+            ErrorMessage = "当前没有可用会话。";
+            return;
+        }
+
         var isFirstMessage = session.Messages.Count == 0;
         if (isFirstMessage)
         {
@@ -1156,109 +1387,45 @@ public sealed class MainWindowViewModel : ObservableObject
         }
         SessionTitle = session.Title;
         session.UpdatedAt = DateTimeOffset.Now;
+        _activeSessionItem?.RefreshTitle();
         _activeSessionItem?.RefreshTime();
 
-        var userItem = ChatItemViewModel.User(displayPrompt, modelPrompt);
+        var userItem = ChatItemViewModel.User(displayPrompt, modelPrompt, DateTimeOffset.Now);
         Messages.Add(userItem);
         SyncStoredMessages();
         UpdateSessionOrder();
         SaveState();
 
-        var requestMessages = Messages
-            .Where(item => item.IsUser || item.IsAssistant)
-            .Where(item => item.HasText)
-            .Select(item => new ChatRequestMessage(item.IsUser ? "user" : "assistant", item.ApiText))
-            .ToList();
-
         IsBusy = true;
-        _streamCancellation = new CancellationTokenSource();
-        var cancelled = false;
-        var receivedContent = false;
-
+        _turnCancellation = new CancellationTokenSource();
         try
         {
-            var apiKey = ResolveApiKey();
-            await foreach (var delta in _chatService.StreamAsync(
-                new ChatCompletionSettings(_state.Endpoint, _state.Model, apiKey),
-                requestMessages,
-                _streamCancellation.Token))
+            var outcome = await _core.RunTurnAsync(modelPrompt, _turnCancellation.Token).ConfigureAwait(true);
+            if (outcome.Status == "failed" && !string.IsNullOrWhiteSpace(outcome.Text))
             {
-                if (delta.Reasoning.Length > 0)
-                {
-                    EnsureReasoningItem().AppendText(delta.Reasoning);
-                }
-
-                if (delta.Content.Length > 0)
-                {
-                    if (_activeReasoning is not null && _activeReasoning.IsRunning)
-                    {
-                        _activeReasoning.Complete("完成", "思考完成");
-                    }
-                    EnsureAssistantItem().AppendText(delta.Content);
-                    receivedContent = true;
-                }
-
-                foreach (var toolCall in delta.ToolCalls ?? [])
-                {
-                    if (_activeReasoning is not null && _activeReasoning.IsRunning)
-                    {
-                        _activeReasoning.Complete("完成", "思考完成");
-                    }
-                    AppendToolCall(toolCall);
-                }
-            }
-
-            if (_activeReasoning is not null && _activeReasoning.IsRunning)
-            {
-                _activeReasoning.Complete("完成", "思考完成");
-            }
-            CompleteTools();
-            if (!receivedContent && _activeAssistant is null)
-            {
-                AddError("模型请求已完成，但没有返回可显示的回复。");
-            }
-            else
-            {
-                _activeAssistant?.Complete(string.Empty);
+                AddError(outcome.Text);
             }
         }
         catch (OperationCanceledException)
         {
-            cancelled = true;
-            _activeReasoning?.Stop("已停止");
-            StopTools();
-            if (_activeAssistant is { HasText: true })
-            {
-                _activeAssistant.Stop("已停止");
-            }
-            else
-            {
-                RemoveEmptyAssistant();
-                AddError("已停止生成本次回复。");
-            }
+            AddError("已停止生成本次回复。");
         }
-        catch (Exception error)
+        catch (Exception error) when (error is JsonRpcException
+            or IOException
+            or InvalidOperationException
+            or NotSupportedException
+            or FileNotFoundException)
         {
-            _activeReasoning?.Stop("已停止");
-            StopTools();
-            RemoveEmptyAssistant();
             AddError(ToUserFacingError(error));
         }
         finally
         {
-            var finishedAt = DateTimeOffset.Now;
-            if (_activeAssistant?.HasText == true && !cancelled)
+            if (IsBusy)
             {
-                _activeAssistant.Complete(string.Empty);
+                FinishTurn("完成");
             }
-            session.UpdatedAt = finishedAt;
-            _activeSessionItem?.RefreshTime();
-            SyncStoredMessages();
-            UpdateSessionOrder();
-            IsBusy = false;
-            _streamCancellation.Dispose();
-            _streamCancellation = null;
-            SaveState();
+            _turnCancellation?.Dispose();
+            _turnCancellation = null;
         }
     }
 
@@ -1472,40 +1639,21 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public void ReportError(string message) => ErrorMessage = message;
 
-    public void SaveSettings()
+    public async Task SaveSettingsAsync()
     {
-        if (!TryReadValidatedSettings(
-                out var endpoint,
-                out var model,
-                out var permissionMode))
+        if (!SupportedPermissionModes.Contains(SettingsPermissionMode))
         {
+            SetSettingsStatus("权限模式无效。", isError: true);
             return;
         }
 
-        var apiKey = SettingsApiKey.Trim();
-        if (apiKey.Length == 0 && !HasStoredApiKey)
-        {
-            SetSettingsStatus("API Key 不能为空。", isError: true);
-            return;
-        }
-
-        if (apiKey.Length > 0)
-        {
-            _state.ApiKey = apiKey;
-        }
-
-        _state.Endpoint = endpoint;
-        _state.Model = model;
-        _state.ApiKeyEnvironmentVariable = string.Empty;
-        _state.PermissionMode = permissionMode;
+        _state.PermissionMode = SettingsPermissionMode;
         _state.ContentFontSize = SettingsContentFontSize;
-        OnPropertyChanged(nameof(ModelName));
         OnPropertyChanged(nameof(ContentFontSize));
         OnPropertyChanged(nameof(PermissionMode));
-        OnPropertyChanged(nameof(HasStoredApiKey));
-        RefreshApiKeyStatus();
         SaveState();
-        SetSettingsStatus("设置已保存。", isError: false);
+        await ApplyPermissionModeAsync(CancellationToken.None).ConfigureAwait(true);
+        SetSettingsStatus("设置已保存。审批模式由 KL Core 执行。", isError: false);
     }
 
     public async Task TestConnectionAsync()
@@ -1514,35 +1662,25 @@ public sealed class MainWindowViewModel : ObservableObject
         {
             return;
         }
-        if (!TryReadValidatedSettings(
-                out var endpoint,
-                out var model,
-                out _))
-        {
-            return;
-        }
-
-        var apiKey = SettingsApiKey.Trim();
-        if (apiKey.Length == 0)
-        {
-            apiKey = ResolveApiKey();
-        }
-        if (apiKey.Length == 0)
-        {
-            SetSettingsStatus("请先填写 API Key。", isError: true);
-            return;
-        }
 
         _isTestingConnection = true;
         OnPropertyChanged(nameof(IsTestingConnection));
         OnPropertyChanged(nameof(CanTestConnection));
         OnPropertyChanged(nameof(TestConnectionButtonText));
-        SetSettingsStatus("正在测试连接…", isError: false);
+        SetSettingsStatus("正在检查 KL Core…", isError: false);
         try
         {
-            var result = await _connectionTestService.TestAsync(
-                new ChatCompletionSettings(endpoint, model, apiKey));
-            SetSettingsStatus(result.Message, !result.Success);
+            var snapshot = await _core.LoadSnapshotAsync(CancellationToken.None).ConfigureAwait(true);
+            if (!snapshot.Success)
+            {
+                SetSettingsStatus($"KL Core 不可用：{snapshot.Error}", isError: true);
+                return;
+            }
+
+            ApplyCatalogSnapshot(snapshot);
+            SetSettingsStatus(
+                $"KL Core {snapshot.CoreVersion}（protocol {snapshot.ProtocolVersion}）连通正常。",
+                isError: false);
         }
         finally
         {
@@ -1555,36 +1693,17 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public void ResetSettingsDefaults()
     {
-        SettingsEndpoint = "https://api.deepseek.com";
-        SettingsModel = "deepseek-chat";
         SettingsPermissionMode = "完全访问";
         SettingsContentFontSize = 14;
-        SetSettingsStatus("已填入默认值，点击保存后生效。API Key 保持不变。", isError: false);
-    }
-
-    public void ClearStoredApiKey()
-    {
-        _state.ApiKey = string.Empty;
-        _state.ApiKeyEnvironmentVariable = string.Empty;
-        SettingsApiKey = string.Empty;
-        OnPropertyChanged(nameof(HasStoredApiKey));
-        RefreshApiKeyStatus();
-        SaveState();
-        SetSettingsStatus("已清除保存的 API Key。", isError: false);
+        SetSettingsStatus("已恢复默认值，点击保存后生效。", isError: false);
     }
 
     public void RefreshSettingsDraft()
     {
-        SettingsEndpoint = _state.Endpoint;
-        SettingsModel = _state.Model;
         SettingsPermissionMode = _state.PermissionMode;
         SettingsContentFontSize = _state.ContentFontSize;
-        SettingsApiKey = ResolveApiKey();
         SetSettingsStatus(string.Empty, isError: false);
-        RefreshApiKeyStatus();
     }
-
-    public void RefreshApiKeyStatus() => OnPropertyChanged(nameof(ApiKeyStatus));
 
     public void BeginCreateAutomation()
     {
@@ -1717,22 +1836,11 @@ public sealed class MainWindowViewModel : ObservableObject
         automation.NotifyStateChanged();
         try
         {
-            var apiKey = ResolveApiKey();
-            if (string.IsNullOrWhiteSpace(apiKey))
-            {
-                throw new InvalidOperationException("未找到 API Key。请到设置页面填写并保存。");
-            }
-
-            var content = new System.Text.StringBuilder();
-            await foreach (var delta in _chatService.StreamAsync(
-                new ChatCompletionSettings(_state.Endpoint, _state.Model, apiKey),
-                [new ChatRequestMessage("user", automation.Prompt)]))
-            {
-                content.Append(delta.Content);
-            }
-
-            var result = content.ToString().Trim();
-            if (result.Length == 0)
+            var result = await _core.RunEphemeralTurnAsync(
+                _activeWorkspace.Path,
+                automation.Prompt,
+                CancellationToken.None).ConfigureAwait(true);
+            if (string.IsNullOrWhiteSpace(result))
             {
                 throw new InvalidOperationException("模型没有返回可保存的正文结果。");
             }
@@ -1907,47 +2015,6 @@ public sealed class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(PluginDirectoryPath));
     }
 
-    private string ResolveApiKey()
-    {
-        if (!string.IsNullOrWhiteSpace(_state.ApiKey))
-        {
-            return _state.ApiKey;
-        }
-
-        var environmentVariable = _state.ApiKeyEnvironmentVariable?.Trim();
-        return string.IsNullOrWhiteSpace(environmentVariable)
-            ? string.Empty
-            : _getEnvironmentVariable(environmentVariable) ?? string.Empty;
-    }
-
-    private bool TryReadValidatedSettings(
-        out string endpoint,
-        out string model,
-        out string permissionMode)
-    {
-        endpoint = SettingsEndpoint.Trim().TrimEnd('/');
-        model = SettingsModel.Trim();
-        permissionMode = SettingsPermissionMode;
-
-        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri)
-            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
-        {
-            SetSettingsStatus("Endpoint 必须是完整的 HTTP(S) 地址。", isError: true);
-            return false;
-        }
-        if (string.IsNullOrWhiteSpace(model))
-        {
-            SetSettingsStatus("模型名称不能为空。", isError: true);
-            return false;
-        }
-        if (!SupportedPermissionModes.Contains(permissionMode))
-        {
-            SetSettingsStatus("权限模式无效。", isError: true);
-            return false;
-        }
-        return true;
-    }
-
     private void SetSettingsStatus(string message, bool isError)
     {
         SettingsStatus = message;
@@ -2065,6 +2132,8 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private void SelectSession(WorkspaceItemViewModel workspace, SessionState session)
     {
+        _isCodeReviewDraftActive = false;
+        UpdatePinnedRailActiveState();
         foreach (var item in Workspaces.SelectMany(candidate => candidate.Sessions))
         {
             item.IsSelected = false;
@@ -2095,6 +2164,8 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private void StartDraftSession()
     {
+        _isCodeReviewDraftActive = false;
+        UpdatePinnedRailActiveState();
         foreach (var item in Workspaces.SelectMany(candidate => candidate.Sessions))
         {
             item.IsSelected = false;
@@ -2164,6 +2235,7 @@ public sealed class MainWindowViewModel : ObservableObject
             return;
         }
         _activeSessionItem.Title = _activeSession.Title;
+        _activeSessionItem.RefreshTitle();
         _activeSessionItem.RefreshTime();
         var ordered = _activeWorkspace.Sessions
             .OrderByDescending(item => item.State.UpdatedAt)
@@ -2202,60 +2274,6 @@ public sealed class MainWindowViewModel : ObservableObject
         return _activeAssistant;
     }
 
-    private void AppendToolCall(ChatToolCallDelta delta)
-    {
-        if (!_activeTools.TryGetValue(delta.Index, out var item))
-        {
-            item = ChatItemViewModel.Tool(
-                string.IsNullOrWhiteSpace(delta.Name) ? "工具调用" : $"调用 {delta.Name}",
-                "模型请求调用工具。",
-                delta.Arguments ?? string.Empty,
-                string.Empty);
-            item.Start("调用中");
-            _activeTools[delta.Index] = item;
-            Messages.Add(item);
-        }
-        else
-        {
-            if (!string.IsNullOrWhiteSpace(delta.Name))
-            {
-                item.SetHeader($"调用 {delta.Name}");
-            }
-            item.AppendDetail(delta.Arguments ?? string.Empty);
-        }
-    }
-
-    private void CompleteTools()
-    {
-        foreach (var item in _activeTools.Values)
-        {
-            if (item.IsRunning)
-            {
-                item.Complete("完成");
-            }
-        }
-    }
-
-    private void StopTools()
-    {
-        foreach (var item in _activeTools.Values)
-        {
-            if (item.IsRunning)
-            {
-                item.Stop("已停止");
-            }
-        }
-    }
-
-    private void RemoveEmptyAssistant()
-    {
-        if (_activeAssistant is { HasText: false })
-        {
-            Messages.Remove(_activeAssistant);
-            _activeAssistant = null;
-        }
-    }
-
     private void AddError(string message)
     {
         ErrorMessage = message;
@@ -2264,13 +2282,17 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private string ToUserFacingError(Exception error)
     {
-        if (error is HttpRequestException)
+        if (error is FileNotFoundException)
         {
-            return $"无法连接模型服务：{error.Message}";
+            return "未找到 kl-core 可执行文件，请先构建 Core 或设置 KL_CORE_PATH。";
         }
-        if (error is UriFormatException)
+        if (error is JsonRpcException rpc)
         {
-            return "模型 Endpoint 格式无效，请到设置页检查。";
+            return $"KL Core 返回错误：{rpc.Message}";
+        }
+        if (error is IOException)
+        {
+            return $"与 KL Core 的连接中断：{error.Message}";
         }
         return error.Message;
     }
@@ -2288,6 +2310,7 @@ public sealed class MainWindowViewModel : ObservableObject
         {
             workspace.ApplySearch(query);
         }
+        RefreshRecentSessions();
         OnPropertyChanged(nameof(ShowNoSessions));
         OnPropertyChanged(nameof(ShowNoSearchResults));
     }
@@ -2305,7 +2328,40 @@ public sealed class MainWindowViewModel : ObservableObject
                 ErrorMessage = $"无法保存本地状态：{error.Message}";
             }
         }
+
+        RefreshRecentSessions();
     }
+}
+
+/// <summary>One Codex-style pinned shortcut rendered below the rail divider.</summary>
+public sealed class PinnedRailItemViewModel(bool isProject, bool isMap, string label) : INotifyPropertyChanged
+{
+    private bool _isActive;
+
+    public bool IsProject { get; } = isProject;
+
+    public bool IsMap { get; } = isMap;
+
+    public bool IsCodeReview => !IsProject && !IsMap;
+
+    public string Label { get; } = label;
+
+    public bool IsActive
+    {
+        get => _isActive;
+        set
+        {
+            if (_isActive == value)
+            {
+                return;
+            }
+
+            _isActive = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsActive)));
+        }
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
 }
 
 public abstract class ObservableObject : INotifyPropertyChanged

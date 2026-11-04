@@ -43,15 +43,18 @@ sibling `bin/` directory, while benchmark workspaces are disposable.
 |---|---|
 | `tui/Kl.Tui` | Terminal.Gui v2 UI, commands, approvals and terminal rendering |
 | `tui/Kl.Tui.Tests` | TUI, protocol, server and core integration tests |
-| `gui/Kl.Gui` | Avalonia desktop chat client |
-| `gui/Kl.Gui.Tests` | GUI state and service tests |
+| `gui/Kl.Gui` | Avalonia desktop client over `Kl.Client` |
+| `gui/Kl.Gui.Tests` | GUI view-model and service tests |
 | `sdk/Kl.Client` | JSON-RPC connection, session client, DTOs and endpoint discovery |
 
-The TUI uses `Kl.Client` and does not own an agent loop. `KlSessionClient`
-supports stdio, local-server connect, attach/replay, sequence de-duplication,
-reconnect from `LastSeq`, protocol-backed rich history and read-only observer
-sessions when another client holds the write lease. The standalone GUI currently
-uses an OpenAI-compatible provider directly and can adopt this client later.
+The TUI and the GUI both use `Kl.Client` and do not own an agent loop.
+`KlSessionClient` supports stdio, local-server connect, attach/replay, sequence
+de-duplication, reconnect from `LastSeq`, protocol-backed rich history and
+read-only observer sessions when another client holds the write lease. The GUI
+adds `gui/Kl.Gui/Services/CoreSessionService.cs`, `CoreSessionPresenter.cs`,
+`CoreProtocolModels.cs` and `ViewModels/MainWindowViewModel.Core.cs`; it renders
+Core sessions and events but keeps provider/model/credential management and all
+execution inside Core.
 
 ## Protocol and fixtures
 
@@ -66,6 +69,8 @@ uses an OpenAI-compatible provider directly and can adopt this client later.
 - Rust: `cargo build --release -p kl-core`.
 - TUI: `dotnet build tui/Kl.Tui/Kl.Tui.csproj`.
 - GUI: `dotnet build gui/Kl.Gui/Kl.Gui.csproj`.
-- Build: `python scripts/build.py` publishes final GUI/TUI files to the sibling `bin` directory.
-- Packaging: `python scripts/package.py` builds a self-contained release archive.
+- Build: `python scripts/build.py` publishes final GUI/TUI files to the sibling
+  `bin` directory and stages `kl-core.exe` next to both clients.
+- Packaging: `python scripts/package.py` builds a self-contained release archive
+  (the release bundle currently ships the TUI; GUI release packaging is open).
 - Release: only `main` pushes, tag `v<version>-rcN`, archives only.

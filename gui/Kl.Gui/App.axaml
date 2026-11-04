@@ -4,248 +4,618 @@
              RequestedThemeVariant="Dark">
 
     <Application.Resources>
-        <SolidColorBrush x:Key="BgBase" Color="#0F0F11" />
+        <!-- Codex-style palette -->
+        <SolidColorBrush x:Key="BgBase" Color="#0D0D0F" />
         <SolidColorBrush x:Key="SidebarRailFill" Color="#0D0D0F" />
         <SolidColorBrush x:Key="SidebarFill" Color="#0F0F10" />
-        <SolidColorBrush x:Key="ElevatedFill" Color="#262729" />
-        <SolidColorBrush x:Key="ElevatedHover" Color="#292A2D" />
-        <SolidColorBrush x:Key="Line" Color="#242427" />
-        <SolidColorBrush x:Key="LineStrong" Color="#3A3B40" />
-        <SolidColorBrush x:Key="TextPrimary" Color="#F4F4F5" />
-        <SolidColorBrush x:Key="TextSecondary" Color="#C8C9CC" />
-        <SolidColorBrush x:Key="TextTertiary" Color="#96979B" />
-        <SolidColorBrush x:Key="TextCaption" Color="#707176" />
-        <SolidColorBrush x:Key="AccentBlue" Color="#66A3FF" />
-        <SolidColorBrush x:Key="BlueHover" Color="#80B2FF" />
-        <SolidColorBrush x:Key="BubbleFill" Color="#262729" />
-        <SolidColorBrush x:Key="HoverFill" Color="#202024" />
-        <SolidColorBrush x:Key="RailIcon" Color="#8B8C90" />
-        <SolidColorBrush x:Key="RailIconHover" Color="#D2D3D5" />
-        <SolidColorBrush x:Key="RailIconActive" Color="#E6E7E9" />
-        <SolidColorBrush x:Key="RailHoverFill" Color="#18181A" />
+        <SolidColorBrush x:Key="SidebarHoverFill" Color="#1D1D1F" />
+        <SolidColorBrush x:Key="SidebarActiveFill" Color="#1D1D1F" />
+        <SolidColorBrush x:Key="SidebarText" Color="#C6C7C9" />
+        <SolidColorBrush x:Key="SidebarTextHover" Color="#E3E4E6" />
+        <SolidColorBrush x:Key="SidebarLabel" Color="#777779" />
+        <SolidColorBrush x:Key="SidebarIconButtonHover" Color="#1E1E1F" />
+        <SolidColorBrush x:Key="SidebarIconIdle" Color="#737374" />
+        <SolidColorBrush x:Key="TitleBarFill" Color="#0A0A0C" />
+        <SolidColorBrush x:Key="ElevatedFill" Color="#141416" />
+        <SolidColorBrush x:Key="ElevatedHover" Color="#1A1A1D" />
+        <SolidColorBrush x:Key="ComposerFill" Color="#212124" />
+        <SolidColorBrush x:Key="Line" Color="#1E1E21" />
+        <SolidColorBrush x:Key="LineStrong" Color="#2A2A2E" />
+        <SolidColorBrush x:Key="TextPrimary" Color="#E9E9EC" />
+        <SolidColorBrush x:Key="TextSecondary" Color="#A8A8AE" />
+        <SolidColorBrush x:Key="TextTertiary" Color="#7A7A80" />
+        <SolidColorBrush x:Key="TextCaption" Color="#616167" />
+        <SolidColorBrush x:Key="AccentBlue" Color="#4D9FFF" />
+        <SolidColorBrush x:Key="UserBubbleFill" Color="#2A2A2D" />
+        <SolidColorBrush x:Key="HoverFill" Color="#17171A" />
+        <SolidColorBrush x:Key="ActiveFill" Color="#232326" />
+        <SolidColorBrush x:Key="RailIcon" Color="#727274" />
+        <SolidColorBrush x:Key="RailIconHover" Color="#E3E4E6" />
+        <SolidColorBrush x:Key="RailIconActive" Color="#E3E4E6" />
         <SolidColorBrush x:Key="RailActiveFill" Color="#1C1C1E" />
-        <SolidColorBrush x:Key="MenuFill" Color="#202022" />
-        <SolidColorBrush x:Key="MenuRowHoverFill" Color="#28282A" />
-        <SolidColorBrush x:Key="MenuRowPressedFill" Color="#303134" />
+        <SolidColorBrush x:Key="TooltipFill" Color="#202022" />
+        <SolidColorBrush x:Key="TooltipText" Color="#C0C1C3" />
+        <SolidColorBrush x:Key="MoreMenuFill" Color="#1C1C1E" />
+        <SolidColorBrush x:Key="MoreMenuHoverFill" Color="#2E2E30" />
+        <!-- Alpha-0 brushes with the hover RGB avoid a white flash when a
+             BrushTransition starts from "Transparent" (transparent white). -->
+        <SolidColorBrush x:Key="RailHoverFillZero" Color="#001C1C1E" />
+        <SolidColorBrush x:Key="SidebarHoverFillZero" Color="#001D1D1F" />
+        <SolidColorBrush x:Key="SidebarIconHoverFillZero" Color="#001E1E1F" />
+        <SolidColorBrush x:Key="MenuFill" Color="#1A1A1D" />
+        <SolidColorBrush x:Key="CardFill" Color="#141416" />
+        <SolidColorBrush x:Key="ToolCardFill" Color="#101012" />
+        <SolidColorBrush x:Key="WarningOrange" Color="#DC9F5B" />
+        <SolidColorBrush x:Key="DangerRed" Color="#E81123" />
+        <SolidColorBrush x:Key="SuccessGreen" Color="#7FBF8F" />
+
+        <FontFamily x:Key="UiFont">Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI</FontFamily>
+
         <x:Double x:Key="ChatContentFontSize">14</x:Double>
-        <x:Double x:Key="ChatContentLineHeight">24</x:Double>
-        <x:Double x:Key="ChatSecondaryFontSize">13</x:Double>
-        <x:Double x:Key="ChatSecondaryLineHeight">20</x:Double>
-        <StreamGeometry x:Key="PlusIcon">M12 4V20 M4 12H20</StreamGeometry>
+        <x:Double x:Key="ChatContentLineHeight">22</x:Double>
+        <x:Double x:Key="ChatSecondaryFontSize">12.5</x:Double>
+        <x:Double x:Key="ChatSecondaryLineHeight">19</x:Double>
+
+        <!-- Flat button chrome: removes the Fluent theme's extra background/border states -->
+        <ControlTemplate x:Key="FlatButtonTemplate" TargetType="Button">
+            <Border Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="{TemplateBinding CornerRadius}"
+                    Padding="{TemplateBinding Padding}">
+                <ContentPresenter Content="{TemplateBinding Content}"
+                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                  HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                  VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+            </Border>
+        </ControlTemplate>
+
+        <!-- Icons (stroke-friendly StreamGeometry) -->
+        <StreamGeometry x:Key="PlusIcon">M12 5V19 M5 12H19</StreamGeometry>
         <StreamGeometry x:Key="EditIcon">M4 20L8.5 19L20 7.5L16.5 4L5 15.5Z M14.5 6L18 9.5</StreamGeometry>
         <StreamGeometry x:Key="ChatIcon">M5 5H19V17H10L5 21V5Z</StreamGeometry>
         <StreamGeometry x:Key="RailChatIcon">M10 20V14H14V20H19V12H22L12 3L2 12H5V20Z</StreamGeometry>
         <StreamGeometry x:Key="PluginIcon">M4 4H10V10H4Z M14 4H20V10H14Z M9 14H15V20H9Z</StreamGeometry>
-        <StreamGeometry x:Key="RailPluginIcon">M7 4A2 2 0 1 0 7 8A2 2 0 1 0 7 4 M7 8V16 M7 16A2 2 0 1 0 7 20A2 2 0 1 0 7 16 M13 6H15C17 6 18 7 18 9V16 M18 16A2 2 0 1 0 18 20A2 2 0 1 0 18 16</StreamGeometry>
         <StreamGeometry x:Key="AutomationIcon">M20 8A9 9 0 1 0 21 15 M20 3V8H15</StreamGeometry>
-        <StreamGeometry x:Key="RailAutomationIcon">M21 12A9 9 0 1 1 12 3A9 9 0 0 1 21 12Z M12 7V12L15.5 14</StreamGeometry>
+        <StreamGeometry x:Key="RailAutomationIcon">M12 1.33A10.67 10.67 0 1 0 12 22.67A10.67 10.67 0 1 0 12 1.33 M12 7.33V12 M12 12L9.33 13.33</StreamGeometry>
+        <StreamGeometry x:Key="RailImageIcon">M12 3H19A2 2 0 0 1 21 5V12A2 2 0 0 1 19 14H12A2 2 0 0 1 10 12V5A2 2 0 0 1 12 3Z M5 10H12A2 2 0 0 1 14 12V19A2 2 0 0 1 12 21H5A2 2 0 0 1 3 19V12A2 2 0 0 1 5 10Z M6.6 14.2H10.4V18H6.6Z</StreamGeometry>
+        <StreamGeometry x:Key="RailLibraryIcon">M5 6.5A1.5 1.5 0 0 1 6.5 5H8A1.5 1.5 0 0 1 9.5 6.5V19H5Z M11 5.5A1.5 1.5 0 0 1 12.5 4H14A1.5 1.5 0 0 1 15.5 5.5V19H11Z M15.9 6.9L18.3 6.1L20.2 18.1L17.8 18.9Z</StreamGeometry>
+        <StreamGeometry x:Key="RailPluginIcon">M12 1.33A10.67 10.67 0 1 0 12 22.67A10.67 10.67 0 1 0 12 1.33 M12 13.2A3.2 3.2 0 1 0 12 6.8A3.2 3.2 0 1 0 12 13.2 M15.2 8.4V12.4A2.4 2.4 0 0 0 19.4 13.6</StreamGeometry>
+        <StreamGeometry x:Key="RailMapIcon">M9.5 4.2L14.5 6.1V19.8L9.5 17.9Z M14.5 6.1L20 4V17.7L14.5 19.8 M4 6.2L9.5 4.2V17.9L4 19.9Z</StreamGeometry>
+        <!-- filled variants for the active rail state -->
+        <StreamGeometry x:Key="RailImageSolidBack">M12 3H19A2 2 0 0 1 21 5V12A2 2 0 0 1 19 14H12A2 2 0 0 1 10 12V5A2 2 0 0 1 12 3Z</StreamGeometry>
+        <StreamGeometry x:Key="RailImageSolidFront">M5 10H12A2 2 0 0 1 14 12V19A2 2 0 0 1 12 21H5A2 2 0 0 1 3 19V12A2 2 0 0 1 5 10Z</StreamGeometry>
+        <StreamGeometry x:Key="RailAutomationSolid">M12 1.33A10.67 10.67 0 1 0 12 22.67A10.67 10.67 0 1 0 12 1.33Z</StreamGeometry>
+        <StreamGeometry x:Key="RailAutomationHands">M12 7.33V12 M12 12L9.33 13.33</StreamGeometry>
+        <StreamGeometry x:Key="RailLibrarySolid">M5 6.5A1.5 1.5 0 0 1 6.5 5H8A1.5 1.5 0 0 1 9.5 6.5V19H5Z M11 5.5A1.5 1.5 0 0 1 12.5 4H14A1.5 1.5 0 0 1 15.5 5.5V19H11Z M15.9 6.9L18.3 6.1L20.2 18.1L17.8 18.9Z</StreamGeometry>
+        <StreamGeometry x:Key="RailPluginSolid">M12 1.33A10.67 10.67 0 1 0 12 22.67A10.67 10.67 0 1 0 12 1.33Z</StreamGeometry>
+        <StreamGeometry x:Key="RailPluginInner">M12 13.2A3.2 3.2 0 1 0 12 6.8A3.2 3.2 0 1 0 12 13.2 M15.2 8.4V12.4A2.4 2.4 0 0 0 19.4 13.6</StreamGeometry>
         <StreamGeometry x:Key="FolderIcon">M3 5H9L11 7H21V19H3Z</StreamGeometry>
-        <StreamGeometry x:Key="AddProjectIcon">M3 5H9L11 7H21V19H3Z M12 10V16 M9 13H15</StreamGeometry>
-        <StreamGeometry x:Key="CodeReviewIcon">M7 4A2 2 0 1 0 7 8A2 2 0 1 0 7 4 M7 8V16 M7 16A2 2 0 1 0 7 20A2 2 0 1 0 7 16 M13 6H15C17 6 18 7 18 9V16 M18 16A2 2 0 1 0 18 20A2 2 0 1 0 18 16</StreamGeometry>
-        <StreamGeometry x:Key="PinIcon">M16 12V4H17V2H7V4H8V12L6 14V16H11.2V22H12.8V16H18V14L16 12Z</StreamGeometry>
+        <StreamGeometry x:Key="CodeReviewIcon">M6 3.2A2.4 2.4 0 1 0 6 8A2.4 2.4 0 1 0 6 3.2 M6 8V16 M6 16A2.4 2.4 0 1 0 6 20.8A2.4 2.4 0 1 0 6 16 M18.6 16A2.4 2.4 0 1 0 18.6 20.8A2.4 2.4 0 1 0 18.6 16 M12.6 3.4H15.4C17.6 3.4 19.4 5.2 19.4 7.4V16</StreamGeometry>
         <StreamGeometry x:Key="SearchIcon">M10.5 4A6.5 6.5 0 1 0 10.5 17A6.5 6.5 0 1 0 10.5 4 M15.5 15.5L21 21</StreamGeometry>
         <StreamGeometry x:Key="MoreIcon">M5 12A1.5 1.5 0 1 0 8 12A1.5 1.5 0 1 0 5 12 M10.5 12A1.5 1.5 0 1 0 13.5 12A1.5 1.5 0 1 0 10.5 12 M16 12A1.5 1.5 0 1 0 19 12A1.5 1.5 0 1 0 16 12</StreamGeometry>
         <StreamGeometry x:Key="PanelIcon">M4 4H20V20H4Z M9 4V20</StreamGeometry>
         <StreamGeometry x:Key="SettingsIcon">M12 2L14 4L17 3L18 6L21 7L20 10L22 12L20 14L21 17L18 18L17 21L14 20L12 22L10 20L7 21L6 18L3 17L4 14L2 12L4 10L3 7L6 6L7 3L10 4Z M12 8A4 4 0 1 0 12 16A4 4 0 1 0 12 8</StreamGeometry>
         <StreamGeometry x:Key="ChevronDownIcon">M7 9L12 14L17 9</StreamGeometry>
         <StreamGeometry x:Key="ChevronUpIcon">M7 15L12 10L17 15</StreamGeometry>
+        <StreamGeometry x:Key="ChevronLeftIcon">M15 5L8 12L15 19</StreamGeometry>
+        <StreamGeometry x:Key="ChevronRightIcon">M9 5L16 12L9 19</StreamGeometry>
         <StreamGeometry x:Key="SendIcon">M12 19V5 M6 11L12 5L18 11</StreamGeometry>
         <StreamGeometry x:Key="ThoughtIcon">M12 3L13.4 8.6L19 10L13.4 11.4L12 17L10.6 11.4L5 10L10.6 8.6Z</StreamGeometry>
+        <StreamGeometry x:Key="SparkIcon">M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5Z</StreamGeometry>
         <StreamGeometry x:Key="ToolIcon">M4 5H20V19H4Z M7 9L10 12L7 15 M12 15H17</StreamGeometry>
+        <StreamGeometry x:Key="StopIcon">M7 7H17V17H7Z</StreamGeometry>
+        <StreamGeometry x:Key="ClockIcon">M12 3A9 9 0 1 0 12 21A9 9 0 1 0 12 3 M12 7V12L15 14</StreamGeometry>
+        <StreamGeometry x:Key="WarningIcon">M12 3L22 20H2Z M12 9V14 M12 17V17.2</StreamGeometry>
+        <StreamGeometry x:Key="CopyIcon">M8 8H20V20H8Z M4 16V4H16</StreamGeometry>
+        <StreamGeometry x:Key="TrashIcon">M4 7H20 M9 4H15 M7 7L8 21H16L17 7 M10 11V17 M14 11V17</StreamGeometry>
+        <StreamGeometry x:Key="BellIcon">M12 3A5 5 0 0 0 7 8V12L5 15H19L17 12V8A5 5 0 0 0 12 3Z M10 18A2 2 0 0 0 14 18</StreamGeometry>
+        <StreamGeometry x:Key="MinimizeIcon">M5 12H19</StreamGeometry>
+        <StreamGeometry x:Key="MaximizeIcon">M5 5H19V19H5Z</StreamGeometry>
+        <StreamGeometry x:Key="CloseIcon">M6 6L18 18 M18 6L6 18</StreamGeometry>
+        <StreamGeometry x:Key="RefreshIcon">M19 12A7 7 0 1 1 16.5 6.5 M19 4V9H14</StreamGeometry>
+        <StreamGeometry x:Key="LogoutIcon">M9 4H5V20H9 M14 8L18 12L14 16 M18 12H9</StreamGeometry>
+        <StreamGeometry x:Key="HelpIcon">M12 3A9 9 0 1 0 12 21A9 9 0 1 0 12 3 M9.5 9.5A2.5 2.5 0 1 1 12 12V13.5 M12 16.5V16.8</StreamGeometry>
+        <StreamGeometry x:Key="PinIcon">M16 9V4H17C17.55 4 18 3.55 18 3H6C6 3.55 6.45 4 7 4H8V9C8 10.66 6.66 12 5 12V14H11V21H13V14H19V12C17.34 12 16 10.66 16 9Z</StreamGeometry>
     </Application.Resources>
 
     <Application.Styles>
         <FluentTheme />
 
+        <Style Selector="ToolTip">
+            <Setter Property="Background" Value="{DynamicResource TooltipFill}" />
+            <Setter Property="BorderBrush" Value="#2A2A2C" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="Foreground" Value="{DynamicResource TooltipText}" />
+            <Setter Property="FontSize" Value="13.5" />
+        </Style>
+
         <Style Selector="Button">
-            <Setter Property="FontFamily" Value="Inter" />
+            <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
             <Setter Property="Transitions" Value="{x:Null}" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template" Value="{StaticResource FlatButtonTemplate}" />
         </Style>
 
-        <Style Selector="ToolTip">
-            <Setter Property="Background" Value="{DynamicResource ElevatedFill}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource LineStrong}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="8" />
-            <Setter Property="Padding" Value="10,6" />
-            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-            <Setter Property="FontSize" Value="12" />
-        </Style>
-
-        <Style Selector="Border.more-menu-row">
-            <Setter Property="Height" Value="32" />
-            <Setter Property="CornerRadius" Value="7" />
+        <!-- Title bar -->
+        <Style Selector="Button.titlebar-icon">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="6" />
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="ClipToBounds" Value="True" />
+            <Setter Property="BorderThickness" Value="0" />
         </Style>
-        <Style Selector="Border.more-menu-row:pointerover">
-            <Setter Property="Background" Value="{DynamicResource MenuRowHoverFill}" />
+        <Style Selector="Button.titlebar-icon:pointerover">
+            <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
         </Style>
-        <Style Selector="Border.more-menu-row:pointerover TextBlock">
-            <Setter Property="Foreground" Value="{DynamicResource RailIconActive}" />
+        <Style Selector="Button.titlebar-icon:disabled">
+            <Setter Property="Opacity" Value="0.3" />
         </Style>
-        <Style Selector="Border.more-menu-row:pointerover Path.more-menu-icon">
-            <Setter Property="Stroke" Value="{DynamicResource RailIconActive}" />
+        <Style Selector="Button.titlebar-icon Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextSecondary}" />
+            <Setter Property="StrokeThickness" Value="1.4" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Fill" Value="Transparent" />
+            <Setter Property="Stretch" Value="Uniform" />
         </Style>
-        <Style Selector="Border.more-menu-row:pointerover Path.more-menu-pin-icon">
+
+        <Style Selector="Button.titlebar-menu">
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+        <Style Selector="Button.titlebar-menu:pointerover">
+            <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+
+        <Style Selector="Button.caption">
+            <Setter Property="Width" Value="46" />
+            <Setter Property="Height" Value="40" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="Button.caption:pointerover">
+            <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
+        </Style>
+        <Style Selector="Button.caption.close:pointerover">
+            <Setter Property="Background" Value="{StaticResource DangerRed}" />
+        </Style>
+        <Style Selector="Button.caption.close:pointerover Path">
+            <Setter Property="Stroke" Value="White" />
+        </Style>
+        <Style Selector="Button.caption Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextSecondary}" />
+            <Setter Property="StrokeThickness" Value="1.1" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Fill" Value="Transparent" />
+            <Setter Property="Stretch" Value="Uniform" />
+        </Style>
+
+        <!-- Rail -->
+        <Style Selector="Button.rail">
+            <Setter Property="Width" Value="36" />
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="{DynamicResource RailHoverFillZero}" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.rail Path">
+            <Setter Property="Stroke" Value="{DynamicResource RailIcon}" />
+            <Setter Property="Fill" Value="Transparent" />
+            <Setter Property="StrokeThickness" Value="1.5" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Stroke" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.rail Ellipse">
+            <Setter Property="Fill" Value="{DynamicResource RailIcon}" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Fill" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.rail:pointerover">
+            <Setter Property="Background" Value="{DynamicResource RailActiveFill}" />
+        </Style>
+        <Style Selector="Button.rail:pointerover Path">
+            <Setter Property="Stroke" Value="{DynamicResource RailIconHover}" />
+        </Style>
+        <Style Selector="Button.rail:pointerover Ellipse">
             <Setter Property="Fill" Value="{DynamicResource RailIconHover}" />
         </Style>
-        <Style Selector="Button.more-menu-item">
-            <Setter Property="Height" Value="32" />
-            <Setter Property="Padding" Value="10,5" />
-            <Setter Property="CornerRadius" Value="7" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="FocusAdorner" Value="{x:Null}" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Template">
-                <ControlTemplate>
-                    <Border Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="{TemplateBinding CornerRadius}"
-                            Padding="{TemplateBinding Padding}">
-                        <ContentPresenter Content="{TemplateBinding Content}"
-                                          HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                          VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
-                    </Border>
-                </ControlTemplate>
-            </Setter>
+        <Style Selector="Button.rail:pressed">
+            <Setter Property="Background" Value="{DynamicResource RailActiveFill}" />
         </Style>
-        <Style Selector="Button.more-menu-item:pointerover">
-            <Setter Property="Background" Value="Transparent" />
+        <Style Selector="Button.rail.active">
+            <Setter Property="Background" Value="{DynamicResource RailActiveFill}" />
         </Style>
-        <Style Selector="Button.more-menu-item:pressed">
-            <Setter Property="Background" Value="{DynamicResource MenuRowPressedFill}" />
+        <Style Selector="Button.rail.active Path">
+            <Setter Property="Stroke" Value="{DynamicResource RailIconActive}" />
         </Style>
-        <Style Selector="Button.more-menu-pin">
-            <Setter Property="Width" Value="26" />
-            <Setter Property="Height" Value="26" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="Margin" Value="0" />
-            <Setter Property="Opacity" Value="0" />
-            <Setter Property="HorizontalAlignment" Value="Center" />
-            <Setter Property="VerticalAlignment" Value="Center" />
-            <Setter Property="HorizontalContentAlignment" Value="Center" />
-            <Setter Property="VerticalContentAlignment" Value="Center" />
-            <Setter Property="CornerRadius" Value="7" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="FocusAdorner" Value="{x:Null}" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Template">
-                <ControlTemplate>
-                    <Border Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="{TemplateBinding CornerRadius}"
-                            Padding="{TemplateBinding Padding}">
-                        <ContentPresenter Content="{TemplateBinding Content}"
-                                          HorizontalAlignment="Center"
-                                          VerticalAlignment="Center" />
-                    </Border>
-                </ControlTemplate>
-            </Setter>
+        <Style Selector="Button.rail.active Path.rail-fill">
+            <Setter Property="Fill" Value="{DynamicResource RailIconActive}" />
         </Style>
-        <Style Selector="Button.more-menu-pin:pointerover">
-            <Setter Property="Background" Value="Transparent" />
+        <Style Selector="Button.rail.active Ellipse">
+            <Setter Property="Fill" Value="{DynamicResource RailIconActive}" />
+        </Style>
+        <Style Selector="Button.rail.pinned Path">
+            <Setter Property="Stroke" Value="{DynamicResource SidebarText}" />
+        </Style>
+        <Style Selector="Button.rail.pinned.active Path">
+            <Setter Property="Stroke" Value="{DynamicResource RailIconActive}" />
         </Style>
 
+        <!-- filled icon shown when the rail section is active (Codex style) -->
+        <Style Selector="Button.rail Path.rail-solid">
+            <Setter Property="IsVisible" Value="False" />
+            <Setter Property="Fill" Value="{DynamicResource RailIconActive}" />
+            <Setter Property="Stroke" Value="{DynamicResource RailIconActive}" />
+            <Setter Property="StrokeThickness" Value="0" />
+        </Style>
+        <Style Selector="Button.rail.active Path.rail-solid">
+            <Setter Property="IsVisible" Value="True" />
+        </Style>
+        <Style Selector="Button.rail.active Path.rail-line">
+            <Setter Property="IsVisible" Value="False" />
+        </Style>
+        <Style Selector="Button.rail Path.rail-seam">
+            <Setter Property="IsVisible" Value="False" />
+            <Setter Property="Stroke" Value="{DynamicResource RailActiveFill}" />
+            <Setter Property="StrokeThickness" Value="1.6" />
+        </Style>
+        <Style Selector="Button.rail.active Path.rail-seam">
+            <Setter Property="IsVisible" Value="True" />
+        </Style>
+        <Style Selector="Button.rail Path.rail-cut">
+            <Setter Property="IsVisible" Value="False" />
+            <Setter Property="Stroke" Value="{DynamicResource RailActiveFill}" />
+            <Setter Property="StrokeThickness" Value="1.7" />
+        </Style>
+        <Style Selector="Button.rail.active Path.rail-cut">
+            <Setter Property="IsVisible" Value="True" />
+        </Style>
+
+        <!-- Small icon buttons -->
         <Style Selector="Button.icon">
             <Setter Property="Width" Value="28" />
             <Setter Property="Height" Value="28" />
             <Setter Property="Padding" Value="0" />
-            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="CornerRadius" Value="6" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="FocusAdorner" Value="{x:Null}" />
         </Style>
         <Style Selector="Button.icon:pointerover">
             <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
         </Style>
-
-        <Style Selector="Button.new-session">
-            <Setter Property="Height" Value="38" />
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="Padding" Value="12,8" />
-            <Setter Property="CornerRadius" Value="8" />
-            <Setter Property="Background" Value="{DynamicResource ElevatedFill}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource LineStrong}" />
-            <Setter Property="BorderThickness" Value="0.5" />
+        <Style Selector="Button.icon Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextTertiary}" />
+            <Setter Property="StrokeThickness" Value="1.4" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Fill" Value="Transparent" />
         </Style>
-        <Style Selector="Button.new-session:pointerover">
-            <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
+        <Style Selector="Button.icon:pointerover Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextPrimary}" />
+        </Style>
+
+        <!-- Sidebar icon buttons (bell / search) -->
+        <Style Selector="Button.sidebar-icon">
+            <Setter Property="Background" Value="{DynamicResource SidebarIconHoverFillZero}" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.sidebar-icon Path">
+            <Setter Property="Stroke" Value="{DynamicResource SidebarIconIdle}" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Stroke" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.sidebar-icon:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SidebarIconButtonHover}" />
+        </Style>
+        <Style Selector="Button.sidebar-icon:pointerover Path">
+            <Setter Property="Stroke" Value="{DynamicResource RailIconHover}" />
+        </Style>
+
+        <Style Selector="Button.session-actions">
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Grid.session-row-container:pointerover Button.session-actions">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="Button.session-actions Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextTertiary}" />
+            <Setter Property="StrokeThickness" Value="1.3" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Fill" Value="Transparent" />
+        </Style>
+
+        <!-- Rows / navigation -->
+        <Style Selector="Button.row">
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Background" Value="{DynamicResource SidebarHoverFillZero}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Foreground" Value="{DynamicResource SidebarText}" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.row TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource SidebarText}" />
+        </Style>
+        <Style Selector="Button.row Path">
+            <Setter Property="Stroke" Value="{DynamicResource SidebarText}" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Stroke" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.row:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SidebarHoverFill}" />
+        </Style>
+        <Style Selector="Button.row:pointerover Path">
+            <Setter Property="Stroke" Value="{DynamicResource SidebarTextHover}" />
+        </Style>
+        <Style Selector="Button.row.active">
+            <Setter Property="Background" Value="{DynamicResource SidebarActiveFill}" />
+        </Style>
+        <Style Selector="Button.row.active TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource SidebarTextHover}" />
+        </Style>
+        <Style Selector="Button.row.active Path">
+            <Setter Property="Stroke" Value="{DynamicResource SidebarTextHover}" />
+        </Style>
+
+        <Style Selector="Button.session-row">
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Padding" Value="10,0,6,0" />
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Background" Value="{DynamicResource SidebarHoverFillZero}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.session-row TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource SidebarText}" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Foreground" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.session-row:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SidebarHoverFill}" />
+        </Style>
+        <Style Selector="Button.session-row.active">
+            <Setter Property="Background" Value="{DynamicResource SidebarActiveFill}" />
+        </Style>
+        <Style Selector="Button.session-row.active TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource SidebarText}" />
+        </Style>
+
+        <!-- Recent section chevron: rotates while the section collapses -->
+        <Style Selector="Button.recent-toggle Path">
+            <Setter Property="Stroke" Value="{DynamicResource SidebarLabel}" />
+            <Setter Property="RenderTransform" Value="rotate(0deg)" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.recent-toggle.collapsed Path">
+            <Setter Property="RenderTransform" Value="rotate(-90deg)" />
         </Style>
 
         <Style Selector="Button.nav">
             <Setter Property="Height" Value="36" />
-            <Setter Property="Padding" Value="8,7" />
+            <Setter Property="Padding" Value="10,6" />
             <Setter Property="CornerRadius" Value="8" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="FocusAdorner" Value="{x:Null}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
         </Style>
         <Style Selector="Button.nav:pointerover">
             <Setter Property="Background" Value="{DynamicResource HoverFill}" />
         </Style>
         <Style Selector="Button.nav.active">
-            <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
-        </Style>
-        <Style Selector="Button.nav.active Path">
-            <Setter Property="Stroke" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="Background" Value="{DynamicResource ActiveFill}" />
         </Style>
         <Style Selector="Button.nav.active TextBlock">
             <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         </Style>
+        <Style Selector="Button.nav.active Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextSecondary}" />
+        </Style>
 
-        <Style Selector="Button.session-row">
-            <Setter Property="Height" Value="30" />
-            <Setter Property="Padding" Value="8,5" />
-            <Setter Property="CornerRadius" Value="7" />
+        <!-- Pills / chips -->
+        <Style Selector="Button.chip">
+            <Setter Property="MinHeight" Value="26" />
+            <Setter Property="Padding" Value="7,3" />
+            <Setter Property="CornerRadius" Value="6" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="FocusAdorner" Value="{x:Null}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+            <Setter Property="FontSize" Value="12" />
         </Style>
-        <Style Selector="Button.session-row:pointerover">
-            <Setter Property="Background" Value="{DynamicResource HoverFill}" />
-        </Style>
-        <Style Selector="Button.session-row.active">
+        <Style Selector="Button.chip:pointerover">
             <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
         </Style>
 
-        <Style Selector="Button.activity-header">
+        <Style Selector="Button.filter">
+            <Setter Property="Height" Value="26" />
+            <Setter Property="Padding" Value="10,3" />
+            <Setter Property="CornerRadius" Value="13" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextTertiary}" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+        <Style Selector="Button.filter:pointerover">
+            <Setter Property="Background" Value="{DynamicResource HoverFill}" />
+        </Style>
+        <Style Selector="Button.filter.active">
+            <Setter Property="Background" Value="{DynamicResource ActiveFill}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+
+        <!-- Standard actions -->
+        <Style Selector="Button.primary">
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="13,6" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="Foreground" Value="#111113" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="Medium" />
+        </Style>
+        <Style Selector="Button.primary:pointerover">
+            <Setter Property="Background" Value="#FFFFFF" />
+        </Style>
+        <Style Selector="Button.primary:disabled">
+            <Setter Property="Opacity" Value="0.4" />
+        </Style>
+
+        <Style Selector="Button.secondary">
+            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="Padding" Value="12,5" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="BorderBrush" Value="#3A3A3E" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="FontSize" Value="12.5" />
+        </Style>
+        <Style Selector="Button.secondary:pointerover">
+            <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
+        </Style>
+        <Style Selector="Button.secondary:disabled">
+            <Setter Property="Opacity" Value="0.45" />
+        </Style>
+
+        <Style Selector="Button.subtle">
             <Setter Property="MinHeight" Value="28" />
-            <Setter Property="Padding" Value="0" />
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="CornerRadius" Value="7" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="CornerRadius" Value="7" />
-            <Setter Property="HorizontalAlignment" Value="Stretch" />
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="FocusAdorner" Value="{x:Null}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+            <Setter Property="FontSize" Value="12.5" />
         </Style>
-        <Style Selector="Button.activity-header:pointerover">
-            <Setter Property="Background" Value="{DynamicResource HoverFill}" />
+        <Style Selector="Button.subtle:pointerover">
+            <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+
+        <Style Selector="Button.danger">
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="14,6" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="#A94F4F" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontSize" Value="12.5" />
+        </Style>
+        <Style Selector="Button.danger:pointerover">
+            <Setter Property="Background" Value="#BD5C5C" />
         </Style>
 
         <Style Selector="Button.send">
-            <Setter Property="Width" Value="34" />
-            <Setter Property="Height" Value="34" />
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
             <Setter Property="Padding" Value="0" />
-            <Setter Property="CornerRadius" Value="17" />
-            <Setter Property="Background" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="CornerRadius" Value="16" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="FocusAdorner" Value="{x:Null}" />
+            <Setter Property="Background" Value="{DynamicResource TextPrimary}" />
+        </Style>
+        <Style Selector="Button.send Path">
+            <Setter Property="Stroke" Value="#111113" />
+            <Setter Property="StrokeThickness" Value="1.9" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Fill" Value="Transparent" />
         </Style>
         <Style Selector="Button.send:pointerover">
-            <Setter Property="Background" Value="#E7E7E7" />
+            <Setter Property="Background" Value="#FFFFFF" />
         </Style>
         <Style Selector="Button.send:disabled">
-            <Setter Property="Opacity" Value="0.4" />
+            <Setter Property="Opacity" Value="0.35" />
+        </Style>
+
+        <Style Selector="Button.stop">
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="16" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="#3A3A3E" />
+        </Style>
+        <Style Selector="Button.stop Path">
+            <Setter Property="Fill" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="Stroke" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="StrokeThickness" Value="1" />
+        </Style>
+        <Style Selector="Button.stop:pointerover">
+            <Setter Property="Background" Value="#47474C" />
         </Style>
 
         <Style Selector="Button.attach">
@@ -253,18 +623,128 @@
             <Setter Property="Height" Value="28" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="CornerRadius" Value="14" />
-            <Setter Property="Background" Value="#353536" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="FocusAdorner" Value="{x:Null}" />
+            <Setter Property="Background" Value="#303033" />
+        </Style>
+        <Style Selector="Button.attach Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="StrokeThickness" Value="1.5" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Fill" Value="Transparent" />
         </Style>
         <Style Selector="Button.attach:pointerover">
-            <Setter Property="Background" Value="#43454A" />
+            <Setter Property="Background" Value="#3A3A3E" />
         </Style>
 
+        <Style Selector="Button.message-action">
+            <Setter Property="MinHeight" Value="22" />
+            <Setter Property="Padding" Value="5,2" />
+            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource TextCaption}" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="Opacity" Value="0.85" />
+        </Style>
+        <Style Selector="Button.message-action Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextCaption}" />
+            <Setter Property="StrokeThickness" Value="1.35" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Fill" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.message-action:pointerover">
+            <Setter Property="Background" Value="{DynamicResource HoverFill}" />
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+
+        <Style Selector="Button.activity-row">
+            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="Padding" Value="4,3" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+        <Style Selector="Button.activity-row:pointerover">
+            <Setter Property="Background" Value="{DynamicResource HoverFill}" />
+        </Style>
+        <Style Selector="Button.activity-row Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextTertiary}" />
+            <Setter Property="StrokeThickness" Value="1.35" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Fill" Value="Transparent" />
+        </Style>
+
+        <!-- More popup rows -->
+        <Style Selector="Button.more-menu-item">
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+            <Setter Property="FontSize" Value="13.5" />
+        </Style>
+        <Style Selector="Button.more-menu-pin">
+            <Setter Property="Width" Value="22" />
+            <Setter Property="Height" Value="22" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="Button.more-menu-pin Path">
+            <Setter Property="Stroke" Value="#737374" />
+            <Setter Property="StrokeThickness" Value="1.3" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Fill" Value="Transparent" />
+            <Setter Property="RenderTransform" Value="rotate(45deg)" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Stroke" Duration="0:0:0.12" />
+                    <BrushTransition Property="Fill" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.more-menu-pin:pointerover">
+            <Setter Property="Background" Value="#232326" />
+        </Style>
+        <Style Selector="Button.more-menu-pin:pointerover Path">
+            <Setter Property="Stroke" Value="#E3E4E6" />
+        </Style>
+        <Style Selector="Button.more-menu-pin.pinned Path">
+            <Setter Property="Stroke" Value="#C6C7C9" />
+            <Setter Property="Fill" Value="#C6C7C9" />
+        </Style>
+        <Style Selector="Button.more-menu-item:pointerover">
+            <Setter Property="Background" Value="{DynamicResource MoreMenuHoverFill}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+        <Style Selector="Button.more-menu-item Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextTertiary}" />
+            <Setter Property="StrokeThickness" Value="1.9" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Fill" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.more-menu-item:pointerover Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextSecondary}" />
+        </Style>
+
+        <!-- Inputs -->
         <Style Selector="TextBox.composer">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="12,8,12,4" />
+            <Setter Property="Padding" Value="4,2" />
             <Setter Property="CornerRadius" Value="0" />
             <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
             <Setter Property="CaretBrush" Value="{DynamicResource AccentBlue}" />
@@ -276,8 +756,73 @@
             <Setter Property="BorderThickness" Value="0" />
         </Style>
 
+        <Style Selector="TextBox.search">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinHeight" Value="24" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="CaretBrush" Value="{DynamicResource AccentBlue}" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+        </Style>
+        <Style Selector="TextBox.search /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+
+        <Style Selector="TextBox.field">
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="Padding" Value="9,6" />
+            <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="CaretBrush" Value="{DynamicResource AccentBlue}" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+        </Style>
+        <Style Selector="TextBox.field /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="8" />
+        </Style>
+
+        <Style Selector="ComboBox.field">
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+        </Style>
+
         <Style Selector="ScrollBar">
             <Setter Property="Background" Value="Transparent" />
+        </Style>
+
+        <!-- Common text / surface classes -->
+        <Style Selector="TextBlock.page-title">
+            <Setter Property="FontSize" Value="28" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+        <Style Selector="TextBlock.page-subtitle">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Foreground" Value="{DynamicResource TextTertiary}" />
+        </Style>
+        <Style Selector="TextBlock.section-label">
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextTertiary}" />
+        </Style>
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="{DynamicResource CardFill}" />
+            <Setter Property="CornerRadius" Value="16" />
+            <Setter Property="Padding" Value="16,14" />
         </Style>
     </Application.Styles>
 </Application>

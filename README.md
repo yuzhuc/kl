@@ -5,7 +5,7 @@ KL is a local-first AI coding agent with a Rust trusted core and C# clients.
 - **Core:** Rust, JSON-RPC 2.0 over stdio or a local named-pipe/UDS server.
 - **TUI:** C# Terminal.Gui v2 client in `tui/Kl.Tui`.
 - **GUI:** Avalonia 12.1.4 desktop client in `gui/Kl.Gui`.
-- **Shared client:** `sdk/Kl.Client`, used by the TUI and available for future GUI integration.
+- **Shared client:** `sdk/Kl.Client`, used by both the TUI and the GUI.
 
 The project is designed around local execution, explicit approvals, bounded
 context, auditable tool calls and provider neutrality. Python is allowed for
@@ -14,29 +14,34 @@ development tooling, but product binaries and runtime do not depend on Python.
 ## Status
 
 Core, TUI, security, context/memory tools, local multi-client transport and
-release packaging are implemented. The GUI provides streaming chat, sessions,
-settings, plugins and automation through an OpenAI-compatible provider. Its
-`Kl.Client` integration remains a separate future step. Real provider/MCP live
-smoke still needs credentials or a configured local server.
+release packaging are implemented. The GUI is a `Kl.Client` protocol client:
+sessions, streaming events, tool activity, approvals, cancellation, history and
+automation all run inside `kl-core`, and provider/model/API-key configuration is
+managed by Core. GUI release packaging and real provider/MCP live smoke are
+still open; live smoke needs credentials or a configured local server.
 
 ## Architecture
 
 ```text
-TUI (tui/Kl.Tui)     Headless/CI       kl GUI
-        \                  /            (standalone)
-         \             Kl.Client              |
-          \                |                  v
-           +-- JSON-RPC / stdio or local socket --+
-                            |
-                     Rust Core (kl-core)     OpenAI-compatible API
+TUI (tui/Kl.Tui)     Headless/CI          kl GUI (gui/Kl.Gui)
+        \                  |                  /
+         \                 |                 /
+          +----------- Kl.Client -----------+
+                             |
+            JSON-RPC 2.0 / stdio or local socket
+                             |
+                      Rust Core (kl-core)
               Protocol / Session / Events / Audit
               Agent / Tools / Policy / Sandbox
-              Skills / Hooks / MCP / Plugins
+              Provider adapters / Skills / Hooks / MCP / Plugins
+                             |
+             Provider APIs (OpenAI-compatible, Anthropic, ...)
 ```
 
-The Core owns sessions, events, policy, sandboxing, audit and tool execution.
-TUI and headless clients access it through `Kl.Client` and do not execute tools
-directly. See [`docs/architecture/overview.md`](docs/architecture/overview.md).
+The Core owns sessions, events, policy, sandboxing, audit, provider calls and
+tool execution. TUI, GUI and headless clients access it through `Kl.Client` and
+never execute tools or call providers directly. See
+[`docs/architecture/overview.md`](docs/architecture/overview.md).
 
 ## Repository layout
 
@@ -45,7 +50,8 @@ directly. See [`docs/architecture/overview.md`](docs/architecture/overview.md).
 | `crates/` | Rust core and capability crates |
 | `tui/Kl.Tui` | C# terminal client |
 | `tui/Kl.Tui.Tests` | TUI, protocol and core integration tests |
-| `gui/Kl.Gui` | Avalonia desktop chat client |
+| `gui/Kl.Gui` | Avalonia desktop client over `Kl.Client` |
+| `gui/Kl.Gui.Tests` | GUI view-model and service tests |
 | `sdk/Kl.Client` | reusable C# JSON-RPC/session client |
 | `schemas/` | protocol and plugin JSON schemas |
 | `benchmarks/` | acceptance tasks and fixtures |
@@ -91,6 +97,7 @@ For component-level development:
 ```powershell
 cargo build --release -p kl-core
 dotnet build tui/Kl.Tui/Kl.Tui.csproj
+dotnet build gui/Kl.Gui/Kl.Gui.csproj
 ```
 
 Common TUI commands:
@@ -110,6 +117,11 @@ After `python scripts/build.py`, the desktop GUI can be started with:
 D:\kl\bin\run-gui.bat
 ```
 
+The build stages `kl-core.exe` next to both `bin/gui` and `bin/tui`, so the GUI
+finds Core automatically. When running from a component build, point
+`KL_CORE_PATH` at a built `kl-core` binary or keep the `target/` directory next
+to the executable.
+
 ## Main capabilities
 
 - Provider-neutral agent loop with `build`, `plan`, `explore`, `review`,
@@ -123,6 +135,10 @@ D:\kl\bin\run-gui.bat
 - Persistent sessions with event projection, resume, fork and approval rules.
 - Optional local server with attach/replay, sequence de-duplication, reconnect,
   one-writer session leases and read-only observer clients.
+- Avalonia desktop GUI over `Kl.Client`: session list and rich history,
+  streaming assistant/reasoning events, tool cards with diffs, `allow` /
+  `allow_session` / `deny` approvals, cancel, Core status with retry, and
+  read-only observer sessions when another client holds the write lease.
 - Automatic model-summary context compaction with mechanical fallback, explicit
   `/compact`, and a 23-task acceptance harness.
 - Workspace and user memory injection with bounded prompt size and `/memory`.
@@ -136,15 +152,19 @@ D:\kl\bin\run-gui.bat
 KL reads user configuration from `~/.kl/`:
 
 - `config.toml` — providers, models, agent, policy, sandbox and review settings.
-- `credentials/<provider>.key` — provider API keys.
+- `credentials/<provider>.key` — provider API keys, managed by Core.
 - `agents/*.toml` — custom agent presets.
 - `skills/` — user-level skills.
 - `mcp.toml` — enabled MCP stdio servers.
-- `gui/state.json` — desktop GUI state and conversations.
+- `gui/state.json` — desktop GUI UI state (workspaces, layout, automations);
+  sessions, messages and events are owned by Core under `sessions/`.
 - `plugins/` — shared local plugin directory used by the GUI and Core.
 
-The GUI automatically migrates legacy `%LOCALAPPDATA%\DeepSeekHarnessGui`
-data into `~/.kl/gui` and removes the old directory.
+The GUI settings page shows Core runtime information (version, protocol,
+provider/model, API-key configured flag, Core path and KL home) read-only;
+provider, model and credential changes are made in the Core configuration. The
+GUI automatically migrates legacy `%LOCALAPPDATA%\DeepSeekHarnessGui` data into
+`~/.kl/gui` and removes the old directory.
 
 Workspace-level `AGENTS.md`, `.kl/memory/` and project skills are discovered.
 See [`docs/security/policy.md`](docs/security/policy.md) for the permission
@@ -190,8 +210,8 @@ and the release matrix in
 - Real Provider/MCP live smoke requires credentials or a local MCP server.
 - Windows release packaging still needs `kl-sandbox-runner.exe` included and a
   packaged `kl serve` smoke test.
-- GUI uses an OpenAI-compatible provider directly; `Kl.Client` integration
-  remains in progress.
+- The GUI is a Core client in local development builds; release packaging for
+  the GUI and its automatic multi-window reconnect UX are Phase 2 work.
 - Provider prompt caching and session rewind/revert are not complete.
 - MCP servers start in the Core startup workspace, not a per-session workspace.
 - PTY under Windows AppContainer fails closed because that backend cannot be

@@ -29,4 +29,8 @@
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\sdk\Kl.Client\Kl.Client.csproj" />
+  </ItemGroup>
 </Project>

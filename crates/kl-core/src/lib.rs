@@ -1822,6 +1822,8 @@ impl Core {
 
         self.threads.retain(|handle| !handle.is_finished());
 
+        self.ensure_session_loaded(&params.session_id)?;
+
         let (metadata, workspace, history, provider) = {
             let mut sessions = self
                 .sessions
@@ -4530,6 +4532,55 @@ auto_approve_plugins = true
             .map(|stored| stored.seq)
             .expect("matching turn.started event");
         assert!(user_messages[0].0 < started_seq);
+    }
+
+    #[test]
+    fn turn_start_loads_session_from_disk() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = temp.path().join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let config = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let session_id = {
+            let (mut core, _) = new_test_core(config.clone(), home.path());
+            core.handshaken = true;
+            let created = core
+                .session_create(json!({"workspace": workspace.to_string_lossy()}))
+                .unwrap();
+            created["session_id"].as_str().unwrap().to_owned()
+        };
+
+        let (mut restarted, _) = new_test_core(config, home.path());
+        restarted.handshaken = true;
+        assert!(
+            !restarted
+                .sessions
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .contains_key(&session_id),
+            "session should only exist on disk after restart"
+        );
+        let missing = restarted
+            .turn_start(json!({"session_id": "missing-session", "prompt": "hello"}))
+            .unwrap_err();
+        assert_eq!(missing.code, error_codes::SESSION_NOT_FOUND);
+
+        let started = restarted
+            .turn_start(json!({"session_id": session_id, "prompt": "hello"}))
+            .unwrap();
+        assert_eq!(started["provider"], "scripted");
+        assert_eq!(started["model"], "scripted");
+        assert!(started["turn_id"].as_str().is_some_and(|id| !id.is_empty()));
+        wait_for_threads(&mut restarted);
+
+        let events = restarted.store.read_events(&session_id).unwrap();
+        assert!(
+            events.iter().any(|stored| matches!(
+                &stored.event,
+                CoreEvent::UserMessage { text, .. } if text == "hello"
+            )),
+            "turn.start should load the session from disk and record the user message"
+        );
     }
 
     #[test]

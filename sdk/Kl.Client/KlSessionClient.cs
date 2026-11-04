@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Channels;
 
 namespace Kl.Client;
@@ -13,6 +14,12 @@ public sealed record TurnOutcome(string Status, string Text);
 public sealed class KlSessionClient : IAsyncDisposable
 {
     private const int SessionBusyCode = -32008;
+    private const int ToolOutputLimit = 8 * 1024;
+
+    /// <summary>Matches credential-shaped text so diagnostics can be shown safely.</summary>
+    private static readonly Regex SecretPattern = new(
+        @"(?i)(?<label>sk-[A-Za-z0-9_\-]{6,}|bearer\s+|api[_-]?key\s*[:=]\s*|token\s*[:=]\s*|secret\s*[:=]\s*|password\s*[:=]\s*)[^\s""',;}\]]+",
+        RegexOptions.Compiled);
 
     private readonly KlClientOptions _clientOptions;
     private readonly KlSessionOptions _sessionOptions;
@@ -222,6 +229,13 @@ public sealed class KlSessionClient : IAsyncDisposable
 
             try
             {
+                // The core keeps live sessions in memory only. After a core
+                // restart the session has to be loaded from disk again or the
+                // next turn.start fails with SESSION_NOT_FOUND (BUG-2).
+                // resume is idempotent and emits no events, so replay
+                // de-duplication by LastSeq is unaffected.
+                await next.ResumeSessionAsync(SessionId, cancellationToken)
+                    .ConfigureAwait(false);
                 var attach = await next.AttachSessionAsync(
                     SessionId,
                     LastSeq,
@@ -463,17 +477,20 @@ public sealed class KlSessionClient : IAsyncDisposable
         {
             await task.ConfigureAwait(false);
         }
-        catch (Exception error) when (error is OperationCanceledException or ChannelClosedException)
+        catch (Exception)
         {
-            // The connection is going away.
+            // A dropped connection faults the pump. Teardown must clean up
+            // instead of surfacing that failure to Dispose/Reconnect callers
+            // (BUG-1).
         }
         cancellation.Dispose();
     }
 
     private async Task PumpAsync(KlCoreClient client, CancellationToken cancellationToken)
     {
+        Exception? closedError = null;
         try
- {
+        {
             await foreach (var message in client.Notifications.ReadAllAsync(cancellationToken))
             {
                 if (message.TryGetProperty("params", out var parameters))
@@ -486,9 +503,12 @@ public sealed class KlSessionClient : IAsyncDisposable
         {
             // Replaced by a newer connection.
         }
-        catch (ChannelClosedException)
+        catch (Exception error) when (error is IOException or JsonRpcException or ChannelClosedException)
         {
-            // Core exited.
+            // The transport reports a dropped connection by faulting the
+            // notification channel. That is an expected disconnect, not a
+            // reason to fault the pump task.
+            closedError = error;
         }
         finally
         {
@@ -505,9 +525,51 @@ public sealed class KlSessionClient : IAsyncDisposable
                 }
                 _turnCompletion?.TrySetResult(
                     new TurnOutcome("failed", "core connection closed"));
+                await NotifyConnectionClosedAsync(closedError).ConfigureAwait(false);
             }
         }
     }
+
+    /// <summary>
+    /// Tells the presenter that the core connection is gone. The detail comes
+    /// from the transport's last stderr summary and is redacted so credentials
+    /// never reach the UI.
+    /// </summary>
+    private async Task NotifyConnectionClosedAsync(Exception? error)
+    {
+        var text = "core connection closed";
+        var detail = error?.Message;
+        if (!string.IsNullOrWhiteSpace(detail))
+        {
+            detail = RedactSecrets(detail);
+            const int limit = 500;
+            if (detail.Length > limit)
+            {
+                detail = detail[..limit] + "...";
+            }
+            text += $": {detail}";
+        }
+
+        try
+        {
+            await _presenter.OnEventAsync(
+                new SessionEvent(SessionEventKind.Error, Text: text),
+                CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // A presenter failure must not fault the connection pump.
+        }
+    }
+
+    private static string RedactSecrets(string text) =>
+        SecretPattern.Replace(
+            text,
+            match => match.Groups["label"].Value.StartsWith(
+                "sk-",
+                StringComparison.OrdinalIgnoreCase)
+                ? "sk-***"
+                : match.Groups["label"].Value + "***");
 
     private async Task ConsumeEventsAsync(CancellationToken cancellationToken)
     {
@@ -574,21 +636,26 @@ public sealed class KlSessionClient : IAsyncDisposable
                 await _presenter.OnEventAsync(
                     new SessionEvent(
                         SessionEventKind.TurnStarted,
-                        TurnId: GetString(data, "turn_id")),
+                        TurnId: GetString(data, "turn_id"),
+                        Seq: seq),
                     cancellationToken).ConfigureAwait(false);
                 break;
             case "turn.delta":
                 await _presenter.OnEventAsync(
                     new SessionEvent(
                         SessionEventKind.AssistantDelta,
-                        Text: Sanitize(GetString(data, "text"))),
+                        Text: Sanitize(GetString(data, "text")),
+                        TurnId: GetNullableString(data, "turn_id"),
+                        Seq: seq),
                     cancellationToken).ConfigureAwait(false);
                 break;
             case "turn.reasoning":
                 await _presenter.OnEventAsync(
                     new SessionEvent(
                         SessionEventKind.ReasoningDelta,
-                        Text: Sanitize(GetString(data, "text"))),
+                        Text: Sanitize(GetString(data, "text")),
+                        TurnId: GetNullableString(data, "turn_id"),
+                        Seq: seq),
                     cancellationToken).ConfigureAwait(false);
                 break;
             case "tool.started":
@@ -596,14 +663,20 @@ public sealed class KlSessionClient : IAsyncDisposable
                     new SessionEvent(
                         SessionEventKind.ToolStarted,
                         Name: GetString(data, "name"),
-                        Args: Sanitize(GetRaw(data, "args"))),
+                        Args: Sanitize(GetRaw(data, "args")),
+                        TurnId: GetNullableString(data, "turn_id"),
+                        Seq: seq,
+                        CallId: GetNullableString(data, "call_id")),
                     cancellationToken).ConfigureAwait(false);
                 break;
             case "tool.output":
                 await _presenter.OnEventAsync(
                     new SessionEvent(
                         SessionEventKind.ToolOutput,
-                        Text: Sanitize(GetString(data, "chunk"))),
+                        Text: Sanitize(GetString(data, "chunk")),
+                        TurnId: GetNullableString(data, "turn_id"),
+                        Seq: seq,
+                        CallId: GetNullableString(data, "call_id")),
                     cancellationToken).ConfigureAwait(false);
                 break;
             case "tool.approval.requested":
@@ -613,10 +686,15 @@ public sealed class KlSessionClient : IAsyncDisposable
                 await _presenter.OnEventAsync(
                     new SessionEvent(
                         SessionEventKind.ApprovalResolved,
-                        Decision: GetString(data, "decision")),
+                        ApprovalId: GetNullableString(data, "approval_id"),
+                        Decision: GetString(data, "decision"),
+                        TurnId: GetNullableString(data, "turn_id"),
+                        Seq: seq,
+                        CallId: GetNullableString(data, "call_id")),
                     cancellationToken).ConfigureAwait(false);
                 break;
             case "tool.completed":
+                var toolOutput = GetNullableString(data, "output");
                 await _presenter.OnEventAsync(
                     new SessionEvent(
                         SessionEventKind.ToolCompleted,
@@ -627,14 +705,20 @@ public sealed class KlSessionClient : IAsyncDisposable
                             ? Sanitize(diff.GetString() ?? string.Empty)
                             : null,
                         Ok: !data.TryGetProperty("ok", out var okElement)
-                            || okElement.GetBoolean()),
+                            || okElement.GetBoolean(),
+                        TurnId: GetNullableString(data, "turn_id"),
+                        Seq: seq,
+                        CallId: GetNullableString(data, "call_id"),
+                        Output: toolOutput is null ? null : SanitizeToolOutput(toolOutput)),
                     cancellationToken).ConfigureAwait(false);
                 break;
             case "audit.recorded" when _sessionOptions.Verbose:
                 await _presenter.OnEventAsync(
                     new SessionEvent(
                         SessionEventKind.AuditRecorded,
-                        Text: GetString(data, "record_id")),
+                        Text: GetString(data, "record_id"),
+                        TurnId: GetNullableString(data, "turn_id"),
+                        Seq: seq),
                     cancellationToken).ConfigureAwait(false);
                 break;
             case "context.compacted":
@@ -642,7 +726,8 @@ public sealed class KlSessionClient : IAsyncDisposable
                     new SessionEvent(
                         SessionEventKind.ContextCompacted,
                         Text: GetString(data, "trigger"),
-                        Summary: GetString(data, "summary")),
+                        Summary: GetString(data, "summary"),
+                        Seq: seq),
                     cancellationToken).ConfigureAwait(false);
                 break;
             case "turn.completed":
@@ -660,9 +745,11 @@ public sealed class KlSessionClient : IAsyncDisposable
                         SessionEventKind.TurnCompleted,
                         Text: text,
                         Status: status,
+                        TurnId: GetNullableString(data, "turn_id"),
                         InputTokens: inputTokens,
                         OutputTokens: outputTokens,
-                        CostUsd: costUsd),
+                        CostUsd: costUsd,
+                        Seq: seq),
                     cancellationToken).ConfigureAwait(false);
                 _turnCompletion?.TrySetResult(new TurnOutcome(status, text));
                 break;
@@ -671,7 +758,9 @@ public sealed class KlSessionClient : IAsyncDisposable
                 await _presenter.OnEventAsync(
                     new SessionEvent(
                         SessionEventKind.TurnFailed,
-                        Text: failureText),
+                        Text: failureText,
+                        TurnId: GetNullableString(data, "turn_id"),
+                        Seq: seq),
                     cancellationToken).ConfigureAwait(false);
                 _turnCompletion?.TrySetResult(new TurnOutcome("failed", failureText));
                 break;
@@ -802,6 +891,21 @@ public sealed class KlSessionClient : IAsyncDisposable
             ? parsed
             : 0;
 
+    private static string? GetNullableString(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    /// <summary>
+    /// Tool output already arrives capped at 8 KiB from the core; keep that cap
+    /// visible to the presenter contract even if a future core sends more.
+    /// </summary>
+    private static string SanitizeToolOutput(string output) =>
+        Sanitize(
+            output.Length > ToolOutputLimit
+                ? output[..ToolOutputLimit] + "..."
+                : output);
+
     private static string Sanitize(string text)
     {
         if (text.IndexOfAny(['\u001b', '\u0000', '\u0007']) < 0)
@@ -828,26 +932,40 @@ public sealed class KlSessionClient : IAsyncDisposable
             _turnCancellation?.Cancel();
         }
         _shutdown.Cancel();
-        await StopPumpAsync().ConfigureAwait(false);
         try
         {
-            await _eventLoop.ConfigureAwait(false);
+            await StopPumpAsync().ConfigureAwait(false);
+            try
+            {
+                await _eventLoop.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // Normal shutdown.
+            }
         }
-        catch (OperationCanceledException)
+        finally
         {
-            // Normal shutdown.
-        }
-        _events.Writer.TryComplete();
-        _shutdown.Dispose();
-        KlCoreClient? client;
-        lock (_clientLock)
-        {
-            client = _client;
-            _client = null;
-        }
-        if (client is not null)
-        {
-            await client.DisposeAsync().ConfigureAwait(false);
+            // Disposal must always release the transport and the shutdown
+            // token, even when the connection died mid-teardown (BUG-1).
+            _events.Writer.TryComplete();
+            KlCoreClient? client;
+            lock (_clientLock)
+            {
+                client = _client;
+                _client = null;
+            }
+            try
+            {
+                if (client is not null)
+                {
+                    await client.DisposeAsync().ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                _shutdown.Dispose();
+            }
         }
     }
 }

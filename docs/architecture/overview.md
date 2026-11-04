@@ -3,25 +3,30 @@
 ## Process model
 
 ```text
-TUI (tui/Kl.Tui)     Headless/CI       kl GUI
-        \                  /            (standalone)
-         \             Kl.Client              |
-          \                |                  v
-           +-- JSON-RPC / stdio or local socket --+
-                            |
-                     Rust core (kl-core)     OpenAI-compatible API
+TUI (tui/Kl.Tui)     Headless/CI          kl GUI (gui/Kl.Gui)
+        \                  |                  /
+         \                 |                 /
+          +----------- Kl.Client -----------+
+                             |
+            JSON-RPC 2.0 / stdio or local socket
+                             |
+                      Rust Core (kl-core)
               Emitter + JSON-RPC request handling
               ProviderRouter + Agent runtime
               SessionStore + EventHub
               PolicyEngine + SandboxManager
               ToolRegistry + AuditLog
-              Skills / Hooks / MCP / Plugins
+              Provider adapters / Skills / Hooks / MCP / Plugins
+                             |
+             Provider APIs (OpenAI-compatible, Anthropic, ...)
 ```
 
 The Rust Core is the only process that executes tools, calls providers, writes
-sessions or evaluates policy for protocol clients. TUI and headless clients use
-`Kl.Client`. The standalone GUI currently uses an OpenAI-compatible provider
-directly and is not yet wired to Core.
+sessions or evaluates policy for protocol clients. TUI, GUI and headless clients
+use `Kl.Client`. The GUI is a protocol client only: it starts or resumes
+`kl-core` through `KlSessionClient` (stdio when no local server is available,
+otherwise the discovered local server) and renders events; it never executes a
+tool, calls a provider or evaluates policy itself.
 
 ## Repository boundaries
 
@@ -39,9 +44,9 @@ directly and is not yet wired to Core.
 | `kl-review` | Diff, security and optional LLM review pipeline |
 | `kl-index` | Shallow repository symbols and test selection hints |
 | `kl-plugin-host` | Sidecar/WASM plugin supervision and integrity checks |
-| `Kl.Client` | C# JSON-RPC/session client used by the TUI |
+| `Kl.Client` | C# JSON-RPC/session client used by the TUI and the GUI |
 | `Kl.Tui` | Terminal.Gui v2 terminal client and approval presentation |
-| `Kl.Gui` | Standalone Avalonia desktop chat client |
+| `Kl.Gui` | Avalonia desktop client over `Kl.Client` |
 
 ## Protocol and transports
 
@@ -61,6 +66,9 @@ directly and is not yet wired to Core.
 - `schemas/protocol/v1` is the contract; Rust, schema and C# constants are
   checked together by `scripts/check_protocol.py`.
 - Shared fixtures live under `tests/fixtures/protocol`.
+- The TUI and GUI consume the same session/event contract through `Kl.Client`;
+  transport selection (stdio child process or discovered local server) happens
+  inside `KlSessionClient`, not in client views.
 
 Representative methods include `session.create`, `session.resume`,
 `session.history`, `session.attach`, `session.lease`, `turn.start`,
@@ -82,6 +90,12 @@ Representative methods include `session.create`, `session.resume`,
 - `KlSessionClient` consumes replay, drops stale sequences, records `LastSeq`
   and can reconnect from that sequence. `session.history` carries reasoning,
   tool output and diff metadata so clients do not read Core files directly.
+- Reconnect re-sends `session.resume` before `session.attach`, so a client can
+  recover a session from disk after the Core process restarted; `turn.start`
+  also loads a persisted session on demand.
+- Presenter events expose ordering and correlation fields (`Seq`, `TurnId`,
+  `CallId`) plus bounded tool output. A dropped Core connection completes the
+  session with an `Error` event and fails the active turn instead of hanging.
 - Approval `allow_session` rules are stored with the session and survive reload.
 
 ## Context and memory
@@ -149,9 +163,20 @@ commands use the same sandbox manager.
 ## GUI/TUI reuse
 
 `Kl.Client` owns the C# protocol connection and session API. The TUI adds
-terminal rendering and input. The GUI must reuse `Kl.Client` and the same
-session/events; it must not copy the agent loop, policy or tool execution.
-The GUI currently has a static Avalonia shell only.
+terminal rendering and input; the GUI adds Avalonia views and view-models. Both
+reuse the same `KlSessionClient`, session/event contract and approval protocol,
+and neither owns an agent loop, policy engine, sandbox or tool execution.
+
+The GUI keeps this boundary in `gui/Kl.Gui/Services/CoreSessionService.cs`
+(session lifecycle and protocol requests), `CoreSessionPresenter.cs`
+(event/approval bridge), `CoreProtocolModels.cs` (protocol response parsing) and
+`ViewModels/MainWindowViewModel.Core.cs` (event-to-UI mapping). The GUI settings
+page shows Core runtime information read-only (version, protocol, provider and
+model, API-key configured flag, Core path and KL home); provider, model and
+credential changes belong to Core. Automation runs each task in a throwaway Core
+session and stores only the result. A GUI window that attaches to a session
+whose write lease is held elsewhere becomes a read-only observer and is rendered
+as such.
 
 ## Release
 
@@ -170,7 +195,9 @@ packaged binaries really match them. Adding or removing a RID requires an ADR
 
 ## Known gaps
 
-- Full GUI integration and GUI release packaging.
+- GUI release packaging: local `scripts/build.py` publishes the GUI with
+  `kl-core.exe`, but the release bundle still ships only the TUI. GUI Phase 2
+  (local-server-first shared sessions and automatic reconnect UX) is open.
 - Windows release bundle must include `kl-sandbox-runner.exe`; packaged
   `kl serve` smoke coverage is still pending.
 - Real provider/MCP live smoke with credentials.
