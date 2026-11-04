@@ -113,6 +113,7 @@
         <StreamGeometry x:Key="LogoutIcon">M9 4H5V20H9 M14 8L18 12L14 16 M18 12H9</StreamGeometry>
         <StreamGeometry x:Key="HelpIcon">M12 3A9 9 0 1 0 12 21A9 9 0 1 0 12 3 M9.5 9.5A2.5 2.5 0 1 1 12 12V13.5 M12 16.5V16.8</StreamGeometry>
         <StreamGeometry x:Key="PinIcon">M16 9V4H17C17.55 4 18 3.55 18 3H6C6 3.55 6.45 4 7 4H8V9C8 10.66 6.66 12 5 12V14H11V21H13V14H19V12C17.34 12 16 10.66 16 9Z</StreamGeometry>
+        <StreamGeometry x:Key="ArchiveIcon">M4 5H20V9H4Z M6 9V19H18V9 M10 13H14</StreamGeometry>
     </Application.Resources>
 
     <Application.Styles>
@@ -369,6 +370,79 @@
             <Setter Property="Fill" Value="Transparent" />
         </Style>
 
+        <!-- Codex-style row hover actions (pin / archive) -->
+        <Style Selector="Button.row-action">
+            <Setter Property="Width" Value="22" />
+            <Setter Property="Height" Value="22" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Grid.session-row-container:pointerover Button.row-action">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="Button.row-action:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SidebarIconButtonHover}" />
+        </Style>
+        <Style Selector="Button.row-action Path">
+            <Setter Property="Stroke" Value="{DynamicResource SidebarLabel}" />
+            <Setter Property="StrokeThickness" Value="1.25" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Fill" Value="Transparent" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Stroke" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.row-action:pointerover Path">
+            <Setter Property="Stroke" Value="{DynamicResource SidebarTextHover}" />
+        </Style>
+        <Style Selector="Button.row-action.pinned Path">
+            <Setter Property="Stroke" Value="{DynamicResource SidebarTextHover}" />
+            <Setter Property="Fill" Value="{DynamicResource SidebarTextHover}" />
+        </Style>
+
+        <!-- Collapsible sidebar section headers (项目 / 最近 / 已归档) -->
+        <Style Selector="Button.section-header">
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Padding" Value="16,0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+        </Style>
+        <Style Selector="Button.section-header Path.section-chevron">
+            <Setter Property="Stroke" Value="{DynamicResource SidebarLabel}" />
+            <Setter Property="StrokeThickness" Value="1.4" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Fill" Value="Transparent" />
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="RenderTransform" Value="rotate(0deg)" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.12" />
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.section-header:pointerover Path.section-chevron">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="Button.section-header Path.section-chevron.collapsed">
+            <Setter Property="RenderTransform" Value="rotate(-90deg)" />
+        </Style>
+
         <!-- Rows / navigation -->
         <Style Selector="Button.row">
             <Setter Property="MinHeight" Value="0" />
@@ -413,10 +487,13 @@
             <Setter Property="Stroke" Value="{DynamicResource SidebarTextHover}" />
         </Style>
 
+        <Style Selector="Button.session-row.nested">
+            <Setter Property="Padding" Value="16,0,6,0" />
+        </Style>
         <Style Selector="Button.session-row">
             <Setter Property="Height" Value="30" />
-            <Setter Property="Padding" Value="10,0,6,0" />
-            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Padding" Value="8,0,6,0" />
+            <Setter Property="CornerRadius" Value="8" />
             <Setter Property="Background" Value="{DynamicResource SidebarHoverFillZero}" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />

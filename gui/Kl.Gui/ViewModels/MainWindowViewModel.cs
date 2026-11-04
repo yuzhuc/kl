@@ -366,6 +366,70 @@ public sealed class SessionItemViewModel : ObservableObject
         }
     }
 
+    /// <summary>Codex-style relative time used by the session preview card.</summary>
+    public string RelativeLabel
+    {
+        get
+        {
+            var elapsed = DateTimeOffset.Now - State.UpdatedAt.ToLocalTime();
+            if (elapsed.TotalMinutes < 1)
+            {
+                return "刚刚";
+            }
+
+            if (elapsed.TotalHours < 1)
+            {
+                return $"{(int)elapsed.TotalMinutes} 分钟前";
+            }
+
+            if (elapsed.TotalDays < 1)
+            {
+                return $"{(int)elapsed.TotalHours} 小时前";
+            }
+
+            if (elapsed.TotalDays < 30)
+            {
+                return $"{(int)elapsed.TotalDays} 天前";
+            }
+
+            return State.UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd");
+        }
+    }
+
+    public bool IsPinned
+    {
+        get => State.IsPinned;
+        set
+        {
+            if (State.IsPinned == value)
+            {
+                return;
+            }
+
+            State.IsPinned = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public bool IsArchived
+    {
+        get => State.IsArchived;
+        set
+        {
+            if (State.IsArchived == value)
+            {
+                return;
+            }
+
+            State.IsArchived = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsListVisible));
+        }
+    }
+
+    /// <summary>Visible in the sidebar lists (search filter + not archived).</summary>
+    public bool IsListVisible => IsVisible && !IsArchived;
+
     public bool IsSelected
     {
         get => _isSelected;
@@ -541,6 +605,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private bool _isSidebarVisible = true;
     private bool _isSearchVisible;
     private bool _isRecentExpanded = true;
+    private bool _isArchivedExpanded;
     private bool _isChatPage = true;
     private bool _isLibraryPage;
     private bool _isCodeReviewDraftActive;
@@ -617,6 +682,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public ObservableCollection<AttachmentItemViewModel> PendingAttachments { get; } = [];
     public ObservableCollection<PluginItemViewModel> Plugins { get; } = [];
     public ObservableCollection<SessionItemViewModel> RecentSessions { get; } = [];
+    public ObservableCollection<SessionItemViewModel> ArchivedSessions { get; } = [];
     public ObservableCollection<PinnedRailItemViewModel> PinnedRailItems { get; } = [];
     public ObservableCollection<AutomationItemViewModel> Automations { get; } = [];
     public IReadOnlyList<AutomationIntervalOption> AutomationIntervals { get; } =
@@ -665,6 +731,39 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public bool HasRecentSessions => RecentSessions.Count > 0;
     public bool ShowNoRecentSessions => !HasRecentSessions;
+    public bool ShowArchivedSessions => ArchivedSessions.Count > 0;
+
+    public bool IsProjectSectionExpanded
+    {
+        get => _state.IsProjectSectionExpanded;
+        private set
+        {
+            if (_state.IsProjectSectionExpanded == value)
+            {
+                return;
+            }
+
+            _state.IsProjectSectionExpanded = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public bool IsArchivedExpanded
+    {
+        get => _isArchivedExpanded;
+        private set => SetProperty(ref _isArchivedExpanded, value);
+    }
+
+    public void ToggleProjectSection()
+    {
+        IsProjectSectionExpanded = !IsProjectSectionExpanded;
+        SaveState();
+    }
+
+    public void ToggleArchived()
+    {
+        IsArchivedExpanded = !IsArchivedExpanded;
+    }
 
     public string UserInitials
     {
@@ -1114,9 +1213,20 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public void RefreshRecentSessions()
     {
         var query = SearchText.Trim();
-        var items = Workspaces
+        var all = Workspaces
             .SelectMany(workspace => workspace.Sessions)
             .Where(item => query.Length == 0 || item.Matches(query))
+            .ToList();
+
+        var items = all
+            .Where(item => !item.IsArchived)
+            .OrderByDescending(item => item.IsPinned)
+            .ThenByDescending(item => item.State.UpdatedAt)
+            .Take(100)
+            .ToList();
+
+        var archived = all
+            .Where(item => item.IsArchived)
             .OrderByDescending(item => item.State.UpdatedAt)
             .Take(100)
             .ToList();
@@ -1124,12 +1234,22 @@ public sealed partial class MainWindowViewModel : ObservableObject
         // Rebuilding the observable collection on every save makes Avalonia's
         // item container generator re-render identical rows; only publish a
         // change when the visible sequence actually differs.
-        var unchanged = items.Count == RecentSessions.Count;
+        SyncList(RecentSessions, items);
+        SyncList(ArchivedSessions, archived);
+
+        OnPropertyChanged(nameof(HasRecentSessions));
+        OnPropertyChanged(nameof(ShowNoRecentSessions));
+        OnPropertyChanged(nameof(ShowArchivedSessions));
+    }
+
+    private static void SyncList(ObservableCollection<SessionItemViewModel> target, List<SessionItemViewModel> items)
+    {
+        var unchanged = items.Count == target.Count;
         if (unchanged)
         {
             for (var index = 0; index < items.Count; index++)
             {
-                if (!ReferenceEquals(items[index], RecentSessions[index]))
+                if (!ReferenceEquals(items[index], target[index]))
                 {
                     unchanged = false;
                     break;
@@ -1137,17 +1257,34 @@ public sealed partial class MainWindowViewModel : ObservableObject
             }
         }
 
-        if (!unchanged)
+        if (unchanged)
         {
-            RecentSessions.Clear();
-            foreach (var item in items)
-            {
-                RecentSessions.Add(item);
-            }
+            return;
         }
 
-        OnPropertyChanged(nameof(HasRecentSessions));
-        OnPropertyChanged(nameof(ShowNoRecentSessions));
+        target.Clear();
+        foreach (var item in items)
+        {
+            target.Add(item);
+        }
+    }
+
+    public void ToggleSessionPinned(SessionItemViewModel session)
+    {
+        session.IsPinned = !session.IsPinned;
+        SaveState();
+    }
+
+    public void ArchiveSession(SessionItemViewModel session)
+    {
+        session.IsArchived = true;
+        SaveState();
+    }
+
+    public void UnarchiveSession(SessionItemViewModel session)
+    {
+        session.IsArchived = false;
+        SaveState();
     }
 
     public void ToggleCodeReviewPinned()

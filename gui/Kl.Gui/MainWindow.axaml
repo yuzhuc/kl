@@ -42,39 +42,102 @@
             </Border>
         </DataTemplate>
 
-        <DataTemplate x:Key="WorkspaceRowTemplate" x:DataType="vm:WorkspaceItemViewModel">
-            <Button Classes="row" Height="30" Padding="12,0" CornerRadius="6" Margin="6,0,6,1"
-                    IsVisible="{Binding IsVisible}"
-                    Click="OnWorkspaceClicked" ToolTip.Tip="{Binding Path}">
-                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
-                    <Path Width="16" Height="16" Data="{StaticResource FolderIcon}" Stretch="Uniform"
-                          StrokeThickness="1.35"
-                          StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                          VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="14"
-                               TextTrimming="CharacterEllipsis"
-                               TextWrapping="NoWrap" VerticalAlignment="Center" />
-                </Grid>
-            </Button>
-        </DataTemplate>
-
-        <DataTemplate x:Key="RecentSessionTemplate" x:DataType="vm:SessionItemViewModel">
-            <Grid Classes="session-row-container" IsVisible="{Binding IsVisible}" Margin="6,0,6,1">
-                <Button Classes="session-row" Classes.active="{Binding IsSelected}" Click="OnSessionClicked"
+        <DataTemplate x:Key="NestedSessionRowTemplate" x:DataType="vm:SessionItemViewModel">
+            <Grid Classes="session-row-container" IsVisible="{Binding IsListVisible}" Margin="24,0,8,1">
+                <Button Classes="session-row nested" Classes.active="{Binding IsSelected}" Click="OnSessionClicked"
                         ToolTip.Tip="{Binding UpdatedLabel}">
                     <TextBlock Text="{Binding Title}" FontSize="14" TextWrapping="NoWrap"
                                TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
-                               Margin="0,0,24,0" />
+                               Margin="0,0,52,0" />
                 </Button>
-                <Button Classes="session-actions" HorizontalAlignment="Right" VerticalAlignment="Center"
-                        Margin="0,0,3,0" ToolTip.Tip="会话操作">
-                    <Path Width="14" Height="14" Data="{StaticResource MoreIcon}" Stretch="Uniform" />
-                    <Button.Flyout>
-                        <MenuFlyout Placement="BottomEdgeAlignedRight">
-                            <MenuItem Header="重命名" Click="OnRenameSessionClicked" Tag="{Binding}" />
-                            <MenuItem Header="删除" Click="OnDeleteSessionClicked" Tag="{Binding}" />
-                        </MenuFlyout>
-                    </Button.Flyout>
+                <StackPanel Orientation="Horizontal" Spacing="1" HorizontalAlignment="Right"
+                            VerticalAlignment="Center" Margin="0,0,4,0">
+                    <Button Classes="row-action" Classes.pinned="{Binding IsPinned}"
+                            Click="OnPinSessionClicked" ToolTip.Tip="置顶">
+                        <Path Width="13" Height="13" Data="{StaticResource PinIcon}" Stretch="Uniform"
+                              RenderTransform="rotate(45deg)" />
+                    </Button>
+                    <Button Classes="row-action" Click="OnArchiveSessionClicked" ToolTip.Tip="归档">
+                        <Path Width="13" Height="13" Data="{StaticResource ArchiveIcon}" Stretch="Uniform" />
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="WorkspaceRowTemplate" x:DataType="vm:WorkspaceItemViewModel">
+            <StackPanel IsVisible="{Binding IsVisible}">
+                <Button Classes="row" Height="30" Padding="10,0" CornerRadius="8" Margin="8,0,8,1"
+                        Click="OnWorkspaceClicked" ToolTip.Tip="{Binding Path}">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                        <Path Width="16" Height="16" Data="{StaticResource FolderIcon}" Stretch="Uniform"
+                              StrokeThickness="1.35"
+                              StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                              VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="14"
+                                   TextTrimming="CharacterEllipsis"
+                                   TextWrapping="NoWrap" VerticalAlignment="Center" />
+                    </Grid>
+                </Button>
+                <ItemsControl ItemsSource="{Binding Sessions}" IsVisible="{Binding ShowSessions}"
+                              ItemTemplate="{StaticResource NestedSessionRowTemplate}" Margin="0,0,0,2" />
+            </StackPanel>
+        </DataTemplate>
+
+        <DataTemplate x:Key="RecentSessionTemplate" x:DataType="vm:SessionItemViewModel">
+            <Grid Classes="session-row-container" IsVisible="{Binding IsListVisible}" Margin="8,0,8,1">
+                <Button Classes="session-row" Classes.active="{Binding IsSelected}" Click="OnSessionClicked"
+                        ToolTip.ShowDelay="650" ToolTip.Placement="Right"
+                        ToolTip.HorizontalOffset="10" ToolTip.VerticalOffset="-6">
+                    <ToolTip.Tip>
+                        <StackPanel Width="230" Spacing="7">
+                            <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{StaticResource SidebarTextHover}"
+                                       TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+                                <Path Width="13" Height="13" Data="{StaticResource FolderIcon}"
+                                      Stretch="Uniform" Stroke="{StaticResource SidebarLabel}"
+                                      StrokeThickness="1.3" Fill="Transparent" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="{Binding Workspace.Name}" FontSize="12"
+                                           Foreground="{StaticResource SidebarLabel}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="2" Text="{Binding RelativeLabel}" FontSize="12"
+                                           Foreground="{StaticResource SidebarLabel}" VerticalAlignment="Center" />
+                            </Grid>
+                        </StackPanel>
+                    </ToolTip.Tip>
+                    <TextBlock Text="{Binding Title}" FontSize="14" TextWrapping="NoWrap"
+                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                               Margin="0,0,52,0" />
+                </Button>
+                <StackPanel Orientation="Horizontal" Spacing="1" HorizontalAlignment="Right"
+                            VerticalAlignment="Center" Margin="0,0,4,0">
+                    <Button Classes="row-action" Classes.pinned="{Binding IsPinned}"
+                            Click="OnPinSessionClicked" ToolTip.Tip="置顶">
+                        <Path Width="13" Height="13" Data="{StaticResource PinIcon}" Stretch="Uniform"
+                              RenderTransform="rotate(45deg)" />
+                    </Button>
+                    <Button Classes="row-action" Click="OnArchiveSessionClicked" ToolTip.Tip="归档">
+                        <Path Width="13" Height="13" Data="{StaticResource ArchiveIcon}" Stretch="Uniform" />
+                    </Button>
+                </StackPanel>
+                <Grid.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="重命名" Click="OnRenameSessionClicked" Tag="{Binding}" />
+                        <MenuItem Header="删除" Click="OnDeleteSessionClicked" Tag="{Binding}" />
+                    </ContextMenu>
+                </Grid.ContextMenu>
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ArchivedSessionTemplate" x:DataType="vm:SessionItemViewModel">
+            <Grid Classes="session-row-container" IsVisible="{Binding IsListVisible}" Margin="8,0,8,1">
+                <Button Classes="session-row" Click="OnSessionClicked" ToolTip.Tip="{Binding Workspace.Path}">
+                    <TextBlock Text="{Binding Title}" FontSize="13.5" TextWrapping="NoWrap"
+                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                               Foreground="{StaticResource SidebarLabel}" Margin="0,0,36,0" />
+                </Button>
+                <Button Classes="row-action" HorizontalAlignment="Right" VerticalAlignment="Center"
+                        Margin="0,0,4,0" Click="OnUnarchiveSessionClicked" ToolTip.Tip="取消归档">
+                    <Path Width="13" Height="13" Data="{StaticResource RefreshIcon}" Stretch="Uniform" />
                 </Button>
             </Grid>
         </DataTemplate>
@@ -408,8 +471,8 @@
                         <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto"
                                       HorizontalScrollBarVisibility="Disabled">
                             <StackPanel>
-                                <Button Classes="row" Height="34" Padding="12,0" CornerRadius="8"
-                                        Margin="6,10,6,0" Click="OnNewSessionClicked">
+                                <Button Classes="row" Height="30" Padding="10,0" CornerRadius="8"
+                                        Margin="8,14,8,0" Click="OnNewSessionClicked">
                                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
                                         <Path Width="16" Height="16" Data="{StaticResource EditIcon}" Stretch="Uniform"
                                               StrokeThickness="1.4"
@@ -420,29 +483,57 @@
                                     </Grid>
                                 </Button>
 
-                                <TextBlock Text="项目" FontSize="13" LineHeight="21"
-                                           Foreground="{StaticResource SidebarLabel}" Margin="16,15,0,0" />
+                                <Button Classes="section-header" Margin="0,16,0,0"
+                                        Click="OnToggleProjectSectionClicked" ToolTip.Tip="展开/收起项目">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <TextBlock Text="项目" FontSize="13" LineHeight="21"
+                                                   Foreground="{StaticResource SidebarLabel}" VerticalAlignment="Center" />
+                                        <Path Classes="section-chevron" Width="10" Height="10"
+                                              Data="{StaticResource ChevronDownIcon}" Stretch="Uniform"
+                                              Classes.collapsed="{Binding !IsProjectSectionExpanded}"
+                                              VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
                                 <ItemsControl ItemsSource="{Binding Workspaces}"
                                               ItemTemplate="{StaticResource WorkspaceRowTemplate}"
-                                              Margin="0,11,0,0" />
+                                              IsVisible="{Binding IsProjectSectionExpanded}"
+                                              Margin="0,6,0,0" />
 
-                                <StackPanel Orientation="Horizontal" Spacing="4" Margin="16,19,0,0">
-                                    <TextBlock Text="最近" FontSize="13" LineHeight="21"
-                                               Foreground="{StaticResource SidebarLabel}" VerticalAlignment="Center" />
-                                    <Button Classes="icon recent-toggle" Width="16" Height="16"
-                                            Classes.collapsed="{Binding !IsRecentExpanded}"
-                                            Click="OnToggleRecentClicked" ToolTip.Tip="展开/收起最近">
-                                        <Path Width="12" Height="12" Data="{StaticResource ChevronDownIcon}"
-                                              Stretch="Uniform" />
-                                    </Button>
-                                </StackPanel>
+                                <Button Classes="section-header" Margin="0,18,0,0"
+                                        Click="OnToggleRecentClicked" ToolTip.Tip="展开/收起最近">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <TextBlock Text="最近" FontSize="13" LineHeight="21"
+                                                   Foreground="{StaticResource SidebarLabel}" VerticalAlignment="Center" />
+                                        <Path Classes="section-chevron" Width="10" Height="10"
+                                              Data="{StaticResource ChevronDownIcon}" Stretch="Uniform"
+                                              Classes.collapsed="{Binding !IsRecentExpanded}"
+                                              VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
                                 <ItemsControl ItemsSource="{Binding RecentSessions}"
                                               ItemTemplate="{StaticResource RecentSessionTemplate}"
                                               IsVisible="{Binding IsRecentExpanded}"
-                                              Margin="0,8,0,0" />
+                                              Margin="0,6,0,0" />
                                 <TextBlock Text="暂无会话" IsVisible="{Binding ShowNoRecentSessions}"
                                            FontSize="12" Foreground="{StaticResource SidebarLabel}"
-                                           Margin="18,6,0,0" />
+                                           Margin="16,6,0,0" />
+
+                                <Button Classes="section-header" Margin="0,12,0,0"
+                                        IsVisible="{Binding ShowArchivedSessions}"
+                                        Click="OnToggleArchivedClicked" ToolTip.Tip="展开/收起已归档">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <TextBlock Text="已归档" FontSize="12.5" LineHeight="21"
+                                                   Foreground="{StaticResource SidebarLabel}" VerticalAlignment="Center" />
+                                        <Path Classes="section-chevron" Width="10" Height="10"
+                                              Data="{StaticResource ChevronDownIcon}" Stretch="Uniform"
+                                              Classes.collapsed="{Binding !IsArchivedExpanded}"
+                                              VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                                <ItemsControl ItemsSource="{Binding ArchivedSessions}"
+                                              ItemTemplate="{StaticResource ArchivedSessionTemplate}"
+                                              IsVisible="{Binding IsArchivedExpanded}"
+                                              Margin="0,4,0,0" />
                             </StackPanel>
                         </ScrollViewer>
                     </Grid>

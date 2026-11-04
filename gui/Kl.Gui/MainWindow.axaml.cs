@@ -412,6 +412,39 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnPinSessionClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        eventArgs.Handled = true;
+        if (GetSession(sender) is { } session)
+        {
+            _viewModel.ToggleSessionPinned(session);
+        }
+    }
+
+    private void OnArchiveSessionClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        eventArgs.Handled = true;
+        if (GetSession(sender) is { } session)
+        {
+            _viewModel.ArchiveSession(session);
+        }
+    }
+
+    private void OnUnarchiveSessionClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        eventArgs.Handled = true;
+        if (GetSession(sender) is { } session)
+        {
+            _viewModel.UnarchiveSession(session);
+        }
+    }
+
+    private void OnToggleProjectSectionClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.ToggleProjectSection();
+
+    private void OnToggleArchivedClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.ToggleArchived();
+
     private void OnRenameActiveSessionClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (_viewModel.ActiveSessionItem is { } session)

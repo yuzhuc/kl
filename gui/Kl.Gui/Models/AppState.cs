@@ -10,6 +10,7 @@ public sealed class AppState
     public int ContentFontSize { get; set; } = 14;
     public string InteractionMode { get; set; } = "work";
     public bool IsAddProjectPinned { get; set; }
+    public bool IsProjectSectionExpanded { get; set; } = true;
     public bool IsCodeReviewPinned { get; set; }
     public string? ActiveWorkspaceId { get; set; }
     public string? ActiveSessionId { get; set; }
@@ -32,6 +33,8 @@ public sealed class SessionState
     public string Title { get; set; } = "新会话";
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.Now;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.Now;
+    public bool IsPinned { get; set; }
+    public bool IsArchived { get; set; }
     public List<StoredMessage> Messages { get; set; } = [];
 }
 
