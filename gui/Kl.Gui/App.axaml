@@ -30,6 +30,9 @@
         <SolidColorBrush x:Key="HoverFill" Color="#17171A" />
         <SolidColorBrush x:Key="ActiveFill" Color="#232326" />
         <SolidColorBrush x:Key="RailIcon" Color="#727274" />
+        <SolidColorBrush x:Key="ProductMenuFill" Color="#17171A" />
+        <SolidColorBrush x:Key="ProductMenuLine" Color="#2B2B2E" />
+        <SolidColorBrush x:Key="ProductMenuHoverFill" Color="#232326" />
         <SolidColorBrush x:Key="RailIconHover" Color="#E3E4E6" />
         <SolidColorBrush x:Key="RailIconActive" Color="#E3E4E6" />
         <SolidColorBrush x:Key="RailActiveFill" Color="#1C1C1E" />
@@ -93,6 +96,7 @@
         <StreamGeometry x:Key="PanelIcon">M4 4H20V20H4Z M9 4V20</StreamGeometry>
         <StreamGeometry x:Key="SettingsIcon">M12 2L14 4L17 3L18 6L21 7L20 10L22 12L20 14L21 17L18 18L17 21L14 20L12 22L10 20L7 21L6 18L3 17L4 14L2 12L4 10L3 7L6 6L7 3L10 4Z M12 8A4 4 0 1 0 12 16A4 4 0 1 0 12 8</StreamGeometry>
         <StreamGeometry x:Key="ChevronDownIcon">M7 9L12 14L17 9</StreamGeometry>
+        <StreamGeometry x:Key="CheckIcon">M5 12.5L10 17.5L19 7</StreamGeometry>
         <StreamGeometry x:Key="ChevronUpIcon">M7 15L12 10L17 15</StreamGeometry>
         <StreamGeometry x:Key="ChevronLeftIcon">M15 5L8 12L15 19</StreamGeometry>
         <StreamGeometry x:Key="ChevronRightIcon">M9 5L16 12L9 19</StreamGeometry>
@@ -443,6 +447,39 @@
             <Setter Property="RenderTransform" Value="rotate(-90deg)" />
         </Style>
 
+        <!-- Product / interaction-mode switcher (Codex-style header menu) -->
+        <Style Selector="Button.product-menu-toggle">
+            <Setter Property="Padding" Value="6,2" />
+            <Setter Property="Margin" Value="-6,0,0,0" />
+            <Setter Property="Background" Value="#001D1D1F" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.product-menu-toggle:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SidebarHoverFill}" />
+        </Style>
+        <Style Selector="Button.mode-menu-item">
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="Background" Value="#0017171A" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.mode-menu-item:pointerover">
+            <Setter Property="Background" Value="{DynamicResource ProductMenuHoverFill}" />
+        </Style>
+
         <!-- Rows / navigation -->
         <Style Selector="Button.row">
             <Setter Property="MinHeight" Value="0" />
@@ -538,7 +575,7 @@
 
         <Style Selector="Button.nav">
             <Setter Property="Height" Value="36" />
-            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="Padding" Value="10,4" />
             <Setter Property="CornerRadius" Value="8" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />

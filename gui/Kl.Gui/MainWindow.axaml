@@ -434,14 +434,18 @@
                     <!-- chat sidebar -->
                     <Grid IsVisible="{Binding IsChatPage}" RowDefinitions="Auto,Auto,*">
                         <Grid Grid.Row="0" Height="29" ColumnDefinitions="*,Auto" Margin="18,19,14,0">
-                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                <TextBlock Text="kl" FontSize="17" FontWeight="SemiBold"
-                                           Foreground="{StaticResource SidebarText}" />
-                                <Path Width="10" Height="10" Data="{StaticResource ChevronDownIcon}"
-                                      Stretch="Uniform" Stroke="{StaticResource SidebarLabel}"
-                                      StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
-                                      Fill="Transparent" VerticalAlignment="Center" />
-                            </StackPanel>
+                            <Button x:Name="ProductMenuButton" Classes="product-menu-toggle"
+                                    HorizontalAlignment="Left" VerticalAlignment="Center"
+                                    Click="OnProductMenuClicked" ToolTip.Tip="切换 Chat / Work">
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <TextBlock Text="kl" FontSize="17" FontWeight="SemiBold"
+                                               Foreground="{StaticResource SidebarText}" />
+                                    <Path Width="10" Height="10" Data="{StaticResource ChevronDownIcon}"
+                                          Stretch="Uniform" Stroke="{StaticResource SidebarLabel}"
+                                          StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
+                                          Fill="Transparent" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10"
                                         VerticalAlignment="Center">
                                 <Button Classes="icon sidebar-icon" Click="OnNavSettingsClicked"
@@ -452,6 +456,45 @@
                                     <Path Width="14" Height="14" Data="{StaticResource SearchIcon}" Stretch="Uniform" />
                                 </Button>
                             </StackPanel>
+
+                            <!-- product / mode switcher, Codex-style -->
+                            <Popup x:Name="ProductMenuPopup" PlacementTarget="{Binding #ProductMenuButton}"
+                                   Placement="BottomEdgeAlignedLeft" HorizontalOffset="-11" VerticalOffset="14"
+                                   IsLightDismissEnabled="True">
+                                <Border Width="246" Background="{StaticResource ProductMenuFill}"
+                                        BorderBrush="{StaticResource ProductMenuLine}" BorderThickness="1"
+                                        CornerRadius="12" Padding="6"
+                                        BoxShadow="0 14 34 0 #99000000">
+                                    <StackPanel Spacing="2">
+                                        <Button Classes="mode-menu-item" Click="OnChatModeMenuClicked">
+                                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" RowSpacing="2">
+                                                <TextBlock Text="Chat" FontSize="13.5"
+                                                           Foreground="{StaticResource SidebarText}" />
+                                                <TextBlock Grid.Row="1" Text="闲聊、提问和探索" FontSize="12"
+                                                           Foreground="{StaticResource SidebarLabel}" />
+                                                <Path Grid.Column="1" Grid.RowSpan="2" Width="14" Height="14"
+                                                      Data="{StaticResource CheckIcon}" Stretch="Uniform"
+                                                      Stroke="{StaticResource SidebarText}" StrokeThickness="1.6"
+                                                      StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                                      IsVisible="{Binding IsChatMode}" VerticalAlignment="Center" />
+                                            </Grid>
+                                        </Button>
+                                        <Button Classes="mode-menu-item" Click="OnWorkModeMenuClicked">
+                                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" RowSpacing="2">
+                                                <TextBlock Text="Work" FontSize="13.5"
+                                                           Foreground="{StaticResource SidebarText}" />
+                                                <TextBlock Grid.Row="1" Text="构建、调试和发布" FontSize="12"
+                                                           Foreground="{StaticResource SidebarLabel}" />
+                                                <Path Grid.Column="1" Grid.RowSpan="2" Width="14" Height="14"
+                                                      Data="{StaticResource CheckIcon}" Stretch="Uniform"
+                                                      Stroke="{StaticResource SidebarText}" StrokeThickness="1.6"
+                                                      StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                                      IsVisible="{Binding IsWorkMode}" VerticalAlignment="Center" />
+                                            </Grid>
+                                        </Button>
+                                    </StackPanel>
+                                </Border>
+                            </Popup>
                         </Grid>
 
                         <Border Grid.Row="1" IsVisible="{Binding IsSearchVisible}"

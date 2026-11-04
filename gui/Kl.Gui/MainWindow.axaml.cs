@@ -895,6 +895,11 @@ public partial class MainWindow : Window
     {
         if (eventArgs.PropertyName == nameof(MainWindowViewModel.IsSidebarVisible))
         {
+            if (!_viewModel.IsSidebarVisible)
+            {
+                ProductMenuPopup.IsOpen = false;
+            }
+
             AnimateSidebar(_viewModel.IsSidebarVisible);
             return;
         }
@@ -1270,6 +1275,21 @@ public partial class MainWindow : Window
 
     private void OnToggleSidebarClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.SetSidebarVisible(!_viewModel.IsSidebarVisible);
+
+    private void OnProductMenuClicked(object? sender, RoutedEventArgs eventArgs) =>
+        ProductMenuPopup.IsOpen = !ProductMenuPopup.IsOpen;
+
+    private void OnChatModeMenuClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        _viewModel.SetInteractionMode(workMode: false);
+        ProductMenuPopup.IsOpen = false;
+    }
+
+    private void OnWorkModeMenuClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        _viewModel.SetInteractionMode(workMode: true);
+        ProductMenuPopup.IsOpen = false;
+    }
 
     private void OnToggleSearchClicked(object? sender, RoutedEventArgs eventArgs)
     {
