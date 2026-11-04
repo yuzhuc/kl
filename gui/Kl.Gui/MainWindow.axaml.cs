@@ -1029,6 +1029,7 @@ public partial class MainWindow : Window
         var width = _sidebarDragStartWidth + delta;
         if (width < SidebarCollapseThreshold)
         {
+            // Dragging past half of the minimum width collapses straight to the rail.
             _viewModel.SetSidebarVisible(false);
             SidebarPanelBorder.Width = 0;
             _sidebarDragStartX = x;
@@ -1036,7 +1037,8 @@ public partial class MainWindow : Window
         }
         else
         {
-            SidebarPanelBorder.Width = Math.Min(width, SidebarMaxWidth);
+            // The sidebar hangs at its minimum width instead of shrinking below it.
+            SidebarPanelBorder.Width = Math.Clamp(width, SidebarMinWidth, SidebarMaxWidth);
         }
 
         eventArgs.Handled = true;
