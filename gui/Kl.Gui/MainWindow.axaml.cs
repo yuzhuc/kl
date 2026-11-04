@@ -926,13 +926,14 @@ public partial class MainWindow : Window
     private const double SidebarMinWidth = 238;
     private const double SidebarMaxWidth = 468;
 
-    // Dragging the splitter below 3/4 of the minimum width collapses the sidebar;
+    // Width of the left rail; the sidebar's left edge sits right after it.
+    private const double RailWidth = 52;
+
+    // Dragging the splitter below half of the minimum width collapses the sidebar;
     // pulling the collapsed sidebar past the same offset expands it again.
     private const double SidebarCollapseThreshold = SidebarMinWidth * 0.5;
 
     private bool _sidebarDragging;
-    private double _sidebarDragStartX;
-    private double _sidebarDragStartWidth;
 
     /// <summary>Codex-style slide: the sidebar column animates instead of jumping.</summary>
     private void AnimateSidebar(bool visible)
@@ -996,9 +997,6 @@ public partial class MainWindow : Window
         }
 
         _sidebarDragging = true;
-        _sidebarDragStartX = eventArgs.GetPosition(this).X;
-        var width = _viewModel.IsSidebarVisible ? SidebarPanelBorder.Width : 0;
-        _sidebarDragStartWidth = double.IsNaN(width) ? 0 : width;
         eventArgs.Handled = true;
     }
 
@@ -1009,41 +1007,34 @@ public partial class MainWindow : Window
             return;
         }
 
-        var x = eventArgs.GetPosition(this).X;
-        var delta = x - _sidebarDragStartX;
+        // Drive the width straight from the pointer position so the splitter always
+        // stays under the cursor: no cumulative drift, no runaway growth.
+        var pointerWidth = eventArgs.GetPosition(this).X - RailWidth;
 
         if (!_viewModel.IsSidebarVisible)
         {
-            // Anchor on the left-most pointer position so pulling back out only
-            // needs half the minimum width of travel, even after over-dragging left.
-            _sidebarDragStartX = Math.Min(_sidebarDragStartX, x);
-            if (x - _sidebarDragStartX >= SidebarCollapseThreshold)
+            if (pointerWidth >= SidebarCollapseThreshold)
             {
                 _viewModel.SetSidebarVisible(true);
                 SidebarPanelBorder.Width = SidebarMinWidth;
-                _sidebarDragStartX += SidebarCollapseThreshold;
-                _sidebarDragStartWidth = SidebarMinWidth;
             }
 
             eventArgs.Handled = true;
             return;
         }
 
-        var width = _sidebarDragStartWidth + delta;
-        if (width < SidebarCollapseThreshold)
+        if (pointerWidth < SidebarCollapseThreshold)
         {
-            // Dragging past half of the minimum width collapses straight to the rail.
+            // Past half of the minimum width: collapse straight to the rail.
             _viewModel.SetSidebarVisible(false);
             SidebarPanelBorder.Width = 0;
-            _sidebarDragStartX = x;
-            _sidebarDragStartWidth = 0;
-        }
-        else
-        {
-            // The sidebar hangs at its minimum width instead of shrinking below it.
-            SidebarPanelBorder.Width = Math.Clamp(width, SidebarMinWidth, SidebarMaxWidth);
+            eventArgs.Handled = true;
+            return;
         }
 
+        // Hang at the minimum width instead of shrinking below it until the pointer
+        // passes the collapse point; above the minimum the edge tracks the cursor 1:1.
+        SidebarPanelBorder.Width = Math.Clamp(pointerWidth, SidebarMinWidth, SidebarMaxWidth);
         eventArgs.Handled = true;
     }
 
