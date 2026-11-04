@@ -12,7 +12,7 @@
         <SolidColorBrush x:Key="SidebarActiveFill" Color="#1D1D1F" />
         <SolidColorBrush x:Key="SidebarText" Color="#C6C7C9" />
         <SolidColorBrush x:Key="SidebarTextHover" Color="#E3E4E6" />
-        <SolidColorBrush x:Key="SidebarLabel" Color="#777779" />
+        <SolidColorBrush x:Key="SidebarLabel" Color="#7E7F82" />
         <SolidColorBrush x:Key="SidebarIconButtonHover" Color="#1E1E1F" />
         <SolidColorBrush x:Key="SidebarIconIdle" Color="#737374" />
         <SolidColorBrush x:Key="TitleBarFill" Color="#0A0A0C" />

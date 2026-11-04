@@ -26,12 +26,17 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _moreMenuOpenTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
     private readonly DispatcherTimer _moreMenuCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
     private readonly DispatcherTimer _previewCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(220) };
+    private readonly DispatcherTimer _previewShowTimer = new() { Interval = TimeSpan.FromMilliseconds(140) };
     private SessionItemViewModel? _pinnedDragSession;
     private SessionItemViewModel? _nestedDragSession;
     private WorkspaceItemViewModel? _workspaceDragTarget;
     private Point _pinnedDragOrigin;
     private bool _pinnedDragging;
     private bool _pinnedDragSkipClick;
+    private Control? _previewPendingRow;
+    private SessionItemViewModel? _previewPendingSession;
+    private WorkspaceItemViewModel? _previewPendingWorkspace;
+    private bool _previewPendingIsWorkspace;
     private int _dragMode;
     private Control? _railHintTarget;
     private long _lastRailPointerNavigation;
@@ -70,6 +75,7 @@ public partial class MainWindow : Window
         _moreMenuOpenTimer.Tick += OnMoreMenuOpenTimerTick;
         _moreMenuCloseTimer.Tick += OnMoreMenuCloseTimerTick;
         _previewCloseTimer.Tick += OnPreviewCloseTimerTick;
+        _previewShowTimer.Tick += OnPreviewShowTimerTick;
         AddHandler(PointerWheelChangedEvent, OnWindowPointerWheelChanged, RoutingStrategies.Tunnel);
         AddHandler(PointerPressedEvent, OnPinnedDragPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
         AddHandler(PointerMovedEvent, OnPinnedDragMoved, RoutingStrategies.Tunnel, handledEventsToo: true);
@@ -554,11 +560,20 @@ public partial class MainWindow : Window
             return;
         }
 
-        ShowSessionPreview(row, session);
+        _previewShowTimer.Stop();
+        _previewCloseTimer.Stop();
+        _previewPendingRow = row;
+        _previewPendingSession = session;
+        _previewPendingWorkspace = null;
+        _previewPendingIsWorkspace = false;
+        _previewShowTimer.Start();
     }
 
-    private void OnSessionRowPointerExited(object? sender, PointerEventArgs eventArgs) =>
+    private void OnSessionRowPointerExited(object? sender, PointerEventArgs eventArgs)
+    {
+        _previewShowTimer.Stop();
         StartPreviewClose();
+    }
 
     private void OnPinnedDragPressed(object? sender, PointerPressedEventArgs eventArgs)
     {
@@ -766,14 +781,26 @@ public partial class MainWindow : Window
             return;
         }
 
-        ShowWorkspacePreview(row, workspace);
+        _previewShowTimer.Stop();
+        _previewCloseTimer.Stop();
+        _previewPendingRow = row;
+        _previewPendingWorkspace = workspace;
+        _previewPendingSession = null;
+        _previewPendingIsWorkspace = true;
+        _previewShowTimer.Start();
     }
 
-    private void OnWorkspaceRowPointerExited(object? sender, PointerEventArgs eventArgs) =>
+    private void OnWorkspaceRowPointerExited(object? sender, PointerEventArgs eventArgs)
+    {
+        _previewShowTimer.Stop();
         StartPreviewClose();
+    }
 
-    private void OnPreviewCardPointerEntered(object? sender, PointerEventArgs eventArgs) =>
+    private void OnPreviewCardPointerEntered(object? sender, PointerEventArgs eventArgs)
+    {
+        _previewShowTimer.Stop();
         _previewCloseTimer.Stop();
+    }
 
     private void OnPreviewCardPointerExited(object? sender, PointerEventArgs eventArgs) =>
         StartPreviewClose();
@@ -782,6 +809,28 @@ public partial class MainWindow : Window
     {
         _previewCloseTimer.Stop();
         _previewCloseTimer.Start();
+    }
+
+    private void OnPreviewShowTimerTick(object? sender, EventArgs eventArgs)
+    {
+        _previewShowTimer.Stop();
+        if (_previewPendingRow is not { } row)
+        {
+            return;
+        }
+
+        if (_previewPendingIsWorkspace && _previewPendingWorkspace is { } workspace)
+        {
+            ShowWorkspacePreview(row, workspace);
+        }
+        else if (_previewPendingSession is { } session)
+        {
+            ShowSessionPreview(row, session);
+        }
+
+        _previewPendingRow = null;
+        _previewPendingSession = null;
+        _previewPendingWorkspace = null;
     }
 
     private void OnPreviewCloseTimerTick(object? sender, EventArgs eventArgs)
@@ -798,6 +847,10 @@ public partial class MainWindow : Window
     private void HidePreviewCards()
     {
         _previewCloseTimer.Stop();
+        _previewShowTimer.Stop();
+        _previewPendingRow = null;
+        _previewPendingSession = null;
+        _previewPendingWorkspace = null;
         SessionPreviewCard.IsVisible = false;
         WorkspacePreviewCard.IsVisible = false;
     }
@@ -807,7 +860,7 @@ public partial class MainWindow : Window
         _previewCloseTimer.Stop();
         WorkspacePreviewCard.IsVisible = false;
         SessionPreviewCard.DataContext = session;
-        SessionPreviewCard.IsVisible = true;
+        ShowPreviewCard(SessionPreviewCard);
         PlacePreviewCard(row, SessionPreviewCard, overlap: true);
     }
 
@@ -816,8 +869,15 @@ public partial class MainWindow : Window
         _previewCloseTimer.Stop();
         SessionPreviewCard.IsVisible = false;
         WorkspacePreviewCard.DataContext = workspace;
-        WorkspacePreviewCard.IsVisible = true;
+        ShowPreviewCard(WorkspacePreviewCard);
         PlacePreviewCard(row, WorkspacePreviewCard, overlap: false);
+    }
+
+    private void ShowPreviewCard(Control card)
+    {
+        card.Opacity = 0;
+        card.IsVisible = true;
+        Dispatcher.UIThread.Post(() => card.Opacity = 1, DispatcherPriority.Background);
     }
 
     private void PlacePreviewCard(Control row, Control card, bool overlap)
@@ -827,7 +887,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var left = origin.X + row.Bounds.Width + (overlap ? -24 : 14);
+        var left = origin.X + row.Bounds.Width + (overlap ? -33 : 14);
         Canvas.SetLeft(card, Math.Round(left));
         Canvas.SetTop(card, Math.Round(origin.Y));
         card.Measure(Size.Infinity);
