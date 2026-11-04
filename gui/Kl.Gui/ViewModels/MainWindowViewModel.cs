@@ -1570,6 +1570,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public void OpenSearchPalette()
     {
         IsNotificationsVisible = false;
+        SearchText = string.Empty;
+        SetPaletteFilter("all");
         RefreshPaletteSessions();
         IsSearchPaletteOpen = true;
     }
