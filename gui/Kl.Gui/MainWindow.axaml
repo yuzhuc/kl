@@ -1831,8 +1831,10 @@
 
         <!-- ===================== Hover preview cards ===================== -->
         <Canvas x:Name="PreviewCanvas" Grid.RowSpan="2" ZIndex="45">
-            <Border x:Name="DropIndicator" IsVisible="False" Height="2" Background="#C9CACC"
-                    CornerRadius="1" IsHitTestVisible="False" />
+            <Border x:Name="DropIndicator" IsVisible="False" Height="2"
+                    Background="#7EA6F2" CornerRadius="1"
+                    BoxShadow="0 0 6 0 #667EA6F2"
+                    IsHitTestVisible="False" />
             <Border x:Name="SessionPreviewCard" IsVisible="False" Width="337"
                     Background="#202022" CornerRadius="12" Padding="12,10"
                     BoxShadow="0 18 44 0 #8C000000"

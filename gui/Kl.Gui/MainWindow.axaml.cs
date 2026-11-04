@@ -592,6 +592,7 @@ public partial class MainWindow : Window
 
         _pinnedDragOrigin = eventArgs.GetPosition(this);
         _pinnedDragging = false;
+        HideDropIndicator();
     }
 
     private void OnPinnedDragMoved(object? sender, PointerEventArgs eventArgs)
@@ -620,6 +621,7 @@ public partial class MainWindow : Window
     {
         if (!_pinnedDragging || _dragMode == 0)
         {
+            HideDropIndicator();
             _dragMode = 0;
             _pinnedDragSession = null;
             _nestedDragSession = null;
@@ -642,12 +644,15 @@ public partial class MainWindow : Window
         }
 
         _pinnedDragSkipClick = true;
+        HideDropIndicator();
         _dragMode = 0;
         _pinnedDragSession = null;
         _nestedDragSession = null;
         _workspaceDragTarget = null;
         _pinnedDragging = false;
     }
+
+    private void HideDropIndicator() => DropIndicator.IsVisible = false;
 
     private void UpdateDropIndicator(double pointerY)
     {
@@ -1338,6 +1343,7 @@ public partial class MainWindow : Window
     {
         HideRailHint();
         HidePreviewCards();
+        HideDropIndicator();
         if (!MorePopup.IsOpen || MoreButton.IsPointerOver || MoreMenuCard.IsPointerOver)
         {
             return;
@@ -1346,8 +1352,11 @@ public partial class MainWindow : Window
         CloseMoreMenu();
     }
 
-    private void OnWindowDeactivated(object? sender, EventArgs eventArgs) =>
+    private void OnWindowDeactivated(object? sender, EventArgs eventArgs)
+    {
+        HideDropIndicator();
         HideRailHintAndMoreMenu();
+    }
 
     private void OnWindowKeyDown(object? sender, KeyEventArgs eventArgs)
     {
