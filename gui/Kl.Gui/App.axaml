@@ -78,7 +78,7 @@
         <!-- Icons (stroke-friendly StreamGeometry) -->
         <StreamGeometry x:Key="PlusIcon">M12 5V19 M5 12H19</StreamGeometry>
         <StreamGeometry x:Key="EditIcon">M4 20L8.5 19L20 7.5L16.5 4L5 15.5Z M14.5 6L18 9.5</StreamGeometry>
-        <StreamGeometry x:Key="ChatIcon">M5 5H19V17H10L5 21V5Z</StreamGeometry>
+        <StreamGeometry x:Key="ChatIcon">M5 5H19V17H10L5 21V5Z M4 13 M20 13</StreamGeometry>
         <StreamGeometry x:Key="RailChatIcon">M10 20V14H14V20H19V12H22L12 3L2 12H5V20Z</StreamGeometry>
         <StreamGeometry x:Key="PluginIcon">M4 4H10V10H4Z M14 4H20V10H14Z M9 14H15V20H9Z</StreamGeometry>
         <StreamGeometry x:Key="AutomationIcon">M20 8A9 9 0 1 0 21 15 M20 3V8H15</StreamGeometry>
@@ -91,37 +91,37 @@
         <StreamGeometry x:Key="RailLibrarySolid">M5 6.5A1.5 1.5 0 0 1 6.5 5H8A1.5 1.5 0 0 1 9.5 6.5V19H5Z M11 5.5A1.5 1.5 0 0 1 12.5 4H14A1.5 1.5 0 0 1 15.5 5.5V19H11Z M15.9 6.9L18.3 6.1L20.2 18.1L17.8 18.9Z</StreamGeometry>
         <StreamGeometry x:Key="RailPluginSolid">M12 1.33A10.67 10.67 0 1 0 12 22.67A10.67 10.67 0 1 0 12 1.33Z</StreamGeometry>
         <StreamGeometry x:Key="RailPluginInner">M12 13.2A3.2 3.2 0 1 0 12 6.8A3.2 3.2 0 1 0 12 13.2 M15.2 8.4V12.4A2.4 2.4 0 0 0 19.4 13.6</StreamGeometry>
-        <StreamGeometry x:Key="FolderIcon">M3 5H9L11 7H21V19H3Z</StreamGeometry>
+        <StreamGeometry x:Key="FolderIcon">M3 5H9L11 7H21V19H3Z M12 3 M12 21</StreamGeometry>
         <StreamGeometry x:Key="CodeReviewIcon">M6 3.2A2.4 2.4 0 1 0 6 8A2.4 2.4 0 1 0 6 3.2 M6 8V16 M6 16A2.4 2.4 0 1 0 6 20.8A2.4 2.4 0 1 0 6 16 M18.6 16A2.4 2.4 0 1 0 18.6 20.8A2.4 2.4 0 1 0 18.6 16 M12.6 3.4H15.4C17.6 3.4 19.4 5.2 19.4 7.4V16</StreamGeometry>
         <StreamGeometry x:Key="SearchIcon">M10.5 4A6.5 6.5 0 1 0 10.5 17A6.5 6.5 0 1 0 10.5 4 M15.5 15.5L21 21</StreamGeometry>
-        <StreamGeometry x:Key="MoreIcon">M5 12A1.5 1.5 0 1 0 8 12A1.5 1.5 0 1 0 5 12 M10.5 12A1.5 1.5 0 1 0 13.5 12A1.5 1.5 0 1 0 10.5 12 M16 12A1.5 1.5 0 1 0 19 12A1.5 1.5 0 1 0 16 12</StreamGeometry>
+        <StreamGeometry x:Key="MoreIcon">M5 12A1.5 1.5 0 1 0 8 12A1.5 1.5 0 1 0 5 12 M10.5 12A1.5 1.5 0 1 0 13.5 12A1.5 1.5 0 1 0 10.5 12 M16 12A1.5 1.5 0 1 0 19 12A1.5 1.5 0 1 0 16 12 M12 3.5 M12 20.5</StreamGeometry>
         <StreamGeometry x:Key="PanelIcon">M4 4H20V20H4Z M9 4V20</StreamGeometry>
         <StreamGeometry x:Key="SettingsIcon">M12 2L14 4L17 3L18 6L21 7L20 10L22 12L20 14L21 17L18 18L17 21L14 20L12 22L10 20L7 21L6 18L3 17L4 14L2 12L4 10L3 7L6 6L7 3L10 4Z M12 8A4 4 0 1 0 12 16A4 4 0 1 0 12 8</StreamGeometry>
-        <StreamGeometry x:Key="ChevronDownIcon">M7 9L12 14L17 9</StreamGeometry>
-        <StreamGeometry x:Key="CheckIcon">M5 12.5L10 17.5L19 7</StreamGeometry>
+        <StreamGeometry x:Key="ChevronDownIcon">M7 9L12 14L17 9 M12 6.5 M12 16.5</StreamGeometry>
+        <StreamGeometry x:Key="CheckIcon">M5 12.5L10 17.5L19 7 M12 5.25 M12 19.25</StreamGeometry>
 
 
-        <StreamGeometry x:Key="ChevronUpIcon">M7 15L12 10L17 15</StreamGeometry>
-        <StreamGeometry x:Key="ChevronLeftIcon">M15 5L8 12L15 19</StreamGeometry>
-        <StreamGeometry x:Key="ChevronRightIcon">M9 5L16 12L9 19</StreamGeometry>
-        <StreamGeometry x:Key="SendIcon">M12 19V5 M6 11L12 5L18 11</StreamGeometry>
+        <StreamGeometry x:Key="ChevronUpIcon">M7 15L12 10L17 15 M12 7.5 M12 17.5</StreamGeometry>
+        <StreamGeometry x:Key="ChevronLeftIcon">M15 5L8 12L15 19 M4.5 12 M18.5 12</StreamGeometry>
+        <StreamGeometry x:Key="ChevronRightIcon">M9 5L16 12L9 19 M5.5 12 M19.5 12</StreamGeometry>
+        <StreamGeometry x:Key="SendIcon">M12 19V5 M6 11L12 5L18 11 M5 12 M19 12</StreamGeometry>
         <StreamGeometry x:Key="ThoughtIcon">M12 3L13.4 8.6L19 10L13.4 11.4L12 17L10.6 11.4L5 10L10.6 8.6Z</StreamGeometry>
         <StreamGeometry x:Key="SparkIcon">M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5Z</StreamGeometry>
-        <StreamGeometry x:Key="ToolIcon">M4 5H20V19H4Z M7 9L10 12L7 15 M12 15H17</StreamGeometry>
+        <StreamGeometry x:Key="ToolIcon">M4 5H20V19H4Z M7 9L10 12L7 15 M12 15H17 M12 4 M12 20</StreamGeometry>
         <StreamGeometry x:Key="StopIcon">M7 7H17V17H7Z</StreamGeometry>
         <StreamGeometry x:Key="ClockIcon">M12 3A9 9 0 1 0 12 21A9 9 0 1 0 12 3 M12 7V12L15 14</StreamGeometry>
-        <StreamGeometry x:Key="WarningIcon">M12 3L22 20H2Z M12 9V14 M12 17V17.2</StreamGeometry>
+        <StreamGeometry x:Key="WarningIcon">M12 3L22 20H2Z M12 9V14 M12 17V17.2 M12 1.5 M12 21.5</StreamGeometry>
         <StreamGeometry x:Key="CopyIcon">M8 8H20V20H8Z M4 16V4H16</StreamGeometry>
-        <StreamGeometry x:Key="TrashIcon">M4 7H20 M9 4H15 M7 7L8 21H16L17 7 M10 11V17 M14 11V17</StreamGeometry>
-        <StreamGeometry x:Key="BellIcon">M12 3A5 5 0 0 0 7 8V12L5 15H19L17 12V8A5 5 0 0 0 12 3Z M10 18A2 2 0 0 0 14 18</StreamGeometry>
+        <StreamGeometry x:Key="TrashIcon">M4 7H20 M9 4H15 M7 7L8 21H16L17 7 M10 11V17 M14 11V17 M3.5 12.5 M20.5 12.5</StreamGeometry>
+        <StreamGeometry x:Key="BellIcon">M12 3A5 5 0 0 0 7 8V12L5 15H19L17 12V8A5 5 0 0 0 12 3Z M10 18A2 2 0 0 0 14 18 M3.5 11.5 M20.5 11.5</StreamGeometry>
         <StreamGeometry x:Key="MinimizeIcon">M5 12H19</StreamGeometry>
         <StreamGeometry x:Key="MaximizeIcon">M5 5H19V19H5Z</StreamGeometry>
         <StreamGeometry x:Key="CloseIcon">M6 6L18 18 M18 6L6 18</StreamGeometry>
         <StreamGeometry x:Key="RefreshIcon">M19 12A7 7 0 1 1 16.5 6.5 M19 4V9H14</StreamGeometry>
         <StreamGeometry x:Key="LogoutIcon">M9 4H5V20H9 M14 8L18 12L14 16 M18 12H9</StreamGeometry>
         <StreamGeometry x:Key="HelpIcon">M12 3A9 9 0 1 0 12 21A9 9 0 1 0 12 3 M9.5 9.5A2.5 2.5 0 1 1 12 12V13.5 M12 16.5V16.8</StreamGeometry>
-        <StreamGeometry x:Key="PinIcon">M16 9V4H17C17.55 4 18 3.55 18 3H6C6 3.55 6.45 4 7 4H8V9C8 10.66 6.66 12 5 12V14H11V21H13V14H19V12C17.34 12 16 10.66 16 9Z</StreamGeometry>
-        <StreamGeometry x:Key="ArchiveIcon">M4 5H20V9H4Z M6 9V19H18V9 M10 13H14</StreamGeometry>
+        <StreamGeometry x:Key="PinIcon">M16 9V4H17C17.55 4 18 3.55 18 3H6C6 3.55 6.45 4 7 4H8V9C8 10.66 6.66 12 5 12V14H11V21H13V14H19V12C17.34 12 16 10.66 16 9Z M3 12 M21 12</StreamGeometry>
+        <StreamGeometry x:Key="ArchiveIcon">M4 5H20V9H4Z M6 9V19H18V9 M10 13H14 M12 4 M12 20</StreamGeometry>
     </Application.Resources>
 
     <Application.Styles>
