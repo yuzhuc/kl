@@ -999,6 +999,101 @@ public sealed partial class MainWindowViewModel : ObservableObject
         get => _isDeleteDialogOpen;
         private set => SetProperty(ref _isDeleteDialogOpen, value);
     }
+
+    private bool _isCreateProjectDialogOpen;
+    private string _projectNameDraft = string.Empty;
+    private string _projectSourcePath = string.Empty;
+
+    public bool IsCreateProjectDialogOpen
+    {
+        get => _isCreateProjectDialogOpen;
+        private set => SetProperty(ref _isCreateProjectDialogOpen, value);
+    }
+
+    public string ProjectNameDraft
+    {
+        get => _projectNameDraft;
+        set
+        {
+            if (SetProperty(ref _projectNameDraft, value))
+            {
+                OnPropertyChanged(nameof(CanCreateProject));
+            }
+        }
+    }
+
+    public string ProjectSourcePath
+    {
+        get => _projectSourcePath;
+        private set
+        {
+            if (SetProperty(ref _projectSourcePath, value))
+            {
+                OnPropertyChanged(nameof(CanCreateProject));
+                OnPropertyChanged(nameof(HasProjectSourcePath));
+            }
+        }
+    }
+
+    public bool HasProjectSourcePath => !string.IsNullOrWhiteSpace(ProjectSourcePath);
+    public bool CanCreateProject => !string.IsNullOrWhiteSpace(ProjectNameDraft) && HasProjectSourcePath;
+
+    public void OpenCreateProjectDialog()
+    {
+        ProjectNameDraft = string.Empty;
+        ProjectSourcePath = string.Empty;
+        IsCreateProjectDialogOpen = true;
+    }
+
+    public void CloseCreateProjectDialog() => IsCreateProjectDialogOpen = false;
+
+    public void SetProjectSourcePath(string path)
+    {
+        ProjectSourcePath = path;
+        if (string.IsNullOrWhiteSpace(ProjectNameDraft))
+        {
+            var name = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                ProjectNameDraft = name;
+            }
+        }
+    }
+
+    public bool CreateProjectFromDraft()
+    {
+        var name = ProjectNameDraft.Trim();
+        var path = ProjectSourcePath.Trim();
+        if (name.Length == 0 || path.Length == 0)
+        {
+            return false;
+        }
+
+        if (Workspaces.Any(workspace => string.Equals(workspace.Path, path, StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        var state = new WorkspaceState
+        {
+            Name = name,
+            Path = path,
+            IsExpanded = true
+        };
+        _state.Workspaces.Add(state);
+        var item = new WorkspaceItemViewModel(state);
+        Workspaces.Add(item);
+        _state.ActiveWorkspaceId = state.Id;
+        foreach (var workspace in Workspaces)
+        {
+            workspace.IsSelected = ReferenceEquals(workspace, item);
+        }
+
+        CloseCreateProjectDialog();
+        SaveState();
+        return true;
+    }
+
     public bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);
     public bool HasSettingsStatus => !string.IsNullOrWhiteSpace(SettingsStatus);
     public bool IsSettingsStatusError => _settingsStatusIsError;
@@ -2136,6 +2231,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _renameWorkspaceTarget = null;
         IsRenameDialogOpen = false;
         IsDeleteDialogOpen = false;
+        IsCreateProjectDialogOpen = false;
         DeletePrompt = string.Empty;
         CloseAutomationDialogs();
     }

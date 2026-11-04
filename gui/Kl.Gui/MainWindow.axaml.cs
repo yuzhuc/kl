@@ -1240,8 +1240,31 @@ public partial class MainWindow : Window
     private void OnSettingsAboutClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.SelectSettingsPane(SettingsPane.About);
 
-    private async void OnAddWorkspaceClicked(object? sender, RoutedEventArgs eventArgs) =>
-        await PickWorkspaceAsync();
+    private void OnAddWorkspaceClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        _viewModel.OpenCreateProjectDialog();
+        Dispatcher.UIThread.Post(() => ProjectNameBox.Focus(), DispatcherPriority.Background);
+    }
+
+    private async void OnCreateProjectBrowseClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "选择源文件夹",
+            AllowMultiple = false
+        });
+        var path = folders.FirstOrDefault()?.TryGetLocalPath();
+        if (!string.IsNullOrWhiteSpace(path))
+        {
+            _viewModel.SetProjectSourcePath(path);
+        }
+    }
+
+    private void OnCreateProjectCancelClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.CloseCreateProjectDialog();
+
+    private void OnCreateProjectConfirmClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.CreateProjectFromDraft();
 
     private async Task PickWorkspaceAsync()
     {
@@ -1450,6 +1473,13 @@ public partial class MainWindow : Window
         {
             eventArgs.Handled = true;
             _viewModel.CloseSettings();
+            return;
+        }
+
+        if (eventArgs.Key == Key.Escape && _viewModel.IsCreateProjectDialogOpen)
+        {
+            eventArgs.Handled = true;
+            _viewModel.CloseCreateProjectDialog();
             return;
         }
 
