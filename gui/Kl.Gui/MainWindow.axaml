@@ -1856,6 +1856,7 @@
                 <StackPanel x:Name="SectionMenuStack" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top"
                                     Canvas.Left="0" Canvas.Top="0">
                         <Border x:Name="ProjectSectionMenuCard" Width="216"
+                                VerticalAlignment="Top"
                                 Background="#202022"
                                 BorderBrush="#2E2E31" BorderThickness="1"
                                 CornerRadius="12" Padding="6"
@@ -1890,6 +1891,7 @@
                         </Border>
 
                         <Border x:Name="ProjectSectionSubmenuCard" IsVisible="False" Width="190"
+                                VerticalAlignment="Top"
                                 Background="#1E1E21"
                                 BorderBrush="#2C2C2F" BorderThickness="1"
                                 CornerRadius="12" Padding="6"
