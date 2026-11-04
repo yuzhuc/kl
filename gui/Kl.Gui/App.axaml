@@ -10,22 +10,23 @@
         <SolidColorBrush x:Key="SidebarFill" Color="#0F0F10" />
         <SolidColorBrush x:Key="SidebarHoverFill" Color="#1D1D1F" />
         <SolidColorBrush x:Key="SidebarActiveFill" Color="#1D1D1F" />
-        <SolidColorBrush x:Key="SidebarText" Color="#C6C7C9" />
+        <SolidColorBrush x:Key="SidebarText" Color="#C3C4C6" />
         <SolidColorBrush x:Key="SidebarTextHover" Color="#E3E4E6" />
-        <SolidColorBrush x:Key="SidebarLabel" Color="#7E7F82" />
+        <SolidColorBrush x:Key="SidebarLabel" Color="#727275" />
         <SolidColorBrush x:Key="SidebarIconButtonHover" Color="#1E1E1F" />
         <SolidColorBrush x:Key="SidebarIconIdle" Color="#737374" />
-        <SolidColorBrush x:Key="TitleBarFill" Color="#0A0A0C" />
+        <SolidColorBrush x:Key="TitleBarFill" Color="#0D0D0F" />
+    <SolidColorBrush x:Key="ContentFill" Color="#0F0F11" />
         <SolidColorBrush x:Key="ElevatedFill" Color="#141416" />
         <SolidColorBrush x:Key="ElevatedHover" Color="#1A1A1D" />
-        <SolidColorBrush x:Key="ComposerFill" Color="#212124" />
+        <SolidColorBrush x:Key="ComposerFill" Color="#262729" />
         <SolidColorBrush x:Key="Line" Color="#1E1E21" />
         <SolidColorBrush x:Key="SidebarDivider" Color="#1D1D1F" />
         <SolidColorBrush x:Key="LineStrong" Color="#2A2A2E" />
-        <SolidColorBrush x:Key="TextPrimary" Color="#E9E9EC" />
-        <SolidColorBrush x:Key="TextSecondary" Color="#A8A8AE" />
-        <SolidColorBrush x:Key="TextTertiary" Color="#7A7A80" />
-        <SolidColorBrush x:Key="TextCaption" Color="#616167" />
+        <SolidColorBrush x:Key="TextPrimary" Color="#E3E4E6" />
+        <SolidColorBrush x:Key="TextSecondary" Color="#A0A1A3" />
+        <SolidColorBrush x:Key="TextTertiary" Color="#727275" />
+        <SolidColorBrush x:Key="TextCaption" Color="#6E6E70" />
         <SolidColorBrush x:Key="AccentBlue" Color="#4D9FFF" />
         <SolidColorBrush x:Key="UserBubbleFill" Color="#2A2A2D" />
         <SolidColorBrush x:Key="HoverFill" Color="#17171A" />
@@ -42,7 +43,7 @@
         <SolidColorBrush x:Key="TooltipFill" Color="#202022" />
         <SolidColorBrush x:Key="TooltipText" Color="#C0C1C3" />
         <SolidColorBrush x:Key="MoreMenuFill" Color="#1C1C1E" />
-        <SolidColorBrush x:Key="MoreMenuHoverFill" Color="#2E2E30" />
+        <SolidColorBrush x:Key="MoreMenuHoverFill" Color="#2C2C2F" />
         <!-- Alpha-0 brushes with the hover RGB avoid a white flash when a
              BrushTransition starts from "Transparent" (transparent white). -->
         <SolidColorBrush x:Key="RailHoverFillZero" Color="#001C1C1E" />
@@ -623,14 +624,14 @@
             <Setter Property="CornerRadius" Value="13" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="#7E7F82" />
+            <Setter Property="Foreground" Value="#727275" />
             <Setter Property="FontSize" Value="12.5" />
         </Style>
         <Style Selector="Button.filter:pointerover">
             <Setter Property="Background" Value="{DynamicResource HoverFill}" />
         </Style>
         <Style Selector="Button.filter.active">
-            <Setter Property="Background" Value="#1E1E1F" />
+            <Setter Property="Background" Value="#1D1D1F" />
             <Setter Property="Foreground" Value="#E3E4E6" />
         </Style>
 
@@ -672,10 +673,10 @@
             <Setter Property="Background" Value="Transparent" />
         </Style>
         <Style Selector="MenuItem:pointerover">
-            <Setter Property="Background" Value="#2A2A2E" />
+            <Setter Property="Background" Value="#2C2C2F" />
         </Style>
         <Style Selector="MenuItem:pointerover /template/ Border#PART_LayoutRoot">
-            <Setter Property="Background" Value="#2A2A2E" />
+            <Setter Property="Background" Value="#2C2C2F" />
         </Style>
 
         <!-- Standard actions -->
@@ -1044,6 +1045,7 @@
             <Setter Property="MinHeight" Value="24" />
             <Setter Property="FontSize" Value="12.5" />
             <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="PlaceholderForeground" Value="#727275" />
             <Setter Property="CaretBrush" Value="{DynamicResource AccentBlue}" />
             <Setter Property="FocusAdorner" Value="{x:Null}" />
         </Style>

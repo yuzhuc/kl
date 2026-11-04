@@ -955,7 +955,7 @@
                     PointerReleased="OnSidebarResizeReleased" />
 
             <!-- main content -->
-            <Grid Grid.Column="2" Background="{StaticResource BgBase}" RowDefinitions="Auto,*">
+            <Grid Grid.Column="2" Background="{StaticResource ContentFill}" RowDefinitions="Auto,*">
                 <Grid Grid.Row="0" Height="48" ColumnDefinitions="*,Auto" Margin="0,0,12,0">
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                         <Button Classes="chip" Height="28" Padding="6,2" Click="OnOpenModelSettingsClicked"
@@ -2079,12 +2079,12 @@
         </Canvas>
 
         <!-- ===================== Command palette (Codex search) ===================== -->
-        <Grid Grid.RowSpan="2" IsVisible="{Binding IsSearchPaletteOpen}" Background="#7A000000" ZIndex="55"
+        <Grid Grid.RowSpan="2" IsVisible="{Binding IsSearchPaletteOpen}" Background="Transparent" ZIndex="55"
               PointerPressed="OnPaletteBackdropPressed">
-            <Border Width="756" MaxHeight="560" Margin="0,145,0,0"
+            <Border Width="768" MaxHeight="560" Margin="0,147,0,0"
                     HorizontalAlignment="Center" VerticalAlignment="Top"
-                    Background="#111113" BorderBrush="#2E2E30" BorderThickness="1"
-                    CornerRadius="14" BoxShadow="0 20 48 0 #B3000000">
+                    Background="#0F0F10" BorderBrush="#1E1E20" BorderThickness="1"
+                    CornerRadius="12" BoxShadow="0 20 48 0 #B3000000">
                 <Grid RowDefinitions="Auto,Auto,*,Auto">
                     <Grid Grid.Row="0" Height="52" ColumnDefinitions="*,Auto" Margin="16,0,12,0">
                         <TextBox x:Name="PaletteSearchBox" Grid.Column="0" Classes="search"
@@ -2095,7 +2095,7 @@
                                  KeyDown="OnPaletteSearchKeyDown" />
 
                     </Grid>
-                    <Border Grid.Row="1" Height="1" Background="#262628" />
+                    <Border Grid.Row="1" Height="1" Background="#1E1E20" />
                     <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
                         <StackPanel Margin="8,6,8,8">
                             <StackPanel IsVisible="{Binding ShowPaletteActions}">
@@ -2105,16 +2105,14 @@
                                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
                                         <Path Width="15" Height="15" Data="{StaticResource EditIcon}" Stretch="Uniform" />
                                         <TextBlock Grid.Column="1" Text="新聊天" VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="2" Text="Ctrl+N" FontSize="11"
-                                                   Foreground="{StaticResource TextCaption}" VerticalAlignment="Center" />
+                                        <Border Grid.Column="2" Background="#2D2D2E" CornerRadius="5" Padding="6,2" VerticalAlignment="Center" HorizontalAlignment="Right"><TextBlock Text="Ctrl+N" FontSize="10.5" Foreground="#B7B8BA" /></Border>
                                     </Grid>
                                 </Button>
                                 <Button Classes="palette-row" Click="OnPaletteOpenFolderClicked">
                                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
                                         <Path Width="15" Height="15" Data="{StaticResource FolderIcon}" Stretch="Uniform" />
                                         <TextBlock Grid.Column="1" Text="打开文件夹" VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="2" Text="Ctrl+O" FontSize="11"
-                                                   Foreground="{StaticResource TextCaption}" VerticalAlignment="Center" />
+                                        <Border Grid.Column="2" Background="#2D2D2E" CornerRadius="5" Padding="6,2" VerticalAlignment="Center" HorizontalAlignment="Right"><TextBlock Text="Ctrl+O" FontSize="10.5" Foreground="#B7B8BA" /></Border>
                                     </Grid>
                                 </Button>
                             </StackPanel>
@@ -2145,7 +2143,8 @@
                                        Margin="8,16,0,20" />
                         </StackPanel>
                     </ScrollViewer>
-                    <Grid Grid.Row="3" Height="42" ColumnDefinitions="Auto,*" Margin="14,0,14,0">
+                    <Border Grid.Row="3" Background="#111011" BorderBrush="#1E1E20" BorderThickness="0,1,0,0">
+                    <Grid Height="42" ColumnDefinitions="Auto,*" Margin="14,0,14,0">
                         <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                             <Button Classes="filter" Classes.active="{Binding IsPaletteFilterAll}"
                                     Click="OnPaletteFilterClicked" Tag="all" Content="All" />
@@ -2159,6 +2158,7 @@
                                     Click="OnPaletteFilterClicked" Tag="text" Content="Text" />
                         </StackPanel>
                     </Grid>
+                    </Border>
                 </Grid>
             </Border>
         </Grid>
