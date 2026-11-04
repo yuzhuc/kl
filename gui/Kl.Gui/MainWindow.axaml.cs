@@ -41,7 +41,7 @@ public partial class MainWindow : Window
         MoreMenuCard.DataContext = _viewModel;
         ApplyContentFontResources();
         UpdatePinGlyphs();
-        SidebarPanelBorder.Width = _viewModel.IsSidebarVisible ? SidebarExpandedWidth : 0;
+        SidebarPanelBorder.Width = _viewModel.IsSidebarVisible ? _viewModel.SidebarWidth : 0;
         _viewModel.Messages.CollectionChanged += OnMessagesChanged;
         foreach (var item in _viewModel.Messages)
         {
@@ -921,14 +921,34 @@ public partial class MainWindow : Window
         }, DispatcherPriority.Background);
     }
 
-    private const double SidebarExpandedWidth = 284;
+    private const double SidebarMinWidth = 284;
+    private const double SidebarMaxWidth = 560;
+
+    // Dragging the splitter below 3/4 of the minimum width collapses the sidebar;
+    // pulling the collapsed sidebar past the same offset expands it again.
+    private const double SidebarCollapseThreshold = SidebarMinWidth * 0.75;
+
+    private bool _sidebarDragging;
+    private double _sidebarDragStartX;
+    private double _sidebarDragStartWidth;
 
     /// <summary>Codex-style slide: the sidebar column animates instead of jumping.</summary>
     private void AnimateSidebar(bool visible)
     {
-        var target = visible ? SidebarExpandedWidth : 0;
+        var expandedWidth = double.IsNaN(_viewModel.SidebarWidth)
+            ? SidebarMinWidth
+            : Math.Clamp(_viewModel.SidebarWidth, SidebarMinWidth, SidebarMaxWidth);
+        var target = visible ? expandedWidth : 0;
         var current = SidebarPanelBorder.Width;
-        var start = double.IsNaN(current) ? (visible ? 0 : SidebarExpandedWidth) : current;
+        var start = double.IsNaN(current) ? (visible ? 0 : expandedWidth) : current;
+
+        // While the splitter is being dragged the width follows the pointer directly.
+        if (_sidebarDragging)
+        {
+            SidebarPanelBorder.Width = target;
+            SidebarPanelBorder.BorderThickness = visible ? new Thickness(0, 0, 1, 0) : default;
+            return;
+        }
 
         if (Math.Abs(start - target) < 0.5)
         {
@@ -959,6 +979,95 @@ public partial class MainWindow : Window
         };
 
         _ = RunSidebarAnimationAsync(animation, target, visible);
+    }
+
+    private void OnSidebarResizePressed(object? sender, PointerPressedEventArgs eventArgs)
+    {
+        if (!eventArgs.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        if (sender is Control handle)
+        {
+            eventArgs.Pointer.Capture(handle);
+        }
+
+        _sidebarDragging = true;
+        _sidebarDragStartX = eventArgs.GetPosition(this).X;
+        var width = _viewModel.IsSidebarVisible ? SidebarPanelBorder.Width : 0;
+        _sidebarDragStartWidth = double.IsNaN(width) ? 0 : width;
+        eventArgs.Handled = true;
+    }
+
+    private void OnSidebarResizeMoved(object? sender, PointerEventArgs eventArgs)
+    {
+        if (!_sidebarDragging)
+        {
+            return;
+        }
+
+        var x = eventArgs.GetPosition(this).X;
+        var delta = x - _sidebarDragStartX;
+
+        if (!_viewModel.IsSidebarVisible)
+        {
+            if (delta >= SidebarCollapseThreshold)
+            {
+                _viewModel.SetSidebarVisible(true);
+                SidebarPanelBorder.Width = SidebarMinWidth;
+                _sidebarDragStartX = x;
+                _sidebarDragStartWidth = SidebarMinWidth;
+            }
+
+            eventArgs.Handled = true;
+            return;
+        }
+
+        var width = _sidebarDragStartWidth + delta;
+        if (width < SidebarCollapseThreshold)
+        {
+            _viewModel.SetSidebarVisible(false);
+            SidebarPanelBorder.Width = 0;
+            _sidebarDragStartX = x;
+            _sidebarDragStartWidth = 0;
+        }
+        else
+        {
+            SidebarPanelBorder.Width = Math.Min(width, SidebarMaxWidth);
+        }
+
+        eventArgs.Handled = true;
+    }
+
+    private void OnSidebarResizeReleased(object? sender, PointerReleasedEventArgs eventArgs)
+    {
+        if (!_sidebarDragging)
+        {
+            return;
+        }
+
+        _sidebarDragging = false;
+        if (sender is Control handle)
+        {
+            eventArgs.Pointer.Capture(null);
+        }
+
+        if (_viewModel.IsSidebarVisible)
+        {
+            var width = SidebarPanelBorder.Width;
+            if (double.IsNaN(width))
+            {
+                width = _viewModel.SidebarWidth;
+            }
+
+            var target = Math.Clamp(width, SidebarMinWidth, SidebarMaxWidth);
+            SidebarPanelBorder.Width = target;
+            _viewModel.SetSidebarWidth(target);
+            AnimateSidebar(true);
+        }
+
+        eventArgs.Handled = true;
     }
 
     private async Task RunSidebarAnimationAsync(Animation animation, double target, bool visible)
@@ -1110,7 +1219,7 @@ public partial class MainWindow : Window
     }
 
     private void OnToggleSidebarClicked(object? sender, RoutedEventArgs eventArgs) =>
-        _viewModel.ToggleSidebar();
+        _viewModel.SetSidebarVisible(!_viewModel.IsSidebarVisible);
 
     private void OnToggleSearchClicked(object? sender, RoutedEventArgs eventArgs)
     {

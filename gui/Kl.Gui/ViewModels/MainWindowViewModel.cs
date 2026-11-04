@@ -717,6 +717,24 @@ public sealed partial class MainWindowViewModel : ObservableObject
         private set => SetProperty(ref _isSidebarVisible, value);
     }
 
+    /// <summary>Expanded sidebar width; the rail collapses below 3/4 of this value.</summary>
+    public double SidebarWidth => _state.SidebarWidth;
+
+    public void SetSidebarWidth(double width)
+    {
+        var clamped = Math.Clamp(width, 284, 560);
+        if (Math.Abs(_state.SidebarWidth - clamped) < 0.5)
+        {
+            return;
+        }
+
+        _state.SidebarWidth = clamped;
+        SaveState();
+        OnPropertyChanged(nameof(SidebarWidth));
+    }
+
+    public void SetSidebarVisible(bool visible) => IsSidebarVisible = visible;
+
     public bool IsSearchVisible
     {
         get => _isSearchVisible;

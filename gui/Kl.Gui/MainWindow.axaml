@@ -624,8 +624,23 @@
                                        FontSize="11.5" Foreground="{StaticResource TextCaption}" TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
+
+                    <!-- drag handle: resize the sidebar from its right edge -->
+                    <Border Width="6" HorizontalAlignment="Right" Background="Transparent"
+                            Cursor="SizeWestEast" ZIndex="80"
+                            PointerPressed="OnSidebarResizePressed"
+                            PointerMoved="OnSidebarResizeMoved"
+                            PointerReleased="OnSidebarResizeReleased" />
                 </Grid>
             </Border>
+
+            <!-- drag handle: pull the collapsed sidebar back out past 3/4 of its minimum width -->
+            <Border Grid.Column="2" HorizontalAlignment="Left" Width="8" Background="Transparent"
+                    Cursor="SizeWestEast" ZIndex="80"
+                    IsVisible="{Binding !IsSidebarVisible}"
+                    PointerPressed="OnSidebarResizePressed"
+                    PointerMoved="OnSidebarResizeMoved"
+                    PointerReleased="OnSidebarResizeReleased" />
 
             <!-- main content -->
             <Grid Grid.Column="2" Background="{StaticResource BgBase}" RowDefinitions="Auto,*">
