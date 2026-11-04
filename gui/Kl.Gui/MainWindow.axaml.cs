@@ -506,6 +506,30 @@ public partial class MainWindow : Window
         WorkspaceMenuPopup.IsOpen = false;
     }
 
+    private void OnWorkspacePinMenuClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if ((sender as Control)?.DataContext is WorkspaceItemViewModel workspace)
+        {
+            _viewModel.ToggleWorkspacePinned(workspace);
+        }
+    }
+
+    private void OnWorkspaceArchiveMenuClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if ((sender as Control)?.DataContext is WorkspaceItemViewModel workspace)
+        {
+            _viewModel.ArchiveWorkspaceChats(workspace);
+        }
+    }
+
+    private void OnWorkspaceRemoveMenuClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if ((sender as Control)?.DataContext is WorkspaceItemViewModel workspace)
+        {
+            _viewModel.RemoveWorkspace(workspace);
+        }
+    }
+
     private void OnRemoveWorkspaceClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (WorkspaceMenuPopup.DataContext is WorkspaceItemViewModel workspace)
@@ -906,7 +930,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var left = origin.X + row.Bounds.Width + (overlap ? -33 : 14);
+        var left = origin.X + row.Bounds.Width + (overlap ? -33 : -18);
         Canvas.SetLeft(card, Math.Round(left));
         Canvas.SetTop(card, Math.Round(origin.Y));
         card.Measure(Size.Infinity);
