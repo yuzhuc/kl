@@ -8,6 +8,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Styling;
@@ -25,6 +26,10 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _moreMenuOpenTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
     private readonly DispatcherTimer _moreMenuCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
     private readonly DispatcherTimer _previewCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(220) };
+    private SessionItemViewModel? _pinnedDragSession;
+    private Point _pinnedDragOrigin;
+    private bool _pinnedDragging;
+    private bool _pinnedDragSkipClick;
     private Control? _railHintTarget;
     private long _lastRailPointerNavigation;
     private bool _moreMenuPinned;
@@ -63,6 +68,9 @@ public partial class MainWindow : Window
         _moreMenuCloseTimer.Tick += OnMoreMenuCloseTimerTick;
         _previewCloseTimer.Tick += OnPreviewCloseTimerTick;
         AddHandler(PointerWheelChangedEvent, OnWindowPointerWheelChanged, RoutingStrategies.Tunnel);
+        AddHandler(PointerPressedEvent, OnPinnedDragPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
+        AddHandler(PointerMovedEvent, OnPinnedDragMoved, RoutingStrategies.Tunnel, handledEventsToo: true);
+        AddHandler(PointerReleasedEvent, OnPinnedDragReleased, RoutingStrategies.Tunnel, handledEventsToo: true);
         ConfigureRailPointerNavigation();
     }
 
@@ -382,6 +390,12 @@ public partial class MainWindow : Window
 
     private async void OnSessionClicked(object? sender, RoutedEventArgs eventArgs)
     {
+        if (_pinnedDragSkipClick)
+        {
+            _pinnedDragSkipClick = false;
+            return;
+        }
+
         if (sender is Button { DataContext: SessionItemViewModel session })
         {
             _viewModel.Navigate(AppSection.Chat);
@@ -536,6 +550,68 @@ public partial class MainWindow : Window
 
     private void OnSessionRowPointerExited(object? sender, PointerEventArgs eventArgs) =>
         StartPreviewClose();
+
+    private void OnPinnedDragPressed(object? sender, PointerPressedEventArgs eventArgs)
+    {
+        if (!eventArgs.GetCurrentPoint(this).Properties.IsLeftButtonPressed
+            || !_viewModel.IsPinnedSortByManual)
+        {
+            _pinnedDragSession = null;
+            return;
+        }
+
+        if (FindPinnedSession(eventArgs.Source as Visual) is not { } session)
+        {
+            _pinnedDragSession = null;
+            return;
+        }
+
+        _pinnedDragSession = session;
+        _pinnedDragOrigin = eventArgs.GetPosition(this);
+        _pinnedDragging = false;
+    }
+
+    private void OnPinnedDragMoved(object? sender, PointerEventArgs eventArgs)
+    {
+        if (_pinnedDragSession is null || _pinnedDragging)
+        {
+            return;
+        }
+
+        var position = eventArgs.GetPosition(this);
+        if (Math.Abs(position.Y - _pinnedDragOrigin.Y) > 6)
+        {
+            _pinnedDragging = true;
+            HidePreviewCards();
+        }
+    }
+
+    private void OnPinnedDragReleased(object? sender, PointerReleasedEventArgs eventArgs)
+    {
+        if (_pinnedDragSession is { } session && _pinnedDragging)
+        {
+            var y = eventArgs.GetPosition(PinnedItemsControl).Y;
+            var index = (int)Math.Floor(Math.Max(0, y) / 31.0);
+            _viewModel.MovePinnedSession(session, index);
+            _pinnedDragSkipClick = true;
+        }
+
+        _pinnedDragSession = null;
+        _pinnedDragging = false;
+    }
+
+    private static SessionItemViewModel? FindPinnedSession(Visual? source)
+    {
+        for (var visual = source; visual is not null; visual = visual.GetVisualParent())
+        {
+            if (visual is Control { DataContext: SessionItemViewModel session } && session.IsPinned)
+            {
+                return session;
+            }
+        }
+
+        return null;
+    }
 
     private void OnWorkspaceRowPointerEntered(object? sender, PointerEventArgs eventArgs)
     {

@@ -331,7 +331,7 @@
         <Grid Grid.Row="1" ColumnDefinitions="52,Auto,*">
             <!-- rail -->
             <Border Grid.Column="0" Background="{StaticResource SidebarRailFill}"
-                    BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0">
+                    BorderBrush="{StaticResource SidebarDivider}" BorderThickness="0,0,1,0">
                 <Grid RowDefinitions="Auto,*,Auto">
                     <StackPanel Grid.Row="0" Spacing="6" Margin="0,14,0,0">
                         <Button x:Name="ChatRailButton" Classes="rail" Classes.active="{Binding IsChatPage}"
@@ -429,7 +429,7 @@
             <!-- sidebar -->
             <Border x:Name="SidebarPanelBorder" Grid.Column="1" Width="284" ClipToBounds="True"
                     Background="{StaticResource SidebarFill}"
-                    BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0">
+                    BorderBrush="{StaticResource SidebarDivider}" BorderThickness="0,0,1,0">
                 <Grid>
                     <!-- chat sidebar -->
                     <Grid IsVisible="{Binding IsChatPage}" RowDefinitions="Auto,Auto,Auto,*">
@@ -552,7 +552,7 @@
                                             </Button>
                                         </StackPanel>
                                     </Grid>
-                                    <ItemsControl ItemsSource="{Binding PinnedSessions}"
+                                    <ItemsControl x:Name="PinnedItemsControl" ItemsSource="{Binding PinnedSessions}"
                                                   ItemTemplate="{StaticResource RecentSessionTemplate}"
                                                   IsVisible="{Binding IsPinnedExpanded}" />
                                 </StackPanel>
@@ -918,7 +918,7 @@
                     </Grid>
 
                     <!-- drag handle: resize the sidebar from its right edge -->
-                    <Border Width="3" HorizontalAlignment="Right" Background="Transparent"
+                    <Border Width="2" HorizontalAlignment="Right" Background="Transparent"
                             Cursor="SizeWestEast" ZIndex="80"
                             PointerPressed="OnSidebarResizePressed"
                             PointerMoved="OnSidebarResizeMoved"
@@ -927,7 +927,7 @@
             </Border>
 
             <!-- drag handle: pull the collapsed sidebar back out past 3/4 of its minimum width -->
-            <Border Grid.Column="2" HorizontalAlignment="Left" Width="3" Background="Transparent"
+            <Border Grid.Column="2" HorizontalAlignment="Left" Width="2" Background="Transparent"
                     Cursor="SizeWestEast" ZIndex="80"
                     IsVisible="{Binding !IsSidebarVisible}"
                     PointerPressed="OnSidebarResizePressed"
@@ -1459,7 +1459,7 @@
               Background="{StaticResource BgBase}" ZIndex="40">
             <Grid ColumnDefinitions="280,*">
                 <Border Background="{StaticResource SidebarFill}"
-                        BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0">
+                        BorderBrush="{StaticResource SidebarDivider}" BorderThickness="0,0,1,0">
                     <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="16,20,16,16">
                         <TextBlock Text="设置" FontSize="20" FontWeight="Medium"
                                    Foreground="{StaticResource TextPrimary}" Margin="2,0" />

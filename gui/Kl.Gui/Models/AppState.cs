@@ -40,6 +40,9 @@ public sealed class SessionState
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.Now;
     public bool IsPinned { get; set; }
     public bool IsArchived { get; set; }
+
+    /// <summary>Order inside the 置顶 section when 手动排序 is selected.</summary>
+    public int PinnedOrder { get; set; }
     public List<StoredMessage> Messages { get; set; } = [];
 }
 

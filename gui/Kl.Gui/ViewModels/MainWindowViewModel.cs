@@ -1471,12 +1471,16 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         var pinned = all
             .Where(item => !item.IsArchived && item.IsPinned)
-            .OrderByDescending(item => IsPinnedSortByRecent
-                ? (IsSessionSortByCreated ? item.State.CreatedAt : item.State.UpdatedAt)
-                : DateTimeOffset.MinValue)
-            .ThenBy(item => item.Workspace.Sessions.IndexOf(item))
-            .Take(50)
             .ToList();
+        pinned = IsPinnedSortByRecent
+            ? pinned
+                .OrderByDescending(item => IsSessionSortByCreated ? item.State.CreatedAt : item.State.UpdatedAt)
+                .ToList()
+            : pinned
+                .OrderBy(item => item.State.PinnedOrder == 0 ? int.MaxValue : item.State.PinnedOrder)
+                .ThenByDescending(item => item.State.UpdatedAt)
+                .ToList();
+        pinned = pinned.Take(50).ToList();
 
         var items = all
             .Where(item => !item.IsArchived && !item.IsPinned)
@@ -1533,6 +1537,44 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public void ToggleSessionPinned(SessionItemViewModel session)
     {
         session.IsPinned = !session.IsPinned;
+        if (session.IsPinned)
+        {
+            MovePinnedSession(session, int.MaxValue);
+            return;
+        }
+
+        session.State.PinnedOrder = 0;
+        SaveState();
+    }
+
+    /// <summary>Codex 手动排序: drop a pinned chat at a new position in the 置顶 list.</summary>
+    public void MovePinnedSession(SessionItemViewModel session, int targetIndex)
+    {
+        var ordered = Workspaces
+            .SelectMany(workspace => workspace.Sessions)
+            .Where(item => item.IsPinned && item.State.PinnedOrder > 0)
+            .OrderBy(item => item.State.PinnedOrder)
+            .ToList();
+
+        if (!ordered.Contains(session))
+        {
+            ordered.Add(session);
+        }
+
+        var currentIndex = ordered.FindIndex(item => ReferenceEquals(item, session));
+        if (currentIndex >= 0)
+        {
+            ordered.RemoveAt(currentIndex);
+        }
+
+        var index = Math.Clamp(targetIndex, 0, ordered.Count);
+        ordered.Insert(index, session);
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            ordered[i].State.PinnedOrder = i + 1;
+        }
+
+        RefreshRecentSessions();
         SaveState();
     }
 
@@ -2504,6 +2546,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     private void NormalizeState()
     {
+        var pinnedOrderSeed = 0;
         _state.Endpoint = string.IsNullOrWhiteSpace(_state.Endpoint) ? "https://api.deepseek.com" : _state.Endpoint.Trim();
         _state.Model = string.IsNullOrWhiteSpace(_state.Model) ? "deepseek-chat" : _state.Model.Trim();
         _state.ApiKey ??= string.Empty;
@@ -2545,6 +2588,18 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 session.Id = string.IsNullOrWhiteSpace(session.Id) ? Guid.NewGuid().ToString("N") : session.Id;
                 session.Title = string.IsNullOrWhiteSpace(session.Title) ? "新会话" : session.Title;
                 session.Messages ??= [];
+                if (session.IsPinned)
+                {
+                    pinnedOrderSeed++;
+                    if (session.PinnedOrder == 0)
+                    {
+                        session.PinnedOrder = pinnedOrderSeed;
+                    }
+                    else
+                    {
+                        pinnedOrderSeed = Math.Max(pinnedOrderSeed, session.PinnedOrder);
+                    }
+                }
             }
         }
 

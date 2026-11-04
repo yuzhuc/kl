@@ -20,6 +20,7 @@
         <SolidColorBrush x:Key="ElevatedHover" Color="#1A1A1D" />
         <SolidColorBrush x:Key="ComposerFill" Color="#212124" />
         <SolidColorBrush x:Key="Line" Color="#1E1E21" />
+        <SolidColorBrush x:Key="SidebarDivider" Color="#1D1D1F" />
         <SolidColorBrush x:Key="LineStrong" Color="#2A2A2E" />
         <SolidColorBrush x:Key="TextPrimary" Color="#E9E9EC" />
         <SolidColorBrush x:Key="TextSecondary" Color="#A8A8AE" />
@@ -938,7 +939,7 @@
         <Style Selector="ScrollBar:vertical">
             <Setter Property="Width" Value="6" />
             <Setter Property="MinWidth" Value="6" />
-            <Setter Property="Margin" Value="0,0,3,0" />
+            <Setter Property="Margin" Value="0,0,2,0" />
             <Setter Property="Background" Value="#1F1F20" />
         </Style>
         <Style Selector="ScrollBar:vertical /template/ Thumb">
