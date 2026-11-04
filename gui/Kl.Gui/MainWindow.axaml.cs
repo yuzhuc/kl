@@ -393,6 +393,81 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnWorkspaceMoreClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (GetWorkspace(sender) is not { } workspace || sender is not Control anchor)
+        {
+            return;
+        }
+
+        WorkspaceMenuPopup.DataContext = workspace;
+        WorkspaceMenuPopup.PlacementTarget = anchor;
+        WorkspaceMenuPopup.IsOpen = !WorkspaceMenuPopup.IsOpen;
+        eventArgs.Handled = true;
+    }
+
+    private void OnWorkspaceEditClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (GetWorkspace(sender) is not { } workspace)
+        {
+            return;
+        }
+
+        WorkspaceMenuPopup.IsOpen = false;
+        _viewModel.BeginRenameWorkspace(workspace);
+        Dispatcher.UIThread.Post(() =>
+        {
+            RenameBox.Focus();
+            RenameBox.SelectAll();
+        }, DispatcherPriority.Background);
+    }
+
+    private void OnToggleWorkspacePinnedClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (WorkspaceMenuPopup.DataContext is WorkspaceItemViewModel workspace)
+        {
+            _viewModel.ToggleWorkspacePinned(workspace);
+        }
+
+        WorkspaceMenuPopup.IsOpen = false;
+    }
+
+    private void OnRenameWorkspaceClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (WorkspaceMenuPopup.DataContext is not WorkspaceItemViewModel workspace)
+        {
+            return;
+        }
+
+        WorkspaceMenuPopup.IsOpen = false;
+        _viewModel.BeginRenameWorkspace(workspace);
+        Dispatcher.UIThread.Post(() =>
+        {
+            RenameBox.Focus();
+            RenameBox.SelectAll();
+        }, DispatcherPriority.Background);
+    }
+
+    private void OnArchiveWorkspaceChatsClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (WorkspaceMenuPopup.DataContext is WorkspaceItemViewModel workspace)
+        {
+            _viewModel.ArchiveWorkspaceChats(workspace);
+        }
+
+        WorkspaceMenuPopup.IsOpen = false;
+    }
+
+    private void OnRemoveWorkspaceClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (WorkspaceMenuPopup.DataContext is WorkspaceItemViewModel workspace)
+        {
+            _viewModel.RemoveWorkspace(workspace);
+        }
+
+        WorkspaceMenuPopup.IsOpen = false;
+    }
+
     private void OnRenameSessionClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (GetSession(sender) is { } session)
@@ -898,6 +973,7 @@ public partial class MainWindow : Window
             if (!_viewModel.IsSidebarVisible)
             {
                 ProductMenuPopup.IsOpen = false;
+                WorkspaceMenuPopup.IsOpen = false;
             }
 
             AnimateSidebar(_viewModel.IsSidebarVisible);
@@ -1325,6 +1401,9 @@ public partial class MainWindow : Window
         sender is Control control
             ? control.Tag as SessionItemViewModel ?? control.DataContext as SessionItemViewModel
             : null;
+
+    private static WorkspaceItemViewModel? GetWorkspace(object? sender) =>
+        (sender as Control)?.DataContext as WorkspaceItemViewModel;
 
     private static AutomationItemViewModel? GetAutomation(object? sender) =>
         (sender as Control)?.DataContext as AutomationItemViewModel;

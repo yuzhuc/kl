@@ -482,6 +482,8 @@ public sealed class WorkspaceItemViewModel : ObservableObject
                 }
             };
         }
+
+        Sessions.CollectionChanged += (_, _) => RefreshPreview();
     }
 
     public WorkspaceState State { get; }
@@ -489,6 +491,48 @@ public sealed class WorkspaceItemViewModel : ObservableObject
     public string Id => State.Id;
     public string Name => State.Name;
     public string Path => State.Path;
+
+    /// <summary>Codex-style project preview details.</summary>
+    public string ChatCountLabel => $"{Sessions.Count} 次聊天";
+
+    public string ParentPath
+    {
+        get
+        {
+            try
+            {
+                var parent = System.IO.Path.GetDirectoryName(State.Path);
+                return string.IsNullOrWhiteSpace(parent) ? State.Path : parent;
+            }
+            catch (ArgumentException)
+            {
+                return State.Path;
+            }
+        }
+    }
+
+    public bool IsPinned
+    {
+        get => State.IsPinned;
+        set
+        {
+            if (State.IsPinned == value)
+            {
+                return;
+            }
+
+            State.IsPinned = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public void RefreshName() => OnPropertyChanged(nameof(Name));
+
+    public void RefreshPreview()
+    {
+        OnPropertyChanged(nameof(ChatCountLabel));
+        OnPropertyChanged(nameof(ParentPath));
+    }
 
     public bool IsSelected
     {
@@ -591,6 +635,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private SessionState? _activeSession;
     private SessionItemViewModel? _activeSessionItem;
     private SessionItemViewModel? _dialogTarget;
+    private WorkspaceItemViewModel? _renameWorkspaceTarget;
     private ChatItemViewModel? _activeReasoning;
     private ChatItemViewModel? _activeAssistant;
     private string _composer = string.Empty;
@@ -1120,6 +1165,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
         private set => SetProperty(ref _deletePrompt, value);
     }
 
+    public string RenameDialogTitle
+    {
+        get => _renameWorkspaceTarget is null ? "重命名会话" : "重命名项目";
+    }
+
     public void Navigate(AppSection section)
     {
         if (section == AppSection.Settings)
@@ -1401,6 +1451,79 @@ public sealed partial class MainWindowViewModel : ObservableObject
         SaveState();
     }
 
+    /// <summary>Pin a project (Codex "置顶"): pinned projects sort above the rest.</summary>
+    public void ToggleWorkspacePinned(WorkspaceItemViewModel workspace)
+    {
+        workspace.IsPinned = !workspace.IsPinned;
+        var ordered = Workspaces.OrderByDescending(item => item.IsPinned).ToList();
+        for (var index = 0; index < ordered.Count; index++)
+        {
+            var current = Workspaces.IndexOf(ordered[index]);
+            if (current != index)
+            {
+                Workspaces.Move(current, index);
+            }
+        }
+
+        _state.Workspaces = ordered.Select(item => item.State).ToList();
+        SaveState();
+    }
+
+    /// <summary>Archive every conversation of a project (Codex "归档聊天").</summary>
+    public void ArchiveWorkspaceChats(WorkspaceItemViewModel workspace)
+    {
+        foreach (var session in workspace.Sessions)
+        {
+            session.IsArchived = true;
+        }
+
+        RefreshRecentSessions();
+        SaveState();
+    }
+
+    /// <summary>Remove a project from the sidebar (Codex "移除项目").</summary>
+    public void RemoveWorkspace(WorkspaceItemViewModel workspace)
+    {
+        if (Workspaces.Count <= 1)
+        {
+            return;
+        }
+
+        _state.Workspaces.Remove(workspace.State);
+        Workspaces.Remove(workspace);
+        OnPropertyChanged(nameof(WorkspaceCount));
+        OnPropertyChanged(nameof(HasSessions));
+        OnPropertyChanged(nameof(ShowNoSessions));
+        OnPropertyChanged(nameof(SavedSessionCount));
+
+        if (_activeWorkspace.Id == workspace.Id)
+        {
+            workspace.IsSelected = false;
+            var next = Workspaces.FirstOrDefault();
+            if (next is not null)
+            {
+                _activeWorkspace = next;
+                _activeWorkspace.IsSelected = true;
+                _activeWorkspace.IsExpanded = true;
+                _state.ActiveWorkspaceId = next.Id;
+                OnPropertyChanged(nameof(WorkspaceName));
+                OnPropertyChanged(nameof(WorkspacePath));
+                var recent = next.Sessions.FirstOrDefault();
+                if (recent is null)
+                {
+                    StartDraftSession();
+                }
+                else
+                {
+                    SelectSession(next, recent.State);
+                }
+            }
+        }
+
+        RefreshRecentSessions();
+        SaveState();
+    }
+
     public bool AddWorkspace(string path)
     {
         string fullPath;
@@ -1563,13 +1686,28 @@ public sealed partial class MainWindowViewModel : ObservableObject
             return;
         }
         _dialogTarget = session;
+        _renameWorkspaceTarget = null;
         RenameTitle = session.Title;
+        OnPropertyChanged(nameof(RenameDialogTitle));
+        IsRenameDialogOpen = true;
+    }
+
+    public void BeginRenameWorkspace(WorkspaceItemViewModel workspace)
+    {
+        if (IsBusy)
+        {
+            return;
+        }
+        _dialogTarget = null;
+        _renameWorkspaceTarget = workspace;
+        RenameTitle = workspace.Name;
+        OnPropertyChanged(nameof(RenameDialogTitle));
         IsRenameDialogOpen = true;
     }
 
     public void ConfirmRename()
     {
-        if (_dialogTarget is null || string.IsNullOrWhiteSpace(RenameTitle))
+        if (string.IsNullOrWhiteSpace(RenameTitle))
         {
             return;
         }
@@ -1579,6 +1717,25 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             title = title[..80];
         }
+
+        if (_renameWorkspaceTarget is { } workspace)
+        {
+            workspace.State.Name = title;
+            workspace.RefreshName();
+            if (workspace.Id == _activeWorkspace.Id)
+            {
+                OnPropertyChanged(nameof(WorkspaceName));
+            }
+            CloseDialogs();
+            SaveState();
+            return;
+        }
+
+        if (_dialogTarget is null)
+        {
+            return;
+        }
+
         _dialogTarget.Title = title;
         _dialogTarget.State.UpdatedAt = DateTimeOffset.Now;
         _dialogTarget.RefreshTime();
@@ -1636,6 +1793,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public void CloseDialogs()
     {
         _dialogTarget = null;
+        _renameWorkspaceTarget = null;
         IsRenameDialogOpen = false;
         IsDeleteDialogOpen = false;
         DeletePrompt = string.Empty;

@@ -25,6 +25,7 @@ public sealed class WorkspaceState
     public string Name { get; set; } = string.Empty;
     public string Path { get; set; } = string.Empty;
     public bool IsExpanded { get; set; } = true;
+    public bool IsPinned { get; set; }
     public List<SessionState> Sessions { get; set; } = [];
 }
 
