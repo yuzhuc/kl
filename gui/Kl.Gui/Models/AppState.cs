@@ -12,7 +12,7 @@ public sealed class AppState
     public bool IsAddProjectPinned { get; set; }
     public bool IsProjectSectionExpanded { get; set; } = true;
     public bool IsCodeReviewPinned { get; set; }
-    public double SidebarWidth { get; set; } = 284;
+    public double SidebarWidth { get; set; } = 238;
     public string? ActiveWorkspaceId { get; set; }
     public string? ActiveSessionId { get; set; }
     public List<WorkspaceState> Workspaces { get; set; } = [];

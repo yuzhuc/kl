@@ -722,7 +722,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public void SetSidebarWidth(double width)
     {
-        var clamped = Math.Clamp(width, 284, 468);
+        var clamped = Math.Clamp(width, 238, 468);
         if (Math.Abs(_state.SidebarWidth - clamped) < 0.5)
         {
             return;
@@ -2167,6 +2167,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
             : "work";
         _state.Workspaces ??= [];
         _state.Automations ??= [];
+
+        // Sidebar width: match Codex's 238-468 range and migrate the old 284 default.
+        if (Math.Abs(_state.SidebarWidth - 284) < 0.5 || _state.SidebarWidth < 238)
+        {
+            _state.SidebarWidth = 238;
+        }
+
+        _state.SidebarWidth = Math.Clamp(_state.SidebarWidth, 238, 468);
 
         foreach (var workspace in _state.Workspaces)
         {

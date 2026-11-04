@@ -41,7 +41,9 @@ public partial class MainWindow : Window
         MoreMenuCard.DataContext = _viewModel;
         ApplyContentFontResources();
         UpdatePinGlyphs();
-        SidebarPanelBorder.Width = _viewModel.IsSidebarVisible ? _viewModel.SidebarWidth : 0;
+        SidebarPanelBorder.Width = _viewModel.IsSidebarVisible
+            ? Math.Clamp(_viewModel.SidebarWidth, SidebarMinWidth, SidebarMaxWidth)
+            : 0;
         _viewModel.Messages.CollectionChanged += OnMessagesChanged;
         foreach (var item in _viewModel.Messages)
         {
@@ -921,12 +923,12 @@ public partial class MainWindow : Window
         }, DispatcherPriority.Background);
     }
 
-    private const double SidebarMinWidth = 284;
+    private const double SidebarMinWidth = 238;
     private const double SidebarMaxWidth = 468;
 
     // Dragging the splitter below 3/4 of the minimum width collapses the sidebar;
     // pulling the collapsed sidebar past the same offset expands it again.
-    private const double SidebarCollapseThreshold = SidebarMinWidth * 0.25;
+    private const double SidebarCollapseThreshold = SidebarMinWidth * 0.5;
 
     private bool _sidebarDragging;
     private double _sidebarDragStartX;
