@@ -56,6 +56,7 @@ public partial class MainWindow : Window
         ProjectSectionMenuCard.DataContext = _viewModel;
         ProjectSectionSubmenuCard.DataContext = _viewModel;
         PinnedSectionMenuCard.DataContext = _viewModel;
+        NotificationMenuPopup.DataContext = _viewModel;
         ApplyContentFontResources();
         UpdatePinGlyphs();
         SidebarPanelBorder.Width = _viewModel.IsSidebarVisible
@@ -2005,6 +2006,40 @@ public partial class MainWindow : Window
             PaletteSearchBox.Focus();
             PaletteSearchBox.SelectAll();
         }, DispatcherPriority.Background);
+    }
+
+    private void OnNotificationMenuClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is not Control anchor)
+        {
+            return;
+        }
+
+        NotificationMenuPopup.PlacementTarget = anchor;
+        NotificationMenuPopup.IsOpen = !NotificationMenuPopup.IsOpen;
+        eventArgs.Handled = true;
+    }
+
+    private void OnNotificationFilterClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is Control { Tag: string filter })
+        {
+            _viewModel.SetNotificationFilter(filter);
+        }
+
+        NotificationMenuPopup.IsOpen = false;
+    }
+
+    private void OnMarkAllNotificationsReadClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        _viewModel.MarkAllNotificationsRead();
+        NotificationMenuPopup.IsOpen = false;
+    }
+
+    private void OnArchiveNotificationsClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        _viewModel.ArchiveNotificationSessions();
+        NotificationMenuPopup.IsOpen = false;
     }
 
     private async void OnNotificationClicked(object? sender, RoutedEventArgs eventArgs)

@@ -1551,6 +1551,40 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public void CloseSearchPalette() => IsSearchPaletteOpen = false;
 
+    private string _notificationFilter = "priority";
+
+    public bool IsNotificationFilterPriority => _notificationFilter == "priority";
+    public bool IsNotificationFilterPinned => _notificationFilter == "pinned";
+    public bool IsNotificationFilterAutomations => _notificationFilter == "automations";
+
+    public void SetNotificationFilter(string filter)
+    {
+        _notificationFilter = filter is "priority" or "pinned" or "automations" ? filter : "priority";
+        OnPropertyChanged(nameof(IsNotificationFilterPriority));
+        OnPropertyChanged(nameof(IsNotificationFilterPinned));
+        OnPropertyChanged(nameof(IsNotificationFilterAutomations));
+        RefreshNotifications();
+    }
+
+    public void MarkAllNotificationsRead()
+    {
+        Notifications.Clear();
+        OnPropertyChanged(nameof(HasNotifications));
+        OnPropertyChanged(nameof(ShowNoNotifications));
+    }
+
+    public void ArchiveNotificationSessions()
+    {
+        foreach (var notification in Notifications.ToList())
+        {
+            notification.Session.IsArchived = true;
+        }
+
+        RefreshNotifications();
+        RefreshRecentSessions();
+        SaveState();
+    }
+
     public void RefreshNotifications()
     {
         Notifications.Clear();
@@ -1558,6 +1592,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
         var sessions = Workspaces
             .SelectMany(workspace => workspace.Sessions)
             .Where(session => !session.IsArchived)
+            .Where(session => _notificationFilter switch
+            {
+                "pinned" => session.IsPinned,
+                "automations" => false,
+                _ => true
+            })
             .OrderByDescending(session => session.State.UpdatedAt)
             .Take(12)
             .ToList();
