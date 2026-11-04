@@ -1014,11 +1014,14 @@ public partial class MainWindow : Window
 
         if (!_viewModel.IsSidebarVisible)
         {
-            if (delta >= SidebarCollapseThreshold)
+            // Anchor on the left-most pointer position so pulling back out only
+            // needs half the minimum width of travel, even after over-dragging left.
+            _sidebarDragStartX = Math.Min(_sidebarDragStartX, x);
+            if (x - _sidebarDragStartX >= SidebarCollapseThreshold)
             {
                 _viewModel.SetSidebarVisible(true);
                 SidebarPanelBorder.Width = SidebarMinWidth;
-                _sidebarDragStartX = x;
+                _sidebarDragStartX += SidebarCollapseThreshold;
                 _sidebarDragStartWidth = SidebarMinWidth;
             }
 
