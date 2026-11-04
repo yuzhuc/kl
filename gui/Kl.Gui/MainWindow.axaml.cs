@@ -596,17 +596,24 @@ public partial class MainWindow : Window
 
     private void OnPinnedDragMoved(object? sender, PointerEventArgs eventArgs)
     {
-        if (_dragMode == 0 || _pinnedDragging)
+        if (_dragMode == 0)
         {
             return;
         }
 
         var position = eventArgs.GetPosition(this);
-        if (Math.Abs(position.Y - _pinnedDragOrigin.Y) > 6)
+        if (!_pinnedDragging)
         {
+            if (Math.Abs(position.Y - _pinnedDragOrigin.Y) <= 6)
+            {
+                return;
+            }
+
             _pinnedDragging = true;
             HidePreviewCards();
         }
+
+        UpdateDropIndicator(position.Y);
     }
 
     private void OnPinnedDragReleased(object? sender, PointerReleasedEventArgs eventArgs)
@@ -640,6 +647,54 @@ public partial class MainWindow : Window
         _nestedDragSession = null;
         _workspaceDragTarget = null;
         _pinnedDragging = false;
+    }
+
+    private void UpdateDropIndicator(double pointerY)
+    {
+        var rows = GetDragRowBounds();
+        if (rows.Count == 0)
+        {
+            DropIndicator.IsVisible = false;
+            return;
+        }
+
+        var index = rows.Count(row => (row.Top + row.Bottom) / 2 < pointerY);
+        var target = rows[Math.Clamp(index, 0, rows.Count - 1)];
+        var lineY = index >= rows.Count ? rows[^1].Bottom - 1 : target.Top - 1;
+        Canvas.SetLeft(DropIndicator, target.Left);
+        Canvas.SetTop(DropIndicator, lineY);
+        DropIndicator.Width = Math.Max(40, target.Right - target.Left);
+        DropIndicator.IsVisible = true;
+    }
+
+    private List<(double Top, double Bottom, double Left, double Right)> GetDragRowBounds()
+    {
+        var buttons = this.GetVisualDescendants().OfType<Button>();
+        IEnumerable<Button> filtered = _dragMode switch
+        {
+            1 => buttons.Where(button => button.DataContext is SessionItemViewModel session && session.IsPinned),
+            2 when _nestedDragSession is { } nested => buttons.Where(button =>
+                button.Classes.Contains("session-row")
+                && button.Classes.Contains("nested")
+                && button.DataContext is SessionItemViewModel session
+                && ReferenceEquals(session.Workspace, nested.Workspace)),
+            3 => buttons.Where(button => button.Classes.Contains("row")
+                                          && button.DataContext is WorkspaceItemViewModel),
+            _ => []
+        };
+
+        return filtered
+            .Select(button =>
+            {
+                var point = button.TranslatePoint(new Point(0, 0), this);
+                return point is null
+                    ? (Top: 0.0, Bottom: 0.0, Left: 0.0, Right: 0.0)
+                    : (Top: point.Value.Y, Bottom: point.Value.Y + button.Bounds.Height,
+                        Left: point.Value.X, Right: point.Value.X + button.Bounds.Width);
+            })
+            .Where(row => row.Bottom > row.Top)
+            .OrderBy(row => row.Top)
+            .ToList();
     }
 
     private int DropIndexInPinned(double pointerY)
