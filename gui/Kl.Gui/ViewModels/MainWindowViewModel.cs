@@ -483,7 +483,11 @@ public sealed class WorkspaceItemViewModel : ObservableObject
             };
         }
 
-        Sessions.CollectionChanged += (_, _) => RefreshPreview();
+        Sessions.CollectionChanged += (_, _) =>
+        {
+            RefreshPreview();
+            OnPropertyChanged(nameof(HasNoSessions));
+        };
     }
 
     public WorkspaceState State { get; }
@@ -494,6 +498,8 @@ public sealed class WorkspaceItemViewModel : ObservableObject
 
     /// <summary>Codex-style project preview details.</summary>
     public string ChatCountLabel => $"{Sessions.Count} 次聊天";
+
+    public bool HasNoSessions => Sessions.Count == 0;
 
     public string ParentPath
     {
@@ -744,6 +750,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public ObservableCollection<AttachmentItemViewModel> PendingAttachments { get; } = [];
     public ObservableCollection<PluginItemViewModel> Plugins { get; } = [];
     public ObservableCollection<SessionItemViewModel> RecentSessions { get; } = [];
+    public ObservableCollection<SessionItemViewModel> PinnedSessions { get; } = [];
     public ObservableCollection<SessionItemViewModel> ArchivedSessions { get; } = [];
     public ObservableCollection<PinnedRailItemViewModel> PinnedRailItems { get; } = [];
     public ObservableCollection<AutomationItemViewModel> Automations { get; } = [];
@@ -809,6 +816,17 @@ public sealed partial class MainWindowViewModel : ObservableObject
         private set => SetProperty(ref _isRecentExpanded, value);
     }
 
+    public bool HasPinnedSessions => PinnedSessions.Count > 0;
+
+    private bool _isPinnedExpanded = true;
+
+    public bool IsPinnedExpanded
+    {
+        get => _isPinnedExpanded;
+        private set => SetProperty(ref _isPinnedExpanded, value);
+    }
+
+    public void TogglePinned() => IsPinnedExpanded = !IsPinnedExpanded;
     public bool HasRecentSessions => RecentSessions.Count > 0;
     public bool ShowNoRecentSessions => !HasRecentSessions;
     public bool ShowArchivedSessions => ArchivedSessions.Count > 0;
@@ -1450,6 +1468,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         SyncList(RecentSessions, items);
         SyncList(ArchivedSessions, archived);
 
+        OnPropertyChanged(nameof(HasPinnedSessions));
         OnPropertyChanged(nameof(HasRecentSessions));
         OnPropertyChanged(nameof(ShowNoRecentSessions));
         OnPropertyChanged(nameof(ShowArchivedSessions));

@@ -47,6 +47,7 @@ public partial class MainWindow : Window
             ? Math.Clamp(_viewModel.SidebarWidth, SidebarMinWidth, SidebarMaxWidth)
             : 0;
         _viewModel.Messages.CollectionChanged += OnMessagesChanged;
+        TranscriptScroller.ScrollChanged += OnTranscriptScrollChanged;
         foreach (var item in _viewModel.Messages)
         {
             item.PropertyChanged += OnMessagePropertyChanged;
@@ -359,6 +360,14 @@ public partial class MainWindow : Window
 
     private async void OnNewSessionClicked(object? sender, RoutedEventArgs eventArgs)
     {
+        // Clicking new chat while a turn is streaming used to be ignored, which
+        // felt like the old conversation jumping back once it finished. Stop the
+        // current turn first so the new chat actually opens.
+        if (_viewModel.IsBusy)
+        {
+            await _viewModel.CancelAsync();
+        }
+
         _viewModel.Navigate(AppSection.Chat);
         await _viewModel.NewSessionAsync();
         FocusComposer();
@@ -1095,6 +1104,7 @@ public partial class MainWindow : Window
     private const double SidebarCollapseThreshold = SidebarMinWidth * 0.5;
 
     private bool _sidebarDragging;
+    private bool _transcriptPinnedToBottom = true;
     private CancellationTokenSource? _sidebarAnimationCts;
     private double _sidebarAnimationTarget;
     private bool _sidebarAnimating;
@@ -1320,7 +1330,14 @@ public partial class MainWindow : Window
                 item.PropertyChanged -= OnMessagePropertyChanged;
             }
         }
-        ScrollTranscript();
+
+        if (eventArgs.Action is NotifyCollectionChangedAction.Reset)
+        {
+            _transcriptPinnedToBottom = true;
+        }
+
+        ScrollTranscript(force: eventArgs.Action is NotifyCollectionChangedAction.Add
+            or NotifyCollectionChangedAction.Reset);
     }
 
     private void OnMessagePropertyChanged(object? sender, PropertyChangedEventArgs eventArgs)
@@ -1333,15 +1350,28 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ScrollTranscript()
+    private void ScrollTranscript(bool force = false)
     {
         Dispatcher.UIThread.Post(() =>
         {
-            if (_viewModel.IsChatPage && _viewModel.HasConversation)
+            if (_viewModel.IsChatPage && _viewModel.HasConversation && (force || _transcriptPinnedToBottom))
             {
                 TranscriptScroller.ScrollToEnd();
             }
         }, DispatcherPriority.Background);
+    }
+
+    private void OnTranscriptScrollChanged(object? sender, ScrollChangedEventArgs eventArgs)
+    {
+        if (TranscriptScroller.Viewport.Height <= 0)
+        {
+            return;
+        }
+
+        var distanceFromBottom = TranscriptScroller.Extent.Height
+            - TranscriptScroller.Viewport.Height
+            - TranscriptScroller.Offset.Y;
+        _transcriptPinnedToBottom = distanceFromBottom <= 32;
     }
 
     private void ApplyContentFontResources()
@@ -1462,6 +1492,9 @@ public partial class MainWindow : Window
 
     private void OnToggleRecentClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.ToggleRecent();
+
+    private void OnTogglePinnedSectionClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.TogglePinned();
 
     private void OnNotificationsButtonClicked(object? sender, RoutedEventArgs eventArgs)
     {

@@ -155,6 +155,8 @@
                         </Button>
                     </StackPanel>
                 </Grid>
+                <TextBlock Text="暂无聊天" IsVisible="{Binding HasNoSessions}" FontSize="12"
+                           Foreground="{StaticResource SidebarLabel}" Margin="40,4,0,6" />
                 <ItemsControl ItemsSource="{Binding Sessions}" IsVisible="{Binding ShowSessions}"
                               ItemTemplate="{StaticResource NestedSessionRowTemplate}" Margin="0,0,0,2" />
             </StackPanel>
@@ -509,7 +511,7 @@
                     BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0">
                 <Grid>
                     <!-- chat sidebar -->
-                    <Grid IsVisible="{Binding IsChatPage}" RowDefinitions="Auto,Auto,*">
+                    <Grid IsVisible="{Binding IsChatPage}" RowDefinitions="Auto,Auto,Auto,*">
                         <Grid Grid.Row="0" Height="29" ColumnDefinitions="*,Auto" Margin="18,19,14,0">
                             <Button x:Name="ProductMenuButton" Classes="product-menu-toggle"
                                     HorizontalAlignment="Left" VerticalAlignment="Center"
@@ -588,21 +590,42 @@
                             </Grid>
                         </Border>
 
-                        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto"
+                        <!-- fixed new-chat row (Codex keeps this out of the scroll area) -->
+                        <Button Grid.Row="2" Classes="row" Height="30" Padding="10,0" CornerRadius="8"
+                                Margin="8,14,8,8" Click="OnNewSessionClicked"
+                                IsVisible="{Binding !IsNotificationsVisible}">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                                <Path Width="16" Height="16" Data="{StaticResource EditIcon}" Stretch="Uniform"
+                                      StrokeThickness="1.4"
+                                      StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                      VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="新聊天" FontSize="14"
+                                           VerticalAlignment="Center" />
+                            </Grid>
+                        </Button>
+
+                        <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto"
                                       IsVisible="{Binding !IsNotificationsVisible}"
                                       HorizontalScrollBarVisibility="Disabled">
                             <StackPanel>
-                                <Button Classes="row" Height="30" Padding="10,0" CornerRadius="8"
-                                        Margin="8,14,8,0" Click="OnNewSessionClicked">
-                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
-                                        <Path Width="16" Height="16" Data="{StaticResource EditIcon}" Stretch="Uniform"
-                                              StrokeThickness="1.4"
-                                              StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                                              VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="1" Text="新聊天" FontSize="14"
-                                                   VerticalAlignment="Center" />
+                                <StackPanel IsVisible="{Binding HasPinnedSessions}" Margin="0,6,0,0">
+                                    <Grid Classes="session-row-container">
+                                        <Button Classes="section-header" Click="OnTogglePinnedSectionClicked">
+                                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                                <TextBlock Text="置顶" FontSize="13" LineHeight="21"
+                                                           Foreground="{StaticResource SidebarLabel}"
+                                                           VerticalAlignment="Center" />
+                                                <Path Classes="section-chevron" Width="10" Height="10"
+                                                      Data="{StaticResource ChevronDownIcon}" Stretch="Uniform"
+                                                      Classes.collapsed="{Binding !IsPinnedExpanded}"
+                                                      VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
                                     </Grid>
-                                </Button>
+                                    <ItemsControl ItemsSource="{Binding PinnedSessions}"
+                                                  ItemTemplate="{StaticResource RecentSessionTemplate}"
+                                                  IsVisible="{Binding IsPinnedExpanded}" />
+                                </StackPanel>
 
                                 <Grid Classes="session-row-container" Margin="0,16,0,0"
                                       IsVisible="{Binding IsSidebarGrouped}">
@@ -682,7 +705,7 @@
                         </ScrollViewer>
 
                         <!-- notifications pane (Codex bell) -->
-                        <ScrollViewer Grid.Row="2" IsVisible="{Binding IsNotificationsVisible}"
+                        <ScrollViewer Grid.Row="3" IsVisible="{Binding IsNotificationsVisible}"
                                       VerticalScrollBarVisibility="Auto"
                                       HorizontalScrollBarVisibility="Disabled">
                             <StackPanel>
