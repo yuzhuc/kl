@@ -45,13 +45,14 @@
         <DataTemplate x:Key="NestedSessionRowTemplate" x:DataType="vm:SessionItemViewModel">
             <Grid Classes="session-row-container" IsVisible="{Binding IsListVisible}" Margin="24,0,8,1">
                 <Button Classes="session-row nested" Classes.active="{Binding IsSelected}" Click="OnSessionClicked"
-                        ToolTip.Tip="{Binding UpdatedLabel}">
+                        PointerEntered="OnSessionRowPointerEntered"
+                        PointerExited="OnSessionRowPointerExited">
                     <TextBlock Text="{Binding Title}" FontSize="14" TextWrapping="NoWrap"
                                TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
                                Margin="0,0,52,0" />
                 </Button>
-                <StackPanel Orientation="Horizontal" Spacing="1" HorizontalAlignment="Right"
-                            VerticalAlignment="Center" Margin="0,0,4,0">
+                <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right"
+                            VerticalAlignment="Center" Margin="0,0,26,0">
                     <Button Classes="row-action" Classes.pinned="{Binding IsPinned}"
                             Click="OnPinSessionClicked" ToolTip.Tip="置顶">
                         <Path Width="13" Height="13" Data="{StaticResource PinIcon}" Stretch="Uniform"
@@ -69,72 +70,8 @@
                 <Grid Classes="session-row-container" Margin="8,0,8,1">
                     <Button Classes="row" Height="30" Padding="10,0" CornerRadius="8"
                             Click="OnWorkspaceClicked"
-                            ToolTip.ShowDelay="650" ToolTip.Placement="RightEdgeAlignedTop"
-                            ToolTip.HorizontalOffset="14" ToolTip.VerticalOffset="0">
-                        <ToolTip.Tip>
-                            <StackPanel Width="290" Spacing="9">
-                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="7">
-                                    <Path Width="14" Height="14" Data="{StaticResource FolderIcon}" Stretch="Uniform"
-                                          Stroke="{StaticResource SidebarText}" StrokeThickness="1.3"
-                                          StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                                          VerticalAlignment="Center" />
-                                    <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
-                                               Foreground="{StaticResource SidebarTextHover}"
-                                               TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
-                                               VerticalAlignment="Center" />
-                                    <Path Grid.Column="2" Width="13" Height="13" Data="{StaticResource PinIcon}"
-                                          Stretch="Uniform" IsVisible="{Binding !IsPinned}"
-                                          Stroke="{StaticResource SidebarLabel}" StrokeThickness="1.3"
-                                          StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                                          RenderTransform="rotate(45deg)" VerticalAlignment="Center" />
-                                    <Path Grid.Column="2" Width="13" Height="13" Data="{StaticResource PinIcon}"
-                                          Stretch="Uniform" IsVisible="{Binding IsPinned}"
-                                          Stroke="{StaticResource SidebarTextHover}" StrokeThickness="1.3"
-                                          StrokeLineCap="Round" StrokeJoin="Round"
-                                          Fill="{StaticResource SidebarTextHover}"
-                                          RenderTransform="rotate(45deg)" VerticalAlignment="Center" />
-                                </Grid>
-                                <StackPanel Spacing="5">
-                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="7">
-                                        <Path Width="13" Height="13" Data="{StaticResource ClockIcon}" Stretch="Uniform"
-                                              Stroke="{StaticResource SidebarLabel}" StrokeThickness="1.25"
-                                              StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                                              VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="1" Text="{Binding ChatCountLabel}" FontSize="12"
-                                                   Foreground="{StaticResource SidebarLabel}" VerticalAlignment="Center" />
-                                    </Grid>
-                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="7">
-                                        <Path Width="13" Height="13" Data="{StaticResource FolderIcon}" Stretch="Uniform"
-                                              Stroke="{StaticResource SidebarLabel}" StrokeThickness="1.25"
-                                              StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                                              VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="1" Text="{Binding Path}" FontSize="12"
-                                                   Foreground="{StaticResource SidebarLabel}"
-                                                   TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
-                                                   VerticalAlignment="Center" />
-                                    </Grid>
-                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="7">
-                                        <Path Width="13" Height="13" Data="{StaticResource FolderIcon}" Stretch="Uniform"
-                                              Stroke="{StaticResource SidebarLabel}" StrokeThickness="1.25"
-                                              StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                                              VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="1" Text="{Binding ParentPath}" FontSize="12"
-                                                   Foreground="{StaticResource SidebarLabel}"
-                                                   TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
-                                                   VerticalAlignment="Center" />
-                                    </Grid>
-                                </StackPanel>
-                                <Border Height="1" Background="{StaticResource LineStrong}" />
-                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="7">
-                                    <Path Width="13" Height="13" Data="{StaticResource SettingsIcon}" Stretch="Uniform"
-                                          Stroke="{StaticResource SidebarText}" StrokeThickness="1.25"
-                                          StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                                          VerticalAlignment="Center" />
-                                    <TextBlock Grid.Column="1" Text="编辑项目" FontSize="12"
-                                               Foreground="{StaticResource SidebarText}" VerticalAlignment="Center" />
-                                </Grid>
-                            </StackPanel>
-                        </ToolTip.Tip>
+                            PointerEntered="OnWorkspaceRowPointerEntered"
+                            PointerExited="OnWorkspaceRowPointerExited">
                         <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
                             <Path Width="16" Height="16" Data="{StaticResource FolderIcon}" Stretch="Uniform"
                                   StrokeThickness="1.35"
@@ -165,30 +102,14 @@
         <DataTemplate x:Key="RecentSessionTemplate" x:DataType="vm:SessionItemViewModel">
             <Grid Classes="session-row-container" IsVisible="{Binding IsListVisible}" Margin="8,0,8,1">
                 <Button Classes="session-row" Classes.active="{Binding IsSelected}" Click="OnSessionClicked"
-                        ToolTip.ShowDelay="650" ToolTip.Placement="Right"
-                        ToolTip.HorizontalOffset="10" ToolTip.VerticalOffset="-6">
-                    <ToolTip.Tip>
-                        <StackPanel Width="230" Spacing="7">
-                            <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold"
-                                       Foreground="{StaticResource SidebarTextHover}"
-                                       TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
-                                <Path Width="13" Height="13" Data="{StaticResource FolderIcon}"
-                                      Stretch="Uniform" Stroke="{StaticResource SidebarLabel}"
-                                      StrokeThickness="1.3" Fill="Transparent" VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="1" Text="{Binding Workspace.Name}" FontSize="12"
-                                           Foreground="{StaticResource SidebarLabel}" VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="2" Text="{Binding RelativeLabel}" FontSize="12"
-                                           Foreground="{StaticResource SidebarLabel}" VerticalAlignment="Center" />
-                            </Grid>
-                        </StackPanel>
-                    </ToolTip.Tip>
+                        PointerEntered="OnSessionRowPointerEntered"
+                        PointerExited="OnSessionRowPointerExited">
                     <TextBlock Text="{Binding Title}" FontSize="14" TextWrapping="NoWrap"
                                TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
                                Margin="0,0,52,0" />
                 </Button>
-                <StackPanel Orientation="Horizontal" Spacing="1" HorizontalAlignment="Right"
-                            VerticalAlignment="Center" Margin="0,0,4,0">
+                <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right"
+                            VerticalAlignment="Center" Margin="0,0,26,0">
                     <Button Classes="row-action" Classes.pinned="{Binding IsPinned}"
                             Click="OnPinSessionClicked" ToolTip.Tip="置顶">
                         <Path Width="13" Height="13" Data="{StaticResource PinIcon}" Stretch="Uniform"
@@ -621,6 +542,14 @@
                                                       VerticalAlignment="Center" />
                                             </StackPanel>
                                         </Button>
+                                        <StackPanel Orientation="Horizontal" Spacing="0"
+                                                    HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                    Margin="0,0,4,0">
+                                            <Button Classes="row-action" Click="OnPinnedSectionMoreClicked">
+                                                <Path Width="14" Height="14" Data="{StaticResource MoreIcon}"
+                                                      Stretch="Uniform" />
+                                            </Button>
+                                        </StackPanel>
                                     </Grid>
                                     <ItemsControl ItemsSource="{Binding PinnedSessions}"
                                                   ItemTemplate="{StaticResource RecentSessionTemplate}"
@@ -911,6 +840,40 @@
                                     </Button>
                                 </StackPanel>
                             </Grid>
+                        </Border>
+                    </Popup>
+
+                    <Popup x:Name="PinnedSectionMenuPopup" Placement="BottomEdgeAlignedRight"
+                           VerticalOffset="4" IsLightDismissEnabled="True">
+                        <Border x:Name="PinnedSectionMenuCard" Width="196"
+                                Background="{StaticResource ProductMenuFill}"
+                                BorderBrush="{StaticResource ProductMenuLine}" BorderThickness="1"
+                                CornerRadius="12" Padding="6"
+                                BoxShadow="0 14 34 0 #99000000">
+                            <StackPanel Spacing="1">
+                                <Button Classes="more-menu-item" Click="OnPinnedSortRecentClicked">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
+                                        <Path Width="14" Height="14" Data="{StaticResource ClockIcon}" Stretch="Uniform" />
+                                        <TextBlock Grid.Column="1" Text="最近更新" VerticalAlignment="Center" />
+                                        <Path Grid.Column="2" Width="14" Height="14"
+                                              Data="{StaticResource CheckIcon}" Stretch="Uniform"
+                                              Stroke="{StaticResource SidebarText}" StrokeThickness="1.6"
+                                              StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                              IsVisible="{Binding IsPinnedSortByRecent}" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Button>
+                                <Button Classes="more-menu-item" Click="OnPinnedSortManualClicked">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
+                                        <Path Width="14" Height="14" Data="{StaticResource ToolIcon}" Stretch="Uniform" />
+                                        <TextBlock Grid.Column="1" Text="手动排序" VerticalAlignment="Center" />
+                                        <Path Grid.Column="2" Width="14" Height="14"
+                                              Data="{StaticResource CheckIcon}" Stretch="Uniform"
+                                              Stroke="{StaticResource SidebarText}" StrokeThickness="1.6"
+                                              StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                              IsVisible="{Binding IsPinnedSortByManual}" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Button>
+                            </StackPanel>
                         </Border>
                     </Popup>
 
@@ -1880,6 +1843,111 @@
                 </StackPanel>
             </Border>
         </primitives:Popup>
+
+        <!-- ===================== Hover preview cards ===================== -->
+        <Canvas x:Name="PreviewCanvas" Grid.RowSpan="2" ZIndex="45">
+            <Border x:Name="SessionPreviewCard" IsVisible="False" Width="337"
+                    Background="#202022" CornerRadius="12" Padding="12,10"
+                    BoxShadow="0 18 44 0 #8C000000"
+                    PointerEntered="OnPreviewCardPointerEntered"
+                    PointerExited="OnPreviewCardPointerExited"
+                    x:CompileBindings="False">
+                <StackPanel Spacing="9">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                        <TextBlock Text="{Binding Title}" FontSize="13.5" FontWeight="Medium"
+                                   Foreground="#C3C4C6" TextWrapping="Wrap"
+                                   MaxLines="2" TextTrimming="CharacterEllipsis" LineHeight="20" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4"
+                                    VerticalAlignment="Top" Margin="0,3,0,0">
+                            <Path Width="12" Height="12" Data="{StaticResource ClockIcon}" Stretch="Uniform"
+                                  Stroke="{StaticResource SidebarLabel}" StrokeThickness="1.25"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                  VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding RelativeLabel}" FontSize="11.5"
+                                       Foreground="{StaticResource SidebarLabel}" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Grid>
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                        <Path Width="12" Height="12" Data="{StaticResource FolderIcon}" Stretch="Uniform"
+                              Stroke="{StaticResource SidebarLabel}" StrokeThickness="1.25"
+                              StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                              VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding Workspace.Name}" FontSize="12.5"
+                                   Foreground="#9E9FA1" VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <Border x:Name="WorkspacePreviewCard" IsVisible="False" Width="310"
+                    Background="#202022" CornerRadius="12" Padding="12,10"
+                    BoxShadow="0 18 44 0 #8C000000"
+                    PointerEntered="OnPreviewCardPointerEntered"
+                    PointerExited="OnPreviewCardPointerExited"
+                    x:CompileBindings="False">
+                <StackPanel Spacing="9">
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="7">
+                        <Path Width="14" Height="14" Data="{StaticResource FolderIcon}" Stretch="Uniform"
+                              Stroke="{StaticResource SidebarText}" StrokeThickness="1.3"
+                              StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                              VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{StaticResource SidebarTextHover}"
+                                   TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                                   VerticalAlignment="Center" />
+                        <Path Grid.Column="2" Width="13" Height="13" Data="{StaticResource PinIcon}"
+                              Stretch="Uniform" IsVisible="{Binding IsPinned}"
+                              Stroke="{StaticResource SidebarTextHover}" StrokeThickness="1.3"
+                              StrokeLineCap="Round" StrokeJoin="Round"
+                              Fill="{StaticResource SidebarTextHover}"
+                              RenderTransform="rotate(45deg)" VerticalAlignment="Center" />
+                    </Grid>
+                    <StackPanel Spacing="5">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="7">
+                            <Path Width="13" Height="13" Data="{StaticResource ClockIcon}" Stretch="Uniform"
+                                  Stroke="{StaticResource SidebarLabel}" StrokeThickness="1.25"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                  VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding ChatCountLabel}" FontSize="12"
+                                       Foreground="{StaticResource SidebarLabel}" VerticalAlignment="Center" />
+                        </Grid>
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="7">
+                            <Path Width="13" Height="13" Data="{StaticResource FolderIcon}" Stretch="Uniform"
+                                  Stroke="{StaticResource SidebarLabel}" StrokeThickness="1.25"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                  VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding Path}" FontSize="12"
+                                       Foreground="{StaticResource SidebarLabel}"
+                                       TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                                       VerticalAlignment="Center" />
+                        </Grid>
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="7">
+                            <Path Width="13" Height="13" Data="{StaticResource FolderIcon}" Stretch="Uniform"
+                                  Stroke="{StaticResource SidebarLabel}" StrokeThickness="1.25"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                  VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding ParentPath}" FontSize="12"
+                                       Foreground="{StaticResource SidebarLabel}"
+                                       TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                                       VerticalAlignment="Center" />
+                        </Grid>
+                    </StackPanel>
+                    <Border Height="1" Background="{StaticResource LineStrong}" />
+                    <Button Classes="row" Height="28" Padding="7,0" CornerRadius="6"
+                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                            Click="OnWorkspaceEditClicked">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="7">
+                            <Path Width="13" Height="13" Data="{StaticResource SettingsIcon}" Stretch="Uniform"
+                                  Stroke="{StaticResource SidebarText}" StrokeThickness="1.25"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                  VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="编辑项目" FontSize="12"
+                                       Foreground="{StaticResource SidebarText}" VerticalAlignment="Center" />
+                        </Grid>
+                    </Button>
+                </StackPanel>
+            </Border>
+        </Canvas>
 
         <!-- ===================== Command palette (Codex search) ===================== -->
         <Grid Grid.RowSpan="2" IsVisible="{Binding IsSearchPaletteOpen}" Background="#7A000000" ZIndex="55"

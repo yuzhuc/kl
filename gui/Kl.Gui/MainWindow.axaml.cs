@@ -24,6 +24,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _railHintOpenTimer = new() { Interval = TimeSpan.FromMilliseconds(80) };
     private readonly DispatcherTimer _moreMenuOpenTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
     private readonly DispatcherTimer _moreMenuCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
+    private readonly DispatcherTimer _previewCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(220) };
     private Control? _railHintTarget;
     private long _lastRailPointerNavigation;
     private bool _moreMenuPinned;
@@ -41,6 +42,7 @@ public partial class MainWindow : Window
         MoreMenuCard.DataContext = _viewModel;
         ProjectSectionMenuCard.DataContext = _viewModel;
         ProjectSectionSubmenuCard.DataContext = _viewModel;
+        PinnedSectionMenuCard.DataContext = _viewModel;
         ApplyContentFontResources();
         UpdatePinGlyphs();
         SidebarPanelBorder.Width = _viewModel.IsSidebarVisible
@@ -59,8 +61,13 @@ public partial class MainWindow : Window
         _railHintOpenTimer.Tick += OnRailHintOpenTimerTick;
         _moreMenuOpenTimer.Tick += OnMoreMenuOpenTimerTick;
         _moreMenuCloseTimer.Tick += OnMoreMenuCloseTimerTick;
+        _previewCloseTimer.Tick += OnPreviewCloseTimerTick;
+        AddHandler(PointerWheelChangedEvent, OnWindowPointerWheelChanged, RoutingStrategies.Tunnel);
         ConfigureRailPointerNavigation();
     }
+
+    private void OnWindowPointerWheelChanged(object? sender, PointerWheelEventArgs eventArgs) =>
+        HidePreviewCards();
 
     private void ConfigureRailPointerNavigation()
     {
@@ -419,6 +426,7 @@ public partial class MainWindow : Window
 
     private void OnWorkspaceEditClicked(object? sender, RoutedEventArgs eventArgs)
     {
+        HidePreviewCards();
         if (GetWorkspace(sender) is not { } workspace)
         {
             return;
@@ -490,6 +498,132 @@ public partial class MainWindow : Window
         ProjectSectionMenuPopup.IsOpen = !ProjectSectionMenuPopup.IsOpen;
         ProjectSectionSubmenuPopup.IsOpen = false;
         eventArgs.Handled = true;
+    }
+
+    private void OnPinnedSectionMoreClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is not Control anchor)
+        {
+            return;
+        }
+
+        PinnedSectionMenuPopup.PlacementTarget = anchor;
+        PinnedSectionMenuPopup.IsOpen = !PinnedSectionMenuPopup.IsOpen;
+        eventArgs.Handled = true;
+    }
+
+    private void OnPinnedSortRecentClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        _viewModel.SetPinnedSortMode("recent");
+        PinnedSectionMenuPopup.IsOpen = false;
+    }
+
+    private void OnPinnedSortManualClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        _viewModel.SetPinnedSortMode("manual");
+        PinnedSectionMenuPopup.IsOpen = false;
+    }
+
+    private void OnSessionRowPointerEntered(object? sender, PointerEventArgs eventArgs)
+    {
+        if (sender is not Control row || row.DataContext is not SessionItemViewModel session)
+        {
+            return;
+        }
+
+        ShowSessionPreview(row, session);
+    }
+
+    private void OnSessionRowPointerExited(object? sender, PointerEventArgs eventArgs) =>
+        StartPreviewClose();
+
+    private void OnWorkspaceRowPointerEntered(object? sender, PointerEventArgs eventArgs)
+    {
+        if (sender is not Control row || row.DataContext is not WorkspaceItemViewModel workspace)
+        {
+            return;
+        }
+
+        ShowWorkspacePreview(row, workspace);
+    }
+
+    private void OnWorkspaceRowPointerExited(object? sender, PointerEventArgs eventArgs) =>
+        StartPreviewClose();
+
+    private void OnPreviewCardPointerEntered(object? sender, PointerEventArgs eventArgs) =>
+        _previewCloseTimer.Stop();
+
+    private void OnPreviewCardPointerExited(object? sender, PointerEventArgs eventArgs) =>
+        StartPreviewClose();
+
+    private void StartPreviewClose()
+    {
+        _previewCloseTimer.Stop();
+        _previewCloseTimer.Start();
+    }
+
+    private void OnPreviewCloseTimerTick(object? sender, EventArgs eventArgs)
+    {
+        _previewCloseTimer.Stop();
+        if (SessionPreviewCard.IsPointerOver || WorkspacePreviewCard.IsPointerOver)
+        {
+            return;
+        }
+
+        HidePreviewCards();
+    }
+
+    private void HidePreviewCards()
+    {
+        _previewCloseTimer.Stop();
+        SessionPreviewCard.IsVisible = false;
+        WorkspacePreviewCard.IsVisible = false;
+    }
+
+    private void ShowSessionPreview(Control row, SessionItemViewModel session)
+    {
+        _previewCloseTimer.Stop();
+        WorkspacePreviewCard.IsVisible = false;
+        SessionPreviewCard.DataContext = session;
+        SessionPreviewCard.IsVisible = true;
+        PlacePreviewCard(row, SessionPreviewCard, overlap: true);
+    }
+
+    private void ShowWorkspacePreview(Control row, WorkspaceItemViewModel workspace)
+    {
+        _previewCloseTimer.Stop();
+        SessionPreviewCard.IsVisible = false;
+        WorkspacePreviewCard.DataContext = workspace;
+        WorkspacePreviewCard.IsVisible = true;
+        PlacePreviewCard(row, WorkspacePreviewCard, overlap: false);
+    }
+
+    private void PlacePreviewCard(Control row, Control card, bool overlap)
+    {
+        if (row.TranslatePoint(new Point(0, 0), PreviewCanvas) is not { } origin)
+        {
+            return;
+        }
+
+        var left = origin.X + row.Bounds.Width + (overlap ? -24 : 14);
+        Canvas.SetLeft(card, Math.Round(left));
+        Canvas.SetTop(card, Math.Round(origin.Y));
+        card.Measure(Size.Infinity);
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (!card.IsVisible)
+            {
+                return;
+            }
+
+            var top = Canvas.GetTop(card);
+            var maxTop = Bounds.Height - card.Bounds.Height - 16;
+            if (maxTop > 0 && top > maxTop)
+            {
+                Canvas.SetTop(card, Math.Round(maxTop));
+            }
+        }, DispatcherPriority.Background);
     }
 
     private void OnOrganizeSidebarRowEntered(object? sender, PointerEventArgs eventArgs) =>
@@ -677,6 +811,7 @@ public partial class MainWindow : Window
     {
         CloseMoreMenu();
         CloseProjectSectionMenus();
+        HidePreviewCards();
         WorkspaceMenuPopup.IsOpen = false;
         ProductMenuPopup.IsOpen = false;
         _viewModel.CloseSearchPalette();
@@ -985,6 +1120,7 @@ public partial class MainWindow : Window
     private void OnWindowPointerPressed(object? sender, PointerPressedEventArgs eventArgs)
     {
         HideRailHint();
+        HidePreviewCards();
         if (!MorePopup.IsOpen || MoreButton.IsPointerOver || MoreMenuCard.IsPointerOver)
         {
             return;

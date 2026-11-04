@@ -827,6 +827,26 @@ public sealed partial class MainWindowViewModel : ObservableObject
     }
 
     public void TogglePinned() => IsPinnedExpanded = !IsPinnedExpanded;
+
+    public bool IsPinnedSortByRecent =>
+        string.Equals(_state.PinnedSort, "recent", StringComparison.OrdinalIgnoreCase);
+
+    public bool IsPinnedSortByManual => !IsPinnedSortByRecent;
+
+    public void SetPinnedSortMode(string mode)
+    {
+        var value = string.Equals(mode, "recent", StringComparison.OrdinalIgnoreCase) ? "recent" : "manual";
+        if (string.Equals(_state.PinnedSort, value, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _state.PinnedSort = value;
+        OnPropertyChanged(nameof(IsPinnedSortByRecent));
+        OnPropertyChanged(nameof(IsPinnedSortByManual));
+        RefreshRecentSessions();
+        SaveState();
+    }
     public bool HasRecentSessions => RecentSessions.Count > 0;
     public bool ShowNoRecentSessions => !HasRecentSessions;
     public bool ShowArchivedSessions => ArchivedSessions.Count > 0;
@@ -1449,10 +1469,18 @@ public sealed partial class MainWindowViewModel : ObservableObject
             .Where(item => query.Length == 0 || item.Matches(query))
             .ToList();
 
+        var pinned = all
+            .Where(item => !item.IsArchived && item.IsPinned)
+            .OrderByDescending(item => IsPinnedSortByRecent
+                ? (IsSessionSortByCreated ? item.State.CreatedAt : item.State.UpdatedAt)
+                : DateTimeOffset.MinValue)
+            .ThenBy(item => item.Workspace.Sessions.IndexOf(item))
+            .Take(50)
+            .ToList();
+
         var items = all
-            .Where(item => !item.IsArchived)
-            .OrderByDescending(item => item.IsPinned)
-            .ThenByDescending(item => IsSessionSortByCreated ? item.State.CreatedAt : item.State.UpdatedAt)
+            .Where(item => !item.IsArchived && !item.IsPinned)
+            .OrderByDescending(item => IsSessionSortByCreated ? item.State.CreatedAt : item.State.UpdatedAt)
             .Take(100)
             .ToList();
 
@@ -1465,6 +1493,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         // Rebuilding the observable collection on every save makes Avalonia's
         // item container generator re-render identical rows; only publish a
         // change when the visible sequence actually differs.
+        SyncList(PinnedSessions, pinned);
         SyncList(RecentSessions, items);
         SyncList(ArchivedSessions, archived);
 
@@ -2487,6 +2516,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _state.InteractionMode = string.Equals(_state.InteractionMode, "chat", StringComparison.OrdinalIgnoreCase)
             ? "chat"
             : "work";
+        _state.PinnedSort = string.Equals(_state.PinnedSort, "recent", StringComparison.OrdinalIgnoreCase)
+            ? "recent"
+            : "manual";
         _state.Workspaces ??= [];
         _state.Automations ??= [];
 
@@ -2506,7 +2538,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 ? Path.GetFileName(workspace.Path)
                 : workspace.Name;
             workspace.Sessions ??= [];
-            workspace.Sessions.RemoveAll(session => session.Messages is null || session.Messages.Count == 0);
+            // Messages live in KL Core; a gui-state session may legitimately have
+            // none yet (fresh session, or one that was never opened in this client).
+            // Dropping rows here used to lose pinned/archived flags on every restart.
             foreach (var session in workspace.Sessions)
             {
                 session.Id = string.IsNullOrWhiteSpace(session.Id) ? Guid.NewGuid().ToString("N") : session.Id;

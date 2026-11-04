@@ -15,6 +15,7 @@ public sealed class AppState
     public double SidebarWidth { get; set; } = 238;
     public bool IsSidebarGrouped { get; set; } = true;
     public string SessionSort { get; set; } = "updated";
+    public string PinnedSort { get; set; } = "manual";
     public string? ActiveWorkspaceId { get; set; }
     public string? ActiveSessionId { get; set; }
     public List<WorkspaceState> Workspaces { get; set; } = [];
