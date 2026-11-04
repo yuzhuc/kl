@@ -1331,6 +1331,85 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public void ToggleSearch() => IsSearchVisible = !IsSearchVisible;
 
+    // ---- Codex-style notifications pane and command palette ----
+    private bool _isNotificationsVisible;
+    private bool _isSearchPaletteOpen;
+
+    public bool IsNotificationsVisible
+    {
+        get => _isNotificationsVisible;
+        private set => SetProperty(ref _isNotificationsVisible, value);
+    }
+
+    public bool IsSearchPaletteOpen
+    {
+        get => _isSearchPaletteOpen;
+        private set => SetProperty(ref _isSearchPaletteOpen, value);
+    }
+
+    public ObservableCollection<NotificationItemViewModel> Notifications { get; } = [];
+    public ObservableCollection<SessionItemViewModel> PaletteSessions { get; } = [];
+    public bool HasNotifications => Notifications.Count > 0;
+    public bool ShowNoNotifications => Notifications.Count == 0;
+
+    public void ToggleNotifications()
+    {
+        if (!IsNotificationsVisible)
+        {
+            IsSearchPaletteOpen = false;
+            RefreshNotifications();
+        }
+
+        IsNotificationsVisible = !IsNotificationsVisible;
+    }
+
+    public void OpenSearchPalette()
+    {
+        IsNotificationsVisible = false;
+        RefreshPaletteSessions();
+        IsSearchPaletteOpen = true;
+    }
+
+    public void CloseSearchPalette() => IsSearchPaletteOpen = false;
+
+    public void RefreshNotifications()
+    {
+        Notifications.Clear();
+        var today = DateTimeOffset.Now.Date;
+        var sessions = Workspaces
+            .SelectMany(workspace => workspace.Sessions)
+            .Where(session => !session.IsArchived)
+            .OrderByDescending(session => session.State.UpdatedAt)
+            .Take(12)
+            .ToList();
+        string? lastGroup = null;
+        foreach (var session in sessions)
+        {
+            var date = session.State.UpdatedAt.ToLocalTime().Date;
+            var group = date == today
+                ? "今天"
+                : date == today.AddDays(-1) ? "昨天" : date.ToString("MM-dd");
+            Notifications.Add(new NotificationItemViewModel(session, group, group != lastGroup));
+            lastGroup = group;
+        }
+
+        OnPropertyChanged(nameof(HasNotifications));
+        OnPropertyChanged(nameof(ShowNoNotifications));
+    }
+
+    public void RefreshPaletteSessions()
+    {
+        var query = SearchText.Trim();
+        var list = Workspaces
+            .SelectMany(workspace => workspace.Sessions)
+            .Where(session => !session.IsArchived)
+            .Where(session => query.Length == 0 || session.Matches(query))
+            .OrderByDescending(session => session.State.UpdatedAt)
+            .Take(8)
+            .ToList();
+        SyncList(PaletteSessions, list);
+    }
+
     public void ToggleRecent() => IsRecentExpanded = !IsRecentExpanded;
 
     /// <summary>Codex-style edit action: put a user message back into the composer.</summary>
@@ -2741,6 +2820,21 @@ public abstract class ObservableObject : INotifyPropertyChanged
     protected void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }
+/// <summary>One row in the Codex-style notifications pane.</summary>
+public sealed class NotificationItemViewModel
+{
+    public NotificationItemViewModel(SessionItemViewModel session, string groupLabel, bool showGroup)
+    {
+        Session = session;
+        GroupLabel = groupLabel;
+        ShowGroup = showGroup;
+    }
 
-
-
+    public SessionItemViewModel Session { get; }
+    public string GroupLabel { get; }
+    public bool ShowGroup { get; }
+    public string Title => Session.Title;
+    public string WorkspaceName => Session.Workspace.Name;
+    public string RelativeLabel => Session.RelativeLabel;
+    public string Preview => Session.State.Messages.LastOrDefault()?.Text ?? string.Empty;
+}

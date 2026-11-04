@@ -33,6 +33,8 @@
         <SolidColorBrush x:Key="ProductMenuFill" Color="#17171A" />
         <SolidColorBrush x:Key="ProductMenuLine" Color="#2B2B2E" />
         <SolidColorBrush x:Key="ProductMenuHoverFill" Color="#232326" />
+        <SolidColorBrush x:Key="PressedFill" Color="#2B2B2F" />
+        <SolidColorBrush x:Key="PressedFillStrong" Color="#343438" />
         <SolidColorBrush x:Key="RailIconHover" Color="#E3E4E6" />
         <SolidColorBrush x:Key="RailIconActive" Color="#E3E4E6" />
         <SolidColorBrush x:Key="RailActiveFill" Color="#1C1C1E" />
@@ -850,6 +852,86 @@
         </Style>
         <Style Selector="Button.more-menu-item:pointerover Path">
             <Setter Property="Stroke" Value="{DynamicResource TextSecondary}" />
+        </Style>
+
+        <!-- Pressed feedback + glyph centering for every button -->
+        <Style Selector="Button.icon Path, Button.sidebar-icon Path, Button.row-action Path,
+                         Button.session-actions Path, Button.more-menu-pin Path,
+                         Button.message-action Path, Button.attach Path, Button.send Path,
+                         Button.stop Path, Button.activity-row Path, Button.titlebar-icon Path,
+                         Button.caption Path, Button.recent-toggle Path">
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.rail Viewbox, Button.rail StackPanel, Button.rail Path">
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.row Path, Button.session-row Path, Button.nav Path,
+                         Button.mode-menu-item Path, Button.more-menu-item Path,
+                         Button.product-menu-toggle Path, Button.section-header Path">
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style Selector="Button:pressed">
+            <Setter Property="Background" Value="{DynamicResource PressedFill}" />
+        </Style>
+        <Style Selector="Button.rail:pressed">
+            <Setter Property="Background" Value="{DynamicResource PressedFill}" />
+        </Style>
+        <Style Selector="Button.rail.active:pressed">
+            <Setter Property="Background" Value="{DynamicResource PressedFillStrong}" />
+        </Style>
+        <Style Selector="Button.primary:pressed">
+            <Setter Property="Background" Value="#3C7FD6" />
+        </Style>
+        <Style Selector="Button.send:pressed">
+            <Setter Property="Background" Value="#D9D9DE" />
+        </Style>
+        <Style Selector="Button.row:pressed, Button.session-row:pressed, Button.nav:pressed,
+                         Button.more-menu-item:pressed, Button.mode-menu-item:pressed,
+                         Button.activity-row:pressed, Button.chip:pressed, Button.filter:pressed,
+                         Button.route-menu:pressed">
+            <Setter Property="Background" Value="{DynamicResource PressedFill}" />
+        </Style>
+        <Style Selector="Button.product-menu-toggle:pressed">
+            <Setter Property="Background" Value="{DynamicResource PressedFill}" />
+        </Style>
+        <Style Selector="Button.titlebar-menu:pressed, Button.titlebar-icon:pressed, Button.caption:pressed">
+            <Setter Property="Background" Value="{DynamicResource PressedFill}" />
+        </Style>
+        <Style Selector="Button.subtle:pressed, Button.secondary:pressed">
+            <Setter Property="Background" Value="{DynamicResource PressedFillStrong}" />
+        </Style>
+
+        <!-- Notifications bell active state + command palette rows -->
+        <Style Selector="Button.icon.active, Button.sidebar-icon.active">
+            <Setter Property="Background" Value="{DynamicResource SidebarHoverFill}" />
+        </Style>
+        <Style Selector="Button.icon.active Path, Button.sidebar-icon.active Path">
+            <Setter Property="Stroke" Value="{DynamicResource SidebarTextHover}" />
+        </Style>
+        <Style Selector="Button.palette-row">
+            <Setter Property="Height" Value="34" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Foreground" Value="{DynamicResource SidebarText}" />
+            <Setter Property="FontSize" Value="13.5" />
+        </Style>
+        <Style Selector="Button.palette-row:pointerover">
+            <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
+        </Style>
+        <Style Selector="Button.palette-row Path">
+            <Setter Property="Stroke" Value="{DynamicResource SidebarLabel}" />
+            <Setter Property="StrokeThickness" Value="1.4" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Fill" Value="Transparent" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
 
         <!-- Inputs -->

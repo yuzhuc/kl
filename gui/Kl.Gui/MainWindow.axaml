@@ -525,11 +525,11 @@
                             </Button>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10"
                                         VerticalAlignment="Center">
-                                <Button Classes="icon sidebar-icon" Click="OnNavSettingsClicked"
-                                        ToolTip.Tip="{Binding CoreConnectionLabel}">
+                                <Button Classes="icon sidebar-icon" Classes.active="{Binding IsNotificationsVisible}"
+                                        Click="OnNotificationsButtonClicked">
                                     <Path Width="14" Height="14" Data="{StaticResource BellIcon}" Stretch="Uniform" />
                                 </Button>
-                                <Button Classes="icon sidebar-icon" Click="OnToggleSearchClicked" ToolTip.Tip="搜索会话">
+                                <Button Classes="icon sidebar-icon" Click="OnSearchButtonClicked">
                                     <Path Width="14" Height="14" Data="{StaticResource SearchIcon}" Stretch="Uniform" />
                                 </Button>
                             </StackPanel>
@@ -589,6 +589,7 @@
                         </Border>
 
                         <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto"
+                                      IsVisible="{Binding !IsNotificationsVisible}"
                                       HorizontalScrollBarVisibility="Disabled">
                             <StackPanel>
                                 <Button Classes="row" Height="30" Padding="10,0" CornerRadius="8"
@@ -677,6 +678,53 @@
                                               ItemTemplate="{StaticResource ArchivedSessionTemplate}"
                                               IsVisible="{Binding IsArchivedExpanded}"
                                               Margin="0,4,0,0" />
+                            </StackPanel>
+                        </ScrollViewer>
+
+                        <!-- notifications pane (Codex bell) -->
+                        <ScrollViewer Grid.Row="2" IsVisible="{Binding IsNotificationsVisible}"
+                                      VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel>
+                                <Grid Height="28" Margin="16,16,12,0">
+                                    <TextBlock Text="优先级" FontSize="13"
+                                               Foreground="{StaticResource SidebarLabel}" VerticalAlignment="Center" />
+                                </Grid>
+                                <TextBlock Text="部分未读聊天暂时不可用" FontSize="12"
+                                           Foreground="{StaticResource SidebarLabel}" Margin="16,10,16,0"
+                                           TextWrapping="Wrap" />
+                                <ItemsControl ItemsSource="{Binding Notifications}" Margin="0,6,0,0">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:NotificationItemViewModel">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding GroupLabel}" IsVisible="{Binding ShowGroup}"
+                                                           FontSize="12" Foreground="{StaticResource SidebarLabel}"
+                                                           Margin="16,14,0,4" />
+                                                <Button Classes="nav" Click="OnNotificationClicked" Tag="{Binding}">
+                                                    <StackPanel Spacing="3">
+                                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                                            <TextBlock Text="{Binding Title}" FontSize="13"
+                                                                       FontWeight="SemiBold"
+                                                                       Foreground="{StaticResource SidebarText}"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       TextWrapping="NoWrap" MaxWidth="176" />
+                                                            <TextBlock Text="{Binding WorkspaceName}" FontSize="11"
+                                                                       Foreground="{StaticResource SidebarLabel}"
+                                                                       VerticalAlignment="Center" />
+                                                        </StackPanel>
+                                                        <TextBlock Text="{Binding Preview}" FontSize="11.5"
+                                                                   Foreground="{StaticResource SidebarLabel}"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   TextWrapping="NoWrap"
+                                                                   IsVisible="{Binding Preview, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                                    </StackPanel>
+                                                </Button>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock Text="暂无通知" IsVisible="{Binding ShowNoNotifications}" FontSize="12"
+                                           Foreground="{StaticResource SidebarLabel}" Margin="16,10,0,0" />
                             </StackPanel>
                         </ScrollViewer>
                     </Grid>
@@ -1809,6 +1857,79 @@
                 </StackPanel>
             </Border>
         </primitives:Popup>
+
+        <!-- ===================== Command palette (Codex search) ===================== -->
+        <Grid Grid.RowSpan="2" IsVisible="{Binding IsSearchPaletteOpen}" Background="#7A000000" ZIndex="55"
+              PointerPressed="OnPaletteBackdropPressed">
+            <Border Width="760" MaxHeight="560" Margin="0,132,0,0"
+                    HorizontalAlignment="Center" VerticalAlignment="Top"
+                    Background="#1B1B1D" BorderBrush="{StaticResource LineStrong}" BorderThickness="1"
+                    CornerRadius="14" BoxShadow="0 20 48 0 #B3000000">
+                <Grid RowDefinitions="Auto,Auto,*,Auto">
+                    <Grid Grid.Row="0" Height="52" ColumnDefinitions="*,Auto" Margin="16,0,12,0">
+                        <TextBox x:Name="PaletteSearchBox" Grid.Column="0" Classes="search"
+                                 Background="Transparent" BorderThickness="0" FontSize="14"
+                                 VerticalAlignment="Center" VerticalContentAlignment="Center"
+                                 Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 PlaceholderText="搜索聊天或运行命令"
+                                 KeyDown="OnPaletteSearchKeyDown" />
+
+                    </Grid>
+                    <Border Grid.Row="1" Height="1" Background="{StaticResource Line}" />
+                    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="8,6,8,8">
+                            <TextBlock Text="快捷操作" FontSize="11.5" Foreground="{StaticResource TextTertiary}"
+                                       Margin="8,6,0,6" />
+                            <Button Classes="palette-row" Click="OnPaletteNewChatClicked">
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
+                                    <Path Width="15" Height="15" Data="{StaticResource EditIcon}" Stretch="Uniform" />
+                                    <TextBlock Grid.Column="1" Text="新聊天" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="Ctrl+N" FontSize="11"
+                                               Foreground="{StaticResource TextCaption}" VerticalAlignment="Center" />
+                                </Grid>
+                            </Button>
+                            <Button Classes="palette-row" Click="OnPaletteOpenFolderClicked">
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
+                                    <Path Width="15" Height="15" Data="{StaticResource FolderIcon}" Stretch="Uniform" />
+                                    <TextBlock Grid.Column="1" Text="打开文件夹" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="Ctrl+O" FontSize="11"
+                                               Foreground="{StaticResource TextCaption}" VerticalAlignment="Center" />
+                                </Grid>
+                            </Button>
+                            <TextBlock Text="最近聊天" FontSize="11.5" Foreground="{StaticResource TextTertiary}"
+                                       Margin="8,12,0,6" />
+                            <ItemsControl ItemsSource="{Binding PaletteSessions}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:SessionItemViewModel">
+                                        <Button Classes="palette-row" Click="OnPaletteSessionClicked" Tag="{Binding}">
+                                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
+                                                <Path Width="15" Height="15" Data="{StaticResource ChatIcon}"
+                                                      Stretch="Uniform" />
+                                                <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="13"
+                                                           TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                                                           VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="2" Text="{Binding Workspace.Name}" FontSize="11"
+                                                           Foreground="{StaticResource TextCaption}"
+                                                           VerticalAlignment="Center" />
+                                            </Grid>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </ScrollViewer>
+                    <Grid Grid.Row="3" Height="42" ColumnDefinitions="Auto,*" Margin="14,0,14,0">
+                        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                            <Button Classes="filter active" Content="All" />
+                            <Button Classes="filter" Content="Actions" />
+                            <Button Classes="filter" Content="Chats" />
+                            <Button Classes="filter" Content="Files" />
+                            <Button Classes="filter" Content="Text" />
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
 
         <!-- ===================== Approval overlay ===================== -->
         <Grid Grid.RowSpan="2" IsVisible="{Binding IsApprovalOpen}" Background="#99000000" ZIndex="60">

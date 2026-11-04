@@ -667,6 +667,15 @@ public partial class MainWindow : Window
     private void ActivateRailSection(AppSection section)
     {
         CloseMoreMenu();
+        CloseProjectSectionMenus();
+        WorkspaceMenuPopup.IsOpen = false;
+        ProductMenuPopup.IsOpen = false;
+        _viewModel.CloseSearchPalette();
+        if (_viewModel.IsNotificationsVisible)
+        {
+            _viewModel.ToggleNotifications();
+        }
+
         SetRailSection(section);
         _viewModel.Navigate(section);
         if (section == AppSection.Chat)
@@ -1453,6 +1462,81 @@ public partial class MainWindow : Window
 
     private void OnToggleRecentClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.ToggleRecent();
+
+    private void OnNotificationsButtonClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        _viewModel.CloseSearchPalette();
+        _viewModel.ToggleNotifications();
+    }
+
+    private void OnSearchButtonClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        _viewModel.OpenSearchPalette();
+        Dispatcher.UIThread.Post(() =>
+        {
+            PaletteSearchBox.Focus();
+            PaletteSearchBox.SelectAll();
+        }, DispatcherPriority.Background);
+    }
+
+    private async void OnNotificationClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is Control { Tag: NotificationItemViewModel notification })
+        {
+            _viewModel.ToggleNotifications();
+            await OpenPaletteSessionAsync(notification.Session);
+        }
+    }
+
+    private void OnPaletteCloseClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.CloseSearchPalette();
+
+    private async void OnPaletteNewChatClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        _viewModel.CloseSearchPalette();
+        _viewModel.Navigate(AppSection.Chat);
+        await _viewModel.NewSessionAsync();
+        FocusComposer();
+    }
+
+    private async void OnPaletteOpenFolderClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        _viewModel.CloseSearchPalette();
+        await PickWorkspaceAsync();
+    }
+
+    private async void OnPaletteSessionClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (GetSession(sender) is { } session)
+        {
+            _viewModel.CloseSearchPalette();
+            await OpenPaletteSessionAsync(session);
+        }
+    }
+
+    private async Task OpenPaletteSessionAsync(SessionItemViewModel session)
+    {
+        _viewModel.Navigate(AppSection.Chat);
+        await _viewModel.OpenSessionAsync(session);
+        FocusComposer();
+    }
+
+    private void OnPaletteSearchKeyDown(object? sender, KeyEventArgs eventArgs)
+    {
+        if (eventArgs.Key == Key.Escape)
+        {
+            _viewModel.CloseSearchPalette();
+            eventArgs.Handled = true;
+        }
+    }
+
+    private void OnPaletteBackdropPressed(object? sender, PointerPressedEventArgs eventArgs)
+    {
+        if (ReferenceEquals(eventArgs.Source, sender))
+        {
+            _viewModel.CloseSearchPalette();
+        }
+    }
 
     private void OnShowAboutClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.OpenSettings(SettingsPane.About);
