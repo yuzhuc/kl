@@ -930,7 +930,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var left = origin.X + row.Bounds.Width + (overlap ? -33 : -18);
+        var left = origin.X + row.Bounds.Width + (overlap ? -33 : -9);
         Canvas.SetLeft(card, Math.Round(left));
         Canvas.SetTop(card, Math.Round(origin.Y));
         card.Measure(Size.Infinity);

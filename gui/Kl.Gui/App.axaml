@@ -621,15 +621,42 @@
             <Setter Property="CornerRadius" Value="13" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="{DynamicResource TextTertiary}" />
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="#7E7F82" />
+            <Setter Property="FontSize" Value="12.5" />
         </Style>
         <Style Selector="Button.filter:pointerover">
             <Setter Property="Background" Value="{DynamicResource HoverFill}" />
         </Style>
         <Style Selector="Button.filter.active">
-            <Setter Property="Background" Value="{DynamicResource ActiveFill}" />
-            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="Background" Value="#1E1E1F" />
+            <Setter Property="Foreground" Value="#E3E4E6" />
+        </Style>
+
+        <!-- context menus (Codex-like) -->
+        <Style Selector="ContextMenu">
+            <Setter Property="Background" Value="#202022" />
+            <Setter Property="BorderBrush" Value="#2E2E31" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="4" />
+        </Style>
+        <Style Selector="ContextMenu /template/ Border">
+            <Setter Property="Background" Value="#202022" />
+            <Setter Property="BorderBrush" Value="#2E2E31" />
+            <Setter Property="CornerRadius" Value="10" />
+        </Style>
+        <Style Selector="MenuItem">
+            <Setter Property="Foreground" Value="#C6C7C9" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Height" Value="30" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="MenuItem:pointerover">
+            <Setter Property="Background" Value="#2A2A2E" />
+        </Style>
+        <Style Selector="MenuItem:pointerover /template/ Border#PART_LayoutRoot">
+            <Setter Property="Background" Value="#2A2A2E" />
         </Style>
 
         <!-- Standard actions -->
