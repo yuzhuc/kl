@@ -1930,7 +1930,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
 
         _dialogTarget.Title = title;
-        _dialogTarget.State.UpdatedAt = DateTimeOffset.Now;
         _dialogTarget.RefreshTime();
         if (_dialogTarget.Id == _activeSession?.Id)
         {

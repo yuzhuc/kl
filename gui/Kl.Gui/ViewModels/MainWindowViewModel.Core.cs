@@ -596,7 +596,8 @@ public sealed partial class MainWindowViewModel
                 LoadHistoryMessages(messages);
                 if (_activeSession is not null)
                 {
-                    _activeSession.UpdatedAt = DateTimeOffset.Now;
+                    // Opening/switching a chat must not reorder 最近: its position
+                    // only changes when a message is sent or a reply arrives.
                     SyncStoredMessages();
                 }
             });
@@ -840,6 +841,11 @@ public sealed partial class MainWindowViewModel
         _activeReasoning = null;
         IsApprovalOpen = false;
         _activeApprovalId = null;
+        if (_activeSession is not null)
+        {
+            // A completed reply is one of the two moments that may reorder 最近.
+            _activeSession.UpdatedAt = DateTimeOffset.Now;
+        }
         SyncStoredMessages();
         UpdateSessionOrder();
         SaveState();

@@ -934,6 +934,46 @@
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
 
+        <!-- Codex-subtle scrollbars: 6px soft thumb, transparent track, no arrows -->
+        <Style Selector="ScrollBar:vertical">
+            <Setter Property="Width" Value="6" />
+            <Setter Property="MinWidth" Value="6" />
+            <Setter Property="Margin" Value="0,0,2,0" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="ScrollBar:vertical /template/ Thumb">
+            <Setter Property="Background" Value="#1F1F20" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="MinHeight" Value="24" />
+        </Style>
+        <Style Selector="ScrollBar:vertical:pointerover /template/ Thumb">
+            <Setter Property="Background" Value="#2C2C2F" />
+        </Style>
+        <Style Selector="ScrollBar:vertical /template/ RepeatButton">
+            <Setter Property="Height" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+        <Style Selector="ScrollBar:horizontal">
+            <Setter Property="Height" Value="6" />
+            <Setter Property="MinHeight" Value="6" />
+            <Setter Property="Margin" Value="0,0,0,2" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="ScrollBar:horizontal /template/ Thumb">
+            <Setter Property="Background" Value="#1F1F20" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="MinWidth" Value="24" />
+        </Style>
+        <Style Selector="ScrollBar:horizontal:pointerover /template/ Thumb">
+            <Setter Property="Background" Value="#2C2C2F" />
+        </Style>
+        <Style Selector="ScrollBar:horizontal /template/ RepeatButton">
+            <Setter Property="Width" Value="0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+
         <!-- Inputs -->
         <Style Selector="TextBox.composer">
             <Setter Property="Background" Value="Transparent" />

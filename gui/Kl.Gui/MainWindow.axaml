@@ -613,23 +613,6 @@
                                 <TextBlock Text="暂无会话" IsVisible="{Binding ShowNoRecentSessions}"
                                            FontSize="12" Foreground="{StaticResource SidebarLabel}"
                                            Margin="16,6,0,0" />
-
-                                <Button Classes="section-header" Margin="0,12,0,0"
-                                        IsVisible="{Binding ShowArchivedSessions}"
-                                        Click="OnToggleArchivedClicked">
-                                    <StackPanel Orientation="Horizontal" Spacing="4">
-                                        <TextBlock Text="已归档" FontSize="12.5" LineHeight="21"
-                                                   Foreground="{StaticResource SidebarLabel}" VerticalAlignment="Center" />
-                                        <Path Classes="section-chevron" Width="10" Height="10"
-                                              Data="{StaticResource ChevronDownIcon}" Stretch="Uniform"
-                                              Classes.collapsed="{Binding !IsArchivedExpanded}"
-                                              VerticalAlignment="Center" />
-                                    </StackPanel>
-                                </Button>
-                                <ItemsControl ItemsSource="{Binding ArchivedSessions}"
-                                              ItemTemplate="{StaticResource ArchivedSessionTemplate}"
-                                              IsVisible="{Binding IsArchivedExpanded}"
-                                              Margin="0,4,0,0" />
                             </StackPanel>
                         </ScrollViewer>
 
@@ -933,7 +916,7 @@
                     </Grid>
 
                     <!-- drag handle: resize the sidebar from its right edge -->
-                    <Border Width="6" HorizontalAlignment="Right" Background="Transparent"
+                    <Border Width="4" HorizontalAlignment="Right" Background="Transparent"
                             Cursor="SizeWestEast" ZIndex="80"
                             PointerPressed="OnSidebarResizePressed"
                             PointerMoved="OnSidebarResizeMoved"
