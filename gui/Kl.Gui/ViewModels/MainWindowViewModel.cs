@@ -534,6 +534,23 @@ public sealed class WorkspaceItemViewModel : ObservableObject
         OnPropertyChanged(nameof(ParentPath));
     }
 
+    /// <summary>Re-orders the nested conversations for "聊天排序方式".</summary>
+    public void ApplySessionSort(bool byCreated)
+    {
+        var ordered = (byCreated
+                ? Sessions.OrderByDescending(session => session.State.CreatedAt)
+                : Sessions.OrderByDescending(session => session.State.UpdatedAt))
+            .ToList();
+        for (var index = 0; index < ordered.Count; index++)
+        {
+            var current = Sessions.IndexOf(ordered[index]);
+            if (current != index)
+            {
+                Sessions.Move(current, index);
+            }
+        }
+    }
+
     public bool IsSelected
     {
         get => _isSelected;
@@ -808,7 +825,51 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
             _state.IsProjectSectionExpanded = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(ShowProjectList));
         }
+    }
+
+    /// <summary>Codex "整理侧边栏": grouped shows projects, merged hides them.</summary>
+    public bool IsSidebarGrouped => _state.IsSidebarGrouped;
+
+    public bool ShowProjectList => IsSidebarGrouped && IsProjectSectionExpanded;
+
+    /// <summary>Codex "聊天排序方式".</summary>
+    public bool IsSessionSortByUpdated => _state.SessionSort != "created";
+
+    public bool IsSessionSortByCreated => _state.SessionSort == "created";
+
+    public void SetSidebarGrouped(bool grouped)
+    {
+        if (_state.IsSidebarGrouped == grouped)
+        {
+            return;
+        }
+
+        _state.IsSidebarGrouped = grouped;
+        OnPropertyChanged(nameof(IsSidebarGrouped));
+        OnPropertyChanged(nameof(ShowProjectList));
+        SaveState();
+    }
+
+    public void SetSessionSort(string sort)
+    {
+        var value = string.Equals(sort, "created", StringComparison.OrdinalIgnoreCase) ? "created" : "updated";
+        if (_state.SessionSort == value)
+        {
+            return;
+        }
+
+        _state.SessionSort = value;
+        OnPropertyChanged(nameof(IsSessionSortByUpdated));
+        OnPropertyChanged(nameof(IsSessionSortByCreated));
+        foreach (var workspace in Workspaces)
+        {
+            workspace.ApplySessionSort(value == "created");
+        }
+
+        RefreshRecentSessions();
+        SaveState();
     }
 
     public bool IsArchivedExpanded
@@ -854,7 +915,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public string AccountPlanLabel => "Local";
 
-    public string ComposerPlaceholder => HasConversation ? "和 kl 一起工作" : "随心输入";
+    public string ComposerPlaceholder => HasConversation
+        ? IsChatMode ? "和 kl 一起聊天" : "和 kl 一起工作"
+        : "随心输入";
+
+    /// <summary>Codex-style empty-state headline that follows the selected mode.</summary>
+    public string EmptyStateTitle => IsChatMode ? "我们要做什么?" : "我们要构建什么?";
     public bool IsSettingsOpen
     {
         get => _isSettingsOpen;
@@ -1289,7 +1355,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         var items = all
             .Where(item => !item.IsArchived)
             .OrderByDescending(item => item.IsPinned)
-            .ThenByDescending(item => item.State.UpdatedAt)
+            .ThenByDescending(item => IsSessionSortByCreated ? item.State.CreatedAt : item.State.UpdatedAt)
             .Take(100)
             .ToList();
 

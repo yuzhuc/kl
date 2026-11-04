@@ -515,7 +515,7 @@
                                     HorizontalAlignment="Left" VerticalAlignment="Center"
                                     Click="OnProductMenuClicked" ToolTip.Tip="切换 Chat / Work">
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                    <TextBlock Text="kl" FontSize="17" FontWeight="SemiBold"
+                                    <TextBlock Text="{Binding ActiveModeLabel}" FontSize="17" FontWeight="SemiBold"
                                                Foreground="{StaticResource SidebarText}" />
                                     <Path Width="10" Height="10" Data="{StaticResource ChevronDownIcon}"
                                           Stretch="Uniform" Stroke="{StaticResource SidebarLabel}"
@@ -603,33 +603,56 @@
                                     </Grid>
                                 </Button>
 
-                                <Button Classes="section-header" Margin="0,16,0,0"
-                                        Click="OnToggleProjectSectionClicked" ToolTip.Tip="展开/收起项目">
-                                    <StackPanel Orientation="Horizontal" Spacing="4">
-                                        <TextBlock Text="项目" FontSize="13" LineHeight="21"
-                                                   Foreground="{StaticResource SidebarLabel}" VerticalAlignment="Center" />
-                                        <Path Classes="section-chevron" Width="10" Height="10"
-                                              Data="{StaticResource ChevronDownIcon}" Stretch="Uniform"
-                                              Classes.collapsed="{Binding !IsProjectSectionExpanded}"
-                                              VerticalAlignment="Center" />
+                                <Grid Classes="session-row-container" Margin="0,16,0,0"
+                                      IsVisible="{Binding IsSidebarGrouped}">
+                                    <Button Classes="section-header"
+                                            Click="OnToggleProjectSectionClicked">
+                                        <StackPanel Orientation="Horizontal" Spacing="4">
+                                            <TextBlock Text="项目" FontSize="13" LineHeight="21"
+                                                       Foreground="{StaticResource SidebarLabel}" VerticalAlignment="Center" />
+                                            <Path Classes="section-chevron" Width="10" Height="10"
+                                                  Data="{StaticResource ChevronDownIcon}" Stretch="Uniform"
+                                                  Classes.collapsed="{Binding !IsProjectSectionExpanded}"
+                                                  VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right"
+                                                VerticalAlignment="Center" Margin="0,0,16,0">
+                                        <Button Classes="row-action" Click="OnProjectSectionMoreClicked">
+                                            <Path Width="14" Height="14" Data="{StaticResource MoreIcon}" Stretch="Uniform" />
+                                        </Button>
+                                        <Button Classes="row-action" Click="OnAddWorkspaceClicked">
+                                            <Path Width="14" Height="14" Data="{StaticResource PlusIcon}" Stretch="Uniform" />
+                                        </Button>
                                     </StackPanel>
-                                </Button>
+                                </Grid>
                                 <ItemsControl ItemsSource="{Binding Workspaces}"
                                               ItemTemplate="{StaticResource WorkspaceRowTemplate}"
-                                              IsVisible="{Binding IsProjectSectionExpanded}"
+                                              IsVisible="{Binding ShowProjectList}"
                                               Margin="0,6,0,0" />
 
-                                <Button Classes="section-header" Margin="0,18,0,0"
-                                        Click="OnToggleRecentClicked" ToolTip.Tip="展开/收起最近">
-                                    <StackPanel Orientation="Horizontal" Spacing="4">
-                                        <TextBlock Text="最近" FontSize="13" LineHeight="21"
-                                                   Foreground="{StaticResource SidebarLabel}" VerticalAlignment="Center" />
-                                        <Path Classes="section-chevron" Width="10" Height="10"
-                                              Data="{StaticResource ChevronDownIcon}" Stretch="Uniform"
-                                              Classes.collapsed="{Binding !IsRecentExpanded}"
-                                              VerticalAlignment="Center" />
+                                <Grid Classes="session-row-container" Margin="0,18,0,0">
+                                    <Button Classes="section-header"
+                                            Click="OnToggleRecentClicked">
+                                        <StackPanel Orientation="Horizontal" Spacing="4">
+                                            <TextBlock Text="最近" FontSize="13" LineHeight="21"
+                                                       Foreground="{StaticResource SidebarLabel}" VerticalAlignment="Center" />
+                                            <Path Classes="section-chevron" Width="10" Height="10"
+                                                  Data="{StaticResource ChevronDownIcon}" Stretch="Uniform"
+                                                  Classes.collapsed="{Binding !IsRecentExpanded}"
+                                                  VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right"
+                                                VerticalAlignment="Center" Margin="0,0,16,0">
+                                        <Button Classes="row-action" Click="OnProjectSectionMoreClicked">
+                                            <Path Width="14" Height="14" Data="{StaticResource MoreIcon}" Stretch="Uniform" />
+                                        </Button>
+                                        <Button Classes="row-action" Click="OnNewSessionClicked">
+                                            <Path Width="14" Height="14" Data="{StaticResource EditIcon}" Stretch="Uniform" />
+                                        </Button>
                                     </StackPanel>
-                                </Button>
+                                </Grid>
                                 <ItemsControl ItemsSource="{Binding RecentSessions}"
                                               ItemTemplate="{StaticResource RecentSessionTemplate}"
                                               IsVisible="{Binding IsRecentExpanded}"
@@ -640,7 +663,7 @@
 
                                 <Button Classes="section-header" Margin="0,12,0,0"
                                         IsVisible="{Binding ShowArchivedSessions}"
-                                        Click="OnToggleArchivedClicked" ToolTip.Tip="展开/收起已归档">
+                                        Click="OnToggleArchivedClicked">
                                     <StackPanel Orientation="Horizontal" Spacing="4">
                                         <TextBlock Text="已归档" FontSize="12.5" LineHeight="21"
                                                    Foreground="{StaticResource SidebarLabel}" VerticalAlignment="Center" />
@@ -724,6 +747,99 @@
                                     </Grid>
                                 </Button>
                             </StackPanel>
+                        </Border>
+                    </Popup>
+
+                    <!-- project section menu (Codex-style) -->
+                    <Popup x:Name="ProjectSectionMenuPopup" Placement="BottomEdgeAlignedLeft" VerticalOffset="4"
+                           IsLightDismissEnabled="True">
+                        <Border x:Name="ProjectSectionMenuCard" Width="196"
+                                Background="{StaticResource ProductMenuFill}"
+                                BorderBrush="{StaticResource ProductMenuLine}" BorderThickness="1"
+                                CornerRadius="12" Padding="6"
+                                BoxShadow="0 14 34 0 #99000000">
+                            <StackPanel Spacing="1">
+                                <Button Classes="more-menu-item" Click="OnOrganizeSidebarRowClicked"
+                                        PointerEntered="OnOrganizeSidebarRowEntered">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
+                                        <Path Width="14" Height="14" Data="{StaticResource PanelIcon}" Stretch="Uniform" />
+                                        <TextBlock Grid.Column="1" Text="整理侧边栏" VerticalAlignment="Center" />
+                                        <Path Grid.Column="2" Width="9" Height="9"
+                                              Data="{StaticResource ChevronRightSmallIcon}" Stretch="Uniform"
+                                              StrokeThickness="1.4" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Button>
+                                <Button Classes="more-menu-item" Click="OnSessionSortRowClicked"
+                                        PointerEntered="OnSessionSortRowEntered">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
+                                        <Path Width="14" Height="14" Data="{StaticResource ClockIcon}" Stretch="Uniform" />
+                                        <TextBlock Grid.Column="1" Text="聊天排序方式" VerticalAlignment="Center" />
+                                        <Path Grid.Column="2" Width="9" Height="9"
+                                              Data="{StaticResource ChevronRightSmallIcon}" Stretch="Uniform"
+                                              StrokeThickness="1.4" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Button>
+                            </StackPanel>
+                        </Border>
+                    </Popup>
+
+                    <Popup x:Name="ProjectSectionSubmenuPopup" Placement="RightEdgeAlignedTop"
+                           HorizontalOffset="4" IsLightDismissEnabled="True">
+                        <Border x:Name="ProjectSectionSubmenuCard" Width="190"
+                                Background="{StaticResource ProductMenuFill}"
+                                BorderBrush="{StaticResource ProductMenuLine}" BorderThickness="1"
+                                CornerRadius="12" Padding="6"
+                                BoxShadow="0 14 34 0 #99000000">
+                            <Grid>
+                                <StackPanel x:Name="OrganizeSidebarOptions" Spacing="1">
+                                    <Button Classes="more-menu-item" Click="OnGroupByProjectClicked">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
+                                            <Path Width="14" Height="14" Data="{StaticResource FolderIcon}" Stretch="Uniform" />
+                                            <TextBlock Grid.Column="1" Text="分项目显示" VerticalAlignment="Center" />
+                                            <Path Grid.Column="2" Width="14" Height="14"
+                                                  Data="{StaticResource CheckIcon}" Stretch="Uniform"
+                                                  Stroke="{StaticResource SidebarText}" StrokeThickness="1.6"
+                                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                                  IsVisible="{Binding IsSidebarGrouped}" VerticalAlignment="Center" />
+                                        </Grid>
+                                    </Button>
+                                    <Button Classes="more-menu-item" Click="OnMergeDisplayClicked">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
+                                            <Path Width="14" Height="14" Data="{StaticResource ToolIcon}" Stretch="Uniform" />
+                                            <TextBlock Grid.Column="1" Text="合并显示" VerticalAlignment="Center" />
+                                            <Path Grid.Column="2" Width="14" Height="14"
+                                                  Data="{StaticResource CheckIcon}" Stretch="Uniform"
+                                                  Stroke="{StaticResource SidebarText}" StrokeThickness="1.6"
+                                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                                  IsVisible="{Binding !IsSidebarGrouped}" VerticalAlignment="Center" />
+                                        </Grid>
+                                    </Button>
+                                </StackPanel>
+                                <StackPanel x:Name="SessionSortOptions" Spacing="1" IsVisible="False">
+                                    <Button Classes="more-menu-item" Click="OnSortByUpdatedClicked">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
+                                            <Path Width="14" Height="14" Data="{StaticResource ClockIcon}" Stretch="Uniform" />
+                                            <TextBlock Grid.Column="1" Text="最近更新" VerticalAlignment="Center" />
+                                            <Path Grid.Column="2" Width="14" Height="14"
+                                                  Data="{StaticResource CheckIcon}" Stretch="Uniform"
+                                                  Stroke="{StaticResource SidebarText}" StrokeThickness="1.6"
+                                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                                  IsVisible="{Binding IsSessionSortByUpdated}" VerticalAlignment="Center" />
+                                        </Grid>
+                                    </Button>
+                                    <Button Classes="more-menu-item" Click="OnSortByCreatedClicked">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
+                                            <Path Width="14" Height="14" Data="{StaticResource ClockIcon}" Stretch="Uniform" />
+                                            <TextBlock Grid.Column="1" Text="创建时间" VerticalAlignment="Center" />
+                                            <Path Grid.Column="2" Width="14" Height="14"
+                                                  Data="{StaticResource CheckIcon}" Stretch="Uniform"
+                                                  Stroke="{StaticResource SidebarText}" StrokeThickness="1.6"
+                                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                                  IsVisible="{Binding IsSessionSortByCreated}" VerticalAlignment="Center" />
+                                        </Grid>
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
                         </Border>
                     </Popup>
 
@@ -879,7 +995,7 @@
                                         HorizontalAlignment="Center" Background="#1A1A1C">
                                     <Image Source="/Assets/kl.png" Width="64" Height="64" Stretch="UniformToFill" />
                                 </Border>
-                                <TextBlock Text="我们要构建什么?" FontSize="28" FontWeight="SemiBold"
+                                <TextBlock Text="{Binding EmptyStateTitle}" FontSize="28" FontWeight="SemiBold"
                                            Foreground="{StaticResource TextPrimary}"
                                            HorizontalAlignment="Center" Margin="0,18,0,0" />
                             </StackPanel>

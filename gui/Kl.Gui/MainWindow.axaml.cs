@@ -39,6 +39,8 @@ public partial class MainWindow : Window
         // Popup contents live in their own visual tree; give the More menu the
         // view-model explicitly so the pin bindings (Classes.pinned) resolve.
         MoreMenuCard.DataContext = _viewModel;
+        ProjectSectionMenuCard.DataContext = _viewModel;
+        ProjectSectionSubmenuCard.DataContext = _viewModel;
         ApplyContentFontResources();
         UpdatePinGlyphs();
         SidebarPanelBorder.Width = _viewModel.IsSidebarVisible
@@ -466,6 +468,74 @@ public partial class MainWindow : Window
         }
 
         WorkspaceMenuPopup.IsOpen = false;
+    }
+
+    private void OnProjectSectionMoreClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is not Control anchor)
+        {
+            return;
+        }
+
+        ProjectSectionMenuPopup.PlacementTarget = anchor;
+        ProjectSectionMenuPopup.IsOpen = !ProjectSectionMenuPopup.IsOpen;
+        ProjectSectionSubmenuPopup.IsOpen = false;
+        eventArgs.Handled = true;
+    }
+
+    private void OnOrganizeSidebarRowEntered(object? sender, PointerEventArgs eventArgs) =>
+        ShowProjectSectionSubmenu(sender as Control, organize: true);
+
+    private void OnSessionSortRowEntered(object? sender, PointerEventArgs eventArgs) =>
+        ShowProjectSectionSubmenu(sender as Control, organize: false);
+
+    private void OnOrganizeSidebarRowClicked(object? sender, RoutedEventArgs eventArgs) =>
+        ShowProjectSectionSubmenu(sender as Control, organize: true);
+
+    private void OnSessionSortRowClicked(object? sender, RoutedEventArgs eventArgs) =>
+        ShowProjectSectionSubmenu(sender as Control, organize: false);
+
+    private void ShowProjectSectionSubmenu(Control? anchor, bool organize)
+    {
+        if (anchor is null)
+        {
+            return;
+        }
+
+        ProjectSectionSubmenuPopup.PlacementTarget = anchor;
+        OrganizeSidebarOptions.IsVisible = organize;
+        SessionSortOptions.IsVisible = !organize;
+        ProjectSectionSubmenuPopup.IsOpen = true;
+    }
+
+    private void CloseProjectSectionMenus()
+    {
+        ProjectSectionMenuPopup.IsOpen = false;
+        ProjectSectionSubmenuPopup.IsOpen = false;
+    }
+
+    private void OnGroupByProjectClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        _viewModel.SetSidebarGrouped(true);
+        CloseProjectSectionMenus();
+    }
+
+    private void OnMergeDisplayClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        _viewModel.SetSidebarGrouped(false);
+        CloseProjectSectionMenus();
+    }
+
+    private void OnSortByUpdatedClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        _viewModel.SetSessionSort("updated");
+        CloseProjectSectionMenus();
+    }
+
+    private void OnSortByCreatedClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        _viewModel.SetSessionSort("created");
+        CloseProjectSectionMenus();
     }
 
     private void OnRenameSessionClicked(object? sender, RoutedEventArgs eventArgs)
@@ -974,6 +1044,7 @@ public partial class MainWindow : Window
             {
                 ProductMenuPopup.IsOpen = false;
                 WorkspaceMenuPopup.IsOpen = false;
+                CloseProjectSectionMenus();
             }
 
             AnimateSidebar(_viewModel.IsSidebarVisible);
