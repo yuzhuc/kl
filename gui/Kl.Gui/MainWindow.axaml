@@ -848,109 +848,6 @@
                     </Popup>
 
                     <!-- project section menu (Codex-style) -->
-                    <Popup x:Name="ProjectSectionMenuPopup" Placement="BottomEdgeAlignedLeft" VerticalOffset="4"
-                           IsLightDismissEnabled="True">
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Top">
-                        <Border x:Name="ProjectSectionMenuCard" Width="216"
-                                Background="#202022"
-                                BorderBrush="#2E2E31" BorderThickness="1"
-                                CornerRadius="12" Padding="6"
-                                BoxShadow="0 18 44 0 #99000000"
-                                PointerMoved="OnProjectSectionMenuPointerMoved"
-                                PointerExited="OnProjectSectionMenuCardPointerExited">
-                            <StackPanel Spacing="1">
-                                <Button Classes="more-menu-item" Click="OnOrganizeSidebarRowClicked"
-                                        PointerEntered="OnOrganizeSidebarRowEntered"
-                                        PointerExited="OnProjectSectionMenuRowExited">
-                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
-                                        <Path Width="14" Height="14" Data="{StaticResource PanelIcon}" Stretch="Uniform" />
-                                        <TextBlock Grid.Column="1" Text="整理侧边栏" VerticalAlignment="Center" />
-                                        <Path Grid.Column="2" Width="9" Height="9"
-                                              Data="{StaticResource ChevronRightSmallIcon}" Stretch="Uniform"
-                                              StrokeThickness="1.4" VerticalAlignment="Center" />
-                                    </Grid>
-                                </Button>
-                                <Button Classes="more-menu-item" Click="OnSessionSortRowClicked"
-                                        PointerEntered="OnSessionSortRowEntered"
-                                        PointerExited="OnProjectSectionMenuRowExited">
-                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
-                                        <Path Width="14" Height="14" Data="{StaticResource SortIcon}" Stretch="Uniform"
-                                              StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round" />
-                                        <TextBlock Grid.Column="1" Text="聊天排序方式" VerticalAlignment="Center" />
-                                        <Path Grid.Column="2" Width="9" Height="9"
-                                              Data="{StaticResource ChevronRightSmallIcon}" Stretch="Uniform"
-                                              StrokeThickness="1.4" VerticalAlignment="Center" />
-                                    </Grid>
-                                </Button>
-                            </StackPanel>
-                        </Border>
-
-                        <Border x:Name="ProjectSectionSubmenuCard" IsVisible="False" Width="190"
-                                Background="#1E1E21"
-                                BorderBrush="#2C2C2F" BorderThickness="1"
-                                CornerRadius="12" Padding="6"
-                                BoxShadow="0 14 34 0 #99000000"
-                                Margin="0,6,0,0"
-                                PointerEntered="OnProjectSectionSubmenuPointerEntered"
-                                PointerExited="OnProjectSectionSubmenuPointerExited">
-                            <Grid>
-                                <StackPanel x:Name="OrganizeSidebarOptions" Spacing="1">
-                                    <Button Classes="more-menu-item" Click="OnGroupByProjectClicked">
-                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
-                                            <Path Width="14" Height="14" Data="{StaticResource FolderIcon}" Stretch="Uniform"
-                                                  Stroke="#A0A1A3" StrokeThickness="1.3" StrokeLineCap="Round"
-                                                  StrokeJoin="Round" Fill="Transparent" />
-                                            <TextBlock Grid.Column="1" Text="分项目显示" VerticalAlignment="Center"
-                                                       Foreground="#C6C7C9" />
-                                            <Path Grid.Column="2" Width="14" Height="14"
-                                                  Data="{StaticResource CheckIcon}" Stretch="Uniform"
-                                                  Stroke="{StaticResource SidebarText}" StrokeThickness="1.6"
-                                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                                                  IsVisible="{Binding IsSidebarGrouped}" VerticalAlignment="Center" />
-                                        </Grid>
-                                    </Button>
-                                    <Button Classes="more-menu-item" Click="OnMergeDisplayClicked">
-                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
-                                            <Path Width="14" Height="14" Data="{StaticResource ListIcon}" Stretch="Uniform"
-                                                  StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round" />
-                                            <TextBlock Grid.Column="1" Text="合并显示" VerticalAlignment="Center"
-                                                       Foreground="#C6C7C9" />
-                                            <Path Grid.Column="2" Width="14" Height="14"
-                                                  Data="{StaticResource CheckIcon}" Stretch="Uniform"
-                                                  Stroke="{StaticResource SidebarText}" StrokeThickness="1.6"
-                                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                                                  IsVisible="{Binding !IsSidebarGrouped}" VerticalAlignment="Center" />
-                                        </Grid>
-                                    </Button>
-                                </StackPanel>
-                                <StackPanel x:Name="SessionSortOptions" Spacing="1" IsVisible="False">
-                                    <Button Classes="more-menu-item" Click="OnSortByUpdatedClicked">
-                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
-                                            <Path Width="14" Height="14" Data="{StaticResource ClockIcon}" Stretch="Uniform" />
-                                            <TextBlock Grid.Column="1" Text="最近更新" VerticalAlignment="Center" />
-                                            <Path Grid.Column="2" Width="14" Height="14"
-                                                  Data="{StaticResource CheckIcon}" Stretch="Uniform"
-                                                  Stroke="{StaticResource SidebarText}" StrokeThickness="1.6"
-                                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                                                  IsVisible="{Binding IsSessionSortByUpdated}" VerticalAlignment="Center" />
-                                        </Grid>
-                                    </Button>
-                                    <Button Classes="more-menu-item" Click="OnSortByCreatedClicked">
-                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
-                                            <Path Width="14" Height="14" Data="{StaticResource ClockIcon}" Stretch="Uniform" />
-                                            <TextBlock Grid.Column="1" Text="创建时间" VerticalAlignment="Center" />
-                                            <Path Grid.Column="2" Width="14" Height="14"
-                                                  Data="{StaticResource CheckIcon}" Stretch="Uniform"
-                                                  Stroke="{StaticResource SidebarText}" StrokeThickness="1.6"
-                                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                                                  IsVisible="{Binding IsSessionSortByCreated}" VerticalAlignment="Center" />
-                                        </Grid>
-                                    </Button>
-                                </StackPanel>
-                            </Grid>
-                        </Border>
-                        </StackPanel>                    </Popup>
-
                     <Popup x:Name="PinnedSectionMenuPopup" Placement="BottomEdgeAlignedRight"
                            VerticalOffset="4" IsLightDismissEnabled="True">
                         <Border x:Name="PinnedSectionMenuCard" Width="196"
@@ -1951,6 +1848,114 @@
                 </StackPanel>
             </Border>
         </primitives:Popup>
+
+        <!-- section menu overlay: drawn inside the main window, no extra popup windows -->
+        <Grid x:Name="SectionMenuOverlay" Grid.RowSpan="2" ZIndex="44" IsVisible="False">
+            <Border Background="Transparent" PointerPressed="OnSectionMenuDismissPressed" />
+            <Canvas x:Name="SectionMenuCanvas">
+                <StackPanel x:Name="SectionMenuStack" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top"
+                                    Canvas.Left="0" Canvas.Top="0">
+                        <Border x:Name="ProjectSectionMenuCard" Width="216"
+                                Background="#202022"
+                                BorderBrush="#2E2E31" BorderThickness="1"
+                                CornerRadius="12" Padding="6"
+                                BoxShadow="0 18 44 0 #99000000"
+                                PointerMoved="OnProjectSectionMenuPointerMoved"
+                                PointerExited="OnProjectSectionMenuCardPointerExited">
+                            <StackPanel Spacing="1">
+                                <Button Classes="more-menu-item" Click="OnOrganizeSidebarRowClicked"
+                                        PointerEntered="OnOrganizeSidebarRowEntered"
+                                        PointerExited="OnProjectSectionMenuRowExited">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
+                                        <Path Width="14" Height="14" Data="{StaticResource PanelIcon}" Stretch="Uniform" />
+                                        <TextBlock Grid.Column="1" Text="整理侧边栏" VerticalAlignment="Center" />
+                                        <Path Grid.Column="2" Width="9" Height="9"
+                                              Data="{StaticResource ChevronRightSmallIcon}" Stretch="Uniform"
+                                              StrokeThickness="1.4" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Button>
+                                <Button Classes="more-menu-item" Click="OnSessionSortRowClicked"
+                                        PointerEntered="OnSessionSortRowEntered"
+                                        PointerExited="OnProjectSectionMenuRowExited">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
+                                        <Path Width="14" Height="14" Data="{StaticResource SortIcon}" Stretch="Uniform"
+                                              StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round" />
+                                        <TextBlock Grid.Column="1" Text="聊天排序方式" VerticalAlignment="Center" />
+                                        <Path Grid.Column="2" Width="9" Height="9"
+                                              Data="{StaticResource ChevronRightSmallIcon}" Stretch="Uniform"
+                                              StrokeThickness="1.4" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Button>
+                            </StackPanel>
+                        </Border>
+
+                        <Border x:Name="ProjectSectionSubmenuCard" IsVisible="False" Width="190"
+                                Background="#1E1E21"
+                                BorderBrush="#2C2C2F" BorderThickness="1"
+                                CornerRadius="12" Padding="6"
+                                BoxShadow="0 14 34 0 #99000000"
+                                Margin="0,6,0,0"
+                                PointerEntered="OnProjectSectionSubmenuPointerEntered"
+                                PointerExited="OnProjectSectionSubmenuPointerExited">
+                            <Grid>
+                                <StackPanel x:Name="OrganizeSidebarOptions" Spacing="1">
+                                    <Button Classes="more-menu-item" Click="OnGroupByProjectClicked">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
+                                            <Path Width="14" Height="14" Data="{StaticResource FolderIcon}" Stretch="Uniform"
+                                                  Stroke="#A0A1A3" StrokeThickness="1.3" StrokeLineCap="Round"
+                                                  StrokeJoin="Round" Fill="Transparent" />
+                                            <TextBlock Grid.Column="1" Text="分项目显示" VerticalAlignment="Center"
+                                                       Foreground="#C6C7C9" />
+                                            <Path Grid.Column="2" Width="14" Height="14"
+                                                  Data="{StaticResource CheckIcon}" Stretch="Uniform"
+                                                  Stroke="{StaticResource SidebarText}" StrokeThickness="1.6"
+                                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                                  IsVisible="{Binding IsSidebarGrouped}" VerticalAlignment="Center" />
+                                        </Grid>
+                                    </Button>
+                                    <Button Classes="more-menu-item" Click="OnMergeDisplayClicked">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
+                                            <Path Width="14" Height="14" Data="{StaticResource ListIcon}" Stretch="Uniform"
+                                                  StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round" />
+                                            <TextBlock Grid.Column="1" Text="合并显示" VerticalAlignment="Center"
+                                                       Foreground="#C6C7C9" />
+                                            <Path Grid.Column="2" Width="14" Height="14"
+                                                  Data="{StaticResource CheckIcon}" Stretch="Uniform"
+                                                  Stroke="{StaticResource SidebarText}" StrokeThickness="1.6"
+                                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                                  IsVisible="{Binding !IsSidebarGrouped}" VerticalAlignment="Center" />
+                                        </Grid>
+                                    </Button>
+                                </StackPanel>
+                                <StackPanel x:Name="SessionSortOptions" Spacing="1" IsVisible="False">
+                                    <Button Classes="more-menu-item" Click="OnSortByUpdatedClicked">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
+                                            <Path Width="14" Height="14" Data="{StaticResource ClockIcon}" Stretch="Uniform" />
+                                            <TextBlock Grid.Column="1" Text="最近更新" VerticalAlignment="Center" />
+                                            <Path Grid.Column="2" Width="14" Height="14"
+                                                  Data="{StaticResource CheckIcon}" Stretch="Uniform"
+                                                  Stroke="{StaticResource SidebarText}" StrokeThickness="1.6"
+                                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                                  IsVisible="{Binding IsSessionSortByUpdated}" VerticalAlignment="Center" />
+                                        </Grid>
+                                    </Button>
+                                    <Button Classes="more-menu-item" Click="OnSortByCreatedClicked">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
+                                            <Path Width="14" Height="14" Data="{StaticResource ClockIcon}" Stretch="Uniform" />
+                                            <TextBlock Grid.Column="1" Text="创建时间" VerticalAlignment="Center" />
+                                            <Path Grid.Column="2" Width="14" Height="14"
+                                                  Data="{StaticResource CheckIcon}" Stretch="Uniform"
+                                                  Stroke="{StaticResource SidebarText}" StrokeThickness="1.6"
+                                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                                  IsVisible="{Binding IsSessionSortByCreated}" VerticalAlignment="Center" />
+                                        </Grid>
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        </StackPanel>
+            </Canvas>
+        </Grid>
 
         <!-- ===================== Hover preview cards ===================== -->
         <Canvas x:Name="PreviewCanvas" Grid.RowSpan="2" ZIndex="45">

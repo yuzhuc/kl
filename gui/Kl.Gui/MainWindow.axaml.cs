@@ -83,7 +83,6 @@ public partial class MainWindow : Window
             _sectionSubmenuCloseTimer.Stop();
             ProjectSectionSubmenuCard.IsVisible = false;
         };
-        ProjectSectionMenuPopup.Closed += (_, _) => ProjectSectionSubmenuCard.IsVisible = false;
         AddHandler(PointerWheelChangedEvent, OnWindowPointerWheelChanged, RoutingStrategies.Tunnel);
         AddHandler(PointerPressedEvent, OnPinnedDragPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
         AddHandler(PointerMovedEvent, OnPinnedDragMoved, RoutingStrategies.Tunnel, handledEventsToo: true);
@@ -557,9 +556,18 @@ public partial class MainWindow : Window
             return;
         }
 
-        ProjectSectionMenuPopup.PlacementTarget = anchor;
-        ProjectSectionMenuPopup.IsOpen = !ProjectSectionMenuPopup.IsOpen;
+        if (SectionMenuOverlay.IsVisible)
+        {
+            CloseProjectSectionMenus();
+            eventArgs.Handled = true;
+            return;
+        }
+
+        var origin = anchor.TranslatePoint(new Point(0, 0), SectionMenuOverlay) ?? new Point(0, 0);
+        Canvas.SetLeft(SectionMenuStack, origin.X);
+        Canvas.SetTop(SectionMenuStack, origin.Y + anchor.Bounds.Height + 4);
         ProjectSectionSubmenuCard.IsVisible = false;
+        SectionMenuOverlay.IsVisible = true;
         eventArgs.Handled = true;
     }
 
@@ -905,7 +913,7 @@ public partial class MainWindow : Window
     }
 
     private bool IsSidebarMenuOpen =>
-        WorkspaceMenuPopup.IsOpen || ProjectSectionMenuPopup.IsOpen
+        WorkspaceMenuPopup.IsOpen || SectionMenuOverlay.IsVisible
         || PinnedSectionMenuPopup.IsOpen || NotificationMenuPopup.IsOpen;
 
     private void ShowSessionPreview(Control row, SessionItemViewModel session)
@@ -1074,8 +1082,15 @@ public partial class MainWindow : Window
 
     private void CloseProjectSectionMenus()
     {
+        _sectionSubmenuCloseTimer.Stop();
         ProjectSectionSubmenuCard.IsVisible = false;
-        ProjectSectionMenuPopup.IsOpen = false;
+        SectionMenuOverlay.IsVisible = false;
+    }
+
+    private void OnSectionMenuDismissPressed(object? sender, PointerPressedEventArgs eventArgs)
+    {
+        CloseProjectSectionMenus();
+        eventArgs.Handled = true;
     }
 
     private void OnGroupByProjectClicked(object? sender, RoutedEventArgs eventArgs)
