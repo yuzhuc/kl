@@ -27,6 +27,8 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _moreMenuCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
     private readonly DispatcherTimer _previewCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(140) };
     private readonly DispatcherTimer _previewShowTimer = new() { Interval = TimeSpan.FromMilliseconds(90) };
+    private readonly DispatcherTimer _sectionSubmenuCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
+    private int _sectionSubmenuOpenToken;
     private SessionItemViewModel? _pinnedDragSession;
     private SessionItemViewModel? _nestedDragSession;
     private WorkspaceItemViewModel? _workspaceDragTarget;
@@ -77,6 +79,12 @@ public partial class MainWindow : Window
         _moreMenuCloseTimer.Tick += OnMoreMenuCloseTimerTick;
         _previewCloseTimer.Tick += OnPreviewCloseTimerTick;
         _previewShowTimer.Tick += OnPreviewShowTimerTick;
+        _sectionSubmenuCloseTimer.Tick += (_, _) =>
+        {
+            _sectionSubmenuCloseTimer.Stop();
+            ProjectSectionSubmenuPopup.IsOpen = false;
+        };
+        ProjectSectionMenuPopup.Closed += (_, _) => ProjectSectionSubmenuPopup.IsOpen = false;
         AddHandler(PointerWheelChangedEvent, OnWindowPointerWheelChanged, RoutingStrategies.Tunnel);
         AddHandler(PointerPressedEvent, OnPinnedDragPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
         AddHandler(PointerMovedEvent, OnPinnedDragMoved, RoutingStrategies.Tunnel, handledEventsToo: true);
@@ -443,6 +451,7 @@ public partial class MainWindow : Window
 
     private void OnWorkspaceMoreClicked(object? sender, RoutedEventArgs eventArgs)
     {
+        HidePreviewCards();
         if (GetWorkspace(sender) is not { } workspace || sender is not Control anchor)
         {
             return;
@@ -543,6 +552,7 @@ public partial class MainWindow : Window
 
     private void OnProjectSectionMoreClicked(object? sender, RoutedEventArgs eventArgs)
     {
+        HidePreviewCards();
         if (sender is not Control anchor)
         {
             return;
@@ -556,6 +566,7 @@ public partial class MainWindow : Window
 
     private void OnPinnedSectionMoreClicked(object? sender, RoutedEventArgs eventArgs)
     {
+        HidePreviewCards();
         if (sender is not Control anchor)
         {
             return;
@@ -894,8 +905,18 @@ public partial class MainWindow : Window
         WorkspacePreviewCard.IsVisible = false;
     }
 
+    private bool IsSidebarMenuOpen =>
+        WorkspaceMenuPopup.IsOpen || ProjectSectionMenuPopup.IsOpen
+        || PinnedSectionMenuPopup.IsOpen || NotificationMenuPopup.IsOpen;
+
     private void ShowSessionPreview(Control row, SessionItemViewModel session)
     {
+        if (IsSidebarMenuOpen)
+        {
+            HidePreviewCards();
+            return;
+        }
+
         _previewCloseTimer.Stop();
         WorkspacePreviewCard.IsVisible = false;
         SessionPreviewCard.DataContext = session;
@@ -905,6 +926,12 @@ public partial class MainWindow : Window
 
     private void ShowWorkspacePreview(Control row, WorkspaceItemViewModel workspace)
     {
+        if (IsSidebarMenuOpen)
+        {
+            HidePreviewCards();
+            return;
+        }
+
         _previewCloseTimer.Stop();
         SessionPreviewCard.IsVisible = false;
         WorkspacePreviewCard.DataContext = workspace;
@@ -952,17 +979,45 @@ public partial class MainWindow : Window
         }, DispatcherPriority.Background);
     }
 
-    private void OnOrganizeSidebarRowEntered(object? sender, PointerEventArgs eventArgs) =>
+    private void OnOrganizeSidebarRowEntered(object? sender, PointerEventArgs eventArgs)
+    {
+        CancelSectionSubmenuClose();
         ShowProjectSectionSubmenu(sender as Control, organize: true);
+    }
 
-    private void OnSessionSortRowEntered(object? sender, PointerEventArgs eventArgs) =>
+    private void OnSessionSortRowEntered(object? sender, PointerEventArgs eventArgs)
+    {
+        CancelSectionSubmenuClose();
         ShowProjectSectionSubmenu(sender as Control, organize: false);
+    }
 
     private void OnOrganizeSidebarRowClicked(object? sender, RoutedEventArgs eventArgs) =>
         ShowProjectSectionSubmenu(sender as Control, organize: true);
 
     private void OnSessionSortRowClicked(object? sender, RoutedEventArgs eventArgs) =>
         ShowProjectSectionSubmenu(sender as Control, organize: false);
+
+    private void OnProjectSectionMenuRowExited(object? sender, PointerEventArgs eventArgs)
+    {
+        if (!ProjectSectionSubmenuCard.IsPointerOver)
+        {
+            StartSectionSubmenuClose();
+        }
+    }
+
+    private void OnProjectSectionSubmenuPointerEntered(object? sender, PointerEventArgs eventArgs) =>
+        CancelSectionSubmenuClose();
+
+    private void OnProjectSectionSubmenuPointerExited(object? sender, PointerEventArgs eventArgs) =>
+        StartSectionSubmenuClose();
+
+    private void CancelSectionSubmenuClose() => _sectionSubmenuCloseTimer.Stop();
+
+    private void StartSectionSubmenuClose()
+    {
+        _sectionSubmenuCloseTimer.Stop();
+        _sectionSubmenuCloseTimer.Start();
+    }
 
     private void ShowProjectSectionSubmenu(Control? anchor, bool organize)
     {
@@ -971,10 +1026,22 @@ public partial class MainWindow : Window
             return;
         }
 
+        CancelSectionSubmenuClose();
+        // Avalonia popups do not always re-place when the placement target changes
+        // while open; close first and reopen on the next UI pass so the submenu
+        // always tracks the row the pointer is on.
+        var token = ++_sectionSubmenuOpenToken;
+        ProjectSectionSubmenuPopup.IsOpen = false;
         ProjectSectionSubmenuPopup.PlacementTarget = anchor;
         OrganizeSidebarOptions.IsVisible = organize;
         SessionSortOptions.IsVisible = !organize;
-        ProjectSectionSubmenuPopup.IsOpen = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (token == _sectionSubmenuOpenToken)
+            {
+                ProjectSectionSubmenuPopup.IsOpen = true;
+            }
+        }, DispatcherPriority.Background);
     }
 
     private void CloseProjectSectionMenus()
@@ -2027,6 +2094,7 @@ public partial class MainWindow : Window
 
     private void OnNotificationMenuClicked(object? sender, RoutedEventArgs eventArgs)
     {
+        HidePreviewCards();
         if (sender is not Control anchor)
         {
             return;

@@ -783,11 +783,10 @@
                                     <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
                                                Foreground="#E3E4E6" VerticalAlignment="Center"
                                                TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
-                                    <Button Grid.Column="2" Classes="row-action" Click="OnToggleWorkspacePinnedClicked"
-                                            ToolTip.Tip="置顶">
+                                    <Button Grid.Column="2" Classes="row-action" Classes.pinned="{Binding IsPinned}"
+                                            Click="OnToggleWorkspacePinnedClicked" ToolTip.Tip="置顶">
                                         <Path Width="13" Height="13" Data="{StaticResource PinIcon}" Stretch="Uniform"
-                                              Classes.pinned="{Binding IsPinned}" StrokeThickness="1.3"
-                                              StrokeLineCap="Round" StrokeJoin="Round"
+                                              StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round"
                                               RenderTransform="rotate(45deg)" />
                                     </Button>
                                 </Grid>
@@ -825,6 +824,25 @@
                                                    Foreground="#C6C7C9" VerticalAlignment="Center" />
                                     </Grid>
                                 </Button>
+                                <Border Height="1" Background="#2E2E31" Margin="10,6" />
+                                <Button Classes="more-menu-item" Height="30" Click="OnArchiveWorkspaceChatsClicked">
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
+                                        <Path Width="14" Height="14" Data="{StaticResource ArchiveIcon}" Stretch="Uniform"
+                                              Stroke="#7E7F82" StrokeThickness="1.25" StrokeLineCap="Round"
+                                              StrokeJoin="Round" Fill="Transparent" />
+                                        <TextBlock Grid.Column="1" Text="归档聊天" FontSize="13"
+                                                   Foreground="#C6C7C9" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Button>
+                                <Button Classes="more-menu-item" Height="30" Click="OnRemoveWorkspaceClicked">
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
+                                        <Path Width="14" Height="14" Data="{StaticResource TrashIcon}" Stretch="Uniform"
+                                              Stroke="#E5837C" StrokeThickness="1.25" StrokeLineCap="Round"
+                                              StrokeJoin="Round" Fill="Transparent" />
+                                        <TextBlock Grid.Column="1" Text="移除项目" FontSize="13"
+                                                   Foreground="#E5837C" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Button>
                             </StackPanel>
                         </Border>
                     </Popup>
@@ -839,7 +857,8 @@
                                 BoxShadow="0 18 44 0 #99000000">
                             <StackPanel Spacing="1">
                                 <Button Classes="more-menu-item" Click="OnOrganizeSidebarRowClicked"
-                                        PointerEntered="OnOrganizeSidebarRowEntered">
+                                        PointerEntered="OnOrganizeSidebarRowEntered"
+                                        PointerExited="OnProjectSectionMenuRowExited">
                                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
                                         <Path Width="14" Height="14" Data="{StaticResource PanelIcon}" Stretch="Uniform" />
                                         <TextBlock Grid.Column="1" Text="整理侧边栏" VerticalAlignment="Center" />
@@ -849,9 +868,11 @@
                                     </Grid>
                                 </Button>
                                 <Button Classes="more-menu-item" Click="OnSessionSortRowClicked"
-                                        PointerEntered="OnSessionSortRowEntered">
+                                        PointerEntered="OnSessionSortRowEntered"
+                                        PointerExited="OnProjectSectionMenuRowExited">
                                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
-                                        <Path Width="14" Height="14" Data="{StaticResource ClockIcon}" Stretch="Uniform" />
+                                        <Path Width="14" Height="14" Data="{StaticResource SortIcon}" Stretch="Uniform"
+                                              StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round" />
                                         <TextBlock Grid.Column="1" Text="聊天排序方式" VerticalAlignment="Center" />
                                         <Path Grid.Column="2" Width="9" Height="9"
                                               Data="{StaticResource ChevronRightSmallIcon}" Stretch="Uniform"
@@ -863,18 +884,23 @@
                     </Popup>
 
                     <Popup x:Name="ProjectSectionSubmenuPopup" Placement="RightEdgeAlignedTop"
-                           HorizontalOffset="4" IsLightDismissEnabled="True">
+                           HorizontalOffset="6" IsLightDismissEnabled="True">
                         <Border x:Name="ProjectSectionSubmenuCard" Width="190"
-                                Background="{StaticResource ProductMenuFill}"
-                                BorderBrush="{StaticResource ProductMenuLine}" BorderThickness="1"
+                                Background="#1E1E21"
+                                BorderBrush="#2C2C2F" BorderThickness="1"
                                 CornerRadius="12" Padding="6"
-                                BoxShadow="0 14 34 0 #99000000">
+                                BoxShadow="0 14 34 0 #99000000"
+                                PointerEntered="OnProjectSectionSubmenuPointerEntered"
+                                PointerExited="OnProjectSectionSubmenuPointerExited">
                             <Grid>
                                 <StackPanel x:Name="OrganizeSidebarOptions" Spacing="1">
                                     <Button Classes="more-menu-item" Click="OnGroupByProjectClicked">
                                         <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
-                                            <Path Width="14" Height="14" Data="{StaticResource FolderIcon}" Stretch="Uniform" />
-                                            <TextBlock Grid.Column="1" Text="分项目显示" VerticalAlignment="Center" />
+                                            <Path Width="14" Height="14" Data="{StaticResource FolderIcon}" Stretch="Uniform"
+                                                  Stroke="#A0A1A3" StrokeThickness="1.3" StrokeLineCap="Round"
+                                                  StrokeJoin="Round" Fill="Transparent" />
+                                            <TextBlock Grid.Column="1" Text="分项目显示" VerticalAlignment="Center"
+                                                       Foreground="#C6C7C9" />
                                             <Path Grid.Column="2" Width="14" Height="14"
                                                   Data="{StaticResource CheckIcon}" Stretch="Uniform"
                                                   Stroke="{StaticResource SidebarText}" StrokeThickness="1.6"
@@ -884,8 +910,10 @@
                                     </Button>
                                     <Button Classes="more-menu-item" Click="OnMergeDisplayClicked">
                                         <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
-                                            <Path Width="14" Height="14" Data="{StaticResource ToolIcon}" Stretch="Uniform" />
-                                            <TextBlock Grid.Column="1" Text="合并显示" VerticalAlignment="Center" />
+                                            <Path Width="14" Height="14" Data="{StaticResource ListIcon}" Stretch="Uniform"
+                                                  StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round" />
+                                            <TextBlock Grid.Column="1" Text="合并显示" VerticalAlignment="Center"
+                                                       Foreground="#C6C7C9" />
                                             <Path Grid.Column="2" Width="14" Height="14"
                                                   Data="{StaticResource CheckIcon}" Stretch="Uniform"
                                                   Stroke="{StaticResource SidebarText}" StrokeThickness="1.6"
