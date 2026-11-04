@@ -439,7 +439,9 @@ public sealed partial class MainWindowViewModel
         foreach (var workspace in Workspaces)
         {
             workspace.Sessions.Clear();
-            foreach (var session in workspace.State.Sessions.OrderByDescending(item => item.UpdatedAt))
+            foreach (var session in workspace.State.Sessions
+                         .OrderBy(item => item.SortOrder == 0 ? int.MaxValue : item.SortOrder)
+                         .ThenByDescending(item => item.UpdatedAt))
             {
                 workspace.Sessions.Add(new SessionItemViewModel(workspace, session));
             }

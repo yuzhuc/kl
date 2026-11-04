@@ -27,9 +27,12 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _moreMenuCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
     private readonly DispatcherTimer _previewCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(220) };
     private SessionItemViewModel? _pinnedDragSession;
+    private SessionItemViewModel? _nestedDragSession;
+    private WorkspaceItemViewModel? _workspaceDragTarget;
     private Point _pinnedDragOrigin;
     private bool _pinnedDragging;
     private bool _pinnedDragSkipClick;
+    private int _dragMode;
     private Control? _railHintTarget;
     private long _lastRailPointerNavigation;
     private bool _moreMenuPinned;
@@ -406,6 +409,12 @@ public partial class MainWindow : Window
 
     private async void OnWorkspaceClicked(object? sender, RoutedEventArgs eventArgs)
     {
+        if (_pinnedDragSkipClick)
+        {
+            _pinnedDragSkipClick = false;
+            return;
+        }
+
         if (sender is Button { DataContext: WorkspaceItemViewModel workspace })
         {
             _viewModel.Navigate(AppSection.Chat);
@@ -553,27 +562,41 @@ public partial class MainWindow : Window
 
     private void OnPinnedDragPressed(object? sender, PointerPressedEventArgs eventArgs)
     {
-        if (!eventArgs.GetCurrentPoint(this).Properties.IsLeftButtonPressed
-            || !_viewModel.IsPinnedSortByManual)
+        _pinnedDragSession = null;
+        _nestedDragSession = null;
+        _workspaceDragTarget = null;
+        _dragMode = 0;
+
+        if (!eventArgs.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
         {
-            _pinnedDragSession = null;
             return;
         }
 
-        if (FindPinnedSession(eventArgs.Source as Visual) is not { } session)
+        switch (FindDragContext(eventArgs.Source as Visual))
         {
-            _pinnedDragSession = null;
-            return;
+            case SessionItemViewModel { IsPinned: true } pinned when _viewModel.IsPinnedSortByManual:
+                _pinnedDragSession = pinned;
+                _dragMode = 1;
+                break;
+            case SessionItemViewModel nested:
+                _nestedDragSession = nested;
+                _dragMode = 2;
+                break;
+            case WorkspaceItemViewModel workspace:
+                _workspaceDragTarget = workspace;
+                _dragMode = 3;
+                break;
+            default:
+                return;
         }
 
-        _pinnedDragSession = session;
         _pinnedDragOrigin = eventArgs.GetPosition(this);
         _pinnedDragging = false;
     }
 
     private void OnPinnedDragMoved(object? sender, PointerEventArgs eventArgs)
     {
-        if (_pinnedDragSession is null || _pinnedDragging)
+        if (_dragMode == 0 || _pinnedDragging)
         {
             return;
         }
@@ -588,25 +611,88 @@ public partial class MainWindow : Window
 
     private void OnPinnedDragReleased(object? sender, PointerReleasedEventArgs eventArgs)
     {
-        if (_pinnedDragSession is { } session && _pinnedDragging)
+        if (!_pinnedDragging || _dragMode == 0)
         {
-            var y = eventArgs.GetPosition(PinnedItemsControl).Y;
-            var index = (int)Math.Floor(Math.Max(0, y) / 31.0);
-            _viewModel.MovePinnedSession(session, index);
-            _pinnedDragSkipClick = true;
+            _dragMode = 0;
+            _pinnedDragSession = null;
+            _nestedDragSession = null;
+            _workspaceDragTarget = null;
+            return;
         }
 
+        var y = eventArgs.GetPosition(this).Y;
+        switch (_dragMode)
+        {
+            case 1 when _pinnedDragSession is { } pinned:
+                _viewModel.MovePinnedSession(pinned, DropIndexInPinned(y));
+                break;
+            case 2 when _nestedDragSession is { } nested:
+                _viewModel.MoveSessionWithinWorkspace(nested, DropIndexAmongSessionRows(nested.Workspace, y));
+                break;
+            case 3 when _workspaceDragTarget is { } workspace:
+                _viewModel.MoveWorkspace(workspace, DropIndexAmongWorkspaceRows(y));
+                break;
+        }
+
+        _pinnedDragSkipClick = true;
+        _dragMode = 0;
         _pinnedDragSession = null;
+        _nestedDragSession = null;
+        _workspaceDragTarget = null;
         _pinnedDragging = false;
     }
 
-    private static SessionItemViewModel? FindPinnedSession(Visual? source)
+    private int DropIndexInPinned(double pointerY)
+    {
+        var relative = pointerY - PinnedItemsControl.TranslatePoint(new Point(0, 0), this)!.Value.Y;
+        return (int)Math.Floor(Math.Max(0, relative) / 31.0);
+    }
+
+    private int DropIndexAmongSessionRows(WorkspaceItemViewModel workspace, double pointerY)
+    {
+        var rows = this.GetVisualDescendants()
+            .OfType<Button>()
+            .Where(button => button.Classes.Contains("session-row")
+                             && button.Classes.Contains("nested")
+                             && button.DataContext is SessionItemViewModel session
+                             && ReferenceEquals(session.Workspace, workspace)
+                             && !session.IsPinned)
+            .Select(button => RowCenterY(button))
+            .OrderBy(center => center)
+            .ToList();
+        return rows.Count(center => center < pointerY);
+    }
+
+    private int DropIndexAmongWorkspaceRows(double pointerY)
+    {
+        var rows = this.GetVisualDescendants()
+            .OfType<Button>()
+            .Where(button => button.Classes.Contains("row")
+                             && button.DataContext is WorkspaceItemViewModel)
+            .Select(button => RowCenterY(button))
+            .OrderBy(center => center)
+            .ToList();
+        return rows.Count(center => center < pointerY);
+    }
+
+    private double RowCenterY(Control control) =>
+        control.TranslatePoint(new Point(0, control.Bounds.Height / 2), this)?.Y ?? 0;
+
+    private static object? FindDragContext(Visual? source)
     {
         for (var visual = source; visual is not null; visual = visual.GetVisualParent())
         {
-            if (visual is Control { DataContext: SessionItemViewModel session } && session.IsPinned)
+            if (visual is Control control)
             {
-                return session;
+                if (control.DataContext is SessionItemViewModel session)
+                {
+                    return session;
+                }
+
+                if (control.DataContext is WorkspaceItemViewModel workspace)
+                {
+                    return workspace;
+                }
             }
         }
 
@@ -1735,6 +1821,14 @@ public partial class MainWindow : Window
 
     private void OnPaletteCloseClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.CloseSearchPalette();
+
+    private void OnPaletteFilterClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is Control { Tag: string filter })
+        {
+            _viewModel.SetPaletteFilter(filter);
+        }
+    }
 
     private async void OnPaletteNewChatClicked(object? sender, RoutedEventArgs eventArgs)
     {

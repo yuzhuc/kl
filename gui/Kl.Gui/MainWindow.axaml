@@ -1954,53 +1954,65 @@
                     <Border Grid.Row="1" Height="1" Background="{StaticResource Line}" />
                     <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
                         <StackPanel Margin="8,6,8,8">
-                            <TextBlock Text="快捷操作" FontSize="11.5" Foreground="{StaticResource TextTertiary}"
-                                       Margin="8,6,0,6" />
-                            <Button Classes="palette-row" Click="OnPaletteNewChatClicked">
-                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
-                                    <Path Width="15" Height="15" Data="{StaticResource EditIcon}" Stretch="Uniform" />
-                                    <TextBlock Grid.Column="1" Text="新聊天" VerticalAlignment="Center" />
-                                    <TextBlock Grid.Column="2" Text="Ctrl+N" FontSize="11"
-                                               Foreground="{StaticResource TextCaption}" VerticalAlignment="Center" />
-                                </Grid>
-                            </Button>
-                            <Button Classes="palette-row" Click="OnPaletteOpenFolderClicked">
-                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
-                                    <Path Width="15" Height="15" Data="{StaticResource FolderIcon}" Stretch="Uniform" />
-                                    <TextBlock Grid.Column="1" Text="打开文件夹" VerticalAlignment="Center" />
-                                    <TextBlock Grid.Column="2" Text="Ctrl+O" FontSize="11"
-                                               Foreground="{StaticResource TextCaption}" VerticalAlignment="Center" />
-                                </Grid>
-                            </Button>
-                            <TextBlock Text="最近聊天" FontSize="11.5" Foreground="{StaticResource TextTertiary}"
-                                       Margin="8,12,0,6" />
-                            <ItemsControl ItemsSource="{Binding PaletteSessions}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:SessionItemViewModel">
-                                        <Button Classes="palette-row" Click="OnPaletteSessionClicked" Tag="{Binding}">
-                                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
-                                                <Path Width="15" Height="15" Data="{StaticResource ChatIcon}"
-                                                      Stretch="Uniform" />
-                                                <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="13"
-                                                           TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
-                                                           VerticalAlignment="Center" />
-                                                <TextBlock Grid.Column="2" Text="{Binding Workspace.Name}" FontSize="11"
-                                                           Foreground="{StaticResource TextCaption}"
-                                                           VerticalAlignment="Center" />
-                                            </Grid>
-                                        </Button>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
+                            <StackPanel IsVisible="{Binding ShowPaletteActions}">
+                                <TextBlock Text="快捷操作" FontSize="11.5" Foreground="{StaticResource TextTertiary}"
+                                           Margin="8,6,0,6" />
+                                <Button Classes="palette-row" Click="OnPaletteNewChatClicked">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
+                                        <Path Width="15" Height="15" Data="{StaticResource EditIcon}" Stretch="Uniform" />
+                                        <TextBlock Grid.Column="1" Text="新聊天" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="2" Text="Ctrl+N" FontSize="11"
+                                                   Foreground="{StaticResource TextCaption}" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Button>
+                                <Button Classes="palette-row" Click="OnPaletteOpenFolderClicked">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
+                                        <Path Width="15" Height="15" Data="{StaticResource FolderIcon}" Stretch="Uniform" />
+                                        <TextBlock Grid.Column="1" Text="打开文件夹" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="2" Text="Ctrl+O" FontSize="11"
+                                                   Foreground="{StaticResource TextCaption}" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Button>
+                            </StackPanel>
+                            <StackPanel IsVisible="{Binding ShowPaletteChats}">
+                                <TextBlock Text="最近聊天" FontSize="11.5" Foreground="{StaticResource TextTertiary}"
+                                           Margin="8,12,0,6" />
+                                <ItemsControl ItemsSource="{Binding PaletteSessions}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:SessionItemViewModel">
+                                            <Button Classes="palette-row" Click="OnPaletteSessionClicked" Tag="{Binding}">
+                                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
+                                                    <Path Width="15" Height="15" Data="{StaticResource ChatIcon}"
+                                                          Stretch="Uniform" />
+                                                    <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="13"
+                                                               TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                                                               VerticalAlignment="Center" />
+                                                    <TextBlock Grid.Column="2" Text="{Binding Workspace.Name}" FontSize="11"
+                                                               Foreground="{StaticResource TextCaption}"
+                                                               VerticalAlignment="Center" />
+                                                </Grid>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                            <TextBlock Text="{Binding PaletteEmptyText}" IsVisible="{Binding ShowPaletteEmpty}"
+                                       FontSize="12.5" Foreground="{StaticResource TextTertiary}"
+                                       Margin="8,16,0,20" />
                         </StackPanel>
                     </ScrollViewer>
                     <Grid Grid.Row="3" Height="42" ColumnDefinitions="Auto,*" Margin="14,0,14,0">
                         <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                            <Button Classes="filter active" Content="All" />
-                            <Button Classes="filter" Content="Actions" />
-                            <Button Classes="filter" Content="Chats" />
-                            <Button Classes="filter" Content="Files" />
-                            <Button Classes="filter" Content="Text" />
+                            <Button Classes="filter" Classes.active="{Binding IsPaletteFilterAll}"
+                                    Click="OnPaletteFilterClicked" Tag="all" Content="All" />
+                            <Button Classes="filter" Classes.active="{Binding IsPaletteFilterActions}"
+                                    Click="OnPaletteFilterClicked" Tag="actions" Content="Actions" />
+                            <Button Classes="filter" Classes.active="{Binding IsPaletteFilterChats}"
+                                    Click="OnPaletteFilterClicked" Tag="chats" Content="Chats" />
+                            <Button Classes="filter" Classes.active="{Binding IsPaletteFilterFiles}"
+                                    Click="OnPaletteFilterClicked" Tag="files" Content="Files" />
+                            <Button Classes="filter" Classes.active="{Binding IsPaletteFilterText}"
+                                    Click="OnPaletteFilterClicked" Tag="text" Content="Text" />
                         </StackPanel>
                     </Grid>
                 </Grid>

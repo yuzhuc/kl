@@ -43,6 +43,9 @@ public sealed class SessionState
 
     /// <summary>Order inside the 置顶 section when 手动排序 is selected.</summary>
     public int PinnedOrder { get; set; }
+
+    /// <summary>Manual order inside its project list after a drag.</summary>
+    public int SortOrder { get; set; }
     public List<StoredMessage> Messages { get; set; } = [];
 }
 

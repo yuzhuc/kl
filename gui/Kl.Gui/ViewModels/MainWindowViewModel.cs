@@ -1390,6 +1390,52 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public bool HasNotifications => Notifications.Count > 0;
     public bool ShowNoNotifications => Notifications.Count == 0;
 
+    private string _paletteFilter = "all";
+
+    public bool IsPaletteFilterAll => _paletteFilter == "all";
+    public bool IsPaletteFilterActions => _paletteFilter == "actions";
+    public bool IsPaletteFilterChats => _paletteFilter == "chats";
+    public bool IsPaletteFilterFiles => _paletteFilter == "files";
+    public bool IsPaletteFilterText => _paletteFilter == "text";
+    public bool ShowPaletteActions => _paletteFilter is "all" or "actions";
+    public bool ShowPaletteChats => _paletteFilter is "all" or "chats";
+    public bool ShowPaletteEmpty => _paletteFilter is "files" or "text"
+        || (_paletteFilter == "chats" && PaletteSessions.Count == 0);
+    public string PaletteEmptyText => _paletteFilter switch
+    {
+        "files" => "没有匹配的文件",
+        "text" => "没有匹配的文本",
+        _ => "没有匹配的聊天"
+    };
+
+    public void SetPaletteFilter(string filter)
+    {
+        var value = filter switch
+        {
+            "actions" => "actions",
+            "chats" => "chats",
+            "files" => "files",
+            "text" => "text",
+            _ => "all"
+        };
+        if (_paletteFilter == value)
+        {
+            return;
+        }
+
+        _paletteFilter = value;
+        OnPropertyChanged(nameof(IsPaletteFilterAll));
+        OnPropertyChanged(nameof(IsPaletteFilterActions));
+        OnPropertyChanged(nameof(IsPaletteFilterChats));
+        OnPropertyChanged(nameof(IsPaletteFilterFiles));
+        OnPropertyChanged(nameof(IsPaletteFilterText));
+        OnPropertyChanged(nameof(ShowPaletteActions));
+        OnPropertyChanged(nameof(ShowPaletteChats));
+        OnPropertyChanged(nameof(ShowPaletteEmpty));
+        OnPropertyChanged(nameof(PaletteEmptyText));
+        RefreshPaletteSessions();
+    }
+
     public void ToggleNotifications()
     {
         if (!IsNotificationsVisible)
@@ -1446,6 +1492,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
             .Take(8)
             .ToList();
         SyncList(PaletteSessions, list);
+        OnPropertyChanged(nameof(ShowPaletteEmpty));
+        OnPropertyChanged(nameof(PaletteEmptyText));
     }
 
     public void ToggleRecent() => IsRecentExpanded = !IsRecentExpanded;
@@ -1575,6 +1623,64 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
 
         RefreshRecentSessions();
+        SaveState();
+    }
+
+    /// <summary>Drag a chat inside its project list (Codex project rows).</summary>
+    public void MoveSessionWithinWorkspace(SessionItemViewModel session, int targetIndex)
+    {
+        var workspace = session.Workspace;
+        var ordered = workspace.Sessions.ToList();
+        var current = ordered.IndexOf(session);
+        if (current < 0)
+        {
+            return;
+        }
+
+        ordered.RemoveAt(current);
+        var index = Math.Clamp(targetIndex, 0, ordered.Count);
+        ordered.Insert(index, session);
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            ordered[i].State.SortOrder = i + 1;
+        }
+
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            var from = workspace.Sessions.IndexOf(ordered[i]);
+            if (from != i)
+            {
+                workspace.Sessions.Move(from, i);
+            }
+        }
+
+        workspace.State.Sessions = ordered.Select(item => item.State).ToList();
+        SaveState();
+    }
+
+    /// <summary>Drag a project folder row to reorder the 项目 section.</summary>
+    public void MoveWorkspace(WorkspaceItemViewModel workspace, int targetIndex)
+    {
+        var ordered = Workspaces.ToList();
+        var current = ordered.IndexOf(workspace);
+        if (current < 0)
+        {
+            return;
+        }
+
+        ordered.RemoveAt(current);
+        var index = Math.Clamp(targetIndex, 0, ordered.Count);
+        ordered.Insert(index, workspace);
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            var from = Workspaces.IndexOf(ordered[i]);
+            if (from != i)
+            {
+                Workspaces.Move(from, i);
+            }
+        }
+
+        _state.Workspaces = ordered.Select(item => item.State).ToList();
         SaveState();
     }
 
