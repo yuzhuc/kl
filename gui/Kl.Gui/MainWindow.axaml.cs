@@ -199,10 +199,8 @@ public partial class MainWindow : Window
         }
 
         var item = _rulerTickTargets[_rulerPreviewIndex].Item;
-        var extent = TranscriptScroller.Extent.Height;
-        var viewport = TranscriptScroller.Viewport.Height;
-        var target = Math.Clamp(_rulerTickTargets[_rulerPreviewIndex].Top - 12, 0, Math.Max(0, extent - viewport));
-        TranscriptScroller.Offset = new Vector(0, target);
+        _selectedRulerTickIndex = _rulerPreviewIndex;
+        ApplyRulerTickVisuals(_rulerWaveIndex);
 
         _jumpHighlightTimer.Stop();
         _jumpHighlightedItem?.SetJumpHighlighted(false);
@@ -235,6 +233,7 @@ public partial class MainWindow : Window
         _rulerTickTargets.Clear();
         _rulerWaveIndex = -1;
         _currentRulerTickIndex = -1;
+        _selectedRulerTickIndex = -1;
         if (height <= 44 || _viewModel.Messages.Count == 0)
         {
             return;
@@ -353,39 +352,36 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (index == _rulerWaveIndex)
-        {
-            return;
-        }
+        _rulerWaveIndex = index;
+        ApplyRulerTickVisuals(index);
+    }
 
+    private void ApplyRulerTickVisuals(int waveIndex)
+    {
         for (var tickIndex = 0; tickIndex < _rulerTicks.Count; tickIndex++)
         {
-            var distance = Math.Abs(tickIndex - index);
+            var distance = waveIndex >= 0 ? Math.Abs(tickIndex - waveIndex) : int.MaxValue;
             var width = distance switch
             {
                 0 => 26,
                 1 => 20,
                 2 => 14,
                 3 => 10,
-                _ => (int)RulerTickBaseWidth
+                _ => tickIndex == _selectedRulerTickIndex
+                    ? 18
+                    : tickIndex == _currentRulerTickIndex
+                        ? 10
+                        : (int)RulerTickBaseWidth
             };
             var tick = _rulerTicks[tickIndex];
             tick.RenderTransform = TransformOperations.Parse($"scaleX({width / RulerTickBaseWidth:0.###})");
-        }
-
-        _rulerWaveIndex = index;
-        ApplyRulerTickBrushes(index);
-    }
-
-    private void ApplyRulerTickBrushes(int waveIndex)
-    {
-        for (var tickIndex = 0; tickIndex < _rulerTicks.Count; tickIndex++)
-        {
-            _rulerTicks[tickIndex].Background = tickIndex == waveIndex
+            tick.Background = tickIndex == waveIndex
                 ? RulerTickActiveBrush
-                : tickIndex == _currentRulerTickIndex
-                    ? RulerTickCurrentBrush
-                    : RulerTickBrush;
+                : tickIndex == _selectedRulerTickIndex
+                    ? RulerTickSelectedBrush
+                    : tickIndex == _currentRulerTickIndex
+                        ? RulerTickCurrentBrush
+                        : RulerTickBrush;
         }
     }
 
@@ -416,23 +412,13 @@ public partial class MainWindow : Window
         }
 
         _currentRulerTickIndex = best;
-        ApplyRulerTickBrushes(_rulerWaveIndex);
+        ApplyRulerTickVisuals(_rulerWaveIndex);
     }
 
     private void ResetRulerWave()
     {
-        if (_rulerWaveIndex < 0)
-        {
-            return;
-        }
-
-        foreach (var tick in _rulerTicks)
-        {
-            tick.RenderTransform = TransformOperations.Parse("scaleX(1)");
-        }
-
         _rulerWaveIndex = -1;
-        ApplyRulerTickBrushes(-1);
+        ApplyRulerTickVisuals(-1);
     }
 
     private void PopulateRulerPreview(ChatItemViewModel item)
@@ -2182,6 +2168,7 @@ public partial class MainWindow : Window
     private double _lastRulerExtent = -1;
     private int _rulerPreviewIndex = -1;
     private int _currentRulerTickIndex = -1;
+    private int _selectedRulerTickIndex = -1;
     private ChatItemViewModel? _jumpHighlightedItem;
     private readonly DispatcherTimer _jumpHighlightTimer = new() { Interval = TimeSpan.FromMilliseconds(1600) };
     private readonly DispatcherTimer _rulerPreviewCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(160) };
@@ -2190,6 +2177,7 @@ public partial class MainWindow : Window
     private static readonly IBrush RulerTickBrush = new SolidColorBrush(Color.Parse("#373739"));
     private static readonly IBrush RulerTickActiveBrush = new SolidColorBrush(Color.Parse("#E2E3E5"));
     private static readonly IBrush RulerTickCurrentBrush = new SolidColorBrush(Color.Parse("#5A5B5E"));
+    private static readonly IBrush RulerTickSelectedBrush = new SolidColorBrush(Color.Parse("#C6C7C9"));
     private CancellationTokenSource? _sidebarAnimationCts;
     private double _sidebarAnimationTarget;
     private bool _sidebarAnimating;

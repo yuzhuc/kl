@@ -1241,10 +1241,11 @@
                                         Margin="10,0,0,0" IsHitTestVisible="False" />
                             </Border>
 
-                            <Border x:Name="RulerPreviewCard" IsVisible="False" Width="322"
+                            <Border x:Name="RulerPreviewCard" Classes="ruler-preview" IsVisible="False" Width="322" MaxHeight="220"
                                     HorizontalAlignment="Left" VerticalAlignment="Top"
                                     Margin="45,0,0,0" Background="#202022" CornerRadius="10"
                                     Padding="12,10" BoxShadow="0 12 32 0 #66000000"
+                                    BorderBrush="Transparent" BorderThickness="1"
                                     IsHitTestVisible="True" ZIndex="30" Opacity="0"
                                     PointerEntered="OnRulerPreviewPointerEntered"
                                     PointerExited="OnRulerPreviewPointerExited">
@@ -1267,7 +1268,8 @@
                                         </Button>
                                     </Grid>
                                     <TextBlock x:Name="RulerPreviewBody" Grid.Row="1" FontSize="12" LineHeight="21"
-                                               Foreground="#A0A1A3" TextWrapping="Wrap" />
+                                               Foreground="#A0A1A3" TextWrapping="Wrap"
+                                               MaxLines="4" TextTrimming="CharacterEllipsis" />
                                     <StackPanel x:Name="RulerPreviewBulletRow" Grid.Row="2" Orientation="Horizontal"
                                                 Spacing="8" Margin="2,0,0,0">
                                         <TextBlock Text="•" FontSize="12" Foreground="#A0A1A3"

@@ -818,6 +818,16 @@
     <Style Selector="StackPanel.chat-user:pointerover StackPanel.chat-user-actions">
         <Setter Property="Opacity" Value="1" />
     </Style>
+    <Style Selector="Border.ruler-preview">
+        <Setter Property="Transitions">
+            <Transitions>
+                <BrushTransition Property="BorderBrush" Duration="0:0:0.12" />
+            </Transitions>
+        </Setter>
+    </Style>
+    <Style Selector="Border.ruler-preview:pointerover">
+        <Setter Property="BorderBrush" Value="#323236" />
+    </Style>
     <Style Selector="Border.chat-user-bubble.jump-highlight">
         <Setter Property="Background" Value="#2E2E33" />
         <Setter Property="BorderBrush" Value="#414148" />
