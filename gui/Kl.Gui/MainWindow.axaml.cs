@@ -2088,7 +2088,7 @@ public partial class MainWindow : Window
     private int _rulerWaveIndex = -1;
     private double _lastRulerExtent = -1;
     private const double RulerTickBaseWidth = 6;
-    private const double RulerHoverRadius = 9;
+    private const double RulerHoverRadius = 12;
     private static readonly IBrush RulerTickBrush = new SolidColorBrush(Color.Parse("#373739"));
     private static readonly IBrush RulerTickActiveBrush = new SolidColorBrush(Color.Parse("#E2E3E5"));
     private CancellationTokenSource? _sidebarAnimationCts;

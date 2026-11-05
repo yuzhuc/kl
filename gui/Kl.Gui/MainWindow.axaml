@@ -1229,7 +1229,7 @@
                             </Button>
 
                             <Border x:Name="RulerStrip" IsVisible="{Binding HasConversation}"
-                                   Width="18" HorizontalAlignment="Left" VerticalAlignment="Stretch"
+                                   Width="28" HorizontalAlignment="Left" VerticalAlignment="Stretch"
                                    Margin="6,0,0,0" Background="Transparent"
                                    PointerMoved="OnRulerPointerMoved"
                                    PointerExited="OnRulerPointerExited"
