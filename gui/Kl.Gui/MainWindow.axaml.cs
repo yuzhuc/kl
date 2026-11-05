@@ -235,6 +235,7 @@ public partial class MainWindow : Window
         _currentRulerTickIndex = -1;
         _selectedRulerTickIndex = -1;
         _rulerSelectionMarker = null;
+        _rulerCurrentMarker = null;
         if (height <= 44 || _viewModel.Messages.Count == 0)
         {
             return;
@@ -286,15 +287,9 @@ public partial class MainWindow : Window
             _rulerTickTargets.Add(turns[index]);
         }
 
-        _rulerSelectionMarker = new Border
-        {
-            Width = 2,
-            Height = 2,
-            Background = RulerSelectionMarkerBrush,
-            IsVisible = false,
-            IsHitTestVisible = false
-        };
-        Canvas.SetLeft(_rulerSelectionMarker, 8);
+        _rulerSelectionMarker = CreateRulerMarker();
+        _rulerCurrentMarker = CreateRulerMarker();
+        RulerTicksPanel.Children.Add(_rulerCurrentMarker);
         RulerTicksPanel.Children.Add(_rulerSelectionMarker);
         UpdateCurrentRulerTick();
     }
@@ -339,6 +334,15 @@ public partial class MainWindow : Window
         return true;
     }
 
+    private static Border CreateRulerMarker() => new()
+    {
+        Width = 2,
+        Height = 2,
+        Background = RulerSelectionMarkerBrush,
+        IsVisible = false,
+        IsHitTestVisible = false
+    };
+
     private int FindNearestTickIndex(double y)
     {
         var best = 0;
@@ -371,39 +375,55 @@ public partial class MainWindow : Window
     {
         for (var tickIndex = 0; tickIndex < _rulerTicks.Count; tickIndex++)
         {
-            var distance = waveIndex >= 0 ? Math.Abs(tickIndex - waveIndex) : int.MaxValue;
-            var width = distance switch
-            {
-                0 => 26,
-                1 => 20,
-                2 => 14,
-                3 => 10,
-                _ => tickIndex == _currentRulerTickIndex && tickIndex != _selectedRulerTickIndex
-                    ? 10
-                    : (int)RulerTickBaseWidth
-            };
+            var width = RulerTickWidth(tickIndex, waveIndex);
             var tick = _rulerTicks[tickIndex];
             tick.RenderTransform = TransformOperations.Parse($"scaleX({width / RulerTickBaseWidth:0.###})");
             tick.Background = tickIndex == waveIndex
                 ? RulerTickActiveBrush
-                : tickIndex == _selectedRulerTickIndex
+                : IsMarkedTick(tickIndex)
                     ? RulerTickSelectedBrush
-                    : tickIndex == _currentRulerTickIndex
-                        ? RulerTickCurrentBrush
-                        : RulerTickBrush;
+                    : RulerTickBrush;
         }
 
-        if (_rulerSelectionMarker is not null)
+        PositionRulerMarker(_rulerSelectionMarker, _selectedRulerTickIndex, waveIndex);
+        var currentMarkerVisible = _currentRulerTickIndex >= 0
+            && _currentRulerTickIndex != _selectedRulerTickIndex;
+        PositionRulerMarker(_rulerCurrentMarker, currentMarkerVisible ? _currentRulerTickIndex : -1, waveIndex);
+    }
+
+    private bool IsMarkedTick(int tickIndex) =>
+        tickIndex == _selectedRulerTickIndex || tickIndex == _currentRulerTickIndex;
+
+    private double RulerTickWidth(int tickIndex, int waveIndex)
+    {
+        var distance = waveIndex >= 0 ? Math.Abs(tickIndex - waveIndex) : int.MaxValue;
+        return distance switch
         {
-            var hasSelection = _selectedRulerTickIndex >= 0
-                && _selectedRulerTickIndex < _rulerTickYs.Count
-                && waveIndex != _selectedRulerTickIndex;
-            _rulerSelectionMarker.IsVisible = hasSelection;
-            if (hasSelection)
-            {
-                Canvas.SetTop(_rulerSelectionMarker, _rulerTickYs[_selectedRulerTickIndex] - 1);
-            }
+            0 => 26,
+            1 => 20,
+            2 => 14,
+            3 => 10,
+            _ => IsMarkedTick(tickIndex) ? 8 : (int)RulerTickBaseWidth
+        };
+    }
+
+    private void PositionRulerMarker(Border? marker, int tickIndex, int waveIndex)
+    {
+        if (marker is null)
+        {
+            return;
         }
+
+        var visible = tickIndex >= 0 && tickIndex < _rulerTickYs.Count && tickIndex < _rulerTicks.Count;
+        marker.IsVisible = visible;
+        if (!visible)
+        {
+            return;
+        }
+
+        Canvas.SetLeft(marker, RulerTickWidth(tickIndex, waveIndex) + 2);
+        Canvas.SetTop(marker, _rulerTickYs[tickIndex] - 1);
+        marker.Background = waveIndex == tickIndex ? RulerSelectionMarkerHoverBrush : RulerSelectionMarkerBrush;
     }
 
     /// <summary>Highlights the tick that matches the current transcript position.</summary>
@@ -2191,6 +2211,7 @@ public partial class MainWindow : Window
     private int _currentRulerTickIndex = -1;
     private int _selectedRulerTickIndex = -1;
     private Border? _rulerSelectionMarker;
+    private Border? _rulerCurrentMarker;
     private ChatItemViewModel? _jumpHighlightedItem;
     private readonly DispatcherTimer _jumpHighlightTimer = new() { Interval = TimeSpan.FromMilliseconds(1600) };
     private readonly DispatcherTimer _rulerPreviewCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(160) };
@@ -2198,9 +2219,10 @@ public partial class MainWindow : Window
     private const double RulerHoverRadius = 6;
     private static readonly IBrush RulerTickBrush = new SolidColorBrush(Color.Parse("#373739"));
     private static readonly IBrush RulerTickActiveBrush = new SolidColorBrush(Color.Parse("#E2E3E5"));
-    private static readonly IBrush RulerTickCurrentBrush = new SolidColorBrush(Color.Parse("#5A5B5E"));
+    private static readonly IBrush RulerTickCurrentBrush = new SolidColorBrush(Color.Parse("#737375"));
     private static readonly IBrush RulerTickSelectedBrush = new SolidColorBrush(Color.Parse("#737375"));
     private static readonly IBrush RulerSelectionMarkerBrush = new SolidColorBrush(Color.Parse("#5E5E61"));
+    private static readonly IBrush RulerSelectionMarkerHoverBrush = new SolidColorBrush(Color.Parse("#B6B7B9"));
     private CancellationTokenSource? _sidebarAnimationCts;
     private double _sidebarAnimationTarget;
     private bool _sidebarAnimating;
