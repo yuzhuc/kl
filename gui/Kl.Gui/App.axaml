@@ -833,6 +833,10 @@
         <Setter Property="BorderBrush" Value="#414148" />
         <Setter Property="BorderThickness" Value="1" />
     </Style>
+    <Style Selector="Button.ruler-preview-icon.active Path">
+        <Setter Property="Fill" Value="#C6C7C9" />
+        <Setter Property="Stroke" Value="#C6C7C9" />
+    </Style>
     <Style Selector="Button.message-action">
             <Setter Property="MinHeight" Value="22" />
             <Setter Property="Padding" Value="5,2" />

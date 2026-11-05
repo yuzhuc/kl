@@ -1259,9 +1259,11 @@
                                         <TextBlock x:Name="RulerPreviewTitle" FontSize="13" FontWeight="SemiBold"
                                                    Foreground="#E3E4E6" TextTrimming="CharacterEllipsis"
                                                    MaxLines="1" />
-                                        <Button Grid.Column="1" Classes="message-action" Width="22" Height="22" Padding="0"
-                                                Cursor="Hand" VerticalAlignment="Center" Margin="8,0,0,0"
-                                                Click="OnRulerPreviewJumpClicked" ToolTip.Tip="跳转到该消息">
+                                        <Button x:Name="RulerPreviewIconButton" Grid.Column="1"
+                                                Classes="message-action ruler-preview-icon"
+                                                Width="22" Height="22" Padding="0" Cursor="Hand"
+                                                VerticalAlignment="Center" Margin="8,0,0,0"
+                                                Click="OnRulerPreviewJumpClicked" ToolTip.Tip="标记该轮对话">
                                             <Path Width="14" Height="14" Data="{StaticResource ChatIcon}"
                                                   Stretch="Uniform" Stroke="#7E7F82" StrokeThickness="1.3"
                                                   StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />

@@ -160,6 +160,7 @@ public partial class MainWindow : Window
         }
 
         _rulerPreviewIndex = index;
+        UpdateRulerPreviewIconState();
         PopulateRulerPreview(_rulerTickTargets[index].Item);
         var cardHeight = Math.Max(96, RulerPreviewCard.Bounds.Height);
         var top = Math.Clamp(pointerY - (cardHeight / 2), 8, Math.Max(8, viewport - cardHeight - 8));
@@ -198,16 +199,15 @@ public partial class MainWindow : Window
             return;
         }
 
-        var item = _rulerTickTargets[_rulerPreviewIndex].Item;
-        _selectedRulerTickIndex = _rulerPreviewIndex;
+        _selectedRulerTickIndex = _selectedRulerTickIndex == _rulerPreviewIndex ? -1 : _rulerPreviewIndex;
         ApplyRulerTickVisuals(_rulerWaveIndex);
+        UpdateRulerPreviewIconState();
+    }
 
-        _jumpHighlightTimer.Stop();
-        _jumpHighlightedItem?.SetJumpHighlighted(false);
-        _jumpHighlightedItem = item;
-        item.SetJumpHighlighted(true);
-        _jumpHighlightTimer.Start();
-        HideRulerPreview();
+    private void UpdateRulerPreviewIconState()
+    {
+        var active = _rulerPreviewIndex >= 0 && _rulerPreviewIndex == _selectedRulerTickIndex;
+        RulerPreviewIconButton.Classes.Set("active", active);
     }
 
     private void HideRulerPreview()
@@ -234,6 +234,7 @@ public partial class MainWindow : Window
         _rulerWaveIndex = -1;
         _currentRulerTickIndex = -1;
         _selectedRulerTickIndex = -1;
+        _rulerSelectionMarker = null;
         if (height <= 44 || _viewModel.Messages.Count == 0)
         {
             return;
@@ -285,6 +286,16 @@ public partial class MainWindow : Window
             _rulerTickTargets.Add(turns[index]);
         }
 
+        _rulerSelectionMarker = new Border
+        {
+            Width = 2,
+            Height = 2,
+            Background = RulerSelectionMarkerBrush,
+            IsVisible = false,
+            IsHitTestVisible = false
+        };
+        Canvas.SetLeft(_rulerSelectionMarker, 8);
+        RulerTicksPanel.Children.Add(_rulerSelectionMarker);
         UpdateCurrentRulerTick();
     }
 
@@ -367,11 +378,9 @@ public partial class MainWindow : Window
                 1 => 20,
                 2 => 14,
                 3 => 10,
-                _ => tickIndex == _selectedRulerTickIndex
-                    ? 18
-                    : tickIndex == _currentRulerTickIndex
-                        ? 10
-                        : (int)RulerTickBaseWidth
+                _ => tickIndex == _currentRulerTickIndex && tickIndex != _selectedRulerTickIndex
+                    ? 10
+                    : (int)RulerTickBaseWidth
             };
             var tick = _rulerTicks[tickIndex];
             tick.RenderTransform = TransformOperations.Parse($"scaleX({width / RulerTickBaseWidth:0.###})");
@@ -382,6 +391,18 @@ public partial class MainWindow : Window
                     : tickIndex == _currentRulerTickIndex
                         ? RulerTickCurrentBrush
                         : RulerTickBrush;
+        }
+
+        if (_rulerSelectionMarker is not null)
+        {
+            var hasSelection = _selectedRulerTickIndex >= 0
+                && _selectedRulerTickIndex < _rulerTickYs.Count
+                && waveIndex != _selectedRulerTickIndex;
+            _rulerSelectionMarker.IsVisible = hasSelection;
+            if (hasSelection)
+            {
+                Canvas.SetTop(_rulerSelectionMarker, _rulerTickYs[_selectedRulerTickIndex] - 1);
+            }
         }
     }
 
@@ -2169,6 +2190,7 @@ public partial class MainWindow : Window
     private int _rulerPreviewIndex = -1;
     private int _currentRulerTickIndex = -1;
     private int _selectedRulerTickIndex = -1;
+    private Border? _rulerSelectionMarker;
     private ChatItemViewModel? _jumpHighlightedItem;
     private readonly DispatcherTimer _jumpHighlightTimer = new() { Interval = TimeSpan.FromMilliseconds(1600) };
     private readonly DispatcherTimer _rulerPreviewCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(160) };
@@ -2177,7 +2199,8 @@ public partial class MainWindow : Window
     private static readonly IBrush RulerTickBrush = new SolidColorBrush(Color.Parse("#373739"));
     private static readonly IBrush RulerTickActiveBrush = new SolidColorBrush(Color.Parse("#E2E3E5"));
     private static readonly IBrush RulerTickCurrentBrush = new SolidColorBrush(Color.Parse("#5A5B5E"));
-    private static readonly IBrush RulerTickSelectedBrush = new SolidColorBrush(Color.Parse("#C6C7C9"));
+    private static readonly IBrush RulerTickSelectedBrush = new SolidColorBrush(Color.Parse("#737375"));
+    private static readonly IBrush RulerSelectionMarkerBrush = new SolidColorBrush(Color.Parse("#5E5E61"));
     private CancellationTokenSource? _sidebarAnimationCts;
     private double _sidebarAnimationTarget;
     private bool _sidebarAnimating;
