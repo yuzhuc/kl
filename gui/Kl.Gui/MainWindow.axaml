@@ -1229,7 +1229,7 @@
                             </Button>
 
                             <Border x:Name="RulerStrip" IsVisible="{Binding HasConversation}"
-                                   Width="28" HorizontalAlignment="Left" VerticalAlignment="Stretch"
+                                   Width="44" HorizontalAlignment="Left" VerticalAlignment="Stretch"
                                    Margin="6,0,0,0" Background="Transparent"
                                    PointerMoved="OnRulerPointerMoved"
                                    PointerExited="OnRulerPointerExited"
@@ -1243,7 +1243,10 @@
                                     HorizontalAlignment="Left" VerticalAlignment="Top"
                                     Margin="45,0,0,0" Background="#202022" CornerRadius="10"
                                     Padding="12,10" BoxShadow="0 12 32 0 #66000000"
-                                    IsHitTestVisible="False" ZIndex="30" Opacity="0">
+                                    IsHitTestVisible="True" ZIndex="30" Opacity="0" Cursor="Hand"
+                                    PointerEntered="OnRulerPreviewPointerEntered"
+                                    PointerExited="OnRulerPreviewPointerExited"
+                                    PointerPressed="OnRulerPreviewPointerPressed">
                                 <Border.Transitions>
                                     <Transitions>
                                         <DoubleTransition Property="Opacity" Duration="0:0:0.12" />
