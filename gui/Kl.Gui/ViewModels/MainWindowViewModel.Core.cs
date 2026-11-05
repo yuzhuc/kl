@@ -639,7 +639,7 @@ public sealed partial class MainWindowViewModel
                     break;
                 case "tool":
                     var tool = ChatItemViewModel.Tool(
-                        string.IsNullOrWhiteSpace(message.ToolName) ? "工具调用" : $"调用 {message.ToolName}",
+                        ChatItemViewModel.ToolHeader(message.ToolName),
                         string.Empty,
                         message.ToolOutput ?? string.Empty,
                         message.ToolSummary ?? string.Empty);
@@ -715,7 +715,7 @@ public sealed partial class MainWindowViewModel
                 _activeReasoning?.Complete("完成", "思考完成");
                 _activeAssistant?.Complete(string.Empty);
                 var tool = ChatItemViewModel.Tool(
-                    string.IsNullOrWhiteSpace(sessionEvent.Name) ? "工具调用" : $"调用 {sessionEvent.Name}",
+                    ChatItemViewModel.ToolHeader(sessionEvent.Name),
                     string.IsNullOrWhiteSpace(sessionEvent.Args) ? "…" : sessionEvent.Args,
                     string.Empty,
                     string.Empty);
@@ -802,7 +802,7 @@ public sealed partial class MainWindowViewModel
         if (item is null)
         {
             item = ChatItemViewModel.Tool(
-                string.IsNullOrWhiteSpace(sessionEvent.Name) ? "工具调用" : $"调用 {sessionEvent.Name}",
+                ChatItemViewModel.ToolHeader(sessionEvent.Name),
                 string.Empty,
                 string.Empty,
                 sessionEvent.Summary);

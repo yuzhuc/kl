@@ -28,7 +28,7 @@
         <SolidColorBrush x:Key="TextTertiary" Color="#727275" />
         <SolidColorBrush x:Key="TextCaption" Color="#6E6E70" />
         <SolidColorBrush x:Key="AccentBlue" Color="#4D9FFF" />
-        <SolidColorBrush x:Key="UserBubbleFill" Color="#2A2A2D" />
+        <SolidColorBrush x:Key="UserBubbleFill" Color="#19191C" />
         <SolidColorBrush x:Key="HoverFill" Color="#17171A" />
         <SolidColorBrush x:Key="ActiveFill" Color="#232326" />
         <SolidColorBrush x:Key="RailIcon" Color="#727274" />
@@ -58,8 +58,8 @@
 
         <FontFamily x:Key="UiFont">Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI</FontFamily>
 
-        <x:Double x:Key="ChatContentFontSize">14</x:Double>
-        <x:Double x:Key="ChatContentLineHeight">22</x:Double>
+        <x:Double x:Key="ChatContentFontSize">13.5</x:Double>
+        <x:Double x:Key="ChatContentLineHeight">21</x:Double>
         <x:Double x:Key="ChatSecondaryFontSize">12.5</x:Double>
         <x:Double x:Key="ChatSecondaryLineHeight">19</x:Double>
 
@@ -100,6 +100,7 @@
         <StreamGeometry x:Key="PanelIcon">M4 4H20V20H4Z M9 4V20</StreamGeometry>
         <StreamGeometry x:Key="SortIcon">M7 4V20 M7 4L4 7 M7 4L10 7 M17 20V4 M17 20L14 17 M17 20L20 17</StreamGeometry>
         <StreamGeometry x:Key="ListIcon">M4 6H7 M10 6H20 M4 12H7 M10 12H20 M4 18H7 M10 18H20</StreamGeometry>
+        <StreamGeometry x:Key="MoonIcon">M15 3A9 9 0 1 0 21 16A7 7 0 0 1 15 3</StreamGeometry>
         <StreamGeometry x:Key="SettingsIcon">M12 2L14 4L17 3L18 6L21 7L20 10L22 12L20 14L21 17L18 18L17 21L14 20L12 22L10 20L7 21L6 18L3 17L4 14L2 12L4 10L3 7L6 6L7 3L10 4Z M12 8A4 4 0 1 0 12 16A4 4 0 1 0 12 8</StreamGeometry>
         <StreamGeometry x:Key="ChevronDownIcon">M7 9L12 14L17 9 M12 6.5 M12 16.5</StreamGeometry>
         <StreamGeometry x:Key="CheckIcon">M5 12.5L10 17.5L19 7 M12 5.25 M12 19.25</StreamGeometry>
@@ -760,8 +761,12 @@
             <Setter Property="Background" Value="#FFFFFF" />
         </Style>
         <Style Selector="Button.send:disabled">
-            <Setter Property="Opacity" Value="0.35" />
-        </Style>
+        <Setter Property="Background" Value="#8A8B8D" />
+        <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="Button.send:disabled Path">
+        <Setter Property="Stroke" Value="#2E2E30" />
+    </Style>
 
         <Style Selector="Button.stop">
             <Setter Property="Width" Value="32" />
@@ -799,7 +804,13 @@
             <Setter Property="Background" Value="#3A3A3E" />
         </Style>
 
-        <Style Selector="Button.message-action">
+        <Style Selector="StackPanel.chat-user-actions">
+        <Setter Property="Opacity" Value="0" />
+    </Style>
+    <Style Selector="StackPanel.chat-user:pointerover StackPanel.chat-user-actions">
+        <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="Button.message-action">
             <Setter Property="MinHeight" Value="22" />
             <Setter Property="Padding" Value="5,2" />
             <Setter Property="CornerRadius" Value="5" />
@@ -822,19 +833,25 @@
         </Style>
 
         <Style Selector="Button.activity-row">
-            <Setter Property="MinHeight" Value="30" />
-            <Setter Property="Padding" Value="4,3" />
-            <Setter Property="CornerRadius" Value="6" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="HorizontalAlignment" Value="Stretch" />
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
-            <Setter Property="FontSize" Value="13" />
-        </Style>
+        <Setter Property="MinHeight" Value="28" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="Foreground" Value="#C6C7C9" />
+        <Setter Property="FontSize" Value="12.5" />
+    </Style>
         <Style Selector="Button.activity-row:pointerover">
-            <Setter Property="Background" Value="{DynamicResource HoverFill}" />
-        </Style>
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.activity-row Path.activity-chevron">
+        <Setter Property="Opacity" Value="0" />
+    </Style>
+    <Style Selector="Button.activity-row:pointerover Path.activity-chevron">
+        <Setter Property="Opacity" Value="1" />
+    </Style>
         <Style Selector="Button.activity-row Path">
             <Setter Property="Stroke" Value="{DynamicResource TextTertiary}" />
             <Setter Property="StrokeThickness" Value="1.35" />
@@ -1024,15 +1041,16 @@
 
         <!-- Inputs -->
         <Style Selector="TextBox.composer">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="4,2" />
-            <Setter Property="CornerRadius" Value="0" />
-            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-            <Setter Property="CaretBrush" Value="{DynamicResource AccentBlue}" />
-            <Setter Property="FontSize" Value="14" />
-            <Setter Property="FocusAdorner" Value="{x:Null}" />
-        </Style>
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="4,2" />
+        <Setter Property="CornerRadius" Value="0" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="PlaceholderForeground" Value="#7E7F82" />
+        <Setter Property="CaretBrush" Value="{DynamicResource AccentBlue}" />
+        <Setter Property="FontSize" Value="13.5" />
+        <Setter Property="FocusAdorner" Value="{x:Null}" />
+    </Style>
         <Style Selector="TextBox.composer /template/ Border#PART_BorderElement">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />

@@ -16,9 +16,9 @@ public sealed class MarkdownTextBlock : UserControl
         AvaloniaProperty.Register<MarkdownTextBlock, double>(nameof(ContentLineHeight), 24);
 
     private static readonly FontFamily CodeFont = new("Cascadia Mono, Consolas");
-    private static readonly IBrush PrimaryBrush = new SolidColorBrush(Color.Parse("#FAFAFA"));
+    private static readonly IBrush PrimaryBrush = new SolidColorBrush(Color.Parse("#E3E4E6"));
     private static readonly IBrush CodeBrush = new SolidColorBrush(Color.Parse("#D7D9DD"));
-    private static readonly IBrush InlineCodeBrush = new SolidColorBrush(Color.Parse("#A7C7FF"));
+    private static readonly IBrush InlineCodeBrush = new SolidColorBrush(Color.Parse("#D7D9DD"));
     private static readonly IBrush CodeBackground = new SolidColorBrush(Color.Parse("#1B1B1C"));
     private readonly StackPanel _root;
     private readonly DispatcherTimer _rebuildTimer = new() { Interval = TimeSpan.FromMilliseconds(40) };

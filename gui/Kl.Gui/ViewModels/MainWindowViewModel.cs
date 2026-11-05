@@ -89,8 +89,16 @@ public sealed class ChatItemViewModel : ObservableObject
     public string TimestampLabel
     {
         get => _timestampLabel;
-        private set => SetProperty(ref _timestampLabel, value);
+        private set
+        {
+            if (SetProperty(ref _timestampLabel, value))
+            {
+                OnPropertyChanged(nameof(HasTimestamp));
+            }
+        }
     }
+
+    public bool HasTimestamp => !string.IsNullOrWhiteSpace(TimestampLabel);
 
     public string Header
     {
@@ -195,6 +203,64 @@ public sealed class ChatItemViewModel : ObservableObject
         }
     }
 
+    public static string FormatTimestamp(DateTimeOffset timestamp)
+    {
+        var local = timestamp.ToLocalTime();
+        if (local.Date == DateTimeOffset.Now.Date)
+        {
+            return local.ToString("HH:mm");
+        }
+
+        string[] weekdays = ["日", "一", "二", "三", "四", "五", "六"];
+        return $"星期{weekdays[(int)local.DayOfWeek]} {local:HH:mm}";
+    }
+
+    /// <summary>Codex-style activity wording for tool calls.</summary>
+    public static string ToolHeader(string? name)
+    {
+        var value = name?.Trim() ?? string.Empty;
+        if (value.Length == 0)
+        {
+            return "工具调用";
+        }
+
+        var lower = value.ToLowerInvariant();
+        if (lower.Contains("shell") || lower.Contains("exec") || lower.Contains("command")
+            || lower.Contains("bash") || lower.Contains("terminal") || lower.Contains("run"))
+        {
+            return "运行了命令";
+        }
+
+        if (lower.Contains("write") || lower.Contains("edit") || lower.Contains("patch")
+            || lower.Contains("apply") || lower.Contains("rename"))
+        {
+            return "编辑了文件";
+        }
+
+        if (lower.Contains("read") || lower.Contains("view") || lower.Contains("open"))
+        {
+            return "读取了文件";
+        }
+
+        if (lower.Contains("glob") || lower.Contains("grep") || lower.Contains("search")
+            || lower.Contains("list") || lower.Contains("find"))
+        {
+            return "搜索了文件";
+        }
+
+        if (lower.Contains("web") || lower.Contains("fetch") || lower.Contains("browse"))
+        {
+            return "搜索了网页";
+        }
+
+        if (lower.Contains("todo") || lower.Contains("plan"))
+        {
+            return "更新了计划";
+        }
+
+        return "调用了工具";
+    }
+
     public static ChatItemViewModel User(
         string text,
         string? apiText = null,
@@ -237,8 +303,18 @@ public sealed class ChatItemViewModel : ObservableObject
         var text = message.Text;
         var detail = message.Detail;
         var summary = message.Summary;
+        var header = message.Header;
         if (kind == ChatItemKind.Tool)
         {
+            if (header.StartsWith("调用 ", StringComparison.Ordinal))
+            {
+                header = ToolHeader(header[3..]);
+            }
+            else if (string.Equals(header, "工具调用", StringComparison.Ordinal))
+            {
+                header = string.Empty;
+            }
+
             if (text.TrimStart().StartsWith('{')
                 && detail.StartsWith("模型请求调用工具", StringComparison.Ordinal))
             {
@@ -251,7 +327,7 @@ public sealed class ChatItemViewModel : ObservableObject
         }
         return new ChatItemViewModel(
             kind,
-            message.Header,
+            header,
             text,
             detail,
             summary,
@@ -307,7 +383,12 @@ public sealed class ChatItemViewModel : ObservableObject
         {
             Header = header;
         }
+
         StatusText = status ?? string.Empty;
+        if (IsAssistant && string.IsNullOrEmpty(TimestampLabel))
+        {
+            TimestampLabel = FormatTimestamp(DateTimeOffset.Now);
+        }
     }
 
     public void Stop(string status = "已停止")
@@ -642,6 +723,9 @@ public sealed class PluginItemViewModel
 
 public sealed partial class MainWindowViewModel : ObservableObject
 {
+    /// <summary>Codex-style transcript ruler ticks down the left edge of the chat column.</summary>
+    public IReadOnlyList<int> RulerTicks { get; } = Enumerable.Range(0, 200).ToArray();
+
     private static readonly string[] SupportedPermissionModes = ["完全访问", "按需确认"];
     private static readonly HashSet<string> SupportedAttachmentExtensions = new(StringComparer.OrdinalIgnoreCase)
     {

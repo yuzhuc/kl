@@ -150,18 +150,20 @@
         </DataTemplate>
 
         <DataTemplate x:Key="ChatItemTemplate" x:DataType="vm:ChatItemViewModel">
-            <Grid Margin="0,0,0,14">
+            <Grid>
                 <!-- user bubble -->
-                <StackPanel IsVisible="{Binding IsUser}" HorizontalAlignment="Right" Spacing="4">
-                    <Border MaxWidth="560" Background="{StaticResource UserBubbleFill}" CornerRadius="16"
-                            Padding="12,9" HorizontalAlignment="Right">
+                <StackPanel Classes="chat-user" IsVisible="{Binding IsUser}" HorizontalAlignment="Right" Spacing="3"
+                            Margin="0,0,0,14">
+                    <Border MaxWidth="560" Background="{StaticResource UserBubbleFill}" CornerRadius="18"
+                            Padding="13,8" HorizontalAlignment="Right">
                         <SelectableTextBlock Text="{Binding Text}"
                                              FontSize="{DynamicResource ChatContentFontSize}"
                                              LineHeight="{DynamicResource ChatContentLineHeight}"
                                              Foreground="{StaticResource TextPrimary}"
                                              TextWrapping="Wrap" />
                     </Border>
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="2">
+                    <StackPanel Classes="chat-user-actions" Orientation="Horizontal"
+                                HorizontalAlignment="Right" Spacing="2">
                         <TextBlock Text="{Binding TimestampLabel}" FontSize="11"
                                    Foreground="{StaticResource TextCaption}" VerticalAlignment="Center"
                                    Margin="0,0,4,0" />
@@ -175,7 +177,7 @@
                 </StackPanel>
 
                 <!-- assistant -->
-                <StackPanel IsVisible="{Binding IsAssistant}" Spacing="6">
+                <StackPanel IsVisible="{Binding IsAssistant}" Spacing="4" Margin="0,0,0,14">
                     <controls:MarkdownTextBlock Text="{Binding Text}"
                                                 ContentFontSize="{DynamicResource ChatContentFontSize}"
                                                 ContentLineHeight="{DynamicResource ChatContentLineHeight}" />
@@ -186,11 +188,22 @@
                         <Button Classes="message-action" Click="OnCopyMessageClicked" ToolTip.Tip="复制回复">
                             <Path Width="13" Height="13" Data="{StaticResource CopyIcon}" Stretch="Uniform" />
                         </Button>
+                        <Button Classes="message-action" ToolTip.Tip="更多">
+                            <Path Width="13" Height="13" Data="{StaticResource MoreIcon}" Stretch="Uniform" />
+                            <Button.Flyout>
+                                <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                                    <MenuItem Header="复制回复" Click="OnCopyMessageClicked" />
+                                </MenuFlyout>
+                            </Button.Flyout>
+                        </Button>
+                        <TextBlock Text="{Binding TimestampLabel}" IsVisible="{Binding HasTimestamp}"
+                                   FontSize="11" Foreground="{StaticResource TextCaption}"
+                                   VerticalAlignment="Center" Margin="4,0,0,0" />
                     </StackPanel>
                 </StackPanel>
 
                 <!-- error -->
-                <Border IsVisible="{Binding IsError}" Background="#2A20221F" BorderBrush="#553B3B2B"
+                <Border IsVisible="{Binding IsError}" Margin="0,0,0,14" Background="#2A20221F" BorderBrush="#553B3B2B"
                         BorderThickness="0.5" CornerRadius="10" Padding="12,9">
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
                         <Path Width="14" Height="14" Data="{StaticResource WarningIcon}" Stretch="Uniform"
@@ -202,59 +215,56 @@
                     </Grid>
                 </Border>
 
-                <!-- reasoning / tool activity -->
-                <StackPanel IsVisible="{Binding IsActivity}" Spacing="6">
+                <!-- reasoning / tool activity (Codex-style inline row) -->
+                <StackPanel IsVisible="{Binding IsActivity}" Spacing="2" Margin="0,0,0,2">
                     <Button Classes="activity-row" Click="OnActivityClicked">
-                        <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
-                            <Path Width="15" Height="15" Data="{StaticResource ThoughtIcon}" Stretch="Uniform"
-                                  IsVisible="{Binding IsReasoning}" VerticalAlignment="Center" />
-                            <Path Width="15" Height="15" Data="{StaticResource ToolIcon}" Stretch="Uniform"
-                                  IsVisible="{Binding IsTool}" VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="1" Text="{Binding Header}" FontSize="13"
-                                       Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <Path Width="14" Height="14" Data="{StaticResource ThoughtIcon}" Stretch="Uniform"
+                                  IsVisible="{Binding IsReasoning}" Stroke="#7E7F82" StrokeThickness="1.35"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                            <Path Width="14" Height="14" Data="{StaticResource ToolIcon}" Stretch="Uniform"
+                                  IsVisible="{Binding IsTool}" Stroke="#7E7F82" StrokeThickness="1.35"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                            <TextBlock Text="{Binding Header}" FontSize="12.5"
+                                       Foreground="#C6C7C9" VerticalAlignment="Center"
                                        TextTrimming="CharacterEllipsis" />
-                            <TextBlock Grid.Column="2" Text="{Binding StatusText}" FontSize="11"
+                            <Path Classes="activity-chevron" Width="11" Height="11"
+                                  Data="{StaticResource ChevronRightIcon}" Stretch="Uniform"
+                                  IsVisible="{Binding ShowCollapsed}" Stroke="#7E7F82" StrokeThickness="1.4"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                  VerticalAlignment="Center" />
+                            <Path Width="11" Height="11" Data="{StaticResource ChevronDownIcon}" Stretch="Uniform"
+                                  IsVisible="{Binding ShowExpanded}" Stroke="#7E7F82" StrokeThickness="1.4"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                  VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding StatusText}" FontSize="11"
                                        Foreground="{StaticResource TextCaption}"
-                                       IsVisible="{Binding HasStatus}" VerticalAlignment="Center" />
-                            <Path Grid.Column="3" Width="11" Height="11" Data="{StaticResource ChevronDownIcon}"
-                                  Stretch="Uniform" IsVisible="{Binding ShowChevronDown}"
-                                  Stroke="{StaticResource TextTertiary}" StrokeThickness="1.35"
-                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                                  VerticalAlignment="Center" />
-                            <Path Grid.Column="3" Width="11" Height="11" Data="{StaticResource ChevronUpIcon}"
-                                  Stretch="Uniform" IsVisible="{Binding ShowChevronUp}"
-                                  Stroke="{StaticResource TextTertiary}" StrokeThickness="1.35"
-                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                                  VerticalAlignment="Center" />
-                        </Grid>
+                                       IsVisible="{Binding IsRunning}" VerticalAlignment="Center"
+                                       Margin="4,0,0,0" />
+                        </StackPanel>
                     </Button>
 
-                    <Border IsVisible="{Binding ShowExpanded}" Background="{StaticResource ElevatedFill}"
-                            BorderBrush="{StaticResource LineStrong}" BorderThickness="0.5"
-                            CornerRadius="10" Padding="12,10">
+                    <Border IsVisible="{Binding ShowExpanded}" Background="#19191C" CornerRadius="10" Padding="12,10">
                         <StackPanel Spacing="8">
                             <SelectableTextBlock Text="{Binding Text}" IsVisible="{Binding IsReasoning}"
                                                  FontSize="12.5" LineHeight="19"
                                                  Foreground="{StaticResource TextSecondary}"
                                                  TextWrapping="Wrap" />
-                            <Border IsVisible="{Binding IsTool}" Background="{StaticResource ToolCardFill}"
-                                    CornerRadius="8" Padding="10,8">
-                                <StackPanel Spacing="6">
-                                    <SelectableTextBlock Text="{Binding Text}" FontSize="12"
-                                                         Foreground="{StaticResource TextCaption}"
-                                                         TextWrapping="Wrap" MaxHeight="120" />
-                                    <ScrollViewer IsVisible="{Binding HasDetail}" MaxHeight="260"
-                                                  VerticalScrollBarVisibility="Auto"
-                                                  HorizontalScrollBarVisibility="Disabled">
-                                        <SelectableTextBlock Text="{Binding Detail}" FontSize="12"
-                                                             Foreground="{StaticResource TextSecondary}"
-                                                             TextWrapping="Wrap" />
-                                    </ScrollViewer>
-                                    <TextBlock Text="{Binding Summary}" FontSize="11"
-                                               Foreground="{StaticResource TextCaption}"
-                                               TextWrapping="Wrap" />
-                                </StackPanel>
-                            </Border>
+                            <StackPanel IsVisible="{Binding IsTool}" Spacing="6">
+                                <SelectableTextBlock Text="{Binding Text}" FontSize="12"
+                                                     Foreground="{StaticResource TextCaption}"
+                                                     TextWrapping="Wrap" MaxHeight="120" />
+                                <ScrollViewer IsVisible="{Binding HasDetail}" MaxHeight="260"
+                                              VerticalScrollBarVisibility="Auto"
+                                              HorizontalScrollBarVisibility="Disabled">
+                                    <SelectableTextBlock Text="{Binding Detail}" FontSize="12"
+                                                         Foreground="{StaticResource TextSecondary}"
+                                                         TextWrapping="Wrap" />
+                                </ScrollViewer>
+                                <TextBlock Text="{Binding Summary}" FontSize="11"
+                                           Foreground="{StaticResource TextCaption}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -998,18 +1008,18 @@
 
                     <!-- ===================== Chat page ===================== -->
                     <Grid IsVisible="{Binding IsChatPage}" RowDefinitions="Auto,*,Auto">
-                        <Border Grid.Row="0" IsVisible="{Binding ShowConversationHeader}" Height="50"
+                        <Border Grid.Row="0" IsVisible="{Binding ShowConversationHeader}" Height="52"
                                 BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="16,0">
                             <Grid ColumnDefinitions="*,Auto">
                                 <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                                     <Path Width="16" Height="16" Data="{StaticResource ChatIcon}" Stretch="Uniform"
                                           Stroke="{StaticResource TextTertiary}" StrokeThickness="1.35"
                                           StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
-                                    <TextBlock Text="{Binding HeaderTitle}" FontSize="14" FontWeight="SemiBold"
+                                    <TextBlock Text="{Binding HeaderTitle}" FontSize="13.5" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextPrimary}"
                                                TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                 </StackPanel>
-                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2"
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6"
                                             VerticalAlignment="Center">
                                     <Button Classes="icon" IsVisible="{Binding HasConversation}" ToolTip.Tip="会话操作">
                                         <Path Width="16" Height="16" Data="{StaticResource MoreIcon}" Stretch="Uniform" />
@@ -1020,8 +1030,11 @@
                                             </MenuFlyout>
                                         </Button.Flyout>
                                     </Button>
+                                    <Button Classes="icon" Click="OnToggleSidebarClicked" ToolTip.Tip="切换侧边栏">
+                                        <Path Width="16" Height="16" Data="{StaticResource PanelIcon}" Stretch="Uniform" />
+                                    </Button>
                                     <Button Classes="icon" Click="OnNewSessionClicked" ToolTip.Tip="新会话">
-                                        <Path Width="16" Height="16" Data="{StaticResource EditIcon}" Stretch="Uniform" />
+                                        <Path Width="16" Height="16" Data="{StaticResource PlusIcon}" Stretch="Uniform" />
                                     </Button>
                                 </StackPanel>
                             </Grid>
@@ -1047,11 +1060,21 @@
                                               ItemTemplate="{StaticResource ChatItemTemplate}"
                                               MaxWidth="752" HorizontalAlignment="Stretch" />
                             </ScrollViewer>
+
+                            <ItemsControl ItemsSource="{Binding RulerTicks}" IsVisible="{Binding HasConversation}"
+                                          IsHitTestVisible="False" Width="6" HorizontalAlignment="Left"
+                                          VerticalAlignment="Stretch" Margin="10,18,0,18">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Width="6" Height="1.5" Background="#373739" Margin="0,0,0,4.5" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </Grid>
 
                         <Grid Grid.Row="2" MaxWidth="752" HorizontalAlignment="Stretch"
                               Margin="16,0,16,12" RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
-                            <Button Grid.Row="0" Classes="chip" Click="OnWorkspacePickerClicked"
+                            <Button Grid.Row="0" Classes="chip" IsVisible="{Binding IsEmpty}" Click="OnWorkspacePickerClicked"
                                     HorizontalAlignment="Left" ToolTip.Tip="{Binding WorkspacePath}">
                                 <StackPanel Orientation="Horizontal" Spacing="7">
                                     <Path Width="14" Height="14" Data="{StaticResource FolderIcon}" Stretch="Uniform"
@@ -1083,8 +1106,8 @@
                                 </Grid>
                             </Border>
 
-                            <Border Grid.Row="2" Background="{StaticResource ComposerFill}" CornerRadius="26"
-                                    Padding="12,10,12,8" BoxShadow="0 10 34 0 #55000000">
+                            <Border Grid.Row="2" Background="{StaticResource ComposerFill}" CornerRadius="18"
+                                    Padding="14,10,14,8" BoxShadow="0 10 34 0 #55000000">
                                 <Grid RowDefinitions="Auto,Auto,Auto">
                                     <ItemsControl Grid.Row="0" ItemsSource="{Binding PendingAttachments}"
                                                   ItemTemplate="{StaticResource AttachmentChipTemplate}"
@@ -1129,15 +1152,19 @@
                                                       StrokeJoin="Round" Fill="Transparent"
                                                       VerticalAlignment="Center" />
                                                 <TextBlock Text="{Binding PermissionMode}" FontSize="12"
-                                                           Foreground="{StaticResource TextSecondary}"
+                                                           Foreground="#C97A4A"
                                                            VerticalAlignment="Center" />
                                             </StackPanel>
                                         </Button>
                                         <Button Grid.Column="2" Classes="chip" Click="OnOpenModelSettingsClicked"
                                                 ToolTip.Tip="模型与连接">
-                                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <Path Width="13" Height="13" Data="{StaticResource MoonIcon}" Stretch="Uniform"
+                                                      Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3"
+                                                      StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                                      VerticalAlignment="Center" />
                                                 <TextBlock Text="{Binding ProviderModelLabel}" FontSize="12.5"
-                                                           Foreground="{StaticResource TextSecondary}"
+                                                           Foreground="{StaticResource TextPrimary}"
                                                            VerticalAlignment="Center" />
                                                 <Path Width="9" Height="9" Data="{StaticResource ChevronDownIcon}"
                                                       Stretch="Uniform" Stroke="{StaticResource TextTertiary}"
