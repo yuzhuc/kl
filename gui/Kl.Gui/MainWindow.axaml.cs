@@ -100,8 +100,14 @@ public partial class MainWindow : Window
     private void OnRulerPointerMoved(object? sender, PointerEventArgs eventArgs)
     {
         var position = eventArgs.GetPosition(RulerTicksPanel);
-        ApplyRulerWave(position.Y);
-        UpdateRulerPreview(position.Y);
+        if (_rulerTickYs.Count == 0 || !TryFindHoveredTick(position.Y, out var index))
+        {
+            HideRulerPreview();
+            return;
+        }
+
+        ApplyRulerWave(index);
+        UpdateRulerPreview(position.Y, index);
     }
 
     private void OnRulerPointerExited(object? sender, PointerEventArgs eventArgs) => HideRulerPreview();
@@ -113,7 +119,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        var index = FindNearestTickIndex(eventArgs.GetPosition(RulerTicksPanel).Y);
+        if (!TryFindHoveredTick(eventArgs.GetPosition(RulerTicksPanel).Y, out var index))
+        {
+            return;
+        }
+
         var extent = TranscriptScroller.Extent.Height;
         var viewport = TranscriptScroller.Viewport.Height;
         var target = Math.Clamp(_rulerTickTargets[index].Top - 12, 0, Math.Max(0, extent - viewport));
@@ -121,9 +131,9 @@ public partial class MainWindow : Window
         HideRulerPreview();
     }
 
-    private void UpdateRulerPreview(double pointerY)
+    private void UpdateRulerPreview(double pointerY, int index)
     {
-        if (!_viewModel.HasConversation || _rulerTickTargets.Count == 0)
+        if (!_viewModel.HasConversation || index < 0 || index >= _rulerTickTargets.Count)
         {
             HideRulerPreview();
             return;
@@ -137,7 +147,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        var index = FindNearestTickIndex(pointerY);
         PopulateRulerPreview(_rulerTickTargets[index].Item);
         var cardHeight = Math.Max(96, RulerPreviewCard.Bounds.Height);
         var top = Math.Clamp(pointerY - (cardHeight / 2), 8, Math.Max(8, viewport - cardHeight - 8));
@@ -251,6 +260,24 @@ public partial class MainWindow : Window
         return tick;
     }
 
+    private bool TryFindHoveredTick(double pointerY, out int index)
+    {
+        index = -1;
+        if (_rulerTickYs.Count == 0)
+        {
+            return false;
+        }
+
+        var nearest = FindNearestTickIndex(pointerY);
+        if (Math.Abs(_rulerTickYs[nearest] - pointerY) > RulerHoverRadius)
+        {
+            return false;
+        }
+
+        index = nearest;
+        return true;
+    }
+
     private int FindNearestTickIndex(double y)
     {
         var best = 0;
@@ -268,14 +295,13 @@ public partial class MainWindow : Window
         return best;
     }
 
-    private void ApplyRulerWave(double pointerY)
+    private void ApplyRulerWave(int index)
     {
-        if (_rulerTicks.Count == 0)
+        if (_rulerTicks.Count == 0 || index < 0 || index >= _rulerTicks.Count)
         {
             return;
         }
 
-        var index = FindNearestTickIndex(pointerY);
         if (index == _rulerWaveIndex)
         {
             return;
@@ -2062,6 +2088,7 @@ public partial class MainWindow : Window
     private int _rulerWaveIndex = -1;
     private double _lastRulerExtent = -1;
     private const double RulerTickBaseWidth = 6;
+    private const double RulerHoverRadius = 9;
     private static readonly IBrush RulerTickBrush = new SolidColorBrush(Color.Parse("#373739"));
     private static readonly IBrush RulerTickActiveBrush = new SolidColorBrush(Color.Parse("#E2E3E5"));
     private CancellationTokenSource? _sidebarAnimationCts;
