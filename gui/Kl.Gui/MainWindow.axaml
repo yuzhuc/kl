@@ -215,49 +215,62 @@
                     </Grid>
                 </Border>
 
-                <!-- reasoning / tool activity (Codex-style inline row) -->
-                <StackPanel IsVisible="{Binding IsActivity}" Spacing="2" Margin="0,0,0,2">
-                    <Button Classes="activity-row" Click="OnActivityClicked">
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <!-- reasoning / tool activity (Codex-style inline row + expanded shell panel) -->
+                <StackPanel IsVisible="{Binding IsActivity}" Spacing="4" Margin="0,0,0,2">
+                    <Button Classes="activity-row" Classes.expanded="{Binding ShowExpanded}" Click="OnActivityClicked">
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
                             <Path Width="14" Height="14" Data="{StaticResource ThoughtIcon}" Stretch="Uniform"
                                   IsVisible="{Binding IsReasoning}" Stroke="#7E7F82" StrokeThickness="1.35"
-                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                  VerticalAlignment="Center" />
                             <Path Width="14" Height="14" Data="{StaticResource ToolIcon}" Stretch="Uniform"
                                   IsVisible="{Binding IsTool}" Stroke="#7E7F82" StrokeThickness="1.35"
-                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
-                            <TextBlock Text="{Binding Header}" FontSize="12.5"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                  VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding Header}" FontSize="12.5"
                                        Foreground="#C6C7C9" VerticalAlignment="Center"
                                        TextTrimming="CharacterEllipsis" />
-                            <Path Classes="activity-chevron" Width="11" Height="11"
-                                  Data="{StaticResource ChevronRightIcon}" Stretch="Uniform"
-                                  IsVisible="{Binding ShowCollapsed}" Stroke="#7E7F82" StrokeThickness="1.4"
-                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                                  VerticalAlignment="Center" />
-                            <Path Width="11" Height="11" Data="{StaticResource ChevronDownIcon}" Stretch="Uniform"
-                                  IsVisible="{Binding ShowExpanded}" Stroke="#7E7F82" StrokeThickness="1.4"
-                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                                  VerticalAlignment="Center" />
-                            <TextBlock Text="{Binding StatusText}" FontSize="11"
-                                       Foreground="{StaticResource TextCaption}"
-                                       IsVisible="{Binding IsRunning}" VerticalAlignment="Center"
-                                       Margin="4,0,0,0" />
-                        </StackPanel>
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6"
+                                        VerticalAlignment="Center">
+                                <TextBlock Text="{Binding StatusText}" FontSize="11"
+                                           Foreground="{StaticResource TextCaption}"
+                                           IsVisible="{Binding IsRunning}" VerticalAlignment="Center" />
+                                <Path Classes="activity-chevron" Width="11" Height="11"
+                                      Data="{StaticResource ChevronRightIcon}" Stretch="Uniform"
+                                      IsVisible="{Binding ShowCollapsed}" Stroke="#7E7F82" StrokeThickness="1.4"
+                                      StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                      VerticalAlignment="Center" />
+                                <Path Width="11" Height="11" Data="{StaticResource ChevronDownIcon}"
+                                      Stretch="Uniform" IsVisible="{Binding ShowExpanded}"
+                                      Stroke="#7E7F82" StrokeThickness="1.4"
+                                      StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                      VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Grid>
                     </Button>
 
-                    <Border IsVisible="{Binding ShowExpanded}" Background="#19191C" CornerRadius="10" Padding="12,10">
+                    <Border IsVisible="{Binding ShowExpanded}" Background="#202022"
+                            BorderBrush="#2E2E31" BorderThickness="1"
+                            CornerRadius="10" Padding="12,10">
                         <StackPanel Spacing="8">
+                            <TextBlock Text="{Binding ToolLabel}" FontSize="11.5"
+                                       FontFamily="Cascadia Mono, Consolas"
+                                       Foreground="{StaticResource TextTertiary}"
+                                       IsVisible="{Binding IsTool}" />
                             <SelectableTextBlock Text="{Binding Text}" IsVisible="{Binding IsReasoning}"
                                                  FontSize="12.5" LineHeight="19"
                                                  Foreground="{StaticResource TextSecondary}"
                                                  TextWrapping="Wrap" />
-                            <StackPanel IsVisible="{Binding IsTool}" Spacing="6">
-                                <SelectableTextBlock Text="{Binding Text}" FontSize="12"
-                                                     Foreground="{StaticResource TextCaption}"
-                                                     TextWrapping="Wrap" MaxHeight="120" />
+                            <StackPanel IsVisible="{Binding IsTool}" Spacing="7">
+                                <SelectableTextBlock Text="{Binding Text}"
+                                                     FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                                                     Foreground="{StaticResource TextSecondary}"
+                                                     TextWrapping="Wrap" MaxHeight="140" />
                                 <ScrollViewer IsVisible="{Binding HasDetail}" MaxHeight="260"
                                               VerticalScrollBarVisibility="Auto"
                                               HorizontalScrollBarVisibility="Disabled">
-                                    <SelectableTextBlock Text="{Binding Detail}" FontSize="12"
+                                    <SelectableTextBlock Text="{Binding Detail}"
+                                                         FontFamily="Cascadia Mono, Consolas" FontSize="12"
                                                          Foreground="{StaticResource TextSecondary}"
                                                          TextWrapping="Wrap" />
                                 </ScrollViewer>
@@ -265,10 +278,26 @@
                                            Foreground="{StaticResource TextCaption}"
                                            TextWrapping="Wrap" />
                             </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="5" HorizontalAlignment="Right"
+                                        IsVisible="{Binding HasStatus}">
+                                <Path Width="12" Height="12" Data="{StaticResource CheckIcon}" Stretch="Uniform"
+                                      IsVisible="{Binding !HasFailure}" Stroke="#7FBF8F" StrokeThickness="1.6"
+                                      StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                      VerticalAlignment="Center" />
+                                <Path Width="12" Height="12" Data="{StaticResource CloseIcon}" Stretch="Uniform"
+                                      IsVisible="{Binding HasFailure}" Stroke="#E5837C" StrokeThickness="1.6"
+                                      StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                      VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding StatusText}" FontSize="11.5"
+                                           Foreground="#7FBF8F" IsVisible="{Binding !HasFailure}"
+                                           VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding StatusText}" FontSize="11.5"
+                                           Foreground="#E5837C" IsVisible="{Binding HasFailure}"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
                         </StackPanel>
                     </Border>
-                </StackPanel>
-            </Grid>
+                </StackPanel>            </Grid>
         </DataTemplate>
     </Window.Resources>
 
@@ -1060,6 +1089,12 @@
                                               ItemTemplate="{StaticResource ChatItemTemplate}"
                                               MaxWidth="752" HorizontalAlignment="Stretch" />
                             </ScrollViewer>
+
+                            <Button x:Name="JumpToBottomButton" Classes="jump-bottom" IsVisible="False"
+                                    HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                                    Margin="0,0,0,14" Click="OnJumpToBottomClicked" ToolTip.Tip="跳到底部">
+                                <Path Width="14" Height="14" Data="{StaticResource ChevronDownIcon}" Stretch="Uniform" />
+                            </Button>
 
                             <ItemsControl ItemsSource="{Binding RulerTicks}" IsVisible="{Binding HasConversation}"
                                           IsHitTestVisible="False" Width="6" HorizontalAlignment="Left"

@@ -639,10 +639,11 @@ public sealed partial class MainWindowViewModel
                     break;
                 case "tool":
                     var tool = ChatItemViewModel.Tool(
-                        ChatItemViewModel.ToolHeader(message.ToolName),
+                        ChatItemViewModel.ToolHeader(message.ToolName, message.ToolSummary),
                         string.Empty,
                         message.ToolOutput ?? string.Empty,
-                        message.ToolSummary ?? string.Empty);
+                        message.ToolSummary ?? string.Empty,
+                        ChatItemViewModel.ToolKindLabel(message.ToolName));
                     if (!string.IsNullOrWhiteSpace(message.ToolDiff))
                     {
                         tool.AppendDetail("\n" + message.ToolDiff);
@@ -715,10 +716,11 @@ public sealed partial class MainWindowViewModel
                 _activeReasoning?.Complete("完成", "思考完成");
                 _activeAssistant?.Complete(string.Empty);
                 var tool = ChatItemViewModel.Tool(
-                    ChatItemViewModel.ToolHeader(sessionEvent.Name),
+                    ChatItemViewModel.ToolHeader(sessionEvent.Name, sessionEvent.Args),
                     string.IsNullOrWhiteSpace(sessionEvent.Args) ? "…" : sessionEvent.Args,
                     string.Empty,
-                    string.Empty);
+                    string.Empty,
+                    ChatItemViewModel.ToolKindLabel(sessionEvent.Name));
                 tool.Start("运行中");
                 _activeToolItem = tool;
                 Messages.Add(tool);
@@ -805,7 +807,8 @@ public sealed partial class MainWindowViewModel
                 ChatItemViewModel.ToolHeader(sessionEvent.Name),
                 string.Empty,
                 string.Empty,
-                sessionEvent.Summary);
+                sessionEvent.Summary,
+                ChatItemViewModel.ToolKindLabel(sessionEvent.Name));
             item.Start("运行中");
             Messages.Add(item);
         }

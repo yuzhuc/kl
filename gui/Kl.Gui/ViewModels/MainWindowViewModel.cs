@@ -51,6 +51,7 @@ public sealed class ChatItemViewModel : ObservableObject
     private string _summary;
     private string _statusText;
     private string _timestampLabel;
+    private string _toolLabel;
     private bool _isRunning;
     private bool _isExpanded;
 
@@ -61,7 +62,8 @@ public sealed class ChatItemViewModel : ObservableObject
         string detail = "",
         string summary = "",
         string status = "",
-        string timestampLabel = "")
+        string timestampLabel = "",
+        string toolLabel = "")
     {
         Kind = kind;
         _header = header;
@@ -70,6 +72,7 @@ public sealed class ChatItemViewModel : ObservableObject
         _summary = summary;
         _statusText = status;
         _timestampLabel = timestampLabel;
+        _toolLabel = toolLabel;
     }
 
     public ChatItemKind Kind { get; }
@@ -152,9 +155,19 @@ public sealed class ChatItemViewModel : ObservableObject
             if (SetProperty(ref _statusText, value))
             {
                 OnPropertyChanged(nameof(HasStatus));
+                OnPropertyChanged(nameof(HasFailure));
             }
         }
     }
+
+    public string ToolLabel
+    {
+        get => _toolLabel;
+        private set => SetProperty(ref _toolLabel, value);
+    }
+
+    public bool HasFailure => IsActivity
+        && (StatusText.Contains("失败") || StatusText.Contains("错误") || StatusText.Contains("停止"));
 
     public bool IsRunning
     {
@@ -215,8 +228,65 @@ public sealed class ChatItemViewModel : ObservableObject
         return $"星期{weekdays[(int)local.DayOfWeek]} {local:HH:mm}";
     }
 
-    /// <summary>Codex-style activity wording for tool calls.</summary>
-    public static string ToolHeader(string? name)
+    /// <summary>Short Codex-style label shown above an expanded tool panel (Shell/Read/Search/...).</summary>
+    public static string ToolKindLabel(string? name)
+    {
+        var lower = name?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (lower.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        if (lower.Contains("shell") || lower.Contains("exec") || lower.Contains("command")
+            || lower.Contains("bash") || lower.Contains("terminal") || lower.Contains("run"))
+        {
+            return "Shell";
+        }
+
+        if (lower.Contains("image") || lower.Contains("screenshot") || lower.Contains("photo"))
+        {
+            return "Image";
+        }
+
+        if (lower.Contains("write") || lower.Contains("edit") || lower.Contains("patch") || lower.Contains("apply"))
+        {
+            return "Edit";
+        }
+
+        if (lower.Contains("read") || lower.Contains("view") || lower.Contains("open"))
+        {
+            return "Read";
+        }
+
+        if (lower.Contains("glob") || lower.Contains("grep") || lower.Contains("search")
+            || lower.Contains("list") || lower.Contains("find"))
+        {
+            return "Search";
+        }
+
+        if (lower.Contains("web") || lower.Contains("fetch") || lower.Contains("browse"))
+        {
+            return "Web";
+        }
+
+        return "Tool";
+    }
+
+    private static string Compact(string? detail)
+    {
+        var value = detail?.Trim() ?? string.Empty;
+        var newline = value.IndexOf('\n');
+        if (newline >= 0)
+        {
+            value = value[..newline];
+        }
+
+        value = string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return value.Length <= 110 ? value : value[..110] + "…";
+    }
+
+    /// <summary>Codex-style activity wording for tool calls; shell rows include the command preview.</summary>
+    public static string ToolHeader(string? name, string? detail = null)
     {
         var value = name?.Trim() ?? string.Empty;
         if (value.Length == 0)
@@ -225,40 +295,46 @@ public sealed class ChatItemViewModel : ObservableObject
         }
 
         var lower = value.ToLowerInvariant();
+        if (lower.Contains("image") || lower.Contains("screenshot") || lower.Contains("photo"))
+        {
+            return "已查看图像";
+        }
+
         if (lower.Contains("shell") || lower.Contains("exec") || lower.Contains("command")
             || lower.Contains("bash") || lower.Contains("terminal") || lower.Contains("run"))
         {
-            return "运行了命令";
+            var preview = Compact(detail);
+            return preview.Length > 0 ? "已运行 " + preview : "运行了命令";
         }
 
         if (lower.Contains("write") || lower.Contains("edit") || lower.Contains("patch")
             || lower.Contains("apply") || lower.Contains("rename"))
         {
-            return "编辑了文件";
+            return "已编辑文件";
         }
 
         if (lower.Contains("read") || lower.Contains("view") || lower.Contains("open"))
         {
-            return "读取了文件";
+            return "已读取文件";
         }
 
         if (lower.Contains("glob") || lower.Contains("grep") || lower.Contains("search")
             || lower.Contains("list") || lower.Contains("find"))
         {
-            return "搜索了文件";
+            return "已搜索文件";
         }
 
         if (lower.Contains("web") || lower.Contains("fetch") || lower.Contains("browse"))
         {
-            return "搜索了网页";
+            return "已搜索网页";
         }
 
         if (lower.Contains("todo") || lower.Contains("plan"))
         {
-            return "更新了计划";
+            return "已更新计划";
         }
 
-        return "调用了工具";
+        return "已调用工具";
     }
 
     public static ChatItemViewModel User(
@@ -284,8 +360,9 @@ public sealed class ChatItemViewModel : ObservableObject
         string header,
         string command,
         string output,
-        string summary) =>
-        new(ChatItemKind.Tool, header, command, output, summary);
+        string summary,
+        string toolLabel = "") =>
+        new(ChatItemKind.Tool, header, command, output, summary, toolLabel: toolLabel);
 
     public static ChatItemViewModel Error(string text) =>
         new(ChatItemKind.Error, "请求失败", text, status: "错误");
@@ -304,11 +381,14 @@ public sealed class ChatItemViewModel : ObservableObject
         var detail = message.Detail;
         var summary = message.Summary;
         var header = message.Header;
+        var toolLabel = string.Empty;
         if (kind == ChatItemKind.Tool)
         {
             if (header.StartsWith("调用 ", StringComparison.Ordinal))
             {
-                header = ToolHeader(header[3..]);
+                var legacyName = header[3..];
+                header = ToolHeader(legacyName, text);
+                toolLabel = ToolKindLabel(legacyName);
             }
             else if (string.Equals(header, "工具调用", StringComparison.Ordinal))
             {
@@ -332,7 +412,8 @@ public sealed class ChatItemViewModel : ObservableObject
             detail,
             summary,
             message.Status,
-            message.Timestamp);
+            message.Timestamp,
+            toolLabel);
     }
 
     public StoredMessage ToStored() => new()

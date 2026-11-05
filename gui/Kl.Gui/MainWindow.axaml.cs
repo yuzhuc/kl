@@ -90,6 +90,9 @@ public partial class MainWindow : Window
         ConfigureRailPointerNavigation();
     }
 
+    private void OnJumpToBottomClicked(object? sender, RoutedEventArgs eventArgs) =>
+        TranscriptScroller.ScrollToEnd();
+
     private void OnWindowPointerWheelChanged(object? sender, PointerWheelEventArgs eventArgs) =>
         HidePreviewCards();
 
@@ -1995,6 +1998,7 @@ public partial class MainWindow : Window
             - TranscriptScroller.Viewport.Height
             - TranscriptScroller.Offset.Y;
         _transcriptPinnedToBottom = distanceFromBottom <= 32;
+        JumpToBottomButton.IsVisible = _viewModel.HasConversation && distanceFromBottom > 32;
     }
 
     private void ApplyContentFontResources()
