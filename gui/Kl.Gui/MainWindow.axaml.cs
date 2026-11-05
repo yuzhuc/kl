@@ -10,6 +10,7 @@ using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using Avalonia.Media;
+using Avalonia.Media.Transformation;
 using Avalonia.Platform.Storage;
 using Avalonia.Styling;
 using Avalonia.Threading;
@@ -64,6 +65,7 @@ public partial class MainWindow : Window
             ? Math.Clamp(_viewModel.SidebarWidth, SidebarMinWidth, SidebarMaxWidth)
             : 0;
         _viewModel.Messages.CollectionChanged += OnMessagesChanged;
+        RulerStrip.SizeChanged += (_, _) => BuildRulerTicks();
         TranscriptScroller.ScrollChanged += OnTranscriptScrollChanged;
         foreach (var item in _viewModel.Messages)
         {
@@ -95,8 +97,12 @@ public partial class MainWindow : Window
 
     // ---- Codex-style interactive ruler: hover previews a turn, click jumps to it ----
 
-    private void OnRulerPointerMoved(object? sender, PointerEventArgs eventArgs) =>
-        UpdateRulerPreview(eventArgs.GetPosition(RulerStrip));
+    private void OnRulerPointerMoved(object? sender, PointerEventArgs eventArgs)
+    {
+        var position = eventArgs.GetPosition(RulerStrip);
+        ApplyRulerWave(position.Y);
+        UpdateRulerPreview(position);
+    }
 
     private void OnRulerPointerExited(object? sender, PointerEventArgs eventArgs) => HideRulerPreview();
 
@@ -140,10 +146,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        RulerHoverTick.IsVisible = true;
-        RulerHoverTick.Margin = new Thickness(10,
-            Math.Clamp(position.Y, 18, Math.Max(18, RulerStrip.Bounds.Height - 20)), 0, 0);
-
         var extent = TranscriptScroller.Extent.Height;
         var viewport = TranscriptScroller.Viewport.Height;
         if (extent <= viewport + 1)
@@ -155,16 +157,115 @@ public partial class MainWindow : Window
         var anchor = FindNearestTurnAnchor(anchors,
             Math.Clamp(position.Y / RulerStrip.Bounds.Height, 0, 1) * (extent - viewport));
         PopulateRulerPreview(anchor.Item);
-        RulerPreviewCard.IsVisible = true;
         var cardHeight = Math.Max(96, RulerPreviewCard.Bounds.Height);
         var top = Math.Clamp(position.Y - (cardHeight / 2), 8, Math.Max(8, viewport - cardHeight - 8));
-        RulerPreviewCard.Margin = new Thickness(45, top, 0, 0);
+        if (!RulerPreviewCard.IsVisible)
+        {
+            RulerPreviewCard.Opacity = 0;
+            RulerPreviewCard.RenderTransform = TransformOperations.Parse($"translate(6px,{top:0.#}px)");
+            RulerPreviewCard.IsVisible = true;
+            Dispatcher.UIThread.Post(() =>
+                RulerPreviewCard.RenderTransform = TransformOperations.Parse($"translate(0px,{top:0.#}px)"),
+                DispatcherPriority.Render);
+        }
+        else
+        {
+            RulerPreviewCard.RenderTransform = TransformOperations.Parse($"translate(0px,{top:0.#}px)");
+        }
+
+        RulerPreviewCard.Opacity = 1;
     }
 
     private void HideRulerPreview()
     {
         RulerPreviewCard.IsVisible = false;
-        RulerHoverTick.IsVisible = false;
+        RulerPreviewCard.Opacity = 0;
+        ResetRulerWave();
+    }
+
+    private void BuildRulerTicks()
+    {
+        var height = RulerStrip.Bounds.Height;
+        var count = height <= 0 ? 0 : Math.Max(0, (int)((height - 36) / RulerTickPitch) + 1);
+        if (count == _rulerTicks.Count)
+        {
+            return;
+        }
+
+        RulerTicksPanel.Children.Clear();
+        _rulerTicks.Clear();
+        _rulerWaveIndex = -1;
+        for (var index = 0; index < count; index++)
+        {
+            var tick = new Border
+            {
+                Width = RulerTickBaseWidth,
+                Height = 2,
+                Background = RulerTickBrush,
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left,
+                RenderTransformOrigin = new RelativePoint(0, 0.5, RelativeUnit.Relative)
+            };
+            tick.Transitions = new Transitions
+            {
+                new TransformOperationsTransition
+                {
+                    Property = RenderTransformProperty,
+                    Duration = TimeSpan.FromMilliseconds(110),
+                    Easing = new CubicEaseOut()
+                }
+            };
+            _rulerTicks.Add(tick);
+            RulerTicksPanel.Children.Add(tick);
+        }
+    }
+
+    private void ApplyRulerWave(double pointerY)
+    {
+        if (_rulerTicks.Count == 0)
+        {
+            return;
+        }
+
+        var index = (int)Math.Round((pointerY - 18) / RulerTickPitch);
+        index = Math.Clamp(index, 0, _rulerTicks.Count - 1);
+        if (index == _rulerWaveIndex)
+        {
+            return;
+        }
+
+        for (var tickIndex = 0; tickIndex < _rulerTicks.Count; tickIndex++)
+        {
+            var distance = Math.Abs(tickIndex - index);
+            var width = distance switch
+            {
+                0 => 26,
+                1 => 20,
+                2 => 14,
+                3 => 10,
+                _ => (int)RulerTickBaseWidth
+            };
+            var tick = _rulerTicks[tickIndex];
+            tick.RenderTransform = TransformOperations.Parse($"scaleX({width / RulerTickBaseWidth:0.###})");
+            tick.Background = distance == 0 ? RulerTickActiveBrush : RulerTickBrush;
+        }
+
+        _rulerWaveIndex = index;
+    }
+
+    private void ResetRulerWave()
+    {
+        if (_rulerWaveIndex < 0)
+        {
+            return;
+        }
+
+        foreach (var tick in _rulerTicks)
+        {
+            tick.RenderTransform = TransformOperations.Parse("scaleX(1)");
+            tick.Background = RulerTickBrush;
+        }
+
+        _rulerWaveIndex = -1;
     }
 
     private List<(ChatItemViewModel Item, double Top)> GetTurnAnchors()
@@ -1941,6 +2042,12 @@ public partial class MainWindow : Window
 
     private bool _sidebarDragging;
     private bool _transcriptPinnedToBottom = true;
+    private readonly List<Border> _rulerTicks = new();
+    private int _rulerWaveIndex = -1;
+    private const double RulerTickPitch = 10;
+    private const double RulerTickBaseWidth = 6;
+    private static readonly IBrush RulerTickBrush = new SolidColorBrush(Color.Parse("#373739"));
+    private static readonly IBrush RulerTickActiveBrush = new SolidColorBrush(Color.Parse("#E2E3E5"));
     private CancellationTokenSource? _sidebarAnimationCts;
     private double _sidebarAnimationTarget;
     private bool _sidebarAnimating;
@@ -2210,7 +2317,11 @@ public partial class MainWindow : Window
             - TranscriptScroller.Viewport.Height
             - TranscriptScroller.Offset.Y;
         _transcriptPinnedToBottom = distanceFromBottom <= 32;
-        JumpToBottomButton.IsVisible = _viewModel.HasConversation && distanceFromBottom > 32;
+        var showJump = _viewModel.HasConversation && distanceFromBottom > 32;
+        JumpToBottomButton.IsVisible = true;
+        JumpToBottomButton.IsHitTestVisible = showJump;
+        JumpToBottomButton.Opacity = showJump ? 1 : 0;
+        JumpToBottomButton.RenderTransform = TransformOperations.Parse(showJump ? "translate(0px,0px)" : "translate(0px,6px)");
     }
 
     private void ApplyContentFontResources()

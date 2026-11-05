@@ -1234,27 +1234,22 @@
                                    PointerMoved="OnRulerPointerMoved"
                                    PointerExited="OnRulerPointerExited"
                                    PointerPressed="OnRulerPointerPressed">
-                                <Grid>
-                                    <ItemsControl ItemsSource="{Binding RulerTicks}" IsHitTestVisible="False"
-                                                  Width="6" HorizontalAlignment="Left"
-                                                  VerticalAlignment="Stretch" Margin="10,18,0,18">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Border Width="6" Height="1.5" Background="#373739" Margin="0,0,0,4.5" />
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                    <Border x:Name="RulerHoverTick" Width="6" Height="2" Background="#E3E4E6"
+                                <StackPanel x:Name="RulerTicksPanel" Width="6"
                                             HorizontalAlignment="Left" VerticalAlignment="Top"
-                                            Margin="10,0,0,0" IsVisible="False" IsHitTestVisible="False" />
-                                </Grid>
+                                            Margin="10,18,0,0" Spacing="8" IsHitTestVisible="False" />
                             </Border>
 
                             <Border x:Name="RulerPreviewCard" IsVisible="False" Width="322"
                                     HorizontalAlignment="Left" VerticalAlignment="Top"
-                                    Margin="45,120,0,0" Background="#202022" CornerRadius="10"
+                                    Margin="45,0,0,0" Background="#202022" CornerRadius="10"
                                     Padding="12,10" BoxShadow="0 12 32 0 #66000000"
-                                    IsHitTestVisible="False" ZIndex="30">
+                                    IsHitTestVisible="False" ZIndex="30" Opacity="0">
+                                <Border.Transitions>
+                                    <Transitions>
+                                        <DoubleTransition Property="Opacity" Duration="0:0:0.12" />
+                                        <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.12" />
+                                    </Transitions>
+                                </Border.Transitions>
                                 <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="6">
                                     <Grid ColumnDefinitions="*,Auto">
                                         <TextBlock x:Name="RulerPreviewTitle" FontSize="13" FontWeight="SemiBold"
