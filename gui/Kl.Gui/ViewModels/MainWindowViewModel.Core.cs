@@ -715,9 +715,10 @@ public sealed partial class MainWindowViewModel
             case SessionEventKind.ToolStarted:
                 _activeReasoning?.Complete("完成", "思考完成");
                 _activeAssistant?.Complete(string.Empty);
+                var command = ChatItemViewModel.ExtractCommand(sessionEvent.Args);
                 var tool = ChatItemViewModel.Tool(
-                    ChatItemViewModel.ToolHeader(sessionEvent.Name, sessionEvent.Args),
-                    string.IsNullOrWhiteSpace(sessionEvent.Args) ? "…" : sessionEvent.Args,
+                    ChatItemViewModel.ToolHeader(sessionEvent.Name, command),
+                    string.IsNullOrWhiteSpace(command) ? "…" : command,
                     string.Empty,
                     string.Empty,
                     ChatItemViewModel.ToolKindLabel(sessionEvent.Name));
@@ -822,7 +823,33 @@ public sealed partial class MainWindowViewModel
             item.AppendDetail("\n" + sessionEvent.Diff);
         }
         item.Complete(sessionEvent.Ok ? "完成" : "失败");
+        if (string.Equals(ChatItemViewModel.ToolKindLabel(sessionEvent.Name), "Image", StringComparison.Ordinal))
+        {
+            var count = CountImageMentions(item.Detail) + CountImageMentions(item.Text);
+            item.SetHeader(count > 0 ? $"已查看 {count} 张图像" : "已查看图像");
+        }
         _activeToolItem = null;
+    }
+
+    private static int CountImageMentions(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return 0;
+        }
+
+        var count = 0;
+        foreach (var extension in new[] { ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp" })
+        {
+            var index = 0;
+            while ((index = text.IndexOf(extension, index, StringComparison.OrdinalIgnoreCase)) >= 0)
+            {
+                count++;
+                index += extension.Length;
+            }
+        }
+
+        return count;
     }
 
     private void FinishTurn(string status)

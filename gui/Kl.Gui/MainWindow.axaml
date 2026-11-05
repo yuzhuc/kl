@@ -224,12 +224,26 @@
                                   StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
                                   VerticalAlignment="Center" />
                             <Path Width="14" Height="14" Data="{StaticResource ToolIcon}" Stretch="Uniform"
-                                  IsVisible="{Binding IsTool}" Stroke="#7E7F82" StrokeThickness="1.35"
+                                  IsVisible="{Binding IsPlainTool}" Stroke="#7E7F82" StrokeThickness="1.35"
                                   StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
                                   VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="1" Text="{Binding Header}" FontSize="12.5"
-                                       Foreground="#C6C7C9" VerticalAlignment="Center"
-                                       TextTrimming="CharacterEllipsis" />
+                            <Path Width="14" Height="14" Data="{StaticResource ImageIcon}" Stretch="Uniform"
+                                  IsVisible="{Binding IsImageTool}" Stroke="#7E7F82" StrokeThickness="1.2"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                  VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5"
+                                        VerticalAlignment="Center">
+                                <TextBlock Text="{Binding ActivityPrefix}" FontSize="12.5"
+                                           Foreground="#C6C7C9" VerticalAlignment="Center" />
+                                <Border IsVisible="{Binding HasActivityCommand}" Background="#202022"
+                                        CornerRadius="6" Padding="5,1" MaxWidth="520"
+                                        VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding ActivityCommand}"
+                                               FontFamily="Cascadia Mono, Consolas" FontSize="11.5"
+                                               Foreground="#C6C7C9" TextTrimming="CharacterEllipsis"
+                                               VerticalAlignment="Center" />
+                                </Border>
+                            </StackPanel>
                             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6"
                                         VerticalAlignment="Center">
                                 <TextBlock Text="{Binding StatusText}" FontSize="11"

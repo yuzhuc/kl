@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Text.Json;
 using System.Runtime.CompilerServices;
 using Kl.Client;
 using Kl.Gui.Models;
@@ -106,7 +107,17 @@ public sealed class ChatItemViewModel : ObservableObject
     public string Header
     {
         get => _header;
-        private set => SetProperty(ref _header, value);
+        private set
+        {
+            if (SetProperty(ref _header, value))
+            {
+                OnPropertyChanged(nameof(ActivityPrefix));
+                OnPropertyChanged(nameof(ActivityCommand));
+                OnPropertyChanged(nameof(HasActivityCommand));
+                OnPropertyChanged(nameof(IsImageTool));
+                OnPropertyChanged(nameof(IsPlainTool));
+            }
+        }
     }
 
     public string Text
@@ -158,6 +169,30 @@ public sealed class ChatItemViewModel : ObservableObject
                 OnPropertyChanged(nameof(HasFailure));
             }
         }
+    }
+
+    public string ActivityPrefix => SplitActivity(Header).prefix;
+
+    public string ActivityCommand => SplitActivity(Header).command;
+
+    public bool HasActivityCommand => ActivityCommand.Length > 0;
+
+    public bool IsImageTool => IsTool && Header.Contains("图像");
+
+    public bool IsPlainTool => IsTool && !IsImageTool;
+
+    private static (string prefix, string command) SplitActivity(string header)
+    {
+        var value = header ?? string.Empty;
+        foreach (var verb in new[] { "已运行 ", "已读取 ", "已编辑 " })
+        {
+            if (value.StartsWith(verb, StringComparison.Ordinal))
+            {
+                return (verb.TrimEnd(), value[verb.Length..]);
+            }
+        }
+
+        return (value, string.Empty);
     }
 
     public string ToolLabel
@@ -272,6 +307,41 @@ public sealed class ChatItemViewModel : ObservableObject
         return "Tool";
     }
 
+    /// <summary>Pulls the real command/script out of JSON tool arguments so rows do not show {"command":...}.</summary>
+    public static string ExtractCommand(string? raw)
+    {
+        var value = raw?.Trim() ?? string.Empty;
+        if (!value.StartsWith("{", StringComparison.Ordinal))
+        {
+            return value;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(value);
+            if (document.RootElement.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var key in new[] { "command", "cmd", "script", "code", "args", "input" })
+                {
+                    if (document.RootElement.TryGetProperty(key, out var element))
+                    {
+                        return element.ValueKind switch
+                        {
+                            JsonValueKind.String => element.GetString() ?? value,
+                            _ => element.GetRawText()
+                        };
+                    }
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            // Fall through and show the raw text.
+        }
+
+        return value;
+    }
+
     private static string Compact(string? detail)
     {
         var value = detail?.Trim() ?? string.Empty;
@@ -384,6 +454,11 @@ public sealed class ChatItemViewModel : ObservableObject
         var toolLabel = string.Empty;
         if (kind == ChatItemKind.Tool)
         {
+            if (text.TrimStart().StartsWith("{", StringComparison.Ordinal))
+            {
+                text = ExtractCommand(text);
+            }
+
             if (header.StartsWith("调用 ", StringComparison.Ordinal))
             {
                 var legacyName = header[3..];
