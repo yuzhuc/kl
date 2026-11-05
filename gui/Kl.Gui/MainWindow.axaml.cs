@@ -232,10 +232,8 @@ public partial class MainWindow : Window
         _rulerTickYs.Clear();
         _rulerTickTargets.Clear();
         _rulerWaveIndex = -1;
-        _currentRulerTickIndex = -1;
         _selectedRulerTickIndex = -1;
         _rulerSelectionMarker = null;
-        _rulerCurrentMarker = null;
         if (height <= 44 || _viewModel.Messages.Count == 0)
         {
             return;
@@ -288,10 +286,7 @@ public partial class MainWindow : Window
         }
 
         _rulerSelectionMarker = CreateRulerMarker();
-        _rulerCurrentMarker = CreateRulerMarker();
-        RulerTicksPanel.Children.Add(_rulerCurrentMarker);
         RulerTicksPanel.Children.Add(_rulerSelectionMarker);
-        UpdateCurrentRulerTick();
     }
 
     private static Border CreateRulerTick()
@@ -380,19 +375,13 @@ public partial class MainWindow : Window
             tick.RenderTransform = TransformOperations.Parse($"scaleX({width / RulerTickBaseWidth:0.###})");
             tick.Background = tickIndex == waveIndex
                 ? RulerTickActiveBrush
-                : IsMarkedTick(tickIndex)
+                : tickIndex == _selectedRulerTickIndex
                     ? RulerTickSelectedBrush
                     : RulerTickBrush;
         }
 
         PositionRulerMarker(_rulerSelectionMarker, _selectedRulerTickIndex, waveIndex);
-        var currentMarkerVisible = _currentRulerTickIndex >= 0
-            && _currentRulerTickIndex != _selectedRulerTickIndex;
-        PositionRulerMarker(_rulerCurrentMarker, currentMarkerVisible ? _currentRulerTickIndex : -1, waveIndex);
     }
-
-    private bool IsMarkedTick(int tickIndex) =>
-        tickIndex == _selectedRulerTickIndex || tickIndex == _currentRulerTickIndex;
 
     private double RulerTickWidth(int tickIndex, int waveIndex)
     {
@@ -403,7 +392,7 @@ public partial class MainWindow : Window
             1 => 20,
             2 => 14,
             3 => 10,
-            _ => IsMarkedTick(tickIndex) ? 8 : (int)RulerTickBaseWidth
+            _ => tickIndex == _selectedRulerTickIndex ? 8 : (int)RulerTickBaseWidth
         };
     }
 
@@ -424,36 +413,6 @@ public partial class MainWindow : Window
         Canvas.SetLeft(marker, RulerTickWidth(tickIndex, waveIndex) + 2);
         Canvas.SetTop(marker, _rulerTickYs[tickIndex] - 1);
         marker.Background = waveIndex == tickIndex ? RulerSelectionMarkerHoverBrush : RulerSelectionMarkerBrush;
-    }
-
-    /// <summary>Highlights the tick that matches the current transcript position.</summary>
-    private void UpdateCurrentRulerTick()
-    {
-        if (_rulerTicks.Count == 0)
-        {
-            return;
-        }
-
-        var offset = TranscriptScroller.Offset.Y;
-        var best = 0;
-        var bestDistance = double.MaxValue;
-        for (var index = 0; index < _rulerTickTargets.Count; index++)
-        {
-            var distance = Math.Abs(_rulerTickTargets[index].Top - offset);
-            if (distance < bestDistance)
-            {
-                bestDistance = distance;
-                best = index;
-            }
-        }
-
-        if (best == _currentRulerTickIndex)
-        {
-            return;
-        }
-
-        _currentRulerTickIndex = best;
-        ApplyRulerTickVisuals(_rulerWaveIndex);
     }
 
     private void ResetRulerWave()
@@ -2208,10 +2167,8 @@ public partial class MainWindow : Window
     private int _rulerWaveIndex = -1;
     private double _lastRulerExtent = -1;
     private int _rulerPreviewIndex = -1;
-    private int _currentRulerTickIndex = -1;
     private int _selectedRulerTickIndex = -1;
     private Border? _rulerSelectionMarker;
-    private Border? _rulerCurrentMarker;
     private ChatItemViewModel? _jumpHighlightedItem;
     private readonly DispatcherTimer _jumpHighlightTimer = new() { Interval = TimeSpan.FromMilliseconds(1600) };
     private readonly DispatcherTimer _rulerPreviewCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(160) };
@@ -2219,7 +2176,6 @@ public partial class MainWindow : Window
     private const double RulerHoverRadius = 6;
     private static readonly IBrush RulerTickBrush = new SolidColorBrush(Color.Parse("#373739"));
     private static readonly IBrush RulerTickActiveBrush = new SolidColorBrush(Color.Parse("#E2E3E5"));
-    private static readonly IBrush RulerTickCurrentBrush = new SolidColorBrush(Color.Parse("#737375"));
     private static readonly IBrush RulerTickSelectedBrush = new SolidColorBrush(Color.Parse("#737375"));
     private static readonly IBrush RulerSelectionMarkerBrush = new SolidColorBrush(Color.Parse("#5E5E61"));
     private static readonly IBrush RulerSelectionMarkerHoverBrush = new SolidColorBrush(Color.Parse("#B6B7B9"));
@@ -2497,10 +2453,7 @@ public partial class MainWindow : Window
         {
             Dispatcher.UIThread.Post(BuildRulerTicks, DispatcherPriority.Background);
         }
-        else
-        {
-            UpdateCurrentRulerTick();
-        }
+
 
         var showJump = _viewModel.HasConversation && distanceFromBottom > 32;
         JumpToBottomButton.IsVisible = true;
