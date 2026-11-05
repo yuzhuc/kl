@@ -41,6 +41,7 @@ public enum ChatItemKind
     Assistant,
     Reasoning,
     Tool,
+    ToolGroup,
     Error
 }
 
@@ -53,6 +54,8 @@ public sealed class ChatItemViewModel : ObservableObject
     private string _statusText;
     private string _timestampLabel;
     private string _toolLabel;
+    private string _groupKind = string.Empty;
+    private bool _groupExpanded;
     private bool _isRunning;
     private bool _isExpanded;
 
@@ -77,6 +80,16 @@ public sealed class ChatItemViewModel : ObservableObject
     }
 
     public ChatItemKind Kind { get; }
+    public bool IsToolGroup => Kind == ChatItemKind.ToolGroup;
+    public System.Collections.ObjectModel.ObservableCollection<ChatItemViewModel> Children { get; } = new();
+    public string GroupKind => _groupKind;
+
+    public bool GroupExpanded
+    {
+        get => _groupExpanded;
+        private set => SetProperty(ref _groupExpanded, value);
+    }
+
     public bool IsUser => Kind == ChatItemKind.User;
     public bool IsAssistant => Kind == ChatItemKind.Assistant;
     public bool IsReasoning => Kind == ChatItemKind.Reasoning;
@@ -177,7 +190,7 @@ public sealed class ChatItemViewModel : ObservableObject
 
     public bool HasActivityCommand => ActivityCommand.Length > 0;
 
-    public bool IsImageTool => IsTool && Header.Contains("图像");
+    public bool IsImageTool => (IsTool || IsToolGroup) && Header.Contains("图像");
 
     public bool IsPlainTool => IsTool && !IsImageTool;
 
@@ -434,6 +447,52 @@ public sealed class ChatItemViewModel : ObservableObject
         string toolLabel = "") =>
         new(ChatItemKind.Tool, header, command, output, summary, toolLabel: toolLabel);
 
+    public static ChatItemViewModel ToolGroup(string kindLabel) =>
+        new(ChatItemKind.ToolGroup, GroupHeader(kindLabel), toolLabel: kindLabel)
+        {
+            _groupKind = kindLabel
+        };
+
+    private static string GroupHeader(string kindLabel) => kindLabel switch
+    {
+        "Shell" => "运行了命令",
+        "Image" => "已查看图像",
+        "Read" => "已读取文件",
+        "Search" => "已搜索文件",
+        "Edit" => "已编辑文件",
+        "Web" => "已搜索网页",
+        _ => "工具调用"
+    };
+
+    public void AddChild(ChatItemViewModel child)
+    {
+        Children.Add(child);
+        if (string.Equals(_groupKind, "Image", StringComparison.Ordinal))
+        {
+            Header = $"已查看 {Children.Count} 张图像";
+        }
+    }
+
+    public string EffectiveKindLabel()
+    {
+        if (IsToolGroup)
+        {
+            return _groupKind;
+        }
+        if (!string.IsNullOrEmpty(ToolLabel))
+        {
+            return ToolLabel;
+        }
+
+        var header = Header;
+        if (header.Contains("运行")) return "Shell";
+        if (header.Contains("图像")) return "Image";
+        if (header.Contains("编辑")) return "Edit";
+        if (header.Contains("读取")) return "Read";
+        if (header.Contains("搜索")) return "Search";
+        return "Tool";
+    }
+
     public static ChatItemViewModel Error(string text) =>
         new(ChatItemKind.Error, "请求失败", text, status: "错误");
 
@@ -556,6 +615,12 @@ public sealed class ChatItemViewModel : ObservableObject
 
     public void Toggle()
     {
+        if (IsToolGroup)
+        {
+            GroupExpanded = !GroupExpanded;
+            return;
+        }
+
         if (IsActivity)
         {
             IsExpanded = !IsExpanded;
@@ -3274,6 +3339,47 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             Messages.Add(ChatItemViewModel.FromStored(message));
         }
+
+        GroupToolMessages();
+    }
+
+    /// <summary>Adds a tool call under the current 运行了命令-style group (Codex behaviour).</summary>
+    private void AddToolItem(ChatItemViewModel tool)
+    {
+        var kind = tool.EffectiveKindLabel();
+        if (Messages.Count > 0
+            && Messages[^1] is { IsToolGroup: true } group
+            && string.Equals(group.GroupKind, kind, StringComparison.Ordinal))
+        {
+            group.AddChild(tool);
+            return;
+        }
+
+        var newGroup = ChatItemViewModel.ToolGroup(kind);
+        newGroup.AddChild(tool);
+        Messages.Add(newGroup);
+    }
+
+    private void GroupToolMessages()
+    {
+        if (Messages.Count == 0)
+        {
+            return;
+        }
+
+        var flat = Messages.ToList();
+        Messages.Clear();
+        foreach (var item in flat)
+        {
+            if (item.IsTool)
+            {
+                AddToolItem(item);
+            }
+            else
+            {
+                Messages.Add(item);
+            }
+        }
     }
 
     private void SyncStoredMessages()
@@ -3282,7 +3388,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             return;
         }
-        _activeSession.Messages = Messages.Select(item => item.ToStored()).ToList();
+        _activeSession.Messages = Messages
+            .SelectMany(item => (IEnumerable<ChatItemViewModel>)(item.IsToolGroup ? item.Children : new[] { item }))
+            .Select(item => item.ToStored())
+            .ToList();
     }
 
     private void UpdateSessionOrder()

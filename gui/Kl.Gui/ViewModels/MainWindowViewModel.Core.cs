@@ -649,7 +649,7 @@ public sealed partial class MainWindowViewModel
                         tool.AppendDetail("\n" + message.ToolDiff);
                     }
                     tool.Complete(message.ToolOk == false ? "失败" : "完成");
-                    Messages.Add(tool);
+                    AddToolItem(tool);
                     break;
             }
         }
@@ -724,7 +724,7 @@ public sealed partial class MainWindowViewModel
                     ChatItemViewModel.ToolKindLabel(sessionEvent.Name));
                 tool.Start("运行中");
                 _activeToolItem = tool;
-                Messages.Add(tool);
+                AddToolItem(tool);
                 break;
             case SessionEventKind.ToolOutput:
                 AppendToolOutput(sessionEvent.Text);
@@ -811,7 +811,7 @@ public sealed partial class MainWindowViewModel
                 sessionEvent.Summary,
                 ChatItemViewModel.ToolKindLabel(sessionEvent.Name));
             item.Start("运行中");
-            Messages.Add(item);
+            AddToolItem(item);
         }
 
         if (!string.IsNullOrWhiteSpace(sessionEvent.Summary))

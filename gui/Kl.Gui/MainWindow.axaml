@@ -149,6 +149,96 @@
             </Grid>
         </DataTemplate>
 
+        <DataTemplate x:Key="ToolChildTemplate" x:DataType="vm:ChatItemViewModel">
+            <StackPanel Spacing="4">
+                <Button Classes="activity-row" Classes.expanded="{Binding ShowExpanded}" Click="OnActivityClicked">
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                        <Path Width="14" Height="14" Data="{StaticResource ToolIcon}" Stretch="Uniform"
+                              IsVisible="{Binding IsPlainTool}" Stroke="#7E7F82" StrokeThickness="1.35"
+                              StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                              VerticalAlignment="Center" />
+                        <Path Width="14" Height="14" Data="{StaticResource ImageIcon}" Stretch="Uniform"
+                              IsVisible="{Binding IsImageTool}" Stroke="#7E7F82" StrokeThickness="1.2"
+                              StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                              VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5"
+                                    VerticalAlignment="Center">
+                            <TextBlock Text="{Binding ActivityPrefix}" FontSize="12.5"
+                                       Foreground="#C6C7C9" VerticalAlignment="Center" />
+                            <Border IsVisible="{Binding HasActivityCommand}" Background="#202022"
+                                    CornerRadius="6" Padding="5,1" MaxWidth="520"
+                                    VerticalAlignment="Center">
+                                <TextBlock Text="{Binding ActivityCommand}"
+                                           FontFamily="Cascadia Mono, Consolas" FontSize="11.5"
+                                           Foreground="#C6C7C9" TextTrimming="CharacterEllipsis"
+                                           VerticalAlignment="Center" />
+                            </Border>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6"
+                                    VerticalAlignment="Center">
+                            <TextBlock Text="{Binding StatusText}" FontSize="11"
+                                       Foreground="{StaticResource TextCaption}"
+                                       IsVisible="{Binding IsRunning}" VerticalAlignment="Center" />
+                            <Path Classes="activity-chevron" Width="11" Height="11"
+                                  Data="{StaticResource ChevronRightIcon}" Stretch="Uniform"
+                                  IsVisible="{Binding ShowCollapsed}" Stroke="#7E7F82" StrokeThickness="1.4"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                  VerticalAlignment="Center" />
+                            <Path Width="11" Height="11" Data="{StaticResource ChevronDownIcon}"
+                                  Stretch="Uniform" IsVisible="{Binding ShowExpanded}"
+                                  Stroke="#7E7F82" StrokeThickness="1.4"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                  VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Grid>
+                </Button>
+
+                <Border IsVisible="{Binding ShowExpanded}" Background="#202022"
+                        BorderBrush="#2E2E31" BorderThickness="1"
+                        CornerRadius="10" Padding="12,10">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="{Binding ToolLabel}" FontSize="11.5"
+                                   FontFamily="Cascadia Mono, Consolas"
+                                   Foreground="{StaticResource TextTertiary}"
+                                   IsVisible="{Binding IsTool}" />
+                        <StackPanel IsVisible="{Binding IsTool}" Spacing="7">
+                            <SelectableTextBlock Text="{Binding Text}"
+                                                 FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                                                 Foreground="{StaticResource TextSecondary}"
+                                                 TextWrapping="Wrap" MaxHeight="140" />
+                            <ScrollViewer IsVisible="{Binding HasDetail}" MaxHeight="260"
+                                          VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <SelectableTextBlock Text="{Binding Detail}"
+                                                     FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                                                     Foreground="{StaticResource TextSecondary}"
+                                                     TextWrapping="Wrap" />
+                            </ScrollViewer>
+                            <TextBlock Text="{Binding Summary}" FontSize="11"
+                                       Foreground="{StaticResource TextCaption}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="5" HorizontalAlignment="Right"
+                                    IsVisible="{Binding HasStatus}">
+                            <Path Width="12" Height="12" Data="{StaticResource CheckIcon}" Stretch="Uniform"
+                                  IsVisible="{Binding !HasFailure}" Stroke="#7FBF8F" StrokeThickness="1.6"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                  VerticalAlignment="Center" />
+                            <Path Width="12" Height="12" Data="{StaticResource CloseIcon}" Stretch="Uniform"
+                                  IsVisible="{Binding HasFailure}" Stroke="#E5837C" StrokeThickness="1.6"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                  VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding StatusText}" FontSize="11.5"
+                                       Foreground="#7FBF8F" IsVisible="{Binding !HasFailure}"
+                                       VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding StatusText}" FontSize="11.5"
+                                       Foreground="#E5837C" IsVisible="{Binding HasFailure}"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </DataTemplate>
         <DataTemplate x:Key="ChatItemTemplate" x:DataType="vm:ChatItemViewModel">
             <Grid>
                 <!-- user bubble -->
@@ -214,6 +304,41 @@
                                              Foreground="#E6B4B4" TextWrapping="Wrap" />
                     </Grid>
                 </Border>
+
+                <!-- grouped tool calls (运行了命令) -->
+                <StackPanel IsVisible="{Binding IsToolGroup}" Spacing="2" Margin="0,0,0,2">
+                    <Button Classes="activity-row" Classes.expanded="{Binding GroupExpanded}" Click="OnActivityClicked">
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                            <Path Width="14" Height="14" Data="{StaticResource ToolIcon}" Stretch="Uniform"
+                                  IsVisible="{Binding !IsImageTool}" Stroke="#7E7F82" StrokeThickness="1.35"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                  VerticalAlignment="Center" />
+                            <Path Width="14" Height="14" Data="{StaticResource ImageIcon}" Stretch="Uniform"
+                                  IsVisible="{Binding IsImageTool}" Stroke="#7E7F82" StrokeThickness="1.2"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                  VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding Header}" FontSize="12.5"
+                                       Foreground="#C6C7C9" VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis" />
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6"
+                                        VerticalAlignment="Center">
+                                <Path Classes="activity-chevron" Width="11" Height="11"
+                                      Data="{StaticResource ChevronRightIcon}" Stretch="Uniform"
+                                      IsVisible="{Binding !GroupExpanded}" Stroke="#7E7F82" StrokeThickness="1.4"
+                                      StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                      VerticalAlignment="Center" />
+                                <Path Width="11" Height="11" Data="{StaticResource ChevronDownIcon}"
+                                      Stretch="Uniform" IsVisible="{Binding GroupExpanded}"
+                                      Stroke="#7E7F82" StrokeThickness="1.4"
+                                      StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                      VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Grid>
+                    </Button>
+
+                    <ItemsControl ItemsSource="{Binding Children}" IsVisible="{Binding GroupExpanded}"
+                                  ItemTemplate="{StaticResource ToolChildTemplate}" />
+                </StackPanel>
 
                 <!-- reasoning / tool activity (Codex-style inline row + expanded shell panel) -->
                 <StackPanel IsVisible="{Binding IsActivity}" Spacing="4" Margin="0,0,0,2">
