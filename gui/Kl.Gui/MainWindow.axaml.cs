@@ -1968,9 +1968,11 @@ public partial class MainWindow : Window
 
     private void OnMessagePropertyChanged(object? sender, PropertyChangedEventArgs eventArgs)
     {
+        // Only follow streaming output. Expanding/collapsing activity rows must grow
+        // downward in place: re-pinning to the bottom here made long panels push the
+        // whole transcript up (the reported "展开就跳到底部" bug).
         if (eventArgs.PropertyName is nameof(ChatItemViewModel.Text)
-            or nameof(ChatItemViewModel.Detail)
-            or nameof(ChatItemViewModel.IsExpanded))
+            or nameof(ChatItemViewModel.Detail))
         {
             ScrollTranscript();
         }
