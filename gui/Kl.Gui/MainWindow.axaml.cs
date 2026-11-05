@@ -233,6 +233,7 @@ public partial class MainWindow : Window
         _rulerTickTargets.Clear();
         _rulerWaveIndex = -1;
         _selectedRulerTickIndex = -1;
+        _currentRulerTickIndex = -1;
         _rulerSelectionMarker = null;
         if (height <= 44 || _viewModel.Messages.Count == 0)
         {
@@ -287,6 +288,7 @@ public partial class MainWindow : Window
 
         _rulerSelectionMarker = CreateRulerMarker();
         RulerTicksPanel.Children.Add(_rulerSelectionMarker);
+        UpdateCurrentRulerTick();
     }
 
     private static Border CreateRulerTick()
@@ -377,7 +379,9 @@ public partial class MainWindow : Window
                 ? RulerTickActiveBrush
                 : tickIndex == _selectedRulerTickIndex
                     ? RulerTickSelectedBrush
-                    : RulerTickBrush;
+                    : tickIndex == _currentRulerTickIndex
+                        ? RulerTickCurrentBrush
+                        : RulerTickBrush;
         }
 
         PositionRulerMarker(_rulerSelectionMarker, _selectedRulerTickIndex, waveIndex);
@@ -413,6 +417,36 @@ public partial class MainWindow : Window
         Canvas.SetLeft(marker, RulerTickWidth(tickIndex, waveIndex) + 2);
         Canvas.SetTop(marker, _rulerTickYs[tickIndex] - 1);
         marker.Background = waveIndex == tickIndex ? RulerSelectionMarkerHoverBrush : RulerSelectionMarkerBrush;
+    }
+
+    /// <summary>Moves the subtle current-position highlight along with the transcript scroll.</summary>
+    private void UpdateCurrentRulerTick()
+    {
+        if (_rulerTicks.Count == 0 || _rulerTickTargets.Count == 0)
+        {
+            return;
+        }
+
+        var offset = TranscriptScroller.Offset.Y;
+        var best = 0;
+        var bestDistance = double.MaxValue;
+        for (var index = 0; index < _rulerTickTargets.Count; index++)
+        {
+            var distance = Math.Abs(_rulerTickTargets[index].Top - offset);
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                best = index;
+            }
+        }
+
+        if (best == _currentRulerTickIndex)
+        {
+            return;
+        }
+
+        _currentRulerTickIndex = best;
+        ApplyRulerTickVisuals(_rulerWaveIndex);
     }
 
     private void ResetRulerWave()
@@ -2168,6 +2202,7 @@ public partial class MainWindow : Window
     private double _lastRulerExtent = -1;
     private int _rulerPreviewIndex = -1;
     private int _selectedRulerTickIndex = -1;
+    private int _currentRulerTickIndex = -1;
     private Border? _rulerSelectionMarker;
     private ChatItemViewModel? _jumpHighlightedItem;
     private readonly DispatcherTimer _jumpHighlightTimer = new() { Interval = TimeSpan.FromMilliseconds(1600) };
@@ -2177,6 +2212,7 @@ public partial class MainWindow : Window
     private static readonly IBrush RulerTickBrush = new SolidColorBrush(Color.Parse("#373739"));
     private static readonly IBrush RulerTickActiveBrush = new SolidColorBrush(Color.Parse("#E2E3E5"));
     private static readonly IBrush RulerTickSelectedBrush = new SolidColorBrush(Color.Parse("#737375"));
+    private static readonly IBrush RulerTickCurrentBrush = new SolidColorBrush(Color.Parse("#55565A"));
     private static readonly IBrush RulerSelectionMarkerBrush = new SolidColorBrush(Color.Parse("#5E5E61"));
     private static readonly IBrush RulerSelectionMarkerHoverBrush = new SolidColorBrush(Color.Parse("#B6B7B9"));
     private CancellationTokenSource? _sidebarAnimationCts;
@@ -2452,6 +2488,10 @@ public partial class MainWindow : Window
         if (Math.Abs(TranscriptScroller.Extent.Height - _lastRulerExtent) > 0.5)
         {
             Dispatcher.UIThread.Post(BuildRulerTicks, DispatcherPriority.Background);
+        }
+        else
+        {
+            UpdateCurrentRulerTick();
         }
 
 
