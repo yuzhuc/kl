@@ -71,6 +71,12 @@ public partial class MainWindow : Window
             _rulerPreviewCloseTimer.Stop();
             HideRulerPreview();
         };
+        _jumpHighlightTimer.Tick += (_, _) =>
+        {
+            _jumpHighlightTimer.Stop();
+            _jumpHighlightedItem?.SetJumpHighlighted(false);
+            _jumpHighlightedItem = null;
+        };
         TranscriptScroller.ScrollChanged += OnTranscriptScrollChanged;
         foreach (var item in _viewModel.Messages)
         {
@@ -153,6 +159,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        _rulerPreviewIndex = index;
         PopulateRulerPreview(_rulerTickTargets[index].Item);
         var cardHeight = Math.Max(96, RulerPreviewCard.Bounds.Height);
         var top = Math.Clamp(pointerY - (cardHeight / 2), 8, Math.Max(8, viewport - cardHeight - 8));
@@ -184,17 +191,24 @@ public partial class MainWindow : Window
     private void OnRulerPreviewPointerExited(object? sender, PointerEventArgs eventArgs) =>
         ScheduleRulerPreviewClose();
 
-    private void OnRulerPreviewPointerPressed(object? sender, PointerPressedEventArgs eventArgs)
+    private void OnRulerPreviewJumpClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (_rulerPreviewIndex < 0 || _rulerPreviewIndex >= _rulerTickTargets.Count)
         {
             return;
         }
 
+        var item = _rulerTickTargets[_rulerPreviewIndex].Item;
         var extent = TranscriptScroller.Extent.Height;
         var viewport = TranscriptScroller.Viewport.Height;
         var target = Math.Clamp(_rulerTickTargets[_rulerPreviewIndex].Top - 12, 0, Math.Max(0, extent - viewport));
         TranscriptScroller.Offset = new Vector(0, target);
+
+        _jumpHighlightTimer.Stop();
+        _jumpHighlightedItem?.SetJumpHighlighted(false);
+        _jumpHighlightedItem = item;
+        item.SetJumpHighlighted(true);
+        _jumpHighlightTimer.Start();
         HideRulerPreview();
     }
 
@@ -2168,6 +2182,8 @@ public partial class MainWindow : Window
     private double _lastRulerExtent = -1;
     private int _rulerPreviewIndex = -1;
     private int _currentRulerTickIndex = -1;
+    private ChatItemViewModel? _jumpHighlightedItem;
+    private readonly DispatcherTimer _jumpHighlightTimer = new() { Interval = TimeSpan.FromMilliseconds(1600) };
     private readonly DispatcherTimer _rulerPreviewCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(160) };
     private const double RulerTickBaseWidth = 6;
     private const double RulerHoverRadius = 6;

@@ -57,6 +57,7 @@ public sealed class ChatItemViewModel : ObservableObject
     private string _groupKind = string.Empty;
     private bool _groupExpanded;
     private bool _isRunning;
+    private bool _isJumpHighlighted;
     private bool _isExpanded;
 
     private ChatItemViewModel(
@@ -228,6 +229,15 @@ public sealed class ChatItemViewModel : ObservableObject
             }
         }
     }
+
+    /// <summary>Transient highlight set when jumping to this turn from the ruler preview.</summary>
+    public bool IsJumpHighlighted
+    {
+        get => _isJumpHighlighted;
+        private set => SetProperty(ref _isJumpHighlighted, value);
+    }
+
+    public void SetJumpHighlighted(bool value) => IsJumpHighlighted = value;
 
     public bool IsExpanded
     {

@@ -818,6 +818,11 @@
     <Style Selector="StackPanel.chat-user:pointerover StackPanel.chat-user-actions">
         <Setter Property="Opacity" Value="1" />
     </Style>
+    <Style Selector="Border.chat-user-bubble.jump-highlight">
+        <Setter Property="Background" Value="#2E2E33" />
+        <Setter Property="BorderBrush" Value="#414148" />
+        <Setter Property="BorderThickness" Value="1" />
+    </Style>
     <Style Selector="Button.message-action">
             <Setter Property="MinHeight" Value="22" />
             <Setter Property="Padding" Value="5,2" />
