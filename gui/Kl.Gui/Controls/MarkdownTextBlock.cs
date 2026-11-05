@@ -275,7 +275,7 @@ public sealed class MarkdownTextBlock : UserControl
 
                 var pill = new Border
                 {
-                    Background = new SolidColorBrush(Color.Parse("#1A1A1C")),
+                    Background = new SolidColorBrush(Color.Parse("#242427")),
                     CornerRadius = new CornerRadius(4),
                     Padding = new Thickness(4, 0),
                     Margin = new Thickness(1, 0),
@@ -285,8 +285,8 @@ public sealed class MarkdownTextBlock : UserControl
                     {
                         Text = codeText,
                         FontFamily = CodeFont,
-                        FontSize = 11.5,
-                        Foreground = InlineCodeBrush,
+                        FontSize = 12,
+                        Foreground = PrimaryBrush,
                         TextWrapping = TextWrapping.NoWrap,
                         MaxWidth = 560,
                         VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
