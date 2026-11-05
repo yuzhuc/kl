@@ -3343,7 +3343,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
         GroupToolMessages();
     }
 
-    /// <summary>Adds a tool call under the current 运行了命令-style group (Codex behaviour).</summary>
+    /// <summary>
+    /// Codex groups only repeated calls: a single tool call renders on its own row,
+    /// two or more consecutive calls of the same kind collapse into a 运行了命令 group.
+    /// </summary>
     private void AddToolItem(ChatItemViewModel tool)
     {
         var kind = tool.EffectiveKindLabel();
@@ -3355,9 +3358,19 @@ public sealed partial class MainWindowViewModel : ObservableObject
             return;
         }
 
-        var newGroup = ChatItemViewModel.ToolGroup(kind);
-        newGroup.AddChild(tool);
-        Messages.Add(newGroup);
+        if (Messages.Count > 0
+            && Messages[^1] is { IsTool: true } previous
+            && !previous.IsToolGroup
+            && string.Equals(previous.EffectiveKindLabel(), kind, StringComparison.Ordinal))
+        {
+            var promoted = ChatItemViewModel.ToolGroup(kind);
+            promoted.AddChild(previous);
+            promoted.AddChild(tool);
+            Messages[^1] = promoted;
+            return;
+        }
+
+        Messages.Add(tool);
     }
 
     private void GroupToolMessages()
@@ -3369,17 +3382,51 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         var flat = Messages.ToList();
         Messages.Clear();
+        var buffer = new List<ChatItemViewModel>();
         foreach (var item in flat)
         {
             if (item.IsTool)
             {
-                AddToolItem(item);
+                if (buffer.Count > 0 && !string.Equals(buffer[0].EffectiveKindLabel(), item.EffectiveKindLabel(), StringComparison.Ordinal))
+                {
+                    FlushToolBuffer(buffer);
+                }
+
+                buffer.Add(item);
             }
             else
             {
+                FlushToolBuffer(buffer);
                 Messages.Add(item);
             }
         }
+
+        FlushToolBuffer(buffer);
+    }
+
+    private void FlushToolBuffer(List<ChatItemViewModel> buffer)
+    {
+        if (buffer.Count == 0)
+        {
+            return;
+        }
+
+        if (buffer.Count == 1)
+        {
+            Messages.Add(buffer[0]);
+        }
+        else
+        {
+            var group = ChatItemViewModel.ToolGroup(buffer[0].EffectiveKindLabel());
+            foreach (var item in buffer)
+            {
+                group.AddChild(item);
+            }
+
+            Messages.Add(group);
+        }
+
+        buffer.Clear();
     }
 
     private void SyncStoredMessages()

@@ -324,11 +324,6 @@
                                         VerticalAlignment="Center">
                                 <Path Classes="activity-chevron" Width="11" Height="11"
                                       Data="{StaticResource ChevronRightIcon}" Stretch="Uniform"
-                                      IsVisible="{Binding !GroupExpanded}" Stroke="#7E7F82" StrokeThickness="1.4"
-                                      StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                                      VerticalAlignment="Center" />
-                                <Path Width="11" Height="11" Data="{StaticResource ChevronDownIcon}"
-                                      Stretch="Uniform" IsVisible="{Binding GroupExpanded}"
                                       Stroke="#7E7F82" StrokeThickness="1.4"
                                       StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
                                       VerticalAlignment="Center" />
@@ -376,11 +371,6 @@
                                            IsVisible="{Binding IsRunning}" VerticalAlignment="Center" />
                                 <Path Classes="activity-chevron" Width="11" Height="11"
                                       Data="{StaticResource ChevronRightIcon}" Stretch="Uniform"
-                                      IsVisible="{Binding ShowCollapsed}" Stroke="#7E7F82" StrokeThickness="1.4"
-                                      StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                                      VerticalAlignment="Center" />
-                                <Path Width="11" Height="11" Data="{StaticResource ChevronDownIcon}"
-                                      Stretch="Uniform" IsVisible="{Binding ShowExpanded}"
                                       Stroke="#7E7F82" StrokeThickness="1.4"
                                       StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
                                       VerticalAlignment="Center" />
