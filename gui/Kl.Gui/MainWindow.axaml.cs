@@ -308,6 +308,11 @@ public partial class MainWindow : Window
                 Property = RenderTransformProperty,
                 Duration = TimeSpan.FromMilliseconds(110),
                 Easing = new CubicEaseOut()
+            },
+            new BrushTransition
+            {
+                Property = BackgroundProperty,
+                Duration = TimeSpan.FromMilliseconds(120)
             }
         };
         return tick;
@@ -396,7 +401,9 @@ public partial class MainWindow : Window
             1 => 20,
             2 => 14,
             3 => 10,
-            _ => tickIndex == _selectedRulerTickIndex ? 8 : (int)RulerTickBaseWidth
+            _ => tickIndex == _selectedRulerTickIndex || tickIndex == _currentRulerTickIndex
+                ? 8
+                : (int)RulerTickBaseWidth
         };
     }
 
