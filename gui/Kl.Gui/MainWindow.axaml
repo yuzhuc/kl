@@ -1257,7 +1257,7 @@
                                         <Path Grid.Column="1" Width="14" Height="14" Data="{StaticResource ChatIcon}"
                                               Stretch="Uniform" Stroke="#7E7F82" StrokeThickness="1.3"
                                               StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                                              VerticalAlignment="Top" Margin="8,0,0,0" />
+                                              VerticalAlignment="Center" Margin="8,0,0,0" />
                                     </Grid>
                                     <TextBlock x:Name="RulerPreviewBody" Grid.Row="1" FontSize="12" LineHeight="21"
                                                Foreground="#A0A1A3" TextWrapping="Wrap" />
