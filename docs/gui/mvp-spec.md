@@ -1,9 +1,13 @@
 # KL GUI specification
 
 > Status: implemented Core client and Codex-style desktop shell
+>
 > Baseline: `dev` `450ef38`
+>
 > Stack: Avalonia 12.1.4, .NET 10
+>
 > Shared client: `sdk/Kl.Client`
+>
 > Verification: GUI test project `60 passed / 0 failed`
 
 ## 1. Goal
