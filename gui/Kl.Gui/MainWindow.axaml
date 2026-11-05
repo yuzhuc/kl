@@ -1247,7 +1247,6 @@
                                 <Border.Transitions>
                                     <Transitions>
                                         <DoubleTransition Property="Opacity" Duration="0:0:0.12" />
-                                        <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.12" />
                                     </Transitions>
                                 </Border.Transitions>
                                 <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="6">

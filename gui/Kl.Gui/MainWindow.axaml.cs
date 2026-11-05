@@ -159,21 +159,19 @@ public partial class MainWindow : Window
         PopulateRulerPreview(anchor.Item);
         var cardHeight = Math.Max(96, RulerPreviewCard.Bounds.Height);
         var top = Math.Clamp(position.Y - (cardHeight / 2), 8, Math.Max(8, viewport - cardHeight - 8));
+        // Position changes are applied instantly: when the pointer stops somewhere new the card
+        // must appear there directly, not glide down from the previous position.
+        RulerPreviewCard.RenderTransform = TransformOperations.Parse($"translate(0px,{top:0.#}px)");
         if (!RulerPreviewCard.IsVisible)
         {
             RulerPreviewCard.Opacity = 0;
-            RulerPreviewCard.RenderTransform = TransformOperations.Parse($"translate(6px,{top:0.#}px)");
             RulerPreviewCard.IsVisible = true;
-            Dispatcher.UIThread.Post(() =>
-                RulerPreviewCard.RenderTransform = TransformOperations.Parse($"translate(0px,{top:0.#}px)"),
-                DispatcherPriority.Render);
+            Dispatcher.UIThread.Post(() => RulerPreviewCard.Opacity = 1, DispatcherPriority.Render);
         }
         else
         {
-            RulerPreviewCard.RenderTransform = TransformOperations.Parse($"translate(0px,{top:0.#}px)");
+            RulerPreviewCard.Opacity = 1;
         }
-
-        RulerPreviewCard.Opacity = 1;
     }
 
     private void HideRulerPreview()
