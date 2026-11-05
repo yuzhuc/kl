@@ -1217,7 +1217,7 @@
                                           VerticalScrollBarVisibility="Auto"
                                           HorizontalScrollBarVisibility="Disabled"
                                           Padding="0,12,0,16">
-                                <ItemsControl ItemsSource="{Binding Messages}"
+                                <ItemsControl x:Name="TranscriptItems" ItemsSource="{Binding Messages}"
                                               ItemTemplate="{StaticResource ChatItemTemplate}"
                                               MaxWidth="736" HorizontalAlignment="Stretch" />
                             </ScrollViewer>
@@ -1228,15 +1228,54 @@
                                 <Path Width="14" Height="14" Data="{StaticResource ChevronDownIcon}" Stretch="Uniform" />
                             </Button>
 
-                            <ItemsControl ItemsSource="{Binding RulerTicks}" IsVisible="{Binding HasConversation}"
-                                          IsHitTestVisible="False" Width="6" HorizontalAlignment="Left"
-                                          VerticalAlignment="Stretch" Margin="16,18,0,18">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border Width="6" Height="1.5" Background="#373739" Margin="0,0,0,4.5" />
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
+                            <Border x:Name="RulerStrip" IsVisible="{Binding HasConversation}"
+                                   Width="18" HorizontalAlignment="Left" VerticalAlignment="Stretch"
+                                   Margin="6,0,0,0" Background="Transparent"
+                                   PointerMoved="OnRulerPointerMoved"
+                                   PointerExited="OnRulerPointerExited"
+                                   PointerPressed="OnRulerPointerPressed">
+                                <Grid>
+                                    <ItemsControl ItemsSource="{Binding RulerTicks}" IsHitTestVisible="False"
+                                                  Width="6" HorizontalAlignment="Left"
+                                                  VerticalAlignment="Stretch" Margin="10,18,0,18">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Width="6" Height="1.5" Background="#373739" Margin="0,0,0,4.5" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <Border x:Name="RulerHoverTick" Width="6" Height="2" Background="#E3E4E6"
+                                            HorizontalAlignment="Left" VerticalAlignment="Top"
+                                            Margin="10,0,0,0" IsVisible="False" IsHitTestVisible="False" />
+                                </Grid>
+                            </Border>
+
+                            <Border x:Name="RulerPreviewCard" IsVisible="False" Width="322"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top"
+                                    Margin="45,120,0,0" Background="#202022" CornerRadius="10"
+                                    Padding="12,10" BoxShadow="0 12 32 0 #66000000"
+                                    IsHitTestVisible="False" ZIndex="30">
+                                <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="6">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock x:Name="RulerPreviewTitle" FontSize="13" FontWeight="SemiBold"
+                                                   Foreground="#E3E4E6" TextTrimming="CharacterEllipsis"
+                                                   MaxLines="1" />
+                                        <Path Grid.Column="1" Width="14" Height="14" Data="{StaticResource ChatIcon}"
+                                              Stretch="Uniform" Stroke="#7E7F82" StrokeThickness="1.3"
+                                              StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                              VerticalAlignment="Top" Margin="8,0,0,0" />
+                                    </Grid>
+                                    <TextBlock x:Name="RulerPreviewBody" Grid.Row="1" FontSize="12" LineHeight="21"
+                                               Foreground="#A0A1A3" TextWrapping="Wrap" />
+                                    <StackPanel x:Name="RulerPreviewBulletRow" Grid.Row="2" Orientation="Horizontal"
+                                                Spacing="8" Margin="2,0,0,0">
+                                        <TextBlock Text="•" FontSize="12" Foreground="#A0A1A3"
+                                                   VerticalAlignment="Top" />
+                                        <TextBlock x:Name="RulerPreviewBullet" FontSize="12" LineHeight="21"
+                                                   Foreground="#A0A1A3" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
                         </Grid>
 
                         <Grid Grid.Row="2" MaxWidth="736" HorizontalAlignment="Stretch"

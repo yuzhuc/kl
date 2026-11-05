@@ -93,6 +93,216 @@ public partial class MainWindow : Window
     private void OnJumpToBottomClicked(object? sender, RoutedEventArgs eventArgs) =>
         TranscriptScroller.ScrollToEnd();
 
+    // ---- Codex-style interactive ruler: hover previews a turn, click jumps to it ----
+
+    private void OnRulerPointerMoved(object? sender, PointerEventArgs eventArgs) =>
+        UpdateRulerPreview(eventArgs.GetPosition(RulerStrip));
+
+    private void OnRulerPointerExited(object? sender, PointerEventArgs eventArgs) => HideRulerPreview();
+
+    private void OnRulerPointerPressed(object? sender, PointerPressedEventArgs eventArgs)
+    {
+        if (!_viewModel.HasConversation)
+        {
+            return;
+        }
+
+        var anchors = GetTurnAnchors();
+        if (anchors.Count == 0)
+        {
+            return;
+        }
+
+        var position = eventArgs.GetPosition(RulerStrip);
+        var extent = TranscriptScroller.Extent.Height;
+        var viewport = TranscriptScroller.Viewport.Height;
+        var anchor = extent <= viewport + 1
+            ? anchors[0]
+            : FindNearestTurnAnchor(anchors,
+                Math.Clamp(position.Y / Math.Max(1, RulerStrip.Bounds.Height), 0, 1) * (extent - viewport));
+        var target = Math.Clamp(anchor.Top - 12, 0, Math.Max(0, extent - viewport));
+        TranscriptScroller.Offset = new Vector(0, target);
+        HideRulerPreview();
+    }
+
+    private void UpdateRulerPreview(Point position)
+    {
+        if (!_viewModel.HasConversation || RulerStrip.Bounds.Height <= 0)
+        {
+            HideRulerPreview();
+            return;
+        }
+
+        var anchors = GetTurnAnchors();
+        if (anchors.Count == 0)
+        {
+            HideRulerPreview();
+            return;
+        }
+
+        RulerHoverTick.IsVisible = true;
+        RulerHoverTick.Margin = new Thickness(10,
+            Math.Clamp(position.Y, 18, Math.Max(18, RulerStrip.Bounds.Height - 20)), 0, 0);
+
+        var extent = TranscriptScroller.Extent.Height;
+        var viewport = TranscriptScroller.Viewport.Height;
+        if (extent <= viewport + 1)
+        {
+            RulerPreviewCard.IsVisible = false;
+            return;
+        }
+
+        var anchor = FindNearestTurnAnchor(anchors,
+            Math.Clamp(position.Y / RulerStrip.Bounds.Height, 0, 1) * (extent - viewport));
+        PopulateRulerPreview(anchor.Item);
+        RulerPreviewCard.IsVisible = true;
+        var cardHeight = Math.Max(96, RulerPreviewCard.Bounds.Height);
+        var top = Math.Clamp(position.Y - (cardHeight / 2), 8, Math.Max(8, viewport - cardHeight - 8));
+        RulerPreviewCard.Margin = new Thickness(45, top, 0, 0);
+    }
+
+    private void HideRulerPreview()
+    {
+        RulerPreviewCard.IsVisible = false;
+        RulerHoverTick.IsVisible = false;
+    }
+
+    private List<(ChatItemViewModel Item, double Top)> GetTurnAnchors()
+    {
+        var anchors = new List<(ChatItemViewModel Item, double Top)>();
+        for (var index = 0; index < _viewModel.Messages.Count; index++)
+        {
+            var item = _viewModel.Messages[index];
+            if (!item.IsUser)
+            {
+                continue;
+            }
+
+            var container = TranscriptItems.ContainerFromIndex(index);
+            if (container is null)
+            {
+                continue;
+            }
+
+            var point = container.TranslatePoint(new Point(0, 0), TranscriptScroller);
+            if (point is null)
+            {
+                continue;
+            }
+
+            anchors.Add((item, TranscriptScroller.Offset.Y + point.Value.Y));
+        }
+
+        return anchors;
+    }
+
+    private static (ChatItemViewModel Item, double Top) FindNearestTurnAnchor(
+        List<(ChatItemViewModel Item, double Top)> anchors, double target)
+    {
+        var best = anchors[0];
+        var bestDistance = double.MaxValue;
+        foreach (var anchor in anchors)
+        {
+            var distance = Math.Abs(anchor.Top - target);
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                best = anchor;
+            }
+        }
+
+        return best;
+    }
+
+    private void PopulateRulerPreview(ChatItemViewModel user)
+    {
+        RulerPreviewTitle.Text = FirstPreviewLine(user.Text, 60);
+        var index = _viewModel.Messages.IndexOf(user);
+        var reply = new System.Text.StringBuilder();
+        for (var next = index + 1; next < _viewModel.Messages.Count; next++)
+        {
+            var item = _viewModel.Messages[next];
+            if (item.IsUser)
+            {
+                break;
+            }
+
+            if (item.IsAssistant && !string.IsNullOrWhiteSpace(item.Text))
+            {
+                reply.AppendLine(item.Text);
+            }
+        }
+
+        var (body, bullet) = BuildPreviewText(reply.ToString());
+        RulerPreviewBody.Text = body;
+        RulerPreviewBody.IsVisible = !string.IsNullOrWhiteSpace(body);
+        RulerPreviewBulletRow.IsVisible = !string.IsNullOrWhiteSpace(bullet);
+        RulerPreviewBullet.Text = bullet;
+    }
+
+    private static string FirstPreviewLine(string? text, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return string.Empty;
+        }
+
+        var line = text.Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Split('\n')
+            .Select(value => value.Trim())
+            .FirstOrDefault(value => value.Length > 0) ?? string.Empty;
+        line = line.Replace("**", string.Empty).Replace("`", string.Empty);
+        return line.Length <= maxLength ? line : line[..maxLength].TrimEnd() + "…";
+    }
+
+    private static (string Body, string Bullet) BuildPreviewText(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return (string.Empty, string.Empty);
+        }
+
+        var lines = text.Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace("**", string.Empty)
+            .Replace("`", string.Empty)
+            .Split('\n')
+            .Select(value => value.Trim())
+            .Where(value => value.Length > 0)
+            .ToList();
+
+        var body = new System.Text.StringBuilder();
+        string? bullet = null;
+        foreach (var line in lines)
+        {
+            if (line.StartsWith("- ", StringComparison.Ordinal) || line.StartsWith("* ", StringComparison.Ordinal))
+            {
+                bullet ??= line[2..].Trim();
+                continue;
+            }
+
+            if (bullet is not null)
+            {
+                continue;
+            }
+
+            if (body.Length > 0)
+            {
+                body.Append(' ');
+            }
+
+            body.Append(line);
+            if (body.Length > 150)
+            {
+                break;
+            }
+        }
+
+        return (TruncatePreview(body.ToString(), 140), TruncatePreview(bullet ?? string.Empty, 44));
+    }
+
+    private static string TruncatePreview(string text, int maxLength) =>
+        text.Length <= maxLength ? text : text[..maxLength].TrimEnd() + "…";
+
     private void OnWindowPointerWheelChanged(object? sender, PointerWheelEventArgs eventArgs) =>
         HidePreviewCards();
 
