@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
+using Avalonia.Input.Platform;
 using Avalonia.Media;
 using Avalonia.Threading;
 
@@ -87,6 +88,7 @@ public sealed class MarkdownTextBlock : UserControl
             {
                 FlushParagraph(paragraph);
                 FlushListBlock(listItems);
+                var language = line.TrimStart()[fence.Length..].Trim();
                 var code = new List<string>();
                 index++;
                 while (index < lines.Length
@@ -95,7 +97,7 @@ public sealed class MarkdownTextBlock : UserControl
                     code.Add(lines[index]);
                     index++;
                 }
-                AddCodeBlock(string.Join("\n", code));
+                AddCodeBlock(string.Join("\n", code), language);
                 continue;
             }
 
@@ -207,15 +209,71 @@ public sealed class MarkdownTextBlock : UserControl
         _root.Children.Add(block);
     }
 
-    private void AddCodeBlock(string code)
+    private void AddCodeBlock(string code, string language)
     {
+        var headerIcon = new Avalonia.Controls.Shapes.Path
+        {
+            Data = Geometry.Parse("M9 6L3 12L9 18 M15 6L21 12L15 18"),
+            Stroke = new SolidColorBrush(Color.Parse("#7E7F82")),
+            StrokeThickness = 1.3,
+            StrokeLineCap = PenLineCap.Round,
+            StrokeJoin = PenLineJoin.Round,
+            Fill = Brushes.Transparent,
+            Width = 14,
+            Height = 14,
+            Stretch = Stretch.Uniform,
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
+        };
+        var label = new TextBlock
+        {
+            Text = string.IsNullOrWhiteSpace(language) ? "纯文本" : language,
+            FontSize = 12,
+            Foreground = new SolidColorBrush(Color.Parse("#A0A1A3")),
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
+        };
+        var headerStack = new StackPanel
+        {
+            Orientation = Avalonia.Layout.Orientation.Horizontal,
+            Spacing = 8,
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
+        };
+        headerStack.Children.Add(headerIcon);
+        headerStack.Children.Add(label);
+
+        var actions = new StackPanel
+        {
+            Orientation = Avalonia.Layout.Orientation.Horizontal,
+            Spacing = 2,
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
+        };
+        actions.Children.Add(CreateCodeActionButton("M4 6H20 M4 12H15L18 15 M4 18H20 M18 15H14", null));
+        actions.Children.Add(CreateCodeActionButton("M8 8H20V20H8Z M4 16V4H16", () =>
+        {
+            var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+            if (clipboard is not null)
+            {
+                _ = clipboard.SetTextAsync(code);
+            }
+        }));
+
+        var header = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,Auto"),
+            Height = 36,
+            Margin = new Thickness(12, 0, 8, 0)
+        };
+        header.Children.Add(headerStack);
+        Grid.SetColumn(actions, 1);
+        header.Children.Add(actions);
+
         var codeText = new SelectableTextBlock
         {
             Text = code,
             FontFamily = CodeFont,
-            FontSize = Math.Max(12, ContentFontSize - 1),
-            LineHeight = Math.Max(18, ContentLineHeight - 3),
-            Foreground = CodeBrush,
+            FontSize = 12,
+            LineHeight = 19,
+            Foreground = new SolidColorBrush(Color.Parse("#C3C4C6")),
             TextWrapping = TextWrapping.NoWrap
         };
         var scroll = new ScrollViewer
@@ -225,13 +283,56 @@ public sealed class MarkdownTextBlock : UserControl
             VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
             MaxHeight = 360
         };
-        _root.Children.Add(new Border
+        var codeArea = new Border
         {
             Child = scroll,
-            Background = CodeBackground,
-            CornerRadius = new CornerRadius(8),
+            Background = new SolidColorBrush(Color.Parse("#1E1F21")),
             Padding = new Thickness(12, 10)
+        };
+        var layout = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto") };
+        layout.Children.Add(header);
+        Grid.SetRow(codeArea, 1);
+        layout.Children.Add(codeArea);
+        _root.Children.Add(new Border
+        {
+            Child = layout,
+            Background = new SolidColorBrush(Color.Parse("#1C1C1E")),
+            CornerRadius = new CornerRadius(10),
+            ClipToBounds = true
         });
+    }
+
+    private static Button CreateCodeActionButton(string geometry, Action? onClick)
+    {
+        var button = new Button
+        {
+            Width = 28,
+            Height = 28,
+            Padding = new Thickness(0),
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            CornerRadius = new CornerRadius(6),
+            Content = new Avalonia.Controls.Shapes.Path
+            {
+                Data = Geometry.Parse(geometry),
+                Stroke = new SolidColorBrush(Color.Parse("#7E7F82")),
+                StrokeThickness = 1.3,
+                StrokeLineCap = PenLineCap.Round,
+                StrokeJoin = PenLineJoin.Round,
+                Fill = Brushes.Transparent,
+                Width = 14,
+                Height = 14,
+                Stretch = Stretch.Uniform,
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
+            }
+        };
+        if (onClick is not null)
+        {
+            button.Click += (_, _) => onClick();
+        }
+
+        return button;
     }
 
     private static void AddInline(InlineCollection target, string text)

@@ -123,6 +123,8 @@
         <StreamGeometry x:Key="ClockIcon">M12 3A9 9 0 1 0 12 21A9 9 0 1 0 12 3 M12 7V12L15 14</StreamGeometry>
         <StreamGeometry x:Key="WarningIcon">M12 3L22 20H2Z M12 9V14 M12 17V17.2 M12 1.5 M12 21.5</StreamGeometry>
         <StreamGeometry x:Key="CopyIcon">M8 8H20V20H8Z M4 16V4H16</StreamGeometry>
+        <StreamGeometry x:Key="CodeIcon">M9 6L3 12L9 18 M15 6L21 12L15 18</StreamGeometry>
+        <StreamGeometry x:Key="WrapIcon">M4 6H20 M4 12H15L18 15 M4 18H20 M18 15H14</StreamGeometry>
         <StreamGeometry x:Key="TrashIcon">M4 7H20 M9 4H15 M7 7L8 21H16L17 7 M10 11V17 M14 11V17 M3.5 12.5 M20.5 12.5</StreamGeometry>
         <StreamGeometry x:Key="BellIcon">M12 3A5 5 0 0 0 7 8V12L5 15H19L17 12V8A5 5 0 0 0 12 3Z M10 18A2 2 0 0 0 14 18 M3.5 11.5 M20.5 11.5</StreamGeometry>
         <StreamGeometry x:Key="MinimizeIcon">M5 12H19</StreamGeometry>
