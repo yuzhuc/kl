@@ -96,8 +96,13 @@
         <StreamGeometry x:Key="FolderIcon">M3 5H9L11 7H21V19H3Z M12 3 M12 21</StreamGeometry>
         <StreamGeometry x:Key="CodeReviewIcon">M6 3.2A2.4 2.4 0 1 0 6 8A2.4 2.4 0 1 0 6 3.2 M6 8V16 M6 16A2.4 2.4 0 1 0 6 20.8A2.4 2.4 0 1 0 6 16 M18.6 16A2.4 2.4 0 1 0 18.6 20.8A2.4 2.4 0 1 0 18.6 16 M12.6 3.4H15.4C17.6 3.4 19.4 5.2 19.4 7.4V16</StreamGeometry>
         <StreamGeometry x:Key="SearchIcon">M10.5 4A6.5 6.5 0 1 0 10.5 17A6.5 6.5 0 1 0 10.5 4 M15.5 15.5L21 21</StreamGeometry>
-        <StreamGeometry x:Key="MoreIcon">M5 12A1.5 1.5 0 1 0 8 12A1.5 1.5 0 1 0 5 12 M10.5 12A1.5 1.5 0 1 0 13.5 12A1.5 1.5 0 1 0 10.5 12 M16 12A1.5 1.5 0 1 0 19 12A1.5 1.5 0 1 0 16 12 M12 3.5 M12 20.5</StreamGeometry>
+        <StreamGeometry x:Key="MoreIcon">M5 12A2.2 2.2 0 1 0 9.4 12A2.2 2.2 0 1 0 5 12 M10 12A2.2 2.2 0 1 0 14.4 12A2.2 2.2 0 1 0 10 12 M15 12A2.2 2.2 0 1 0 19.4 12A2.2 2.2 0 1 0 15 12</StreamGeometry>
         <StreamGeometry x:Key="PanelIcon">M4 4H20V20H4Z M9 4V20</StreamGeometry>
+        <StreamGeometry x:Key="QueueIcon">M3.6 6.4A1.35 1.35 0 1 0 3.61 6.4 M8.2 6.4H21 M3.6 12.8A1.35 1.35 0 1 0 3.61 12.8 M8.2 12.8H21</StreamGeometry>
+        <StreamGeometry x:Key="ConversationIcon">M4 5H20V18H11L6 22V18H4Z M4 9H20</StreamGeometry>
+        <StreamGeometry x:Key="AlertIcon">M6 12A6 6 0 1 0 18 12A6 6 0 1 0 6 12 M12 8V12.4 M12 15.5V15.7</StreamGeometry>
+        <StreamGeometry x:Key="MicIcon">M12 4A3 3 0 0 0 9 7V12A3 3 0 0 0 15 12V7A3 3 0 0 0 12 4Z M6 11V12A6 6 0 0 0 18 12V11 M12 18V21</StreamGeometry>
+        <StreamGeometry x:Key="RingIcon">M12 6A6 6 0 1 0 18 12A6 6 0 0 0 12 6Z</StreamGeometry>
         <StreamGeometry x:Key="SortIcon">M7 4V20 M7 4L4 7 M7 4L10 7 M17 20V4 M17 20L14 17 M17 20L20 17</StreamGeometry>
         <StreamGeometry x:Key="ListIcon">M4 6H7 M10 6H20 M4 12H7 M10 12H20 M4 18H7 M10 18H20</StreamGeometry>
         <StreamGeometry x:Key="MoonIcon">M15 3A9 9 0 1 0 21 16A7 7 0 0 1 15 3</StreamGeometry>
@@ -668,7 +673,7 @@
             <Setter Property="CornerRadius" Value="10" />
         </Style>
         <Style Selector="MenuItem">
-            <Setter Property="Foreground" Value="#C6C7C9" />
+            <Setter Property="Foreground" Value="#8E8F91" />
             <Setter Property="FontSize" Value="13" />
             <Setter Property="Height" Value="30" />
             <Setter Property="CornerRadius" Value="6" />
@@ -842,7 +847,7 @@
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="HorizontalAlignment" Value="Stretch" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-        <Setter Property="Foreground" Value="#C6C7C9" />
+        <Setter Property="Foreground" Value="#8E8F91" />
         <Setter Property="FontSize" Value="12.5" />
     </Style>
         <Style Selector="Button.activity-row:pointerover">

@@ -17,6 +17,7 @@ public sealed class MarkdownTextBlock : UserControl
 
     private static readonly FontFamily CodeFont = new("Cascadia Mono, Consolas");
     private static readonly IBrush PrimaryBrush = new SolidColorBrush(Color.Parse("#E3E4E6"));
+    private static readonly IBrush BodyBrush = new SolidColorBrush(Color.Parse("#C3C4C6"));
     private static readonly IBrush CodeBrush = new SolidColorBrush(Color.Parse("#D7D9DD"));
     private static readonly IBrush InlineCodeBrush = new SolidColorBrush(Color.Parse("#D7D9DD"));
     private static readonly IBrush CodeBackground = new SolidColorBrush(Color.Parse("#1B1B1C"));
@@ -78,12 +79,14 @@ public sealed class MarkdownTextBlock : UserControl
         var lines = Text.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
         var fence = new string((char)96, 3);
         var paragraph = new List<string>();
+        var listItems = new List<string>();
         for (var index = 0; index < lines.Length; index++)
         {
             var line = lines[index];
             if (line.TrimStart().StartsWith(fence, StringComparison.Ordinal))
             {
                 FlushParagraph(paragraph);
+                FlushListBlock(listItems);
                 var code = new List<string>();
                 index++;
                 while (index < lines.Length
@@ -99,18 +102,21 @@ public sealed class MarkdownTextBlock : UserControl
             if (string.IsNullOrWhiteSpace(line))
             {
                 FlushParagraph(paragraph);
+                FlushListBlock(listItems);
                 continue;
             }
 
             if (line.StartsWith("# ", StringComparison.Ordinal))
             {
                 FlushParagraph(paragraph);
+                FlushListBlock(listItems);
                 AddHeading(line[2..], 4);
                 continue;
             }
             if (line.StartsWith("## ", StringComparison.Ordinal))
             {
                 FlushParagraph(paragraph);
+                FlushListBlock(listItems);
                 AddHeading(line[3..], 2);
                 continue;
             }
@@ -118,13 +124,25 @@ public sealed class MarkdownTextBlock : UserControl
                 || line.StartsWith("* ", StringComparison.Ordinal))
             {
                 FlushParagraph(paragraph);
-                AddListItem(line[2..]);
+                listItems.Add(line[2..]);
                 continue;
             }
 
+            FlushListBlock(listItems);
             paragraph.Add(line);
         }
         FlushParagraph(paragraph);
+        FlushListBlock(listItems);
+    }
+
+    private void FlushListBlock(List<string> items)
+    {
+        if (items.Count == 0)
+        {
+            return;
+        }
+
+        AddListBlock(items);
     }
 
     private void FlushParagraph(List<string> lines)
@@ -140,7 +158,7 @@ public sealed class MarkdownTextBlock : UserControl
             FontSize = ContentFontSize,
             LineHeight = ContentLineHeight,
             TextWrapping = TextWrapping.Wrap,
-            Foreground = PrimaryBrush
+            Foreground = BodyBrush
         };
         AddInline(block.Inlines!, text);
         _root.Children.Add(block);
@@ -160,17 +178,32 @@ public sealed class MarkdownTextBlock : UserControl
         _root.Children.Add(block);
     }
 
-    private void AddListItem(string text)
+    private void AddListBlock(List<string> items)
     {
+        if (items.Count == 0)
+        {
+            return;
+        }
+
         var block = new SelectableTextBlock
         {
             FontSize = ContentFontSize,
             LineHeight = ContentLineHeight,
             TextWrapping = TextWrapping.Wrap,
-            Foreground = PrimaryBrush
+            Foreground = BodyBrush
         };
-        block.Inlines!.Add(new Run("• "));
-        AddInline(block.Inlines, text);
+        for (var index = 0; index < items.Count; index++)
+        {
+            if (index > 0)
+            {
+                block.Inlines!.Add(new LineBreak());
+            }
+
+            block.Inlines!.Add(new Run("• ") { Foreground = BodyBrush });
+            AddInline(block.Inlines!, items[index]);
+        }
+
+        items.Clear();
         _root.Children.Add(block);
     }
 
@@ -228,11 +261,38 @@ public sealed class MarkdownTextBlock : UserControl
                     target.Add(new Run(text[codeStart..]));
                     break;
                 }
-                target.Add(new Run(text[(codeStart + 1)..codeEnd])
+                var codeText = text[(codeStart + 1)..codeEnd];
+                if (codeText.Length > 80)
                 {
-                    FontFamily = CodeFont,
-                    Foreground = InlineCodeBrush
-                });
+                    target.Add(new Run(codeText)
+                    {
+                        FontFamily = CodeFont,
+                        Foreground = InlineCodeBrush
+                    });
+                    position = codeEnd + 1;
+                    continue;
+                }
+
+                var pill = new Border
+                {
+                    Background = new SolidColorBrush(Color.Parse("#1A1A1C")),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(4, 0),
+                    Margin = new Thickness(1, 0),
+                    Height = 17,
+                    VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                    Child = new TextBlock
+                    {
+                        Text = codeText,
+                        FontFamily = CodeFont,
+                        FontSize = 11.5,
+                        Foreground = InlineCodeBrush,
+                        TextWrapping = TextWrapping.NoWrap,
+                        MaxWidth = 560,
+                        VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
+                    }
+                };
+                target.Add(new InlineUIContainer(pill));
                 position = codeEnd + 1;
                 continue;
             }

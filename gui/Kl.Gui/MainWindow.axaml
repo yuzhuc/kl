@@ -336,7 +336,7 @@
                 </StackPanel>
 
                 <!-- reasoning / tool activity (Codex-style inline row + expanded shell panel) -->
-                <StackPanel IsVisible="{Binding IsActivity}" Spacing="4" Margin="0,0,0,2">
+                <StackPanel IsVisible="{Binding IsActivity}" Spacing="4" Margin="0,0,0,8">
                     <Button Classes="activity-row" Classes.expanded="{Binding ShowExpanded}" Click="OnActivityClicked">
                         <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
                             <Path Width="14" Height="14" Data="{StaticResource ThoughtIcon}" Stretch="Uniform"
@@ -1126,7 +1126,7 @@
             <Grid Grid.Column="2" Background="{StaticResource ContentFill}" RowDefinitions="Auto,*">
                 <Grid Grid.Row="0" Height="48" ColumnDefinitions="*,Auto" Margin="0,0,12,0"
                       IsVisible="{Binding !IsChatPage}">
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
                         <Button Classes="chip" Height="28" Padding="6,2" Click="OnOpenModelSettingsClicked"
                                 ToolTip.Tip="{Binding CoreConnectionLabel}">
                             <StackPanel Orientation="Horizontal" Spacing="6">
@@ -1168,20 +1168,20 @@
                     <!-- ===================== Chat page ===================== -->
                     <Grid IsVisible="{Binding IsChatPage}" RowDefinitions="Auto,*,Auto">
                         <Border Grid.Row="0" IsVisible="{Binding ShowConversationHeader}" Height="62"
-                                BorderBrush="Transparent" BorderThickness="0" Padding="16,0">
+                                BorderBrush="Transparent" BorderThickness="0" Padding="20,0,9,4">
                             <Grid ColumnDefinitions="*,Auto">
-                                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                                    <Path Width="16" Height="16" Data="{StaticResource ChatIcon}" Stretch="Uniform"
-                                          Stroke="{StaticResource TextTertiary}" StrokeThickness="1.35"
+                                <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                                    <Path Width="14" Height="14" Data="{StaticResource ConversationIcon}" Stretch="Uniform"
+                                          Stroke="{StaticResource TextTertiary}" StrokeThickness="1.25"
                                           StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
                                     <TextBlock Text="{Binding HeaderTitle}" FontSize="13.5" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextPrimary}"
                                                TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                 </StackPanel>
-                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10"
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5"
                                             VerticalAlignment="Center">
                                     <Button Classes="icon" IsVisible="{Binding HasConversation}" ToolTip.Tip="会话操作">
-                                        <Path Width="16" Height="16" Data="{StaticResource MoreIcon}" Stretch="Uniform" />
+                                        <Path Width="13" Height="12" Data="{StaticResource MoreIcon}" Stretch="Uniform" Fill="#737375" Stroke="Transparent" />
                                         <Button.Flyout>
                                             <MenuFlyout Placement="BottomEdgeAlignedRight">
                                                 <MenuItem Header="重命名当前会话" Click="OnRenameActiveSessionClicked" />
@@ -1190,10 +1190,12 @@
                                         </Button.Flyout>
                                     </Button>
                                     <Button Classes="icon" Click="OnToggleSidebarClicked" ToolTip.Tip="切换侧边栏">
-                                        <Path Width="16" Height="16" Data="{StaticResource PanelIcon}" Stretch="Uniform" />
+                                        <Path Width="14" Height="12" Data="{StaticResource QueueIcon}" Stretch="Uniform" />
                                     </Button>
+                                    <Border Width="1" Height="16" Background="#3A3A3C" Margin="1,0,1,0"
+                                            VerticalAlignment="Center" />
                                     <Button Classes="icon" Click="OnNewSessionClicked" ToolTip.Tip="新会话">
-                                        <Path Width="16" Height="16" Data="{StaticResource PlusIcon}" Stretch="Uniform" />
+                                        <Path Width="12" Height="12" Data="{StaticResource PlusIcon}" Stretch="Uniform" />
                                     </Button>
                                 </StackPanel>
                             </Grid>
@@ -1290,41 +1292,56 @@
                                                  Text="{Binding Composer, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                  PlaceholderText="{Binding ComposerPlaceholder}"
                                                  AcceptsReturn="True" TextWrapping="Wrap"
-                                                 MinHeight="36" MaxHeight="180"
+                                                 MinHeight="42" MaxHeight="180"
                                                  KeyDown="OnComposerKeyDown" />
                                         <TextBox x:Name="ChatComposerBox" Classes="composer"
                                                  IsVisible="{Binding HasConversation}"
                                                  Text="{Binding Composer, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                  PlaceholderText="{Binding ComposerPlaceholder}"
                                                  AcceptsReturn="True" TextWrapping="Wrap"
-                                                 MinHeight="36" MaxHeight="180"
+                                                 MinHeight="42" MaxHeight="180"
                                                  KeyDown="OnComposerKeyDown" />
                                     </Grid>
 
-                                    <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto,Auto"
-                                          ColumnSpacing="6" Margin="0,4,0,0">
+                                    <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto,Auto,Auto"
+                                          ColumnSpacing="4" Margin="0,6,0,0">
                                         <Button Classes="attach" Click="OnAttachFilesClicked"
                                                 ToolTip.Tip="添加文本或代码附件">
-                                            <Path Width="13" Height="13" Data="{StaticResource PlusIcon}"
+                                            <Path Width="14" Height="14" Data="{StaticResource PlusIcon}"
                                                   Stretch="Uniform" />
                                         </Button>
-                                        <Button Grid.Column="1" Classes="chip" HorizontalAlignment="Left"
-                                                Margin="4,0,0,0" Click="OnNavSettingsClicked" ToolTip.Tip="权限模式">
-                                            <StackPanel Orientation="Horizontal" Spacing="5">
-                                                <Path Width="12" Height="12" Data="{StaticResource WarningIcon}"
-                                                      Stretch="Uniform" Stroke="{StaticResource WarningOrange}"
-                                                      StrokeThickness="1.5" StrokeLineCap="Round"
-                                                      StrokeJoin="Round" Fill="Transparent"
-                                                      VerticalAlignment="Center" />
-                                                <TextBlock Text="{Binding PermissionMode}" FontSize="12"
-                                                           Foreground="#C97A4A"
-                                                           VerticalAlignment="Center" />
-                                            </StackPanel>
-                                        </Button>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="1"
+                                                    HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                    Margin="4,0,0,0">
+                                            <Button Classes="chip" Click="OnNavSettingsClicked" ToolTip.Tip="权限模式">
+                                                <StackPanel Orientation="Horizontal" Spacing="5">
+                                                    <Path Width="13" Height="13" Data="{StaticResource AlertIcon}"
+                                                          Stretch="Uniform" Stroke="#F0814B"
+                                                          StrokeThickness="1.5" StrokeLineCap="Round"
+                                                          StrokeJoin="Round" Fill="Transparent"
+                                                          VerticalAlignment="Center" />
+                                                    <TextBlock Text="{Binding PermissionMode}" FontSize="12.5"
+                                                               Foreground="#F0814B"
+                                                               VerticalAlignment="Center" />
+                                                </StackPanel>
+                                            </Button>
+                                            <Button Classes="chip" Click="OnNavPluginsClicked" ToolTip.Tip="插件">
+                                                <Grid Width="16" Height="16">
+                                                    <Path Width="14" Height="14" Data="{StaticResource PluginIcon}"
+                                                          Stretch="Uniform" Stroke="#8A8B8D"
+                                                          StrokeThickness="1.2" StrokeLineCap="Round"
+                                                          StrokeJoin="Round" Fill="Transparent" />
+                                                    <Border Width="4" Height="4" CornerRadius="2"
+                                                            Background="#E6C15A"
+                                                            HorizontalAlignment="Right"
+                                                            VerticalAlignment="Bottom" Margin="0,0,0,1" />
+                                                </Grid>
+                                            </Button>
+                                        </StackPanel>
                                         <Button Grid.Column="2" Classes="chip" Click="OnOpenModelSettingsClicked"
                                                 ToolTip.Tip="模型与连接">
                                             <StackPanel Orientation="Horizontal" Spacing="5">
-                                                <Path Width="13" Height="13" Data="{StaticResource MoonIcon}" Stretch="Uniform"
+                                                <Path Width="13" Height="13" Data="{StaticResource RingIcon}" Stretch="Uniform"
                                                       Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3"
                                                       StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
                                                       VerticalAlignment="Center" />
@@ -1338,15 +1355,20 @@
                                                       VerticalAlignment="Center" />
                                             </StackPanel>
                                         </Button>
-                                        <Button Grid.Column="3" Classes="stop" IsVisible="{Binding IsBusy}"
+                                        <Button Grid.Column="3" Classes="icon" Width="28" Height="28"
+                                                ToolTip.Tip="语音输入（即将支持）">
+                                            <Path Width="14" Height="14" Data="{StaticResource MicIcon}"
+                                                  Stretch="Uniform" />
+                                        </Button>
+                                        <Button Grid.Column="4" Classes="stop" IsVisible="{Binding IsBusy}"
                                                 Click="OnCancelClicked" ToolTip.Tip="停止生成">
                                             <Path Width="12" Height="12" Data="{StaticResource StopIcon}"
                                                   Stretch="Uniform" />
                                         </Button>
-                                        <Button Grid.Column="3" Classes="send" IsVisible="{Binding !IsBusy}"
+                                        <Button Grid.Column="4" Classes="send" IsVisible="{Binding !IsBusy}"
                                                 Click="OnSendClicked" IsEnabled="{Binding CanSend}"
                                                 ToolTip.Tip="发送 Ctrl+Enter">
-                                            <Path Width="14" Height="14" Data="{StaticResource SendIcon}"
+                                            <Path Width="13" Height="13" Data="{StaticResource SendIcon}"
                                                   Stretch="Uniform" />
                                         </Button>
                                     </Grid>
@@ -2109,7 +2131,7 @@
                                     </Button>
                                     <Button Classes="more-menu-item" Click="OnMergeDisplayClicked">
                                         <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
-                                            <Path Width="14" Height="14" Data="{StaticResource ListIcon}" Stretch="Uniform"
+                                            <Path Width="14" Height="14" Data="{StaticResource QueueIcon}" Stretch="Uniform"
                                                   StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round" />
                                             <TextBlock Grid.Column="1" Text="合并显示" VerticalAlignment="Center"
                                                        Foreground="#C6C7C9" />
