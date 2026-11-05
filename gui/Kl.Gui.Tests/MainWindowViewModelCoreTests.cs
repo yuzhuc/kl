@@ -160,10 +160,11 @@ public sealed class MainWindowViewModelCoreTests
             item =>
             {
                 Assert.True(item.IsTool);
-                Assert.Contains("shell", item.Header);
+                Assert.Equal("已运行", item.ActivityPrefix);
+                Assert.False(string.IsNullOrWhiteSpace(item.ActivityCommand));
                 Assert.Equal("out", item.Detail);
                 Assert.Equal("ok", item.Summary);
-                Assert.Equal("完成", item.StatusText);
+                Assert.Equal("成功", item.StatusText);
             });
 
         Assert.Contains("tokens 10/20", vm.UsageText);
@@ -355,11 +356,12 @@ public sealed class MainWindowViewModelCoreTests
             message =>
             {
                 Assert.True(message.IsTool);
-                Assert.Contains("shell", message.Header);
+                Assert.Equal("已运行", message.ActivityPrefix);
+                Assert.Equal("done", message.ActivityCommand);
                 Assert.Contains("out", message.Detail);
                 Assert.Contains("+a", message.Detail);
                 Assert.Equal("done", message.Summary);
-                Assert.Equal("完成", message.StatusText);
+                Assert.Equal("成功", message.StatusText);
             });
         Assert.Equal("sess-1", vm.ActiveSessionItem!.Id);
         Assert.False(vm.IsCoreBusy);

@@ -187,14 +187,14 @@ public sealed class ChatItemMigrationTests
     [Fact]
     public void StoredMessagesRoundTripThroughChatItem()
     {
-        var original = ChatItemViewModel.Tool("调用 shell", "ls -la", "output", "done");
+        var original = ChatItemViewModel.Tool("已运行 ls -la", "ls -la", "output", "done");
         original.Start("运行中");
         original.Complete("完成");
 
         var restored = ChatItemViewModel.FromStored(original.ToStored());
 
         Assert.Equal(ChatItemKind.Tool, restored.Kind);
-        Assert.Equal("调用 shell", restored.Header);
+        Assert.Equal("已运行 ls -la", restored.Header);
         Assert.Equal("ls -la", restored.Text);
         Assert.Equal("output", restored.Detail);
         Assert.Equal("完成", restored.StatusText);
