@@ -632,7 +632,7 @@ public sealed partial class MainWindowViewModel
                     if (!string.IsNullOrWhiteSpace(message.Reasoning))
                     {
                         var reasoning = ChatItemViewModel.Reasoning(message.Reasoning);
-                        reasoning.Complete("完成", "思考完成");
+                        reasoning.Complete("成功", "思考完成");
                         Messages.Add(reasoning);
                     }
                     Messages.Add(ChatItemViewModel.Assistant(message.Text));
@@ -648,7 +648,7 @@ public sealed partial class MainWindowViewModel
                     {
                         tool.AppendDetail("\n" + message.ToolDiff);
                     }
-                    tool.Complete(message.ToolOk == false ? "失败" : "完成");
+                    tool.Complete(message.ToolOk == false ? "失败" : "成功");
                     AddToolItem(tool);
                     break;
             }
@@ -705,7 +705,7 @@ public sealed partial class MainWindowViewModel
             case SessionEventKind.AssistantDelta:
                 if (_activeReasoning is { IsRunning: true } reasoning)
                 {
-                    reasoning.Complete("完成", "思考完成");
+                    reasoning.Complete("成功", "思考完成");
                 }
                 EnsureAssistantItem().AppendText(sessionEvent.Text);
                 break;
@@ -713,7 +713,7 @@ public sealed partial class MainWindowViewModel
                 EnsureReasoningItem().AppendText(sessionEvent.Text);
                 break;
             case SessionEventKind.ToolStarted:
-                _activeReasoning?.Complete("完成", "思考完成");
+                _activeReasoning?.Complete("成功", "思考完成");
                 _activeAssistant?.Complete(string.Empty);
                 var command = ChatItemViewModel.ExtractCommand(sessionEvent.Args);
                 var tool = ChatItemViewModel.Tool(
@@ -822,7 +822,7 @@ public sealed partial class MainWindowViewModel
         {
             item.AppendDetail("\n" + sessionEvent.Diff);
         }
-        item.Complete(sessionEvent.Ok ? "完成" : "失败");
+        item.Complete(sessionEvent.Ok ? "成功" : "失败");
         if (string.Equals(ChatItemViewModel.ToolKindLabel(sessionEvent.Name), "Image", StringComparison.Ordinal))
         {
             var count = CountImageMentions(item.Detail) + CountImageMentions(item.Text);
@@ -866,7 +866,7 @@ public sealed partial class MainWindowViewModel
         }
         if (_activeToolItem is { IsRunning: true } tool)
         {
-            tool.Stop(status == "完成" ? "完成" : status);
+            tool.Stop(status == "完成" ? "成功" : status);
         }
         _activeToolItem = null;
         _activeAssistant = null;
