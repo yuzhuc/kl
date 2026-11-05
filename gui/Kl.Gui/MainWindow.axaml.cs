@@ -164,26 +164,33 @@ public partial class MainWindow : Window
         ResetRulerWave();
     }
 
-    /// <summary>Regenerates one ruler tick per chat item, positioned by its content offset.</summary>
+    /// <summary>
+    /// One ruler tick per user turn (two turns render two ticks, three render three), packed at the
+    /// same tight 10px pitch and vertically centred in the ruler column.
+    /// </summary>
     private void BuildRulerTicks()
     {
         var height = RulerStrip.Bounds.Height;
-        var extent = TranscriptScroller.Extent.Height;
-        _lastRulerExtent = extent;
+        _lastRulerExtent = TranscriptScroller.Extent.Height;
         RulerTicksPanel.Children.Clear();
         _rulerTicks.Clear();
         _rulerTickYs.Clear();
         _rulerTickTargets.Clear();
         _rulerWaveIndex = -1;
-        if (height <= 44 || extent <= 0 || _viewModel.Messages.Count == 0)
+        if (height <= 44 || _viewModel.Messages.Count == 0)
         {
             return;
         }
 
-        var usable = height - 36;
-        var lastY = double.NegativeInfinity;
+        var turns = new List<(ChatItemViewModel Item, double Top)>();
         for (var index = 0; index < _viewModel.Messages.Count; index++)
         {
+            var item = _viewModel.Messages[index];
+            if (!item.IsUser)
+            {
+                continue;
+            }
+
             var container = TranscriptItems.ContainerFromIndex(index);
             if (container is null)
             {
@@ -196,21 +203,29 @@ public partial class MainWindow : Window
                 continue;
             }
 
-            var top = TranscriptScroller.Offset.Y + point.Value.Y;
-            var y = 18 + Math.Clamp(top / extent, 0, 1) * usable;
-            if (y - lastY < 4)
-            {
-                continue;
-            }
+            turns.Add((item, TranscriptScroller.Offset.Y + point.Value.Y));
+        }
 
+        if (turns.Count == 0)
+        {
+            return;
+        }
+
+        var usable = height - 36;
+        const double preferredPitch = 10;
+        var pitch = turns.Count == 1 ? 0 : Math.Min(preferredPitch, usable / (turns.Count - 1));
+        var total = pitch * (turns.Count - 1);
+        var startY = 18 + Math.Max(0, (usable - total) / 2);
+        for (var index = 0; index < turns.Count; index++)
+        {
+            var y = startY + (index * pitch);
             var tick = CreateRulerTick();
             Canvas.SetTop(tick, y - 1);
             Canvas.SetLeft(tick, 0);
             RulerTicksPanel.Children.Add(tick);
             _rulerTicks.Add(tick);
             _rulerTickYs.Add(y);
-            _rulerTickTargets.Add((_viewModel.Messages[index], top));
-            lastY = y;
+            _rulerTickTargets.Add(turns[index]);
         }
     }
 
