@@ -1134,7 +1134,8 @@
 
             <!-- main content -->
             <Grid Grid.Column="2" Background="{StaticResource ContentFill}" RowDefinitions="Auto,*">
-                <Grid Grid.Row="0" Height="48" ColumnDefinitions="*,Auto" Margin="0,0,12,0">
+                <Grid Grid.Row="0" Height="48" ColumnDefinitions="*,Auto" Margin="0,0,12,0"
+                      IsVisible="{Binding !IsChatPage}">
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                         <Button Classes="chip" Height="28" Padding="6,2" Click="OnOpenModelSettingsClicked"
                                 ToolTip.Tip="{Binding CoreConnectionLabel}">
@@ -1176,8 +1177,8 @@
 
                     <!-- ===================== Chat page ===================== -->
                     <Grid IsVisible="{Binding IsChatPage}" RowDefinitions="Auto,*,Auto">
-                        <Border Grid.Row="0" IsVisible="{Binding ShowConversationHeader}" Height="52"
-                                BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="16,0">
+                        <Border Grid.Row="0" IsVisible="{Binding ShowConversationHeader}" Height="62"
+                                BorderBrush="Transparent" BorderThickness="0" Padding="16,0">
                             <Grid ColumnDefinitions="*,Auto">
                                 <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                                     <Path Width="16" Height="16" Data="{StaticResource ChatIcon}" Stretch="Uniform"
@@ -1187,7 +1188,7 @@
                                                Foreground="{StaticResource TextPrimary}"
                                                TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                 </StackPanel>
-                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6"
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10"
                                             VerticalAlignment="Center">
                                     <Button Classes="icon" IsVisible="{Binding HasConversation}" ToolTip.Tip="会话操作">
                                         <Path Width="16" Height="16" Data="{StaticResource MoreIcon}" Stretch="Uniform" />
@@ -1223,10 +1224,10 @@
                             <ScrollViewer x:Name="TranscriptScroller" IsVisible="{Binding HasConversation}"
                                           VerticalScrollBarVisibility="Auto"
                                           HorizontalScrollBarVisibility="Disabled"
-                                          Padding="16,20,16,16">
+                                          Padding="0,12,0,16">
                                 <ItemsControl ItemsSource="{Binding Messages}"
                                               ItemTemplate="{StaticResource ChatItemTemplate}"
-                                              MaxWidth="752" HorizontalAlignment="Stretch" />
+                                              MaxWidth="736" HorizontalAlignment="Stretch" />
                             </ScrollViewer>
 
                             <Button x:Name="JumpToBottomButton" Classes="jump-bottom" IsVisible="False"
@@ -1237,7 +1238,7 @@
 
                             <ItemsControl ItemsSource="{Binding RulerTicks}" IsVisible="{Binding HasConversation}"
                                           IsHitTestVisible="False" Width="6" HorizontalAlignment="Left"
-                                          VerticalAlignment="Stretch" Margin="10,18,0,18">
+                                          VerticalAlignment="Stretch" Margin="16,18,0,18">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <Border Width="6" Height="1.5" Background="#373739" Margin="0,0,0,4.5" />
@@ -1246,8 +1247,8 @@
                             </ItemsControl>
                         </Grid>
 
-                        <Grid Grid.Row="2" MaxWidth="752" HorizontalAlignment="Stretch"
-                              Margin="16,0,16,12" RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
+                        <Grid Grid.Row="2" MaxWidth="736" HorizontalAlignment="Stretch"
+                              Margin="0,0,0,12" RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
                             <Button Grid.Row="0" Classes="chip" IsVisible="{Binding IsEmpty}" Click="OnWorkspacePickerClicked"
                                     HorizontalAlignment="Left" ToolTip.Tip="{Binding WorkspacePath}">
                                 <StackPanel Orientation="Horizontal" Spacing="7">
@@ -1299,14 +1300,14 @@
                                                  Text="{Binding Composer, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                  PlaceholderText="{Binding ComposerPlaceholder}"
                                                  AcceptsReturn="True" TextWrapping="Wrap"
-                                                 MinHeight="48" MaxHeight="180"
+                                                 MinHeight="36" MaxHeight="180"
                                                  KeyDown="OnComposerKeyDown" />
                                         <TextBox x:Name="ChatComposerBox" Classes="composer"
                                                  IsVisible="{Binding HasConversation}"
                                                  Text="{Binding Composer, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                  PlaceholderText="{Binding ComposerPlaceholder}"
                                                  AcceptsReturn="True" TextWrapping="Wrap"
-                                                 MinHeight="48" MaxHeight="180"
+                                                 MinHeight="36" MaxHeight="180"
                                                  KeyDown="OnComposerKeyDown" />
                                     </Grid>
 

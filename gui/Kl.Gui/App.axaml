@@ -59,7 +59,7 @@
         <FontFamily x:Key="UiFont">Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI</FontFamily>
 
         <x:Double x:Key="ChatContentFontSize">13.5</x:Double>
-        <x:Double x:Key="ChatContentLineHeight">21</x:Double>
+        <x:Double x:Key="ChatContentLineHeight">22</x:Double>
         <x:Double x:Key="ChatSecondaryFontSize">12.5</x:Double>
         <x:Double x:Key="ChatSecondaryLineHeight">19</x:Double>
 
