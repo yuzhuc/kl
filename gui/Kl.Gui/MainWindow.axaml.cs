@@ -95,52 +95,35 @@ public partial class MainWindow : Window
     private void OnJumpToBottomClicked(object? sender, RoutedEventArgs eventArgs) =>
         TranscriptScroller.ScrollToEnd();
 
-    // ---- Codex-style interactive ruler: hover previews a turn, click jumps to it ----
+    // ---- Codex-style interactive ruler: content-generated ticks, hover previews, click jumps ----
 
     private void OnRulerPointerMoved(object? sender, PointerEventArgs eventArgs)
     {
-        var position = eventArgs.GetPosition(RulerStrip);
+        var position = eventArgs.GetPosition(RulerTicksPanel);
         ApplyRulerWave(position.Y);
-        UpdateRulerPreview(position);
+        UpdateRulerPreview(position.Y);
     }
 
     private void OnRulerPointerExited(object? sender, PointerEventArgs eventArgs) => HideRulerPreview();
 
     private void OnRulerPointerPressed(object? sender, PointerPressedEventArgs eventArgs)
     {
-        if (!_viewModel.HasConversation)
+        if (!_viewModel.HasConversation || _rulerTickTargets.Count == 0)
         {
             return;
         }
 
-        var anchors = GetTurnAnchors();
-        if (anchors.Count == 0)
-        {
-            return;
-        }
-
-        var position = eventArgs.GetPosition(RulerStrip);
+        var index = FindNearestTickIndex(eventArgs.GetPosition(RulerTicksPanel).Y);
         var extent = TranscriptScroller.Extent.Height;
         var viewport = TranscriptScroller.Viewport.Height;
-        var anchor = extent <= viewport + 1
-            ? anchors[0]
-            : FindNearestTurnAnchor(anchors,
-                Math.Clamp(position.Y / Math.Max(1, RulerStrip.Bounds.Height), 0, 1) * (extent - viewport));
-        var target = Math.Clamp(anchor.Top - 12, 0, Math.Max(0, extent - viewport));
+        var target = Math.Clamp(_rulerTickTargets[index].Top - 12, 0, Math.Max(0, extent - viewport));
         TranscriptScroller.Offset = new Vector(0, target);
         HideRulerPreview();
     }
 
-    private void UpdateRulerPreview(Point position)
+    private void UpdateRulerPreview(double pointerY)
     {
-        if (!_viewModel.HasConversation || RulerStrip.Bounds.Height <= 0)
-        {
-            HideRulerPreview();
-            return;
-        }
-
-        var anchors = GetTurnAnchors();
-        if (anchors.Count == 0)
+        if (!_viewModel.HasConversation || _rulerTickTargets.Count == 0)
         {
             HideRulerPreview();
             return;
@@ -154,11 +137,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        var anchor = FindNearestTurnAnchor(anchors,
-            Math.Clamp(position.Y / RulerStrip.Bounds.Height, 0, 1) * (extent - viewport));
-        PopulateRulerPreview(anchor.Item);
+        var index = FindNearestTickIndex(pointerY);
+        PopulateRulerPreview(_rulerTickTargets[index].Item);
         var cardHeight = Math.Max(96, RulerPreviewCard.Bounds.Height);
-        var top = Math.Clamp(position.Y - (cardHeight / 2), 8, Math.Max(8, viewport - cardHeight - 8));
+        var top = Math.Clamp(pointerY - (cardHeight / 2), 8, Math.Max(8, viewport - cardHeight - 8));
+
         // Position changes are applied instantly: when the pointer stops somewhere new the card
         // must appear there directly, not glide down from the previous position.
         RulerPreviewCard.RenderTransform = TransformOperations.Parse($"translate(0px,{top:0.#}px)");
@@ -181,40 +164,93 @@ public partial class MainWindow : Window
         ResetRulerWave();
     }
 
+    /// <summary>Regenerates one ruler tick per chat item, positioned by its content offset.</summary>
     private void BuildRulerTicks()
     {
         var height = RulerStrip.Bounds.Height;
-        var count = height <= 0 ? 0 : Math.Max(0, (int)((height - 36) / RulerTickPitch) + 1);
-        if (count == _rulerTicks.Count)
+        var extent = TranscriptScroller.Extent.Height;
+        _lastRulerExtent = extent;
+        RulerTicksPanel.Children.Clear();
+        _rulerTicks.Clear();
+        _rulerTickYs.Clear();
+        _rulerTickTargets.Clear();
+        _rulerWaveIndex = -1;
+        if (height <= 44 || extent <= 0 || _viewModel.Messages.Count == 0)
         {
             return;
         }
 
-        RulerTicksPanel.Children.Clear();
-        _rulerTicks.Clear();
-        _rulerWaveIndex = -1;
-        for (var index = 0; index < count; index++)
+        var usable = height - 36;
+        var lastY = double.NegativeInfinity;
+        for (var index = 0; index < _viewModel.Messages.Count; index++)
         {
-            var tick = new Border
+            var container = TranscriptItems.ContainerFromIndex(index);
+            if (container is null)
             {
-                Width = RulerTickBaseWidth,
-                Height = 2,
-                Background = RulerTickBrush,
-                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left,
-                RenderTransformOrigin = new RelativePoint(0, 0.5, RelativeUnit.Relative)
-            };
-            tick.Transitions = new Transitions
+                continue;
+            }
+
+            var point = container.TranslatePoint(new Point(0, 0), TranscriptScroller);
+            if (point is null)
             {
-                new TransformOperationsTransition
-                {
-                    Property = RenderTransformProperty,
-                    Duration = TimeSpan.FromMilliseconds(110),
-                    Easing = new CubicEaseOut()
-                }
-            };
-            _rulerTicks.Add(tick);
+                continue;
+            }
+
+            var top = TranscriptScroller.Offset.Y + point.Value.Y;
+            var y = 18 + Math.Clamp(top / extent, 0, 1) * usable;
+            if (y - lastY < 4)
+            {
+                continue;
+            }
+
+            var tick = CreateRulerTick();
+            Canvas.SetTop(tick, y - 1);
+            Canvas.SetLeft(tick, 0);
             RulerTicksPanel.Children.Add(tick);
+            _rulerTicks.Add(tick);
+            _rulerTickYs.Add(y);
+            _rulerTickTargets.Add((_viewModel.Messages[index], top));
+            lastY = y;
         }
+    }
+
+    private static Border CreateRulerTick()
+    {
+        var tick = new Border
+        {
+            Width = RulerTickBaseWidth,
+            Height = 2,
+            Background = RulerTickBrush,
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left,
+            RenderTransformOrigin = new RelativePoint(0, 0.5, RelativeUnit.Relative)
+        };
+        tick.Transitions = new Transitions
+        {
+            new TransformOperationsTransition
+            {
+                Property = RenderTransformProperty,
+                Duration = TimeSpan.FromMilliseconds(110),
+                Easing = new CubicEaseOut()
+            }
+        };
+        return tick;
+    }
+
+    private int FindNearestTickIndex(double y)
+    {
+        var best = 0;
+        var bestDistance = double.MaxValue;
+        for (var index = 0; index < _rulerTickYs.Count; index++)
+        {
+            var distance = Math.Abs(_rulerTickYs[index] - y);
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                best = index;
+            }
+        }
+
+        return best;
     }
 
     private void ApplyRulerWave(double pointerY)
@@ -224,8 +260,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var index = (int)Math.Round((pointerY - 18) / RulerTickPitch);
-        index = Math.Clamp(index, 0, _rulerTicks.Count - 1);
+        var index = FindNearestTickIndex(pointerY);
         if (index == _rulerWaveIndex)
         {
             return;
@@ -266,69 +301,38 @@ public partial class MainWindow : Window
         _rulerWaveIndex = -1;
     }
 
-    private List<(ChatItemViewModel Item, double Top)> GetTurnAnchors()
+    private void PopulateRulerPreview(ChatItemViewModel item)
     {
-        var anchors = new List<(ChatItemViewModel Item, double Top)>();
-        for (var index = 0; index < _viewModel.Messages.Count; index++)
+        var user = item;
+        var index = _viewModel.Messages.IndexOf(item);
+        for (var cursor = index; cursor >= 0; cursor--)
         {
-            var item = _viewModel.Messages[index];
-            if (!item.IsUser)
+            if (_viewModel.Messages[cursor].IsUser)
             {
-                continue;
-            }
-
-            var container = TranscriptItems.ContainerFromIndex(index);
-            if (container is null)
-            {
-                continue;
-            }
-
-            var point = container.TranslatePoint(new Point(0, 0), TranscriptScroller);
-            if (point is null)
-            {
-                continue;
-            }
-
-            anchors.Add((item, TranscriptScroller.Offset.Y + point.Value.Y));
-        }
-
-        return anchors;
-    }
-
-    private static (ChatItemViewModel Item, double Top) FindNearestTurnAnchor(
-        List<(ChatItemViewModel Item, double Top)> anchors, double target)
-    {
-        var best = anchors[0];
-        var bestDistance = double.MaxValue;
-        foreach (var anchor in anchors)
-        {
-            var distance = Math.Abs(anchor.Top - target);
-            if (distance < bestDistance)
-            {
-                bestDistance = distance;
-                best = anchor;
+                user = _viewModel.Messages[cursor];
+                break;
             }
         }
 
-        return best;
-    }
+        if (!user.IsUser)
+        {
+            user = _viewModel.Messages.FirstOrDefault(message => message.IsUser) ?? item;
+        }
 
-    private void PopulateRulerPreview(ChatItemViewModel user)
-    {
         RulerPreviewTitle.Text = FirstPreviewLine(user.Text, 60);
-        var index = _viewModel.Messages.IndexOf(user);
+        var userIndex = _viewModel.Messages.IndexOf(user);
         var reply = new System.Text.StringBuilder();
-        for (var next = index + 1; next < _viewModel.Messages.Count; next++)
+        for (var next = userIndex + 1; next < _viewModel.Messages.Count; next++)
         {
-            var item = _viewModel.Messages[next];
-            if (item.IsUser)
+            var candidate = _viewModel.Messages[next];
+            if (candidate.IsUser)
             {
                 break;
             }
 
-            if (item.IsAssistant && !string.IsNullOrWhiteSpace(item.Text))
+            if (candidate.IsAssistant && !string.IsNullOrWhiteSpace(candidate.Text))
             {
-                reply.AppendLine(item.Text);
+                reply.AppendLine(candidate.Text);
             }
         }
 
@@ -337,9 +341,7 @@ public partial class MainWindow : Window
         RulerPreviewBody.IsVisible = !string.IsNullOrWhiteSpace(body);
         RulerPreviewBulletRow.IsVisible = !string.IsNullOrWhiteSpace(bullet);
         RulerPreviewBullet.Text = bullet;
-    }
-
-    private static string FirstPreviewLine(string? text, int maxLength)
+    }    private static string FirstPreviewLine(string? text, int maxLength)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -398,7 +400,6 @@ public partial class MainWindow : Window
 
         return (TruncatePreview(body.ToString(), 140), TruncatePreview(bullet ?? string.Empty, 44));
     }
-
     private static string TruncatePreview(string text, int maxLength) =>
         text.Length <= maxLength ? text : text[..maxLength].TrimEnd() + "…";
 
@@ -2041,8 +2042,10 @@ public partial class MainWindow : Window
     private bool _sidebarDragging;
     private bool _transcriptPinnedToBottom = true;
     private readonly List<Border> _rulerTicks = new();
+    private readonly List<double> _rulerTickYs = new();
+    private readonly List<(ChatItemViewModel Item, double Top)> _rulerTickTargets = new();
     private int _rulerWaveIndex = -1;
-    private const double RulerTickPitch = 10;
+    private double _lastRulerExtent = -1;
     private const double RulerTickBaseWidth = 6;
     private static readonly IBrush RulerTickBrush = new SolidColorBrush(Color.Parse("#373739"));
     private static readonly IBrush RulerTickActiveBrush = new SolidColorBrush(Color.Parse("#E2E3E5"));
@@ -2277,6 +2280,7 @@ public partial class MainWindow : Window
             _transcriptPinnedToBottom = true;
         }
 
+        Dispatcher.UIThread.Post(BuildRulerTicks, DispatcherPriority.Background);
         ScrollTranscript(force: eventArgs.Action is NotifyCollectionChangedAction.Add
             or NotifyCollectionChangedAction.Reset);
     }
@@ -2315,6 +2319,11 @@ public partial class MainWindow : Window
             - TranscriptScroller.Viewport.Height
             - TranscriptScroller.Offset.Y;
         _transcriptPinnedToBottom = distanceFromBottom <= 32;
+        if (Math.Abs(TranscriptScroller.Extent.Height - _lastRulerExtent) > 0.5)
+        {
+            Dispatcher.UIThread.Post(BuildRulerTicks, DispatcherPriority.Background);
+        }
+
         var showJump = _viewModel.HasConversation && distanceFromBottom > 32;
         JumpToBottomButton.IsVisible = true;
         JumpToBottomButton.IsHitTestVisible = showJump;

@@ -1234,9 +1234,9 @@
                                    PointerMoved="OnRulerPointerMoved"
                                    PointerExited="OnRulerPointerExited"
                                    PointerPressed="OnRulerPointerPressed">
-                                <StackPanel x:Name="RulerTicksPanel" Width="6"
-                                            HorizontalAlignment="Left" VerticalAlignment="Top"
-                                            Margin="10,18,0,0" Spacing="8" IsHitTestVisible="False" />
+                                <Canvas x:Name="RulerTicksPanel" Width="6"
+                                        HorizontalAlignment="Left" VerticalAlignment="Stretch"
+                                        Margin="10,0,0,0" IsHitTestVisible="False" />
                             </Border>
 
                             <Border x:Name="RulerPreviewCard" IsVisible="False" Width="322"
