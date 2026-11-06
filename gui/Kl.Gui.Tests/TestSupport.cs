@@ -137,6 +137,17 @@ internal sealed class FakeCoreSessionService : ICoreSessionService
     public List<CoreSessionRequest> OpenRequests { get; } = [];
     public List<string> TurnPrompts { get; } = [];
     public List<int> HistoryLimits { get; } = [];
+    public CoreReconnectResult ReconnectResult { get; set; } = new(true, true, string.Empty);
+    public bool WriterAllowed { get; set; }
+    public int ReconnectCalls { get; private set; }
+    public int WriterCalls { get; private set; }
+    public int ForkCalls { get; private set; }
+    public int CompactCalls { get; private set; }
+    public int DoctorCalls { get; private set; }
+    public string ForkedSessionId { get; set; } = "forked-session-1";
+    public string DoctorJson { get; set; } =
+        "{\"ok\":true,\"core_version\":\"test-core\",\"checks\":"
+        + "[{\"name\":\"core\",\"ok\":true,\"detail\":\"ready\"}]}";
     public List<(string Method, object? Parameters)> Requests { get; } = [];
     public List<(string ApprovalId, string Decision)> ApprovalDecisions { get; } = [];
     public List<(string Workspace, string Prompt)> EphemeralRequests { get; } = [];
@@ -186,6 +197,65 @@ internal sealed class FakeCoreSessionService : ICoreSessionService
     {
         HistoryLimits.Add(limit);
         return Task.FromResult(TestData.Json(HistoryJson));
+    }
+
+    public Task<CoreReconnectResult> ReconnectAsync(CancellationToken cancellationToken)
+    {
+        ReconnectCalls++;
+        if (ReconnectResult.Success)
+        {
+            IsWriter = true;
+        }
+
+        return Task.FromResult(ReconnectResult);
+    }
+
+    public Task<bool> TryBecomeWriterAsync(CancellationToken cancellationToken)
+    {
+        WriterCalls++;
+        if (WriterAllowed)
+        {
+            IsWriter = true;
+        }
+
+        return Task.FromResult(WriterAllowed);
+    }
+
+    public Task<string> ForkAsync(CancellationToken cancellationToken)
+    {
+        ForkCalls++;
+        return Task.FromResult(ForkedSessionId);
+    }
+
+    public Task<JsonElement> CompactAsync(CancellationToken cancellationToken)
+    {
+        CompactCalls++;
+        return Task.FromResult(TestData.Json(
+            "{\"omitted_messages\":3,\"estimated_tokens\":10,"
+            + "\"context_window\":1000,\"compact_threshold\":0.8}"));
+    }
+
+    public Task<JsonElement> DoctorAsync(CancellationToken cancellationToken)
+    {
+        DoctorCalls++;
+        return Task.FromResult(TestData.Json(DoctorJson));
+    }
+
+    public string ReasoningEffort { get; set; } = "default";
+    public int ReasoningGetCalls { get; private set; }
+    public List<string> ReasoningSets { get; } = [];
+
+    public Task<string> GetReasoningEffortAsync(CancellationToken cancellationToken)
+    {
+        ReasoningGetCalls++;
+        return Task.FromResult(ReasoningEffort);
+    }
+
+    public Task<string> SetReasoningEffortAsync(string effort, CancellationToken cancellationToken)
+    {
+        ReasoningSets.Add(effort);
+        ReasoningEffort = effort;
+        return Task.FromResult(effort);
     }
 
     public Task<CoreCatalogSnapshot> LoadSnapshotAsync(CancellationToken cancellationToken)

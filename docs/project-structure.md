@@ -72,5 +72,5 @@ execution inside Core.
 - Build: `python scripts/build.py` publishes final GUI/TUI files to the sibling
   `bin` directory and stages `kl-core.exe` next to both clients.
 - Packaging: `python scripts/package.py` builds a self-contained release archive
-  (the release bundle currently ships the TUI; GUI release packaging is open).
+  (`--gui` adds the Avalonia client under `gui/` on Windows and macOS RIDs).
 - Release: only `main` pushes, tag `v<version>-rcN`, archives only.

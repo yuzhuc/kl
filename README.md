@@ -17,8 +17,9 @@ Core, TUI, security, context/memory tools, local multi-client transport and
 release packaging are implemented. The GUI is a `Kl.Client` protocol client:
 sessions, streaming events, tool activity, approvals, cancellation, history and
 automation all run inside `kl-core`, and provider/model/API-key configuration is
-managed by Core. GUI release packaging and real provider/MCP live smoke are
-still open; live smoke needs credentials or a configured local server.
+managed by Core. The release bundle ships the GUI under `gui/` on Windows and
+macOS RIDs. Real provider/MCP live smoke is still open; it needs credentials or
+a configured local server.
 
 ## Architecture
 

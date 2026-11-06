@@ -195,9 +195,9 @@ packaged binaries really match them. Adding or removing a RID requires an ADR
 
 ## Known gaps
 
-- GUI release packaging: local `scripts/build.py` publishes the GUI with
-  `kl-core.exe`, but the release bundle still ships only the TUI. GUI Phase 2
-  (local-server-first shared sessions and automatic reconnect UX) is open.
+- GUI packaging smoke on real Windows/macOS release runners: the bundle now
+  includes the GUI with `kl-core` under `gui/`, but the packaged app has not
+  been launched in CI.
 - Windows release bundle must include `kl-sandbox-runner.exe`; packaged
   `kl serve` smoke coverage is still pending.
 - Real provider/MCP live smoke with credentials.

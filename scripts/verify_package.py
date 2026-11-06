@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Verify a packaged KL release bundle.")
     parser.add_argument("--rid", required=True)
+    parser.add_argument("--gui", action="store_true", help="require the bundled Avalonia GUI")
     parser.add_argument("--output")
     return parser.parse_args()
 
@@ -28,10 +29,15 @@ def main() -> int:
     if not archive.is_file():
         problems.append(f"missing archive: {archive}")
 
-    for file, label in [
+    expected = [
         (output / str(layout["exe"]), "cli executable"),
         (output / str(layout["core"]), "core executable"),
-    ]:
+    ]
+    if args.gui:
+        expected.append((output / "gui" / str(layout["exe"]), "gui executable"))
+        expected.append((output / "gui" / str(layout["core"]), "gui core executable"))
+
+    for file, label in expected:
         if not file.is_file():
             problems.append(f"missing {label}: {file}")
             continue

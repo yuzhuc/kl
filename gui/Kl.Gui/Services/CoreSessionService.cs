@@ -5,7 +5,7 @@ using Kl.Client;
 namespace Kl.Gui.Services;
 
 /// <summary>Options for opening one core session.</summary>
-public sealed class CoreSessionRequest
+public sealed record CoreSessionRequest
 {
     public string Workspace { get; init; } = string.Empty;
     public string? SessionId { get; init; }
@@ -28,6 +28,16 @@ public sealed record CoreConnectResult(
 {
     public static CoreConnectResult Failed(string error) =>
         new(false, error, string.Empty, string.Empty, string.Empty, string.Empty, false);
+}
+
+/// <summary>
+/// Outcome of restoring the active session after the core connection dropped.
+/// <see cref="Replayed"/> means the transport re-attached and replayed events
+/// after LastSeq; otherwise the session was reopened and history must reload.
+/// </summary>
+public sealed record CoreReconnectResult(bool Success, bool Replayed, string Error)
+{
+    public static CoreReconnectResult Failed(string error) => new(false, false, error);
 }
 
 /// <summary>
@@ -56,6 +66,30 @@ public interface ICoreSessionService : IAsyncDisposable
 
     Task CloseSessionAsync();
 
+    /// <summary>
+    /// Restores the session after the connection dropped: re-attach with LastSeq
+    /// replay on the local server transport, or reopen the session on stdio.
+    /// </summary>
+    Task<CoreReconnectResult> ReconnectAsync(CancellationToken cancellationToken);
+
+    /// <summary>Re-tries the write lease for a read-only observer.</summary>
+    Task<bool> TryBecomeWriterAsync(CancellationToken cancellationToken);
+
+    /// <summary>Forks the open session in Core and returns the new session id.</summary>
+    Task<string> ForkAsync(CancellationToken cancellationToken);
+
+    /// <summary>Asks Core to compact the open session's context.</summary>
+    Task<JsonElement> CompactAsync(CancellationToken cancellationToken);
+
+    /// <summary>Runs <c>kl.doctor</c> against a fresh Core connection.</summary>
+    Task<JsonElement> DoctorAsync(CancellationToken cancellationToken);
+
+    /// <summary>Reads Core's global reasoning effort (default/low/medium/high).</summary>
+    Task<string> GetReasoningEffortAsync(CancellationToken cancellationToken);
+
+    /// <summary>Writes Core's global reasoning effort and returns the applied value.</summary>
+    Task<string> SetReasoningEffortAsync(string effort, CancellationToken cancellationToken);
+
     Task<JsonElement> HistoryAsync(int limit, CancellationToken cancellationToken);
 
     Task<CoreCatalogSnapshot> LoadSnapshotAsync(CancellationToken cancellationToken);
@@ -81,6 +115,7 @@ public sealed class CoreSessionService : ICoreSessionService
     private readonly KlClientOptions _catalogOptions;
     private KlSessionClient? _session;
     private CoreSessionPresenter? _presenter;
+    private CoreSessionRequest? _lastRequest;
     private CancellationTokenSource? _pumpCancellation;
 
     public CoreSessionService()
@@ -107,55 +142,64 @@ public sealed class CoreSessionService : ICoreSessionService
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await CloseSessionCoreAsync().ConfigureAwait(false);
-
-            var presenter = new CoreSessionPresenter();
-            var clientOptions = new KlClientOptions
-            {
-                CorePath = request.CorePath,
-                ConfigPath = request.ConfigPath,
-                HomePath = request.HomePath
-            };
-            var sessionOptions = new KlSessionOptions
-            {
-                SessionId = string.IsNullOrWhiteSpace(request.SessionId) ? null : request.SessionId,
-                Workspace = string.IsNullOrWhiteSpace(request.Workspace) ? null : request.Workspace,
-                Provider = string.IsNullOrWhiteSpace(request.Provider) ? null : request.Provider,
-                Model = string.IsNullOrWhiteSpace(request.Model) ? null : request.Model,
-                Quality = string.IsNullOrWhiteSpace(request.Quality) ? null : request.Quality
-            };
-
-            try
-            {
-                var session = await KlSessionClient.StartAsync(
-                    clientOptions,
-                    sessionOptions,
-                    presenter,
-                    cancellationToken,
-                    progress).ConfigureAwait(false);
-
-                _presenter = presenter;
-                _session = session;
-                _pumpCancellation = new CancellationTokenSource();
-                _ = PumpEventsAsync(presenter, _pumpCancellation.Token);
-                return new CoreConnectResult(
-                    true,
-                    string.Empty,
-                    session.SessionId,
-                    session.Workspace,
-                    session.Provider,
-                    session.Model,
-                    session.IsWriter);
-            }
-            catch (Exception error) when (error is not OperationCanceledException)
-            {
-                presenter.Complete();
-                return CoreConnectResult.Failed(DescribeError(error));
-            }
+            return await OpenSessionCoreAsync(request, progress, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
             _gate.Release();
+        }
+    }
+
+    private async Task<CoreConnectResult> OpenSessionCoreAsync(
+        CoreSessionRequest request,
+        Action<string>? progress,
+        CancellationToken cancellationToken)
+    {
+        await CloseSessionCoreAsync().ConfigureAwait(false);
+
+        var presenter = new CoreSessionPresenter();
+        var clientOptions = new KlClientOptions
+        {
+            CorePath = request.CorePath,
+            ConfigPath = request.ConfigPath,
+            HomePath = request.HomePath
+        };
+        var sessionOptions = new KlSessionOptions
+        {
+            SessionId = string.IsNullOrWhiteSpace(request.SessionId) ? null : request.SessionId,
+            Workspace = string.IsNullOrWhiteSpace(request.Workspace) ? null : request.Workspace,
+            Provider = string.IsNullOrWhiteSpace(request.Provider) ? null : request.Provider,
+            Model = string.IsNullOrWhiteSpace(request.Model) ? null : request.Model,
+            Quality = string.IsNullOrWhiteSpace(request.Quality) ? null : request.Quality
+        };
+
+        try
+        {
+            var session = await KlSessionClient.StartAsync(
+                clientOptions,
+                sessionOptions,
+                presenter,
+                cancellationToken,
+                progress).ConfigureAwait(false);
+
+            _presenter = presenter;
+            _session = session;
+            _lastRequest = request;
+            _pumpCancellation = new CancellationTokenSource();
+            _ = PumpEventsAsync(presenter, _pumpCancellation.Token);
+            return new CoreConnectResult(
+                true,
+                string.Empty,
+                session.SessionId,
+                session.Workspace,
+                session.Provider,
+                session.Model,
+                session.IsWriter);
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            presenter.Complete();
+            return CoreConnectResult.Failed(DescribeError(error));
         }
     }
 
@@ -182,6 +226,7 @@ public sealed class CoreSessionService : ICoreSessionService
         var session = _session;
         _presenter = null;
         _session = null;
+        _lastRequest = null;
 
         presenter?.Complete();
         if (session is not null)
@@ -198,6 +243,150 @@ public sealed class CoreSessionService : ICoreSessionService
 
         pump?.Dispose();
     }
+
+    public async Task<CoreReconnectResult> ReconnectAsync(CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var request = _lastRequest;
+            if (_session is null || request is null)
+            {
+                return CoreReconnectResult.Failed("没有可恢复的 KL Core 会话。");
+            }
+
+            try
+            {
+                await _session.ReconnectAsync(cancellationToken).ConfigureAwait(false);
+                return new CoreReconnectResult(true, true, string.Empty);
+            }
+            catch (NotSupportedException)
+            {
+                // stdio transport: the core is a child process, so there is no
+                // server to re-attach to. Resume the session from disk instead;
+                // that drops in-flight events, so the caller reloads history.
+            }
+            catch (Exception error) when (error is not OperationCanceledException)
+            {
+                return CoreReconnectResult.Failed(DescribeError(error));
+            }
+
+            // A draft session was created with no id; resume the one the core
+            // actually opened instead of starting a second session.
+            var resume = request with { SessionId = _session.SessionId };
+            await CloseSessionCoreAsync().ConfigureAwait(false);
+            var result = await OpenSessionCoreAsync(resume, null, cancellationToken)
+                .ConfigureAwait(false);
+            return result.Success
+                ? new CoreReconnectResult(true, false, string.Empty)
+                : CoreReconnectResult.Failed(result.Error);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<bool> TryBecomeWriterAsync(CancellationToken cancellationToken)
+    {
+        if (_session is not { } session)
+        {
+            return false;
+        }
+
+        return await session.TryTakeWriteLeaseAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public Task<string> ForkAsync(CancellationToken cancellationToken)
+    {
+        var session = _session ?? throw new InvalidOperationException("KL Core 会话尚未建立。");
+        return session.ForkAsync(cancellationToken);
+    }
+
+    public Task<JsonElement> CompactAsync(CancellationToken cancellationToken)
+    {
+        var session = _session ?? throw new InvalidOperationException("KL Core 会话尚未建立。");
+        return session.RequestAsync(
+            Protocol.SessionCompact,
+            new { session_id = session.SessionId },
+            cancellationToken);
+    }
+
+    public async Task<JsonElement> DoctorAsync(CancellationToken cancellationToken)
+    {
+        KlCoreClient? client = null;
+        try
+        {
+            client = KlCoreClient.Start(_catalogOptions);
+            await client.HandshakeAsync(cancellationToken).ConfigureAwait(false);
+            return await client.DoctorAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (client is not null)
+            {
+                try
+                {
+                    await client.DisposeAsync().ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    // A one-shot probe must never leak into the caller.
+                }
+            }
+        }
+    }
+
+    public async Task<string> GetReasoningEffortAsync(CancellationToken cancellationToken)
+    {
+        var result = await AgentConfigAsync(null, cancellationToken).ConfigureAwait(false);
+        return ReadReasoningEffort(result);
+    }
+
+    public async Task<string> SetReasoningEffortAsync(string effort, CancellationToken cancellationToken)
+    {
+        var result = await AgentConfigAsync(effort, cancellationToken).ConfigureAwait(false);
+        return ReadReasoningEffort(result);
+    }
+
+    private async Task<JsonElement> AgentConfigAsync(string? effort, CancellationToken cancellationToken)
+    {
+        KlCoreClient? client = null;
+        try
+        {
+            client = KlCoreClient.Start(_catalogOptions);
+            await client.HandshakeAsync(cancellationToken).ConfigureAwait(false);
+            return effort is null
+                ? await client.RequestAsync(Protocol.AgentConfigGet, null, cancellationToken)
+                    .ConfigureAwait(false)
+                : await client.RequestAsync(
+                        Protocol.AgentConfigSet,
+                        new { reasoning_effort = effort },
+                        cancellationToken)
+                    .ConfigureAwait(false);
+        }
+        finally
+        {
+            if (client is not null)
+            {
+                try
+                {
+                    await client.DisposeAsync().ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    // One-shot agent-config traffic.
+                }
+            }
+        }
+    }
+
+    private static string ReadReasoningEffort(JsonElement result) =>
+        result.ValueKind == JsonValueKind.Object
+            && result.TryGetProperty("reasoning_effort", out var value)
+            && value.ValueKind == JsonValueKind.String
+                ? value.GetString() ?? "default"
+                : "default";
 
     private async Task PumpEventsAsync(CoreSessionPresenter presenter, CancellationToken cancellationToken)
     {
@@ -405,6 +594,27 @@ public sealed class UnavailableCoreSessionService : ICoreSessionService
         Task.FromResult(CoreConnectResult.Failed("KL Core 不可用。"));
 
     public Task CloseSessionAsync() => Task.CompletedTask;
+
+    public Task<CoreReconnectResult> ReconnectAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(CoreReconnectResult.Failed("KL Core 不可用。"));
+
+    public Task<bool> TryBecomeWriterAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(false);
+
+    public Task<string> ForkAsync(CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("KL Core 不可用。");
+
+    public Task<JsonElement> CompactAsync(CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("KL Core 不可用。");
+
+    public Task<JsonElement> DoctorAsync(CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("KL Core 不可用。");
+
+    public Task<string> GetReasoningEffortAsync(CancellationToken cancellationToken) =>
+        Task.FromResult("default");
+
+    public Task<string> SetReasoningEffortAsync(string effort, CancellationToken cancellationToken) =>
+        Task.FromResult(effort);
 
     public Task<JsonElement> HistoryAsync(int limit, CancellationToken cancellationToken) =>
         throw new InvalidOperationException("KL Core 不可用。");

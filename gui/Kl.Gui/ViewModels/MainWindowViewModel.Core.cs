@@ -15,7 +15,11 @@ public sealed partial class MainWindowViewModel
     private readonly ICoreSessionService _core;
     private readonly Action<Action> _dispatch;
     private CancellationTokenSource? _turnCancellation;
+    private CancellationTokenSource? _reconnectCancellation;
+    private volatile bool _isAutoReconnecting;
+    private DateTimeOffset _suppressCompactionUntil;
     private ChatItemViewModel? _activeToolItem;
+    private readonly Dictionary<string, ChatItemViewModel> _toolItemsByCallId = new(StringComparer.Ordinal);
     private string? _activeApprovalId;
 
     private string _coreStatusText = "正在连接 KL Core…";
@@ -81,6 +85,7 @@ public sealed partial class MainWindowViewModel
             if (SetProperty(ref _isCoreRetrying, value))
             {
                 OnPropertyChanged(nameof(CanRetryCore));
+                OnPropertyChanged(nameof(CanSend));
             }
         }
     }
@@ -98,11 +103,15 @@ public sealed partial class MainWindowViewModel
             {
                 OnPropertyChanged(nameof(ShowObserverNotice));
                 OnPropertyChanged(nameof(CanSend));
+                OnPropertyChanged(nameof(CoreBannerActionText));
             }
         }
     }
 
     public bool ShowObserverNotice => IsCoreReadOnly;
+
+    /// <summary>The banner button retries the connection, or takes the write lease.</summary>
+    public string CoreBannerActionText => IsCoreReadOnly ? "接管写入" : "重试";
 
     public string CoreVersionText
     {
@@ -226,6 +235,7 @@ public sealed partial class MainWindowViewModel
         {
             var snapshot = await _core.LoadSnapshotAsync(CancellationToken.None).ConfigureAwait(false);
             _dispatch(() => ApplyCatalogSnapshot(snapshot));
+            await LoadReasoningEffortAsync().ConfigureAwait(false);
         }
         catch (Exception error)
         {
@@ -297,12 +307,29 @@ public sealed partial class MainWindowViewModel
             return;
         }
 
+        CancelAutoReconnect();
         IsCoreRetrying = true;
         SetCoreStatus("正在重新连接 KL Core…");
         try
         {
             var snapshot = await _core.LoadSnapshotAsync(CancellationToken.None).ConfigureAwait(false);
             ApplyCatalogSnapshot(snapshot);
+
+            if (!_core.IsSessionOpen)
+            {
+                return;
+            }
+
+            var result = await _core.ReconnectAsync(CancellationToken.None).ConfigureAwait(false);
+            if (result.Success)
+            {
+                await RunOnUiThreadAsync(() => ApplyCoreRestoredAsync(result.Replayed))
+                    .ConfigureAwait(false);
+            }
+            else
+            {
+                SetCoreFailure($"无法恢复 KL Core 会话：{result.Error}");
+            }
         }
         catch (Exception error)
         {
@@ -312,6 +339,115 @@ public sealed partial class MainWindowViewModel
         {
             IsCoreRetrying = false;
         }
+    }
+
+    /// <summary>Takes the write lease back from the client that currently holds it.</summary>
+    public async Task TakeOverWriteAsync()
+    {
+        if (!_core.IsSessionOpen || !IsCoreReadOnly)
+        {
+            return;
+        }
+
+        var taken = await _core.TryBecomeWriterAsync(CancellationToken.None);
+        IsCoreReadOnly = !_core.IsWriter;
+        if (taken)
+        {
+            CoreBannerText = string.Empty;
+            CoreStatusText = "已接管该会话的写入。";
+        }
+        else
+        {
+            CoreBannerText = "另一客户端仍在写入此会话，请稍后再试。";
+        }
+
+        OnPropertyChanged(nameof(ShowCoreBanner));
+        OnPropertyChanged(nameof(CanSend));
+    }
+
+    /// <summary>
+    /// Re-attaches after a dropped connection, backing off between attempts. A
+    /// local-server reconnect replays from LastSeq; a reopened stdio session
+    /// cannot, so the transcript is reloaded from core history.
+    /// </summary>
+    private void BeginAutoReconnect()
+    {
+        if (_isAutoReconnecting || !_core.IsSessionOpen)
+        {
+            return;
+        }
+
+        _isAutoReconnecting = true;
+        _reconnectCancellation = new CancellationTokenSource();
+        var cancellationToken = _reconnectCancellation.Token;
+        _ = Task.Run(() => AutoReconnectAsync(cancellationToken));
+    }
+
+    private async Task AutoReconnectAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            for (var attempt = 1; attempt <= 4; attempt++)
+            {
+                var delay = TimeSpan.FromMilliseconds(400 * attempt * attempt);
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                var result = await _core.ReconnectAsync(cancellationToken).ConfigureAwait(false);
+                if (result.Success)
+                {
+                    await RunOnUiThreadAsync(() => ApplyCoreRestoredAsync(result.Replayed))
+                        .ConfigureAwait(false);
+                    return;
+                }
+
+                _dispatch(() =>
+                {
+                    IsCoreRetrying = true;
+                    CoreBannerText = $"与 KL Core 的连接已断开，正在重连（第 {attempt + 1} 次）…";
+                    OnPropertyChanged(nameof(ShowCoreBanner));
+                });
+            }
+
+            _dispatch(() =>
+            {
+                IsCoreRetrying = false;
+                SetCoreFailure("与 KL Core 的连接已断开，请点击重试。");
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            // Session closed, a manual retry took over, or the window is closing.
+        }
+        catch (Exception)
+        {
+            _dispatch(() =>
+            {
+                IsCoreRetrying = false;
+                SetCoreFailure("与 KL Core 的连接已断开，请点击重试。");
+            });
+        }
+        finally
+        {
+            _isAutoReconnecting = false;
+        }
+    }
+
+    private async Task ApplyCoreRestoredAsync(bool replayed)
+    {
+        IsCoreReady = true;
+        IsCoreRetrying = false;
+        IsCoreReadOnly = !_core.IsWriter;
+        CoreStatusText = "KL Core 连接已恢复。";
+        CoreBannerText = IsCoreReadOnly
+            ? "另一客户端正在写入此会话；当前窗口为只读观察者。"
+            : string.Empty;
+        OnPropertyChanged(nameof(ShowCoreBanner));
+        OnPropertyChanged(nameof(CanSend));
+        if (!replayed)
+        {
+            await LoadHistoryAsync().ConfigureAwait(false);
+        }
+
+        await ApplyPermissionModeAsync(CancellationToken.None).ConfigureAwait(false);
     }
 
     private void ApplyCatalogSnapshot(CoreCatalogSnapshot snapshot)
@@ -335,6 +471,22 @@ public sealed partial class MainWindowViewModel
         CoreKeyStatusText = snapshot.KeyConfigured
             ? "API Key 已配置（由 KL Core 管理）"
             : "未配置 API Key（在 KL Core 配置中设置）";
+        SettingsModelChoices.Clear();
+        foreach (var option in snapshot.ModelOptions)
+        {
+            SettingsModelChoices.Add($"{option.Provider} / {option.Model}");
+        }
+        if (SettingsModelChoices.Count == 0)
+        {
+            foreach (var model in snapshot.Models)
+            {
+                SettingsModelChoices.Add(model);
+            }
+        }
+        SettingsSelectedModel = SettingsModelChoices.FirstOrDefault(
+                choice => choice == $"{snapshot.Provider} / {snapshot.Model}" || choice == snapshot.Model)
+            ?? SettingsModelChoices.FirstOrDefault()
+            ?? string.Empty;
         CorePathText = ResolveCorePathText();
         CoreHomeText = ResolveCoreHomeText();
         OnPropertyChanged(nameof(ShowCoreBanner));
@@ -431,6 +583,7 @@ public sealed partial class MainWindowViewModel
         };
         _state.Workspaces.Add(state);
         Workspaces.Add(new WorkspaceItemViewModel(state));
+        RefreshWorkspacePathLabels();
         return state;
     }
 
@@ -613,6 +766,8 @@ public sealed partial class MainWindowViewModel
     private void LoadHistoryMessages(IReadOnlyList<CoreHistoryMessage> history)
     {
         Messages.Clear();
+        _toolItemsByCallId.Clear();
+        _activeToolItem = null;
         _activeReasoning = null;
         _activeAssistant = null;
         _activeToolItem = null;
@@ -724,13 +879,17 @@ public sealed partial class MainWindowViewModel
                     ChatItemViewModel.ToolKindLabel(sessionEvent.Name));
                 tool.Start("运行中");
                 _activeToolItem = tool;
+                if (!string.IsNullOrEmpty(sessionEvent.CallId))
+                {
+                    _toolItemsByCallId[sessionEvent.CallId] = tool;
+                }
                 AddToolItem(tool);
                 break;
             case SessionEventKind.ToolOutput:
-                AppendToolOutput(sessionEvent.Text);
+                AppendToolOutput(ResolveToolItem(sessionEvent.CallId), sessionEvent.Text);
                 break;
             case SessionEventKind.ToolCompleted:
-                ApplyToolCompleted(sessionEvent);
+                ApplyToolCompleted(sessionEvent, ResolveToolItem(sessionEvent.CallId));
                 break;
             case SessionEventKind.ApprovalRequested:
                 _activeApprovalId = sessionEvent.ApprovalId;
@@ -747,6 +906,13 @@ public sealed partial class MainWindowViewModel
             case SessionEventKind.ApprovalResolved:
                 IsApprovalOpen = false;
                 _activeApprovalId = null;
+                break;
+            case SessionEventKind.ContextCompacted
+                when DateTimeOffset.Now < _suppressCompactionUntil:
+                // The manual compact path reloads history and adds its own marker;
+                // the event can arrive a moment after the RPC reply, so the window
+                // stays open briefly instead of a single flag.
+                _suppressCompactionUntil = default;
                 break;
             case SessionEventKind.ContextCompacted:
                 var compacted = ChatItemViewModel.Tool(
@@ -775,33 +941,46 @@ public sealed partial class MainWindowViewModel
                     FinishTurn("连接中断");
                 }
                 SetCoreFailure(sessionEvent.Text);
+                if (sessionEvent.ConnectionLost)
+                {
+                    BeginAutoReconnect();
+                }
                 break;
             case SessionEventKind.AuditRecorded:
                 break;
         }
     }
 
-    private void AppendToolOutput(string text)
+    /// <summary>
+    /// Routes tool traffic by CallId so parallel tool calls keep writing to their
+    /// own cards. Falls back to the newest card when the core omits a call id.
+    /// </summary>
+    private ChatItemViewModel? ResolveToolItem(string? callId) =>
+        !string.IsNullOrEmpty(callId) && _toolItemsByCallId.TryGetValue(callId, out var item)
+            ? item
+            : _activeToolItem;
+
+    private static void AppendToolOutput(ChatItemViewModel? item, string text)
     {
-        if (_activeToolItem is null || string.IsNullOrEmpty(text))
+        if (item is null || string.IsNullOrEmpty(text))
         {
             return;
         }
 
         const int limit = 12_000;
-        var current = _activeToolItem.Detail;
+        var current = item.Detail;
         if (current.Length >= limit)
         {
             return;
         }
 
         var remaining = limit - current.Length;
-        _activeToolItem.AppendDetail(text.Length <= remaining ? text : text[..remaining] + "\n…");
+        item.AppendDetail(text.Length <= remaining ? text : text[..remaining] + "\n…");
     }
 
-    private void ApplyToolCompleted(SessionEvent sessionEvent)
+    private void ApplyToolCompleted(SessionEvent sessionEvent, ChatItemViewModel? resolved)
     {
-        var item = _activeToolItem;
+        var item = resolved ?? _activeToolItem;
         if (item is null)
         {
             item = ChatItemViewModel.Tool(
@@ -823,12 +1002,21 @@ public sealed partial class MainWindowViewModel
             item.AppendDetail("\n" + sessionEvent.Diff);
         }
         item.Complete(sessionEvent.Ok ? "成功" : "失败");
+        if (!string.IsNullOrEmpty(sessionEvent.CallId))
+        {
+            _toolItemsByCallId.Remove(sessionEvent.CallId);
+        }
+
+        if (ReferenceEquals(_activeToolItem, item))
+        {
+            _activeToolItem = null;
+        }
+
         if (string.Equals(ChatItemViewModel.ToolKindLabel(sessionEvent.Name), "Image", StringComparison.Ordinal))
         {
             var count = CountImageMentions(item.Detail) + CountImageMentions(item.Text);
             item.SetHeader(count > 0 ? $"已查看 {count} 张图像" : "已查看图像");
         }
-        _activeToolItem = null;
     }
 
     private static int CountImageMentions(string? text)
@@ -868,6 +1056,14 @@ public sealed partial class MainWindowViewModel
         {
             tool.Stop(status == "完成" ? "成功" : status);
         }
+        foreach (var pending in _toolItemsByCallId.Values)
+        {
+            if (pending.IsRunning)
+            {
+                pending.Stop(status == "完成" ? "成功" : status);
+            }
+        }
+        _toolItemsByCallId.Clear();
         _activeToolItem = null;
         _activeAssistant = null;
         _activeReasoning = null;
@@ -885,6 +1081,7 @@ public sealed partial class MainWindowViewModel
 
     private async Task CloseCoreSessionQuietlyAsync()
     {
+        CancelAutoReconnect();
         try
         {
             await _core.CloseSessionAsync().ConfigureAwait(false);
@@ -902,8 +1099,18 @@ public sealed partial class MainWindowViewModel
     public async Task ShutdownAsync()
     {
         _turnCancellation?.Cancel();
+        CancelAutoReconnect();
         await CloseCoreSessionQuietlyAsync().ConfigureAwait(false);
         await _core.DisposeAsync().ConfigureAwait(false);
+    }
+
+    private void CancelAutoReconnect()
+    {
+        var cancellation = _reconnectCancellation;
+        _reconnectCancellation = null;
+        _isAutoReconnecting = false;
+        cancellation?.Cancel();
+        cancellation?.Dispose();
     }
 
     private void SetCoreStatus(string message) => CoreStatusText = message;
@@ -946,8 +1153,12 @@ public sealed partial class MainWindowViewModel
         _ => "正在连接 KL Core…"
     };
 
-    private static string MapApprovalMode(string permissionMode) =>
-        string.Equals(permissionMode, "完全访问", StringComparison.Ordinal) ? "dontAsk" : "ask";
+    private static string MapApprovalMode(string permissionMode) => permissionMode switch
+    {
+        "完全访问" => "dontAsk",
+        "帮我批准" => "auto",
+        _ => "ask"
+    };
 
     private static string NormalizeWorkspacePath(string path)
     {

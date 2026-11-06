@@ -84,9 +84,17 @@
                                   StrokeThickness="1.35"
                                   StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
                                   VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="14"
-                                       TextTrimming="CharacterEllipsis"
-                                       TextWrapping="NoWrap" VerticalAlignment="Center" Margin="0,0,76,0" />
+                            <Grid Grid.Column="1" ColumnDefinitions="Auto,*" ColumnSpacing="6"
+                                  VerticalAlignment="Center" Margin="0,0,76,0">
+                                <TextBlock Text="{Binding Name}" FontSize="14"
+                                           TextTrimming="CharacterEllipsis"
+                                           TextWrapping="NoWrap" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="{Binding PathLabel}"
+                                           IsVisible="{Binding HasPathLabel}"
+                                           FontSize="11" Foreground="{StaticResource SidebarLabel}"
+                                           TextTrimming="CharacterEllipsis"
+                                           TextWrapping="NoWrap" VerticalAlignment="Center" />
+                            </Grid>
                         </Grid>
                     </Button>
                     <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Right"
@@ -173,15 +181,11 @@
                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6"
                                     VerticalAlignment="Center">
                             <TextBlock Text="{Binding StatusText}" FontSize="11"
+                                       Classes.running-pulse="{Binding IsRunning}"
                                        Foreground="{StaticResource TextCaption}"
                                        IsVisible="{Binding IsRunning}" VerticalAlignment="Center" />
                             <Path Classes="activity-chevron" Width="11" Height="11"
                                   Data="{StaticResource ChevronRightIcon}" Stretch="Uniform"
-                                  IsVisible="{Binding ShowCollapsed}" Stroke="#7E7F82" StrokeThickness="1.4"
-                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                                  VerticalAlignment="Center" />
-                            <Path Width="11" Height="11" Data="{StaticResource ChevronDownIcon}"
-                                  Stretch="Uniform" IsVisible="{Binding ShowExpanded}"
                                   Stroke="#7E7F82" StrokeThickness="1.4"
                                   StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
                                   VerticalAlignment="Center" />
@@ -189,7 +193,8 @@
                     </Grid>
                 </Button>
 
-                <Border IsVisible="{Binding ShowExpanded}" Background="#1E1E20"
+                <Border IsVisible="{Binding ShowExpanded}" Classes="tool-panel"
+                        Classes.open="{Binding ShowExpanded}" Background="#1E1E20"
                         BorderBrush="#3A3A3C" BorderThickness="1"
                         CornerRadius="10" Padding="10">
                     <StackPanel>
@@ -333,6 +338,7 @@
                     </Button>
 
                     <ItemsControl ItemsSource="{Binding Children}" IsVisible="{Binding GroupExpanded}"
+                                  Classes="tool-panel" Classes.open="{Binding GroupExpanded}"
                                   ItemTemplate="{StaticResource ToolChildTemplate}" />
                 </StackPanel>
 
@@ -364,6 +370,7 @@
                             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6"
                                         VerticalAlignment="Center">
                                 <TextBlock Text="{Binding StatusText}" FontSize="11"
+                                           Classes.running-pulse="{Binding IsRunning}"
                                            Foreground="{StaticResource TextCaption}"
                                            IsVisible="{Binding IsRunning}" VerticalAlignment="Center" />
                                 <Path Classes="activity-chevron" Width="11" Height="11"
@@ -375,7 +382,8 @@
                         </Grid>
                     </Button>
 
-                    <Border IsVisible="{Binding ShowExpanded}" Background="#1E1E20"
+                    <Border IsVisible="{Binding ShowExpanded}" Classes="tool-panel"
+                            Classes.open="{Binding ShowExpanded}" Background="#1E1E20"
                             BorderBrush="#3A3A3C" BorderThickness="1"
                             CornerRadius="10" Padding="10">
                         <StackPanel>
@@ -636,10 +644,16 @@
                             <Popup x:Name="ProductMenuPopup" PlacementTarget="{Binding #ProductMenuButton}"
                                    Placement="BottomEdgeAlignedLeft" HorizontalOffset="-11" VerticalOffset="14"
                                    IsLightDismissEnabled="True">
-                                <Border Width="246" Background="{StaticResource ProductMenuFill}"
+                                <Border x:Name="ProductMenuCard" Width="246" Opacity="0"
+                                        Background="{StaticResource ProductMenuFill}"
                                         BorderBrush="{StaticResource ProductMenuLine}" BorderThickness="1"
                                         CornerRadius="12" Padding="6"
                                         BoxShadow="0 14 34 0 #99000000">
+                                    <Border.Transitions>
+                                        <Transitions>
+                                            <DoubleTransition Property="Opacity" Duration="0:0:0.10" />
+                                        </Transitions>
+                                    </Border.Transitions>
                                     <StackPanel Spacing="2">
                                         <Button Classes="mode-menu-item" Click="OnChatModeMenuClicked">
                                             <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" RowSpacing="2">
@@ -729,7 +743,7 @@
                                     </Grid>
                                     <ItemsControl x:Name="PinnedItemsControl" ItemsSource="{Binding PinnedSessions}"
                                                   ItemTemplate="{StaticResource RecentSessionTemplate}"
-                                                  IsVisible="{Binding IsPinnedExpanded}" />
+                                                  IsVisible="{Binding IsPinnedExpanded}" ClipToBounds="True" />
                                 </StackPanel>
 
                                 <Grid Classes="session-row-container" Margin="0,16,0,0"
@@ -755,9 +769,10 @@
                                         </Button>
                                     </StackPanel>
                                 </Grid>
-                                <ItemsControl ItemsSource="{Binding Workspaces}"
+                                <ItemsControl x:Name="WorkspaceItemsControl" ItemsSource="{Binding Workspaces}"
                                               ItemTemplate="{StaticResource WorkspaceRowTemplate}"
                                               IsVisible="{Binding ShowProjectList}"
+                                              ClipToBounds="True"
                                               Margin="0,6,0,0" />
 
                                 <Grid Classes="session-row-container" Margin="0,18,0,0">
@@ -782,9 +797,10 @@
                                         </Button>
                                     </StackPanel>
                                 </Grid>
-                                <ItemsControl ItemsSource="{Binding RecentSessions}"
+                                <ItemsControl x:Name="RecentItemsControl" ItemsSource="{Binding RecentSessions}"
                                               ItemTemplate="{StaticResource RecentSessionTemplate}"
                                               IsVisible="{Binding IsRecentExpanded}"
+                                              ClipToBounds="True"
                                               Margin="0,6,0,0" />
                                 <TextBlock Text="暂无会话" IsVisible="{Binding ShowNoRecentSessions}"
                                            FontSize="12" Foreground="{StaticResource SidebarLabel}"
@@ -882,10 +898,16 @@
                     <!-- notification pane menu (Codex-style 显示 menu) -->
                     <Popup x:Name="NotificationMenuPopup" Placement="BottomEdgeAlignedLeft" VerticalOffset="4"
                            IsLightDismissEnabled="True">
-                        <Border Width="216" Background="#202022"
+                        <Border x:Name="NotificationMenuCard" Width="216" Opacity="0"
+                                Background="#202022"
                                 BorderBrush="#2E2E31" BorderThickness="1"
                                 CornerRadius="12" Padding="6" x:CompileBindings="False"
                                 BoxShadow="0 18 44 0 #99000000">
+                            <Border.Transitions>
+                                <Transitions>
+                                    <DoubleTransition Property="Opacity" Duration="0:0:0.10" />
+                                </Transitions>
+                            </Border.Transitions>
                             <StackPanel>
                                 <TextBlock Text="显示" FontSize="11.5" Foreground="#7E7F82"
                                            Margin="10,6,0,4" />
@@ -939,10 +961,16 @@
                     <Popup x:Name="WorkspaceMenuPopup" Placement="RightEdgeAlignedTop"
                            HorizontalOffset="6" VerticalOffset="-9"
                            IsLightDismissEnabled="True">
-                        <Border Width="322" Background="#202022"
+                        <Border x:Name="WorkspaceMenuCard" Width="322" Opacity="0"
+                                Background="#202022"
                                 BorderBrush="#2E2E31" BorderThickness="1"
                                 CornerRadius="12" Padding="6" x:CompileBindings="False"
                                 BoxShadow="0 18 44 0 #99000000">
+                            <Border.Transitions>
+                                <Transitions>
+                                    <DoubleTransition Property="Opacity" Duration="0:0:0.10" />
+                                </Transitions>
+                            </Border.Transitions>
                             <StackPanel>
                                 <Grid Height="32" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" Margin="4,0">
                                     <Path Width="14" Height="14" Data="{StaticResource FolderIcon}" Stretch="Uniform"
@@ -1018,11 +1046,16 @@
                     <!-- project section menu (Codex-style) -->
                     <Popup x:Name="PinnedSectionMenuPopup" Placement="BottomEdgeAlignedRight"
                            VerticalOffset="4" IsLightDismissEnabled="True">
-                        <Border x:Name="PinnedSectionMenuCard" Width="196"
+                        <Border x:Name="PinnedSectionMenuCard" Width="196" Opacity="0"
                                 Background="{StaticResource ProductMenuFill}"
                                 BorderBrush="{StaticResource ProductMenuLine}" BorderThickness="1"
                                 CornerRadius="12" Padding="6"
                                 BoxShadow="0 14 34 0 #99000000">
+                            <Border.Transitions>
+                                <Transitions>
+                                    <DoubleTransition Property="Opacity" Duration="0:0:0.10" />
+                                </Transitions>
+                            </Border.Transitions>
                             <StackPanel Spacing="1">
                                 <Button Classes="more-menu-item" Click="OnPinnedSortRecentClicked">
                                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
@@ -1093,16 +1126,37 @@
                         </StackPanel>
                     </Grid>
 
-                    <!-- library sidebar (Codex parity placeholder) -->
+                    <!-- library sidebar -->
                     <Grid IsVisible="{Binding IsLibraryPage}" RowDefinitions="Auto,*">
                         <Grid Grid.Row="0" Height="44" Margin="16,0,10,0">
                             <TextBlock Text="资料库" FontSize="15" FontWeight="SemiBold"
                                        Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center" />
                         </Grid>
-                        <StackPanel Grid.Row="1" Margin="16,4,16,0" Spacing="8">
-                            <TextBlock Text="kl 暂未接入资料库，先保留 Codex 入口。"
-                                       FontSize="11.5" Foreground="{StaticResource TextCaption}" TextWrapping="Wrap" />
-                        </StackPanel>
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="8,2,8,0">
+                            <StackPanel Spacing="1">
+                                <ItemsControl ItemsSource="{Binding LibraryItems}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:LibraryItemViewModel">
+                                            <Button Classes="session-row" Height="30" Padding="12,0" CornerRadius="8"
+                                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                                    Click="OnLibraryItemClicked" ToolTip.Tip="插入到输入框">
+                                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                                    <TextBlock Text="{Binding Title}" FontSize="13"
+                                                               Foreground="{StaticResource SidebarText}"
+                                                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                                    <TextBlock Grid.Column="1" Text="{Binding CreatedLabel}" FontSize="11"
+                                                               Foreground="{StaticResource SidebarLabel}"
+                                                               VerticalAlignment="Center" />
+                                                </Grid>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock Text="{Binding LibraryEmptyText}" IsVisible="{Binding !HasLibraryItems}"
+                                           FontSize="11.5" Foreground="{StaticResource SidebarLabel}"
+                                           Margin="12,8,12,0" TextWrapping="Wrap" LineHeight="18" />
+                            </StackPanel>
+                        </ScrollViewer>
                     </Grid>
 
                     <!-- drag handle: resize the sidebar from its right edge -->
@@ -1123,7 +1177,8 @@
                     PointerReleased="OnSidebarResizeReleased" />
 
             <!-- main content -->
-            <Grid Grid.Column="2" Background="{StaticResource ContentFill}" RowDefinitions="Auto,*">
+            <Grid x:Name="ContentHost" Classes="content-host" Grid.Column="2"
+                  Background="{StaticResource ContentFill}" RowDefinitions="Auto,*">
                 <Grid Grid.Row="0" Height="48" ColumnDefinitions="*,Auto" Margin="0,0,12,0"
                       IsVisible="{Binding !IsChatPage}">
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
@@ -1144,33 +1199,74 @@
                 </Grid>
 
                 <Grid Grid.Row="1">
-                    <!-- ===================== Library page (Codex parity placeholder) ===================== -->
+                    <!-- ===================== Library page ===================== -->
                     <Grid IsVisible="{Binding IsLibraryPage}" RowDefinitions="Auto,*">
                         <Border Grid.Row="0" Height="50" BorderBrush="{StaticResource Line}"
                                 BorderThickness="0,0,0,1" Padding="16,0">
                             <TextBlock Text="资料库" FontSize="14" FontWeight="SemiBold"
                                        Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center" />
                         </Border>
-                        <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                    Spacing="10">
-                            <Path Width="30" Height="30" Data="{StaticResource RailLibraryIcon}" Stretch="Uniform"
-                                  Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3"
-                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                                  HorizontalAlignment="Center" />
-                            <TextBlock Text="资料库" FontSize="20" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" />
-                            <TextBlock Text="kl 暂未接入资料库，此入口先按 Codex 布局保留。"
-                                       FontSize="12.5" Foreground="{StaticResource TextTertiary}"
-                                       HorizontalAlignment="Center" />
-                        </StackPanel>
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel MaxWidth="736" HorizontalAlignment="Stretch"
+                                        Margin="20,18,20,26" Spacing="14">
+                                <Border Classes="card">
+                                    <StackPanel Spacing="10">
+                                        <TextBlock Text="新的资料" FontSize="13" FontWeight="Medium"
+                                                   Foreground="{StaticResource TextPrimary}" />
+                                        <TextBox Classes="field"
+                                                 Text="{Binding LibraryDraftTitle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                 PlaceholderText="标题（可选）" />
+                                        <TextBox Classes="field" MinHeight="120" MaxHeight="260"
+                                                 AcceptsReturn="True" TextWrapping="Wrap"
+                                                 Text="{Binding LibraryDraftContent, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                 PlaceholderText="粘贴常用提示词、规范或说明…" />
+                                        <Button Classes="primary" Click="OnSaveLibraryItemClicked"
+                                                Content="保存到资料库" HorizontalAlignment="Left" />
+                                    </StackPanel>
+                                </Border>
+
+                                <ItemsControl ItemsSource="{Binding LibraryItems}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:LibraryItemViewModel">
+                                            <Border Classes="card" Margin="0,0,0,8">
+                                                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto"
+                                                      RowSpacing="6" ColumnSpacing="12">
+                                                    <TextBlock Text="{Binding Title}" FontSize="13"
+                                                               FontWeight="Medium"
+                                                               Foreground="{StaticResource TextPrimary}"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Grid.Row="1" Text="{Binding Preview}" FontSize="11.5"
+                                                               Foreground="{StaticResource TextTertiary}"
+                                                               TextWrapping="Wrap" MaxLines="3"
+                                                               TextTrimming="CharacterEllipsis" LineHeight="18" />
+                                                    <StackPanel Grid.Column="1" Grid.RowSpan="2"
+                                                                Orientation="Horizontal" Spacing="4"
+                                                                VerticalAlignment="Center">
+                                                        <Button Classes="subtle" Click="OnInsertLibraryItemClicked"
+                                                                Content="插入" />
+                                                        <Button Classes="subtle" Click="OnDeleteLibraryItemClicked"
+                                                                Content="删除" />
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <TextBlock Text="{Binding LibraryEmptyText}" IsVisible="{Binding !HasLibraryItems}"
+                                           FontSize="12" Foreground="{StaticResource TextTertiary}"
+                                           Margin="4,0,0,0" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </ScrollViewer>
                     </Grid>
 
                     <!-- ===================== Chat page ===================== -->
                     <Grid IsVisible="{Binding IsChatPage}" RowDefinitions="Auto,*,Auto">
-                        <Border Grid.Row="0" IsVisible="{Binding ShowConversationHeader}" Height="62"
-                                BorderBrush="Transparent" BorderThickness="0" Padding="20,0,9,4">
+                        <Border Grid.Row="0" IsVisible="{Binding ShowConversationHeader}" Height="52"
+                                BorderBrush="Transparent" BorderThickness="0" Padding="20,0,9,2">
                             <Grid ColumnDefinitions="*,Auto">
-                                <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                     <Path Width="14" Height="14" Data="{StaticResource ConversationIcon}" Stretch="Uniform"
                                           Stroke="{StaticResource TextTertiary}" StrokeThickness="1.25"
                                           StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent" />
@@ -1185,6 +1281,9 @@
                                         <Button.Flyout>
                                             <MenuFlyout Placement="BottomEdgeAlignedRight">
                                                 <MenuItem Header="重命名当前会话" Click="OnRenameActiveSessionClicked" />
+                                                <MenuItem Header="复制为新会话（分支）" Click="OnForkSessionClicked" />
+                                                <MenuItem Header="压缩上下文" Click="OnCompactSessionClicked" />
+                                                <Separator />
                                                 <MenuItem Header="删除当前会话" Click="OnDeleteActiveSessionClicked" />
                                             </MenuFlyout>
                                         </Button.Flyout>
@@ -1204,13 +1303,13 @@
                         <Grid Grid.Row="1">
                             <StackPanel IsVisible="{Binding IsEmpty}" HorizontalAlignment="Center"
                                         VerticalAlignment="Center" Spacing="0">
-                                <Border Width="64" Height="64" CornerRadius="16" ClipToBounds="True"
-                                        HorizontalAlignment="Center" Background="#1A1A1C">
-                                    <Image Source="/Assets/kl.png" Width="64" Height="64" Stretch="UniformToFill" />
-                                </Border>
+                                <Path Width="48" Height="48" Data="{StaticResource SparkIcon}" Stretch="Uniform"
+                                      Stroke="{StaticResource TextTertiary}" StrokeThickness="1.1"
+                                      StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                      HorizontalAlignment="Center" />
                                 <TextBlock Text="{Binding EmptyStateTitle}" FontSize="28" FontWeight="SemiBold"
                                            Foreground="{StaticResource TextPrimary}"
-                                           HorizontalAlignment="Center" Margin="0,18,0,0" />
+                                           HorizontalAlignment="Center" Margin="0,24,0,0" />
                             </StackPanel>
 
                             <ScrollViewer x:Name="TranscriptScroller" IsVisible="{Binding HasConversation}"
@@ -1219,7 +1318,7 @@
                                           Padding="0,12,0,16">
                                 <ItemsControl x:Name="TranscriptItems" ItemsSource="{Binding Messages}"
                                               ItemTemplate="{StaticResource ChatItemTemplate}"
-                                              MaxWidth="736" HorizontalAlignment="Stretch" />
+                                              MaxWidth="732" HorizontalAlignment="Stretch" />
                             </ScrollViewer>
 
                             <Button x:Name="JumpToBottomButton" Classes="jump-bottom" IsVisible="False"
@@ -1281,25 +1380,9 @@
                             </Border>
                         </Grid>
 
-                        <Grid Grid.Row="2" MaxWidth="736" HorizontalAlignment="Stretch"
-                              Margin="0,0,0,12" RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
-                            <Button Grid.Row="0" Classes="chip" IsVisible="{Binding IsEmpty}" Click="OnWorkspacePickerClicked"
-                                    HorizontalAlignment="Left" ToolTip.Tip="{Binding WorkspacePath}">
-                                <StackPanel Orientation="Horizontal" Spacing="7">
-                                    <Path Width="14" Height="14" Data="{StaticResource FolderIcon}" Stretch="Uniform"
-                                          Stroke="{StaticResource TextTertiary}" StrokeThickness="1.35"
-                                          StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                                          VerticalAlignment="Center" />
-                                    <TextBlock Text="{Binding WorkspaceName}" FontSize="12.5"
-                                               Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" />
-                                    <Path Width="9" Height="9" Data="{StaticResource ChevronDownIcon}" Stretch="Uniform"
-                                          Stroke="{StaticResource TextTertiary}" StrokeThickness="1.4"
-                                          StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
-                                          VerticalAlignment="Center" />
-                                </StackPanel>
-                            </Button>
-
-                            <Border Grid.Row="1" IsVisible="{Binding ShowCoreBanner}"
+                        <Grid Grid.Row="2" MaxWidth="732" HorizontalAlignment="Stretch"
+                              Margin="0,0,0,12" RowDefinitions="Auto,Auto" RowSpacing="8">
+                            <Border Grid.Row="0" IsVisible="{Binding ShowCoreBanner}"
                                     Background="#2A20221F" BorderBrush="#553B3B2B" BorderThickness="0.5"
                                     CornerRadius="10" Padding="12,9">
                                 <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
@@ -1310,15 +1393,35 @@
                                     <TextBlock Grid.Column="1" Text="{Binding CoreBannerText}" FontSize="12"
                                                Foreground="#E6D2B4" TextWrapping="Wrap" VerticalAlignment="Center" />
                                     <Button Grid.Column="2" Classes="secondary" Height="26" Padding="8,3"
-                                            Click="OnRetryCoreClicked" Content="重试"
+                                            Click="OnRetryCoreClicked" Content="{Binding CoreBannerActionText}"
                                             IsEnabled="{Binding CanRetryCore}" />
                                 </Grid>
                             </Border>
 
-                            <Border Grid.Row="2" Background="{StaticResource ComposerFill}" CornerRadius="18"
+                            <Border x:Name="ComposerCard" Grid.Row="1"
+                                    Background="{StaticResource ComposerFill}" CornerRadius="18"
                                     Padding="14,10,14,8" BoxShadow="0 10 34 0 #55000000">
-                                <Grid RowDefinitions="Auto,Auto,Auto">
-                                    <ItemsControl Grid.Row="0" ItemsSource="{Binding PendingAttachments}"
+                                <Grid RowDefinitions="Auto,Auto,Auto,Auto">
+                                    <Button Grid.Row="0" Classes="chip" IsVisible="{Binding IsEmpty}"
+                                            Click="OnWorkspacePickerClicked" HorizontalAlignment="Left"
+                                            ToolTip.Tip="{Binding WorkspacePath}" Margin="0,0,0,2">
+                                        <StackPanel Orientation="Horizontal" Spacing="7">
+                                            <Path Width="14" Height="14" Data="{StaticResource FolderIcon}"
+                                                  Stretch="Uniform" Stroke="{StaticResource TextTertiary}"
+                                                  StrokeThickness="1.35" StrokeLineCap="Round"
+                                                  StrokeJoin="Round" Fill="Transparent"
+                                                  VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding WorkspaceName}" FontSize="12.5"
+                                                       Foreground="{StaticResource TextSecondary}"
+                                                       VerticalAlignment="Center" />
+                                            <Path Width="9" Height="9" Data="{StaticResource ChevronDownIcon}"
+                                                  Stretch="Uniform" Stroke="{StaticResource TextTertiary}"
+                                                  StrokeThickness="1.4" StrokeLineCap="Round"
+                                                  StrokeJoin="Round" Fill="Transparent"
+                                                  VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                    <ItemsControl Grid.Row="1" ItemsSource="{Binding PendingAttachments}"
                                                   ItemTemplate="{StaticResource AttachmentChipTemplate}"
                                                   IsVisible="{Binding HasPendingAttachments}" Margin="2,2,2,4">
                                         <ItemsControl.ItemsPanel>
@@ -1328,24 +1431,26 @@
                                         </ItemsControl.ItemsPanel>
                                     </ItemsControl>
 
-                                    <Grid Grid.Row="1">
+                                    <Grid Grid.Row="2">
                                         <TextBox x:Name="HeroComposerBox" Classes="composer"
                                                  IsVisible="{Binding IsEmpty}"
                                                  Text="{Binding Composer, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                  PlaceholderText="{Binding ComposerPlaceholder}"
                                                  AcceptsReturn="True" TextWrapping="Wrap"
                                                  MinHeight="42" MaxHeight="180"
-                                                 KeyDown="OnComposerKeyDown" />
+                                                 KeyDown="OnComposerKeyDown"
+                                                 TextChanged="OnComposerTextChanged" />
                                         <TextBox x:Name="ChatComposerBox" Classes="composer"
                                                  IsVisible="{Binding HasConversation}"
                                                  Text="{Binding Composer, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                  PlaceholderText="{Binding ComposerPlaceholder}"
                                                  AcceptsReturn="True" TextWrapping="Wrap"
                                                  MinHeight="42" MaxHeight="180"
-                                                 KeyDown="OnComposerKeyDown" />
+                                                 KeyDown="OnComposerKeyDown"
+                                                 TextChanged="OnComposerTextChanged" />
                                     </Grid>
 
-                                    <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto,Auto,Auto"
+                                    <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto,Auto,Auto"
                                           ColumnSpacing="4" Margin="0,6,0,0">
                                         <Button Classes="attach" Click="OnAttachFilesClicked"
                                                 ToolTip.Tip="添加文本或代码附件">
@@ -1355,7 +1460,151 @@
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="1"
                                                     HorizontalAlignment="Left" VerticalAlignment="Center"
                                                     Margin="4,0,0,0">
-                                            <Button Classes="chip" Click="OnNavSettingsClicked" ToolTip.Tip="权限模式">
+                                            <Button Classes="permission-chip" ToolTip.Tip="权限模式">
+                                                <Button.Flyout>
+                                                    <Flyout Placement="TopEdgeAlignedLeft">
+                                                        <Border Width="340" Background="#17171A"
+                                                                BorderBrush="#2B2B2E" BorderThickness="1"
+                                                                CornerRadius="12" Padding="8"
+                                                                Cursor="Arrow">
+                                                                                                                        <StackPanel Spacing="1">
+                                                                <Grid ColumnDefinitions="*,Auto"
+                                                                      Margin="8,4,8,6">
+                                                                    <TextBlock Text="应如何批准操作？"
+                                                                               FontSize="12.5"
+                                                                               Foreground="#B0B1B3"
+                                                                               VerticalAlignment="Center" />
+                                                                    <Button Grid.Column="1" Classes="link"
+                                                                            Click="OnPermissionLearnMoreClicked">
+                                                                        <TextBlock Text="了解更多" FontSize="12.5"
+                                                                                   Foreground="#B0B1B3"
+                                                                                   TextDecorations="Underline" />
+                                                                    </Button>
+                                                                </Grid>
+                                                                <Button Classes="permission-row"
+                                                                        Classes.selected="{Binding IsPermissionAsk}"
+                                                                        Click="OnPermissionAskClicked">
+                                                                    <Grid ColumnDefinitions="20,*,Auto"
+                                                                          ColumnSpacing="10" Margin="4,2,4,2">
+                                                                        <Path Width="18" Height="18"
+                                                                              Data="{StaticResource ShieldIcon}"
+                                                                              Stretch="Uniform"
+                                                                              Stroke="#8E8F91"
+                                                                              StrokeThickness="1.4"
+                                                                              StrokeLineCap="Round"
+                                                                              StrokeJoin="Round"
+                                                                              Fill="Transparent"
+                                                                              VerticalAlignment="Top"
+                                                                              Margin="0,1,0,0" />
+                                                                        <StackPanel Grid.Column="1"
+                                                                                    Spacing="2">
+                                                                            <TextBlock Text="请求批准"
+                                                                                       FontSize="13.5"
+                                                                                       Foreground="#E3E4E6" />
+                                                                            <TextBlock
+                                                                                Text="编辑外部文件和使用互联网时始终询问"
+                                                                                FontSize="11.5"
+                                                                                Foreground="#8E8F91"
+                                                                                TextWrapping="Wrap"
+                                                                                LineHeight="16" />
+                                                                        </StackPanel>
+                                                                        <Path Grid.Column="2"
+                                                                              Width="14" Height="14"
+                                                                              Data="{StaticResource CheckIcon}"
+                                                                              Stretch="Uniform"
+                                                                              Stroke="#F0814B"
+                                                                              StrokeThickness="1.7"
+                                                                              StrokeLineCap="Round"
+                                                                              StrokeJoin="Round"
+                                                                              Fill="Transparent"
+                                                                              IsVisible="{Binding IsPermissionAsk}"
+                                                                              VerticalAlignment="Center" />
+                                                                    </Grid>
+                                                                </Button>
+                                                                <Button Classes="permission-row"
+                                                                        Classes.selected="{Binding IsPermissionAuto}"
+                                                                        Click="OnPermissionAutoClicked">
+                                                                    <Grid ColumnDefinitions="20,*,Auto"
+                                                                          ColumnSpacing="10" Margin="4,2,4,2">
+                                                                        <Path Width="18" Height="18"
+                                                                              Data="{StaticResource ClockIcon}"
+                                                                              Stretch="Uniform"
+                                                                              Stroke="#8E8F91"
+                                                                              StrokeThickness="1.4"
+                                                                              StrokeLineCap="Round"
+                                                                              StrokeJoin="Round"
+                                                                              Fill="Transparent"
+                                                                              VerticalAlignment="Top"
+                                                                              Margin="0,1,0,0" />
+                                                                        <StackPanel Grid.Column="1"
+                                                                                    Spacing="2">
+                                                                            <TextBlock Text="帮我批准"
+                                                                                       FontSize="13.5"
+                                                                                       Foreground="#E3E4E6" />
+                                                                            <TextBlock
+                                                                                Text="仅对检测到的风险操作请求批准"
+                                                                                FontSize="11.5"
+                                                                                Foreground="#8E8F91"
+                                                                                TextWrapping="Wrap"
+                                                                                LineHeight="16" />
+                                                                        </StackPanel>
+                                                                        <Path Grid.Column="2"
+                                                                              Width="14" Height="14"
+                                                                              Data="{StaticResource CheckIcon}"
+                                                                              Stretch="Uniform"
+                                                                              Stroke="#F0814B"
+                                                                              StrokeThickness="1.7"
+                                                                              StrokeLineCap="Round"
+                                                                              StrokeJoin="Round"
+                                                                              Fill="Transparent"
+                                                                              IsVisible="{Binding IsPermissionAuto}"
+                                                                              VerticalAlignment="Center" />
+                                                                    </Grid>
+                                                                </Button>
+                                                                <Button Classes="permission-row"
+                                                                        Classes.selected="{Binding IsPermissionFull}"
+                                                                        Click="OnPermissionFullClicked">
+                                                                    <Grid ColumnDefinitions="20,*,Auto"
+                                                                          ColumnSpacing="10" Margin="4,2,4,2">
+                                                                        <Path Width="18" Height="18"
+                                                                              Data="{StaticResource AlertIcon}"
+                                                                              Stretch="Uniform"
+                                                                              Stroke="#8E8F91"
+                                                                              StrokeThickness="1.4"
+                                                                              StrokeLineCap="Round"
+                                                                              StrokeJoin="Round"
+                                                                              Fill="Transparent"
+                                                                              VerticalAlignment="Top"
+                                                                              Margin="0,1,0,0" />
+                                                                        <StackPanel Grid.Column="1"
+                                                                                    Spacing="2">
+                                                                            <TextBlock Text="完全访问"
+                                                                                       FontSize="13.5"
+                                                                                       Foreground="#E3E4E6" />
+                                                                            <TextBlock
+                                                                                Text="可不受限制地访问互联网和你电脑上的任何文件"
+                                                                                FontSize="11.5"
+                                                                                Foreground="#8E8F91"
+                                                                                TextWrapping="Wrap"
+                                                                                LineHeight="16" />
+                                                                        </StackPanel>
+                                                                        <Path Grid.Column="2"
+                                                                              Width="14" Height="14"
+                                                                              Data="{StaticResource CheckIcon}"
+                                                                              Stretch="Uniform"
+                                                                              Stroke="#F0814B"
+                                                                              StrokeThickness="1.7"
+                                                                              StrokeLineCap="Round"
+                                                                              StrokeJoin="Round"
+                                                                              Fill="Transparent"
+                                                                              IsVisible="{Binding IsPermissionFull}"
+                                                                              VerticalAlignment="Center" />
+                                                                    </Grid>
+                                                                </Button>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </Flyout>
+                                                </Button.Flyout>
                                                 <StackPanel Orientation="Horizontal" Spacing="5">
                                                     <Path Width="13" Height="13" Data="{StaticResource AlertIcon}"
                                                           Stretch="Uniform" Stroke="#F0814B"
@@ -1380,15 +1629,110 @@
                                                 </Grid>
                                             </Button>
                                         </StackPanel>
-                                        <Button Grid.Column="2" Classes="chip" Click="OnOpenModelSettingsClicked"
-                                                ToolTip.Tip="模型与连接">
+                                        <Button Grid.Column="2" Classes="chip" ToolTip.Tip="模型与推理强度">
+                                            <Button.Flyout>
+                                                <Flyout Placement="TopEdgeAlignedLeft"
+                                                        Opened="OnReasoningFlyoutOpened">
+                                                    <Border Width="260" Background="#1C1C1E"
+                                                            BorderBrush="#2B2B2E" BorderThickness="1"
+                                                            CornerRadius="16" Padding="16,14"
+                                                            Cursor="Arrow">
+                                                        <StackPanel Spacing="10">
+                                                            <TextBlock Text="{Binding ReasoningEffortDisplayLabel}"
+                                                                       FontSize="14" FontWeight="SemiBold"
+                                                                       Classes="effort-accent"
+                                                                       Classes.high="{Binding IsReasoningHighDisplay}"
+                                                                       HorizontalAlignment="Center" />
+                                                            <Button Classes="link"
+                                                                    Click="OnOpenModelSettingsClicked"
+                                                                    HorizontalAlignment="Center">
+                                                                <StackPanel Orientation="Horizontal"
+                                                                            Spacing="4">
+                                                                    <TextBlock Text="{Binding ProviderModelLabel}"
+                                                                               FontSize="13"
+                                                                               Foreground="#A0A1A3"
+                                                                               VerticalAlignment="Center" />
+                                                                    <Path Width="9" Height="9"
+                                                                          Data="{StaticResource ChevronRightIcon}"
+                                                                          Stretch="Uniform"
+                                                                          Stroke="#8E8F91"
+                                                                          StrokeThickness="1.6"
+                                                                          StrokeLineCap="Round"
+                                                                          StrokeJoin="Round"
+                                                                          Fill="Transparent"
+                                                                          VerticalAlignment="Center" />
+                                                                </StackPanel>
+                                                            </Button>
+                                                            <Grid x:Name="ReasoningTrack" Height="28"
+                                                                  Cursor="Hand"
+                                                                  Background="Transparent"
+                                                                  ClipToBounds="False"
+                                                                  PointerPressed="OnReasoningTrackPressed"
+                                                                  PointerMoved="OnReasoningTrackMoved"
+                                                                  PointerReleased="OnReasoningTrackReleased"
+                                                                  SizeChanged="OnReasoningTrackSizeChanged">
+                                                                <Border CornerRadius="14"
+                                                                        VerticalAlignment="Center"
+                                                                        Height="28"
+                                                                        Background="#2E2E32" />
+                                                                <Border x:Name="ReasoningFillClip" Width="0"
+                                                                        Height="28" CornerRadius="14"
+                                                                        ClipToBounds="True"
+                                                                        HorizontalAlignment="Left"
+                                                                        VerticalAlignment="Center">
+                                                                    <Border x:Name="ReasoningFill" Height="28"
+                                                                            CornerRadius="14"
+                                                                            HorizontalAlignment="Left">
+                                                                        <Border.Background>
+                                                                            <LinearGradientBrush
+                                                                                StartPoint="0%,50%"
+                                                                                EndPoint="100%,50%">
+                                                                                <GradientStop Color="#5B4BC4"
+                                                                                              Offset="0" />
+                                                                                <GradientStop Color="#A78BFA"
+                                                                                              Offset="1" />
+                                                                            </LinearGradientBrush>
+                                                                        </Border.Background>
+                                                                    </Border>
+                                                                </Border>
+                                                                <Canvas x:Name="ReasoningTicks"
+                                                                        IsHitTestVisible="False"
+                                                                        Height="8"
+                                                                        VerticalAlignment="Center">
+                                                                    <Ellipse x:Name="ReasoningTick0" Width="4"
+                                                                             Height="4" Fill="#8CFFFFFF" />
+                                                                    <Ellipse x:Name="ReasoningTick1" Width="4"
+                                                                             Height="4" Fill="#8CFFFFFF" />
+                                                                    <Ellipse x:Name="ReasoningTick2" Width="4"
+                                                                             Height="4" Fill="#8CFFFFFF" />
+                                                                    <Ellipse x:Name="ReasoningTick3" Width="4"
+                                                                             Height="4" Fill="#8CFFFFFF" />
+                                                                </Canvas>
+                                                                <Border x:Name="ReasoningThumb" Width="34"
+                                                                        Height="34" CornerRadius="17"
+                                                                        Background="#FFFFFF"
+                                                                        IsHitTestVisible="False"
+                                                                        HorizontalAlignment="Left"
+                                                                        VerticalAlignment="Center"
+                                                                        BoxShadow="0 4 14 0 #66000000" />
+                                                            </Grid>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </Flyout>
+                                            </Button.Flyout>
                                             <StackPanel Orientation="Horizontal" Spacing="5">
                                                 <Path Width="13" Height="13" Data="{StaticResource RingIcon}" Stretch="Uniform"
                                                       Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3"
                                                       StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
                                                       VerticalAlignment="Center" />
-                                                <TextBlock Text="{Binding ProviderModelLabel}" FontSize="12.5"
+                                                <TextBlock Text="{Binding ProviderModelLabel}" FontSize="13"
                                                            Foreground="{StaticResource TextPrimary}"
+                                                           VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding ReasoningEffortDisplayLabel}"
+                                                           FontSize="12.5"
+                                                           Classes="effort-accent"
+                                                           Classes.high="{Binding IsReasoningHighDisplay}"
+                                                           IsVisible="{Binding HasReasoningEffortDisplay}"
                                                            VerticalAlignment="Center" />
                                                 <Path Width="9" Height="9" Data="{StaticResource ChevronDownIcon}"
                                                       Stretch="Uniform" Stroke="{StaticResource TextTertiary}"
@@ -1397,9 +1741,9 @@
                                                       VerticalAlignment="Center" />
                                             </StackPanel>
                                         </Button>
-                                        <Button Grid.Column="3" Classes="icon" Width="28" Height="28"
+                                        <Button Grid.Column="3" Classes="icon" Width="30" Height="30"
                                                 ToolTip.Tip="语音输入（即将支持）">
-                                            <Path Width="14" Height="14" Data="{StaticResource MicIcon}"
+                                            <Path Width="16" Height="16" Data="{StaticResource MicIcon}"
                                                   Stretch="Uniform" />
                                         </Button>
                                         <Button Grid.Column="4" Classes="stop" IsVisible="{Binding IsBusy}"
@@ -1416,6 +1760,32 @@
                                     </Grid>
                                 </Grid>
                             </Border>
+
+                            <!-- "/" commands and "@" file mentions, anchored above the composer -->
+                            <Popup x:Name="ComposerMenuPopup"
+                                   Placement="TopEdgeAlignedLeft" HorizontalOffset="0" VerticalOffset="-8"
+                                   IsLightDismissEnabled="False" ShouldUseOverlayLayer="True">
+                                <Border x:Name="ComposerMenuCard" Width="430" MaxHeight="330" Opacity="0"
+                                        Background="#17171A" BorderBrush="#2B2B2E" BorderThickness="1"
+                                        CornerRadius="12" Padding="6" BoxShadow="0 18 44 0 #99000000">
+                                    <Border.Transitions>
+                                        <Transitions>
+                                            <DoubleTransition Property="Opacity" Duration="0:0:0.10" />
+                                        </Transitions>
+                                    </Border.Transitions>
+                                    <Grid RowDefinitions="Auto,Auto,Auto">
+                                        <TextBlock x:Name="ComposerMenuHeader" FontSize="11"
+                                                   Foreground="#727275" Margin="8,4,8,6" />
+                                        <ScrollViewer Grid.Row="1" MaxHeight="248"
+                                                      VerticalScrollBarVisibility="Auto"
+                                                      HorizontalScrollBarVisibility="Disabled">
+                                            <StackPanel x:Name="ComposerMenuItems" Spacing="1" />
+                                        </ScrollViewer>
+                                        <TextBlock Grid.Row="2" Text="↑↓ 选择 · Enter 确认 · Esc 关闭"
+                                                   FontSize="10.5" Foreground="#5E5E61" Margin="8,8,8,4" />
+                                    </Grid>
+                                </Border>
+                            </Popup>
                         </Grid>
                     </Grid>
 
@@ -1457,24 +1827,24 @@
                                                  Foreground="{StaticResource TextCaption}"
                                                  TextTrimming="CharacterEllipsis" Margin="0,14,0,18" />
 
-                            <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+                            <StackPanel Grid.Row="2" Spacing="3" Margin="0,0,0,12">
                                 <TextBlock Text="本地插件" FontSize="14" FontWeight="Medium"
                                            Foreground="{StaticResource TextPrimary}" />
-                                <TextBlock Grid.Column="1" Text="{Binding PluginStatus}" FontSize="11"
-                                           Foreground="{StaticResource TextCaption}" VerticalAlignment="Center" />
-                            </Grid>
+                                <TextBlock Text="{Binding PluginStatus}" FontSize="11.5"
+                                           Foreground="{StaticResource TextCaption}" TextWrapping="Wrap" />
+                            </StackPanel>
 
                             <StackPanel Grid.Row="3" Spacing="0">
                                 <Border IsVisible="{Binding ShowNoPlugins}" Padding="0,60,0,0">
                                     <StackPanel Spacing="10" HorizontalAlignment="Center">
-                                        <Path Width="30" Height="30" Data="{StaticResource PluginIcon}"
+                                        <Path Width="36" Height="36" Data="{StaticResource PluginIcon}"
                                               Stretch="Uniform" Stroke="{StaticResource TextTertiary}"
                                               StrokeThickness="1.1" StrokeLineCap="Round" StrokeJoin="Round"
                                               Fill="Transparent" HorizontalAlignment="Center" />
-                                        <TextBlock Text="暂无本地插件" FontSize="14"
+                                        <TextBlock Text="暂无本地插件" FontSize="15"
                                                    Foreground="{StaticResource TextSecondary}"
                                                    HorizontalAlignment="Center" />
-                                        <TextBlock Text="在插件目录下创建子目录并放入 plugin.json" FontSize="12"
+                                        <TextBlock Text="在插件目录下创建子目录并放入 plugin.json" FontSize="12.5"
                                                    Foreground="{StaticResource TextCaption}"
                                                    HorizontalAlignment="Center" />
                                         <Button Classes="secondary" Click="OnOpenPluginDirectoryClicked"
@@ -1589,39 +1959,41 @@
                                         Content="新建" VerticalAlignment="Center" />
                             </Grid>
 
-                            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="6" Margin="0,18,0,12">
-                                <Button Classes="filter" Classes.active="{Binding IsAutomationFilterAll}"
-                                        Click="OnAutomationFilterAllClicked" Content="全部" />
-                                <Button Classes="filter" Classes.active="{Binding IsAutomationFilterActive}"
-                                        Click="OnAutomationFilterActiveClicked" Content="已开启" />
-                                <Button Classes="filter" Classes.active="{Binding IsAutomationFilterEnded}"
-                                        Click="OnAutomationFilterEndedClicked" Content="已结束" />
-                            </StackPanel>
-
-                            <Border Grid.Row="2" Height="34" Background="{StaticResource ElevatedHover}"
-                                    CornerRadius="8" Padding="9,0" Margin="0,0,0,16">
-                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="7">
-                                    <Path Width="13" Height="13" Data="{StaticResource SearchIcon}"
-                                          Stretch="Uniform" Stroke="{StaticResource TextTertiary}"
-                                          StrokeThickness="1.35" StrokeLineCap="Round" StrokeJoin="Round"
-                                          Fill="Transparent" VerticalAlignment="Center" />
-                                    <TextBox x:Name="AutomationSearchBox" Grid.Column="1" Classes="search"
-                                             Text="{Binding AutomationSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                             PlaceholderText="搜索自动化任务" VerticalAlignment="Center" />
-                                </Grid>
-                            </Border>
+                            <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,18,0,16">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <Button Classes="filter" Classes.active="{Binding IsAutomationFilterAll}"
+                                            Click="OnAutomationFilterAllClicked" Content="全部" />
+                                    <Button Classes="filter" Classes.active="{Binding IsAutomationFilterActive}"
+                                            Click="OnAutomationFilterActiveClicked" Content="已开启" />
+                                    <Button Classes="filter" Classes.active="{Binding IsAutomationFilterEnded}"
+                                            Click="OnAutomationFilterEndedClicked" Content="已结束" />
+                                </StackPanel>
+                                <Border Grid.Column="2" Width="320" Height="32"
+                                        Background="{StaticResource ElevatedHover}"
+                                        CornerRadius="8" Padding="9,0">
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="7">
+                                        <Path Width="13" Height="13" Data="{StaticResource SearchIcon}"
+                                              Stretch="Uniform" Stroke="{StaticResource TextTertiary}"
+                                              StrokeThickness="1.35" StrokeLineCap="Round" StrokeJoin="Round"
+                                              Fill="Transparent" VerticalAlignment="Center" />
+                                        <TextBox x:Name="AutomationSearchBox" Grid.Column="1" Classes="search"
+                                                 Text="{Binding AutomationSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                 PlaceholderText="搜索自动化任务" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Border>
+                            </Grid>
 
                             <Border Grid.Row="3" IsVisible="{Binding ShowNoAutomations}" Padding="0,50,0,0">
                                 <StackPanel Spacing="12" HorizontalAlignment="Center">
-                                    <Path Width="28" Height="28" Data="{StaticResource ClockIcon}"
+                                    <Path Width="36" Height="36" Data="{StaticResource ClockIcon}"
                                           Stretch="Uniform" Stroke="{StaticResource TextTertiary}"
                                           StrokeThickness="1.1" StrokeLineCap="Round" StrokeJoin="Round"
                                           Fill="Transparent" HorizontalAlignment="Center" />
                                     <StackPanel Spacing="4" HorizontalAlignment="Center">
-                                        <TextBlock Text="{Binding AutomationEmptyTitle}" FontSize="14"
+                                        <TextBlock Text="{Binding AutomationEmptyTitle}" FontSize="15"
                                                    Foreground="{StaticResource TextSecondary}"
                                                    HorizontalAlignment="Center" />
-                                        <TextBlock Text="{Binding AutomationEmptyDescription}" FontSize="12"
+                                        <TextBlock Text="{Binding AutomationEmptyDescription}" FontSize="12.5"
                                                    Foreground="{StaticResource TextCaption}"
                                                    HorizontalAlignment="Center" />
                                     </StackPanel>
@@ -1731,7 +2103,8 @@
         </Grid>
 
         <!-- ===================== Settings overlay ===================== -->
-        <Grid Grid.Row="1" IsVisible="{Binding IsSettingsOpen}" Margin="52,0,0,0"
+        <Grid x:Name="SettingsHost" Classes="settings-host" Grid.Row="1"
+              IsVisible="{Binding IsSettingsOpen}" Margin="52,0,0,0"
               Background="{StaticResource BgBase}" ZIndex="40">
             <Grid ColumnDefinitions="280,*">
                 <Border Background="{StaticResource SidebarFill}"
@@ -1885,6 +2258,29 @@
                             <!-- Models / Core runtime -->
                             <StackPanel IsVisible="{Binding IsSettingsModels}" Spacing="14">
                                 <Border Classes="card">
+                                    <StackPanel Spacing="10">
+                                        <TextBlock Text="默认模型与凭据" FontSize="13" FontWeight="Medium"
+                                                   Foreground="{StaticResource TextPrimary}" />
+                                        <TextBlock Text="切换模型与写入 API Key 都经由 KL Core 完成；Key 只发给 Core，不在此显示明文。"
+                                                   FontSize="11.5" Foreground="{StaticResource TextTertiary}"
+                                                   TextWrapping="Wrap" LineHeight="18" />
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                            <ComboBox Classes="field" ItemsSource="{Binding SettingsModelChoices}"
+                                                      SelectedItem="{Binding SettingsSelectedModel, Mode=TwoWay}"
+                                                      HorizontalAlignment="Stretch" />
+                                            <Button Grid.Column="1" Classes="primary" Click="OnSaveModelClicked"
+                                                    Content="应用" />
+                                        </Grid>
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                            <TextBox Classes="field" PasswordChar="●"
+                                                     Text="{Binding SettingsApiKeyDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                     PlaceholderText="输入 API Key（写入 KL Core）" />
+                                            <Button Grid.Column="1" Classes="secondary" Click="OnSaveApiKeyClicked"
+                                                    Content="保存 Key" />
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                                <Border Classes="card">
                                     <StackPanel Spacing="6">
                                         <TextBlock Text="KL Core 运行时" FontSize="13" FontWeight="Medium"
                                                    Foreground="{StaticResource TextPrimary}" />
@@ -1944,6 +2340,32 @@
                                 <TextBlock Text="{Binding SettingsStatus}" FontSize="11"
                                            Foreground="#E6A0A0" TextWrapping="Wrap"
                                            IsVisible="{Binding IsSettingsStatusError}" />
+                                <Border Classes="card">
+                                    <StackPanel Spacing="8">
+                                        <TextBlock Text="诊断" FontSize="13" FontWeight="Medium"
+                                                   Foreground="{StaticResource TextPrimary}" />
+                                        <TextBlock Text="检查 Core、沙箱、Provider 与本地目录是否就绪。"
+                                                   FontSize="11.5" Foreground="{StaticResource TextTertiary}"
+                                                   TextWrapping="Wrap" LineHeight="18" />
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Button Classes="secondary" Click="OnRunDoctorClicked"
+                                                    IsEnabled="{Binding CanRunDoctor}"
+                                                    Content="运行诊断" />
+                                            <TextBlock Text="{Binding DoctorSummary}" FontSize="11.5"
+                                                       Foreground="{StaticResource TextSecondary}"
+                                                       VerticalAlignment="Center" TextWrapping="Wrap" />
+                                        </StackPanel>
+                                        <ItemsControl ItemsSource="{Binding DoctorChecks}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding}" FontSize="11.5"
+                                                               Foreground="{StaticResource TextTertiary}"
+                                                               TextWrapping="Wrap" Margin="0,1,0,0" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
 
                             <!-- Local data -->
@@ -2106,7 +2528,12 @@
         </primitives:Popup>
 
         <!-- section menu overlay: drawn inside the main window, no extra popup windows -->
-        <Grid x:Name="SectionMenuOverlay" Grid.RowSpan="2" ZIndex="44" IsVisible="False">
+        <Grid x:Name="SectionMenuOverlay" Grid.RowSpan="2" ZIndex="44" IsVisible="False" Opacity="0">
+            <Grid.Transitions>
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.10" />
+                </Transitions>
+            </Grid.Transitions>
             <Border Background="Transparent" PointerPressed="OnSectionMenuDismissPressed" />
             <Canvas x:Name="SectionMenuCanvas">
                 <StackPanel x:Name="SectionMenuStack" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top"
@@ -2337,7 +2764,8 @@
         <!-- ===================== Command palette (Codex search) ===================== -->
         <Grid Grid.RowSpan="2" IsVisible="{Binding IsSearchPaletteOpen}" Background="Transparent" ZIndex="55"
               PointerPressed="OnPaletteBackdropPressed">
-            <Border Width="768" MaxHeight="560" Margin="0,147,0,0"
+            <Border Width="768" MaxHeight="560" Margin="0,147,0,0" Classes="overlay-card"
+                    Classes.open="{Binding IsSearchPaletteOpen}"
                     HorizontalAlignment="Center" VerticalAlignment="Top"
                     Background="#0F0F10" BorderBrush="#1E1E20" BorderThickness="1"
                     CornerRadius="12" BoxShadow="0 20 48 0 #B3000000">
@@ -2394,6 +2822,80 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                             </StackPanel>
+                            <StackPanel IsVisible="{Binding ShowPaletteFiles}">
+                                <TextBlock Text="文件" FontSize="11.5" Foreground="{StaticResource TextTertiary}"
+                                           Margin="8,12,0,6" />
+                                <ItemsControl ItemsSource="{Binding PaletteFiles}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:PaletteFileGroupViewModel">
+                                            <Button Classes="palette-row" Click="OnPaletteFileClicked"
+                                                    Tag="{Binding}" ToolTip.Tip="插入文件引用">
+                                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
+                                                    <Path Width="14" Height="14" Data="{StaticResource FolderIcon}"
+                                                          Stretch="Uniform" />
+                                                    <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="13"
+                                                               TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                                                               VerticalAlignment="Center" />
+                                                    <TextBlock Grid.Column="2" Text="{Binding Folder}" FontSize="11"
+                                                               Foreground="{StaticResource TextCaption}"
+                                                               VerticalAlignment="Center" />
+                                                </Grid>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+
+                            <StackPanel IsVisible="{Binding ShowPaletteText}">
+                                <TextBlock Text="文本" FontSize="11.5" Foreground="{StaticResource TextTertiary}"
+                                           Margin="8,12,0,6" />
+                                <ItemsControl ItemsSource="{Binding PaletteTextMatches}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:PaletteFileGroupViewModel">
+                                            <StackPanel Spacing="1" Margin="0,0,0,6">
+                                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8"
+                                                      Margin="10,6,10,4">
+                                                    <Path Width="13" Height="13"
+                                                          Data="{StaticResource FolderIcon}" Stretch="Uniform" />
+                                                    <TextBlock Grid.Column="1" Text="{Binding RelativePath}"
+                                                               FontSize="12"
+                                                               Foreground="{StaticResource TextSecondary}"
+                                                               TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                                                    <TextBlock Grid.Column="2" Text="{Binding CountLabel}"
+                                                               FontSize="10.5"
+                                                               Foreground="{StaticResource TextCaption}" />
+                                                </Grid>
+                                                <ItemsControl ItemsSource="{Binding Lines}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate x:DataType="vm:PaletteLineViewModel">
+                                                            <Button Classes="palette-row"
+                                                                    Click="OnPaletteTextLineClicked"
+                                                                    Tag="{Binding}" ToolTip.Tip="插入文件引用">
+                                                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                                                    <TextBlock Text="{Binding LineLabel}"
+                                                                               FontSize="11" Width="34"
+                                                                               TextAlignment="Right"
+                                                                               FontFamily="Cascadia Mono, Consolas"
+                                                                               Foreground="{StaticResource TextCaption}"
+                                                                               VerticalAlignment="Center" />
+                                                                    <TextBlock Grid.Column="1" Text="{Binding Text}"
+                                                                               FontSize="12"
+                                                                               FontFamily="Cascadia Mono, Consolas"
+                                                                               Foreground="{StaticResource TextSecondary}"
+                                                                               TextTrimming="CharacterEllipsis"
+                                                                               TextWrapping="NoWrap"
+                                                                               VerticalAlignment="Center" />
+                                                                </Grid>
+                                                            </Button>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+
                             <TextBlock Text="{Binding PaletteEmptyText}" IsVisible="{Binding ShowPaletteEmpty}"
                                        FontSize="12.5" Foreground="{StaticResource TextTertiary}"
                                        Margin="8,16,0,20" />
@@ -2470,7 +2972,8 @@
 
         <!-- ===================== Rename / edit project dialog ===================== -->
         <Grid Grid.RowSpan="2" IsVisible="{Binding IsRenameDialogOpen}" Background="#99000000" ZIndex="60">
-            <Border Width="508" Background="#1F1F21"
+            <Border Width="508" Classes="overlay-card" Classes.open="{Binding IsRenameDialogOpen}"
+                    Background="#1F1F21"
                     BorderBrush="#2E2E31" BorderThickness="1"
                     CornerRadius="16" Padding="24"
                     BoxShadow="0 24 60 0 #A0000000"
@@ -2545,7 +3048,8 @@
         <!-- ===================== Create project dialog ===================== -->
         <Grid Grid.RowSpan="2" IsVisible="{Binding IsCreateProjectDialogOpen}" Background="#80000000"
               ZIndex="60">
-            <Border Width="508" Background="#1F1F21"
+            <Border Width="508" Classes="overlay-card" Classes.open="{Binding IsCreateProjectDialogOpen}"
+                    Background="#1F1F21"
                     BorderBrush="#2E2E31" BorderThickness="1"
                     CornerRadius="16" Padding="24"
                     BoxShadow="0 24 60 0 #A0000000"
@@ -2576,7 +3080,7 @@
                         <Border Background="#17171A" BorderBrush="#2E2E31" BorderThickness="1"
                                 CornerRadius="10" Height="104">
                             <StackPanel Spacing="10" VerticalAlignment="Center">
-                                <Button Classes="subtle" Background="Transparent" Padding="10,4"
+                                <Button Classes="subtle" Padding="10,4"
                                         HorizontalAlignment="Center" Click="OnCreateProjectBrowseClicked">
                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                         <TextBlock Text="在此电脑上添加文件夹" FontSize="13.5"
@@ -2616,7 +3120,8 @@
         <!-- ===================== Automation dialog ===================== -->
         <Grid Grid.RowSpan="2" IsVisible="{Binding IsAutomationDialogOpen}" Background="#99000000"
               ZIndex="60">
-            <Border Width="520" Background="{StaticResource CardFill}"
+            <Border Width="520" Classes="overlay-card" Classes.open="{Binding IsAutomationDialogOpen}"
+                    Background="{StaticResource CardFill}"
                     BorderBrush="{StaticResource LineStrong}" BorderThickness="1"
                     CornerRadius="16" Padding="20"
                     HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -2658,7 +3163,8 @@
         <!-- ===================== Automation delete dialog ===================== -->
         <Grid Grid.RowSpan="2" IsVisible="{Binding IsAutomationDeleteDialogOpen}" Background="#99000000"
               ZIndex="60">
-            <Border Width="420" Background="{StaticResource CardFill}"
+            <Border Width="420" Classes="overlay-card" Classes.open="{Binding IsAutomationDeleteDialogOpen}"
+                    Background="{StaticResource CardFill}"
                     BorderBrush="{StaticResource LineStrong}" BorderThickness="1"
                     CornerRadius="16" Padding="20"
                     HorizontalAlignment="Center" VerticalAlignment="Center">

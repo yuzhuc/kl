@@ -23,7 +23,7 @@ Build steps:
 1. `cargo build --release -p kl-core`
 2. `dotnet publish tui/Kl.Tui -c Release -r <rid> --self-contained true`
 3. copy `target/<rust-target>/release/kl-core(.exe)` next to the published TUI
-4. GUI packages will be added to the same release once the Avalonia MVP is ready
+4. `dotnet publish gui/Kl.Gui -c Release -r <rid> --self-contained true` into `gui/`, with the core copied next to it (Windows and macOS RIDs only, per ADR 0011)
 
 The TUI prefers `kl-core` next to itself and verifies the protocol version with
 the handshake. A mismatched bundle fails early with a clear error.

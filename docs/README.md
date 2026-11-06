@@ -13,12 +13,11 @@
 Current `dev` state: GUI is a Core-backed Avalonia desktop client with a
 Codex-style rail, resizable session/project sidebar, activity rows, Shell
 panels, Markdown code blocks, conversation ruler, full settings/project pages
-and shared `~/.kl` data. The GUI test project is green at 60 tests.
+and shared `~/.kl` data. The GUI test project is green at 91 tests.
 
 Product-level plans are maintained outside the repository:
 
 - `D:\kl\KL方案.md` — product, phase, release and risk plan
 - `D:\kl\UI方案.md` — visual system, layout, interaction and UI acceptance plan
 
-GUI release packaging, real Provider/MCP live smoke, automatic reconnect UX and
-exact concurrent-tool grouping remain open.
+Real Provider/MCP live smoke and exact concurrent-tool grouping remain open.

@@ -95,9 +95,9 @@ jobs:
         shell: pwsh
         run: Add-Content $env:GITHUB_PATH "C:\Program Files\LLVM\bin"
       - name: Package
-        run: python scripts/package.py --self-contained --rid ${{ matrix.rid }} --rust-target ${{ matrix.rust }}
+        run: python scripts/package.py --self-contained --gui --rid ${{ matrix.rid }} --rust-target ${{ matrix.rust }}
       - name: Verify package
-        run: python scripts/verify_package.py --rid ${{ matrix.rid }}
+        run: python scripts/verify_package.py --gui --rid ${{ matrix.rid }}
       - if: matrix.rid == 'win-x64'
         name: Smoke test
         run: dist\${{ matrix.rid }}\kl.exe --version
@@ -184,9 +184,9 @@ jobs:
         with:
           shared-key: release-${{ matrix.rid }}
       - name: Package
-        run: python scripts/package.py --self-contained --rid ${{ matrix.rid }} --rust-target ${{ matrix.rust }}
+        run: python scripts/package.py --self-contained --gui --rid ${{ matrix.rid }} --rust-target ${{ matrix.rust }}
       - name: Verify package
-        run: python scripts/verify_package.py --rid ${{ matrix.rid }}
+        run: python scripts/verify_package.py --gui --rid ${{ matrix.rid }}
       - if: matrix.rid == 'osx-arm64'
         name: Smoke test
         run: dist/${{ matrix.rid }}/kl --version

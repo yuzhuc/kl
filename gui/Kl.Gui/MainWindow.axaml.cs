@@ -5,6 +5,7 @@ using System.ComponentModel;
 using Avalonia.Animation;
 using Avalonia.Animation.Easings;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
@@ -51,6 +52,9 @@ public partial class MainWindow : Window
             coreSessionService: new CoreSessionService(),
             dispatcher: action => Dispatcher.UIThread.Post(action));
         InitializeComponent();
+        // Grayscale antialiasing matches the flat Codex look; subpixel AA fringes
+        // badly on near-black surfaces.
+        TextOptions.SetTextRenderingMode(this, TextRenderingMode.Antialias);
         DataContext = _viewModel;
         // Popup contents live in their own visual tree; give the More menu the
         // view-model explicitly so the pin bindings (Classes.pinned) resolve.
@@ -84,8 +88,21 @@ public partial class MainWindow : Window
         }
         _automationTimer.Tick += OnAutomationTimerTick;
         _automationTimer.Start();
+        foreach (var (popup, card) in new (Popup Popup, Border Card)[]
+        {
+            (ProductMenuPopup, ProductMenuCard),
+            (NotificationMenuPopup, NotificationMenuCard),
+            (WorkspaceMenuPopup, WorkspaceMenuCard),
+            (PinnedSectionMenuPopup, PinnedSectionMenuCard)
+        })
+        {
+            popup.Opened += (_, _) => FadeInCard(card);
+            popup.Closed += (_, _) => card.Opacity = 0;
+        }
+
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         MorePopup.PlacementTarget = MoreButton;
+        ComposerMenuPopup.PlacementTarget = ComposerCard;
         _railHintOpenTimer.Tick += OnRailHintOpenTimerTick;
         _moreMenuOpenTimer.Tick += OnMoreMenuOpenTimerTick;
         _moreMenuCloseTimer.Tick += OnMoreMenuCloseTimerTick;
@@ -101,7 +118,47 @@ public partial class MainWindow : Window
         AddHandler(PointerMovedEvent, OnPinnedDragMoved, RoutingStrategies.Tunnel, handledEventsToo: true);
         AddHandler(PointerReleasedEvent, OnPinnedDragReleased, RoutingStrategies.Tunnel, handledEventsToo: true);
         ConfigureRailPointerNavigation();
+
+        // Test hook: open the command palette with a query (IME-safe verification).
+        var e2ePalette = Environment.GetEnvironmentVariable("KL_GUI_E2E_PALETTE");
+        if (!string.IsNullOrEmpty(e2ePalette))
+        {
+            DispatcherTimer.RunOnce(() =>
+            {
+                Activate();
+                _viewModel.OpenSearchPalette();
+                _viewModel.SearchText = e2ePalette;
+                PaletteSearchBox.CaretIndex = e2ePalette.Length;
+                PaletteSearchBox.Focus();
+            }, TimeSpan.FromMilliseconds(1200));
+        }
+
+        // Test hook: preload composer text (and the caret) for the "/"/"@" menus.
+        var e2eComposer = Environment.GetEnvironmentVariable("KL_GUI_E2E_COMPOSER");
+        if (!string.IsNullOrEmpty(e2eComposer))
+        {
+            DispatcherTimer.RunOnce(() =>
+            {
+                Activate();
+                var box = _viewModel.HasConversation ? ChatComposerBox : HeroComposerBox;
+                box.Text = e2eComposer;
+                box.CaretIndex = e2eComposer.Length;
+                box.Focus();
+                RefreshComposerSuggestions(box);
+            }, TimeSpan.FromMilliseconds(900));
+        }
     }
+
+    /// <summary>Restarts the low fade used for page and overlay switches.</summary>
+    private static void FadeContent(Control host)
+    {
+        host.Opacity = 0.6;
+        Dispatcher.UIThread.Post(() => host.Opacity = 1, DispatcherPriority.Render);
+    }
+
+    /// <summary>Fades a card in one frame after it is shown, so the transition runs.</summary>
+    private static void FadeInCard(Control card) =>
+        Dispatcher.UIThread.Post(() => card.Opacity = 1, DispatcherPriority.Render);
 
     private void OnJumpToBottomClicked(object? sender, RoutedEventArgs eventArgs) =>
         TranscriptScroller.ScrollToEnd();
@@ -1041,7 +1098,12 @@ public partial class MainWindow : Window
         Canvas.SetLeft(SectionMenuStack, origin.X);
         Canvas.SetTop(SectionMenuStack, origin.Y + anchor.Bounds.Height + 4);
         ProjectSectionSubmenuCard.IsVisible = false;
+        _sectionMenuCloseGeneration++;
+        SectionMenuOverlay.Opacity = 0;
         SectionMenuOverlay.IsVisible = true;
+        Dispatcher.UIThread.Post(
+            () => SectionMenuOverlay.Opacity = 1,
+            DispatcherPriority.Render);
         eventArgs.Handled = true;
     }
 
@@ -1558,7 +1620,20 @@ public partial class MainWindow : Window
     {
         _sectionSubmenuCloseTimer.Stop();
         ProjectSectionSubmenuCard.IsVisible = false;
-        SectionMenuOverlay.IsVisible = false;
+        if (!SectionMenuOverlay.IsVisible)
+        {
+            return;
+        }
+
+        var generation = ++_sectionMenuCloseGeneration;
+        SectionMenuOverlay.Opacity = 0;
+        DispatcherTimer.RunOnce(() =>
+        {
+            if (generation == _sectionMenuCloseGeneration)
+            {
+                SectionMenuOverlay.IsVisible = false;
+            }
+        }, TimeSpan.FromMilliseconds(100));
     }
 
     private void OnSectionMenuDismissPressed(object? sender, PointerPressedEventArgs eventArgs)
@@ -1640,7 +1715,8 @@ public partial class MainWindow : Window
     }
 
     private void OnToggleProjectSectionClicked(object? sender, RoutedEventArgs eventArgs) =>
-        _viewModel.ToggleProjectSection();
+        AnimateSection(WorkspaceItemsControl, _viewModel.IsProjectSectionExpanded,
+            _viewModel.ToggleProjectSection);
 
     private void OnToggleArchivedClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.ToggleArchived();
@@ -1810,8 +1886,11 @@ public partial class MainWindow : Window
         _viewModel.OpenSettings();
     }
 
-    private void OnOpenModelSettingsClicked(object? sender, RoutedEventArgs eventArgs) =>
+    private void OnOpenModelSettingsClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        HideOwnerFlyout(sender);
         _viewModel.OpenSettings(SettingsPane.Models);
+    }
 
     private void OnWorkspacePickerClicked(object? sender, RoutedEventArgs eventArgs)
     {
@@ -1900,8 +1979,217 @@ public partial class MainWindow : Window
         await _viewModel.TestConnectionAsync();
     }
 
+    private void OnSaveLibraryItemClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.SaveLibraryItem();
+
+    private void OnLibraryItemClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is Button { DataContext: LibraryItemViewModel item })
+        {
+            _viewModel.InsertLibraryItem(item);
+        }
+    }
+
+    private void OnInsertLibraryItemClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is Button { DataContext: LibraryItemViewModel item })
+        {
+            _viewModel.InsertLibraryItem(item);
+        }
+    }
+
+    private void OnDeleteLibraryItemClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is Button { DataContext: LibraryItemViewModel item })
+        {
+            _viewModel.DeleteLibraryItem(item);
+        }
+    }
+
+    private void OnPermissionAutoClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        HideOwnerFlyout(sender);
+        _viewModel.SetPermissionMode("帮我批准");
+    }
+
+    private void OnPermissionFullClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        HideOwnerFlyout(sender);
+        _viewModel.SetPermissionMode("完全访问");
+    }
+
+    private void OnPermissionAskClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        HideOwnerFlyout(sender);
+        _viewModel.SetPermissionMode("请求批准");
+    }
+
+    private void OnPermissionLearnMoreClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        HideOwnerFlyout(sender);
+        _viewModel.OpenSettings(SettingsPane.General);
+    }
+
+    /// <summary>Closes the Flyout that hosts a clicked row.</summary>
+    private static void HideOwnerFlyout(object? sender)
+    {
+        if (sender is Control control)
+        {
+            control.FindAncestorOfType<Button>()?.Flyout?.Hide();
+        }
+    }
+
+    private void OnReasoningFlyoutOpened(object? sender, EventArgs eventArgs) =>
+        Dispatcher.UIThread.Post(UpdateReasoningThumb, DispatcherPriority.Render);
+
+    private void OnReasoningTrackSizeChanged(object? sender, SizeChangedEventArgs eventArgs) =>
+        UpdateReasoningThumb();
+
+    private bool _reasoningDragging;
+    private double _reasoningDragFraction;
+
+    private void OnReasoningTrackPressed(object? sender, PointerPressedEventArgs eventArgs)
+    {
+        if (!eventArgs.GetCurrentPoint(ReasoningTrack).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        _reasoningDragging = true;
+        eventArgs.Pointer.Capture(ReasoningTrack);
+        DragReasoningThumb(eventArgs.GetPosition(ReasoningTrack).X);
+        eventArgs.Handled = true;
+    }
+
+    private void OnReasoningTrackMoved(object? sender, PointerEventArgs eventArgs)
+    {
+        if (!_reasoningDragging)
+        {
+            return;
+        }
+
+        DragReasoningThumb(eventArgs.GetPosition(ReasoningTrack).X);
+        eventArgs.Handled = true;
+    }
+
+    private async void OnReasoningTrackReleased(object? sender, PointerReleasedEventArgs eventArgs)
+    {
+        if (!_reasoningDragging)
+        {
+            return;
+        }
+
+        _reasoningDragging = false;
+        eventArgs.Pointer.Capture(null);
+        var effort = EffortForFraction(_reasoningDragFraction);
+        try
+        {
+            if (!string.Equals(effort, _viewModel.ReasoningEffort, StringComparison.Ordinal))
+            {
+                await _viewModel.SetReasoningEffortAsync(effort);
+            }
+        }
+        finally
+        {
+            // Keep the preview while the Core write is in flight so the label does
+            // not snap back for a frame.
+            _viewModel.ClearReasoningEffortPreview();
+            UpdateReasoningThumb();
+        }
+    }
+
+    /// <summary>
+    /// Moves the knob while dragging; the Core write happens on release. The knob
+    /// snaps onto a tier dot once the pointer is within a few pixels of it, which
+    /// makes the four stops feel magnetic instead of loose.
+    /// </summary>
+    private void DragReasoningThumb(double x)
+    {
+        var width = ReasoningTrack.Bounds.Width;
+        if (width <= 0)
+        {
+            return;
+        }
+
+        const double snapPixels = 16;
+        var raw = Math.Clamp(x / width, 0, 1);
+        var tier = (int)Math.Round(raw * 3);
+        var tierFraction = tier / 3.0;
+        var fraction = Math.Abs(raw - tierFraction) * width <= snapPixels ? tierFraction : raw;
+
+        _reasoningDragFraction = fraction;
+        _viewModel.PreviewReasoningEffort(EffortForFraction(fraction));
+        PositionReasoningThumb(fraction);
+    }
+
+    private void UpdateReasoningThumb()
+    {
+        if (_reasoningDragging)
+        {
+            return;
+        }
+
+        var index = _viewModel.IsReasoningHigh ? 3
+            : _viewModel.IsReasoningMedium ? 2
+            : _viewModel.IsReasoningLow ? 1
+            : 0;
+        _reasoningDragFraction = index / 3.0;
+        PositionReasoningThumb(_reasoningDragFraction);
+    }
+
+    private void PositionReasoningThumb(double fraction)
+    {
+        var width = ReasoningTrack.Bounds.Width;
+        var thumbWidth = ReasoningThumb.Bounds.Width;
+        var travel = Math.Max(0, width - thumbWidth);
+        ReasoningThumb.Margin = new Thickness(travel * fraction, 0, 0, 0);
+
+        // The coloured part runs under the thumb centre at every tier.
+        ReasoningFill.Width = width;
+        ReasoningFillClip.Width = Math.Clamp(travel * fraction + (thumbWidth / 2), 0, width);
+
+        // One dot per tier, centred on where the thumb stops.
+        var offset = (thumbWidth / 2) - 2;
+        var ticks = new[] { ReasoningTick0, ReasoningTick1, ReasoningTick2, ReasoningTick3 };
+        for (var index = 0; index < ticks.Length; index++)
+        {
+            Canvas.SetLeft(ticks[index], travel * index / 3.0 + offset);
+            Canvas.SetTop(ticks[index], 2);
+        }
+    }
+
+    private static string EffortForFraction(double fraction) =>
+        (int)Math.Round(Math.Clamp(fraction, 0, 1) * 3) switch
+        {
+            0 => "default",
+            1 => "low",
+            2 => "medium",
+            _ => "high"
+        };
+
+    private async void OnSaveModelClicked(object? sender, RoutedEventArgs eventArgs) =>
+        await _viewModel.SaveModelAsync();
+
+    private async void OnSaveApiKeyClicked(object? sender, RoutedEventArgs eventArgs) =>
+        await _viewModel.SaveApiKeyAsync();
+
+    private async void OnForkSessionClicked(object? sender, RoutedEventArgs eventArgs) =>
+        await _viewModel.ForkActiveSessionAsync();
+
+    private async void OnCompactSessionClicked(object? sender, RoutedEventArgs eventArgs) =>
+        await _viewModel.CompactActiveSessionAsync();
+
+    private async void OnRunDoctorClicked(object? sender, RoutedEventArgs eventArgs) =>
+        await _viewModel.RunDoctorAsync();
+
     private async void OnRetryCoreClicked(object? sender, RoutedEventArgs eventArgs)
     {
+        if (_viewModel.IsCoreReadOnly)
+        {
+            await _viewModel.TakeOverWriteAsync();
+            return;
+        }
+
         await _viewModel.RetryCoreAsync();
     }
 
@@ -2053,8 +2341,289 @@ public partial class MainWindow : Window
         await Task.CompletedTask;
     }
 
+    // ---- composer "/" commands and "@" file mentions ----
+
+    private enum ComposerSuggestionMode
+    {
+        None,
+        Slash,
+        At
+    }
+
+    private sealed record ComposerSuggestionItem(
+        string Label,
+        string Detail,
+        char Trigger,
+        Action? Run = null,
+        string Insert = "");
+
+    private ComposerSuggestionMode _composerSuggestionMode;
+    private ComposerToken _composerToken;
+    private TextBox? _composerSuggestionBox;
+    private readonly List<ComposerSuggestionItem> _composerSuggestionItems = [];
+    private int _composerSuggestionIndex = -1;
+
+    private IReadOnlyList<ComposerSuggestionItem> SlashCommands =>
+    [
+        new("new", "新建会话", '/', () => _ = _viewModel.NewSessionAsync()),
+        new("compact", "压缩当前会话的上下文", '/', () => _ = _viewModel.CompactActiveSessionAsync()),
+        new("fork", "把当前会话复制为分支", '/', () => _ = _viewModel.ForkActiveSessionAsync()),
+        new("settings", "打开设置", '/', () => _viewModel.OpenSettings()),
+        new("plugins", "打开插件页", '/', () => _viewModel.Navigate(AppSection.Plugins)),
+        new("library", "打开资料库", '/', () => _viewModel.Navigate(AppSection.Library)),
+        new("doctor", "运行 KL Core 诊断（设置 → 模型与连接查看）", '/', () => _ = _viewModel.RunDoctorAsync())
+    ];
+
+    private void OnComposerTextChanged(object? sender, TextChangedEventArgs eventArgs)
+    {
+        if (sender is not TextBox box)
+        {
+            return;
+        }
+
+        // The hidden composer twin shares the same bound text; reacting to it would
+        // close the menu immediately (its caret is 0). Only the focused one counts.
+        if (!box.IsVisible || !box.IsFocused)
+        {
+            return;
+        }
+
+        RefreshComposerSuggestions(box);
+    }
+
+    private void RefreshComposerSuggestions(TextBox box)
+    {
+        if (!ComposerSuggestionRules.TryGetToken(box.Text, box.CaretIndex, out var token))
+        {
+            CloseComposerSuggestions();
+            return;
+        }
+
+        _composerToken = token;
+        _composerSuggestionBox = box;
+        _composerSuggestionMode = token.Trigger == '/'
+            ? ComposerSuggestionMode.Slash
+            : ComposerSuggestionMode.At;
+
+        if (token.Trigger == '/')
+        {
+            var query = token.Query.Trim();
+            var commands = SlashCommands
+                .Where(item => query.Length == 0
+                    || item.Label.Contains(query, StringComparison.OrdinalIgnoreCase)
+                    || item.Detail.Contains(query, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            ShowComposerSuggestions(commands, "命令");
+            return;
+        }
+
+        var matches = ComposerSuggestionRules.Filter(GetComposerFiles(), token.Query, 40)
+            .Select(path =>
+            {
+                var folder = Path.GetDirectoryName(path)?.Replace('\\', '/');
+                return new ComposerSuggestionItem(
+                    Path.GetFileName(path),
+                    string.IsNullOrEmpty(folder) ? "根目录" : folder,
+                    '@',
+                    Insert: "@" + path + " ");
+            })
+            .ToList();
+        ShowComposerSuggestions(matches, "文件");
+    }
+
+    private void ShowComposerSuggestions(IReadOnlyList<ComposerSuggestionItem> items, string header)
+    {
+        ComposerMenuHeader.Text = header;
+        ComposerMenuCard.Width = _composerSuggestionMode == ComposerSuggestionMode.Slash ? 340 : 400;
+        ComposerMenuItems.Children.Clear();
+        _composerSuggestionItems.Clear();
+        _composerSuggestionItems.AddRange(items);
+        _composerSuggestionIndex = items.Count > 0 ? 0 : -1;
+
+        if (items.Count == 0)
+        {
+            ComposerMenuItems.Children.Add(new TextBlock
+            {
+                Text = "没有匹配项",
+                FontSize = 12,
+                Foreground = new SolidColorBrush(Color.Parse("#727275")),
+                Margin = new Thickness(10, 6, 10, 8)
+            });
+        }
+        else
+        {
+            for (var index = 0; index < items.Count; index++)
+            {
+                ComposerMenuItems.Children.Add(BuildComposerSuggestionRow(items[index], index));
+            }
+        }
+
+        ApplyComposerSuggestionSelection();
+        if (!ComposerMenuPopup.IsOpen)
+        {
+            ComposerMenuCard.Opacity = 0;
+            ComposerMenuPopup.IsOpen = true;
+            Dispatcher.UIThread.Post(() => ComposerMenuCard.Opacity = 1, DispatcherPriority.Render);
+        }
+    }
+
+    private Button BuildComposerSuggestionRow(ComposerSuggestionItem item, int index)
+    {
+        var badge = new Border
+        {
+            Width = 22,
+            Height = 22,
+            CornerRadius = new CornerRadius(6),
+            Background = new SolidColorBrush(Color.Parse("#232326")),
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+            Child = new TextBlock
+            {
+                Text = item.Trigger.ToString(),
+                FontSize = 12,
+                Foreground = new SolidColorBrush(Color.Parse("#A0A1A3")),
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
+            }
+        };
+
+        var title = new TextBlock
+        {
+            Text = item.Label,
+            FontSize = 13,
+            Foreground = new SolidColorBrush(Color.Parse("#E3E4E6")),
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+            Margin = new Thickness(8, 0, 0, 0)
+        };
+
+        var detail = new TextBlock
+        {
+            Text = item.Detail,
+            FontSize = 11.5,
+            Foreground = new SolidColorBrush(Color.Parse("#727275")),
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Margin = new Thickness(10, 0, 0, 0)
+        };
+
+        var layout = new Grid
+        {
+            // Fixed title column so every description starts on the same x.
+            ColumnDefinitions = new ColumnDefinitions("Auto,88,*"),
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
+        };
+        layout.Children.Add(badge);
+        Grid.SetColumn(title, 1);
+        layout.Children.Add(title);
+        Grid.SetColumn(detail, 2);
+        layout.Children.Add(detail);
+
+        var button = new Button { Content = layout };
+        button.Classes.Add("composer-menu-row");
+        button.Click += (_, _) => CommitComposerSuggestion(item);
+        button.PointerEntered += (_, _) =>
+        {
+            _composerSuggestionIndex = index;
+            ApplyComposerSuggestionSelection();
+        };
+        return button;
+    }
+
+    private void ApplyComposerSuggestionSelection()
+    {
+        for (var index = 0; index < ComposerMenuItems.Children.Count; index++)
+        {
+            if (ComposerMenuItems.Children[index] is Button row)
+            {
+                row.Classes.Set("selected", index == _composerSuggestionIndex);
+            }
+        }
+
+        if (_composerSuggestionIndex >= 0
+            && _composerSuggestionIndex < ComposerMenuItems.Children.Count
+            && ComposerMenuItems.Children[_composerSuggestionIndex] is Control selected)
+        {
+            selected.BringIntoView();
+        }
+    }
+
+    private void MoveComposerSuggestion(int delta)
+    {
+        if (_composerSuggestionItems.Count == 0)
+        {
+            return;
+        }
+
+        _composerSuggestionIndex = (_composerSuggestionIndex + delta + _composerSuggestionItems.Count)
+            % _composerSuggestionItems.Count;
+        ApplyComposerSuggestionSelection();
+    }
+
+    private void CommitComposerSuggestion(ComposerSuggestionItem item)
+    {
+        var box = _composerSuggestionBox;
+        if (box is null)
+        {
+            return;
+        }
+
+        var replacement = item.Trigger == '@' ? item.Insert : string.Empty;
+        var (text, caret) = ComposerSuggestionRules.ReplaceToken(
+            box.Text ?? string.Empty,
+            box.CaretIndex,
+            _composerToken,
+            replacement);
+        CloseComposerSuggestions();
+        box.Text = text;
+        box.CaretIndex = Math.Clamp(caret, 0, text.Length);
+        box.Focus();
+        item.Run?.Invoke();
+    }
+
+    private void CloseComposerSuggestions()
+    {
+        _composerSuggestionMode = ComposerSuggestionMode.None;
+        _composerSuggestionItems.Clear();
+        _composerSuggestionIndex = -1;
+        ComposerMenuItems.Children.Clear();
+        ComposerMenuCard.Opacity = 0;
+        if (ComposerMenuPopup.IsOpen)
+        {
+            ComposerMenuPopup.IsOpen = false;
+        }
+    }
+
+    private List<string> GetComposerFiles()
+    {
+        var workspace = _viewModel.WorkspacePath;
+        // WorkspaceFileIndex caches per workspace, so no second cache is needed.
+        return WorkspaceFileIndex.Files(workspace).ToList();
+    }
+
     private async void OnComposerKeyDown(object? sender, KeyEventArgs eventArgs)
     {
+        if (ComposerMenuPopup.IsOpen)
+        {
+            switch (eventArgs.Key)
+            {
+                case Key.Down when _composerSuggestionItems.Count > 0:
+                    MoveComposerSuggestion(1);
+                    eventArgs.Handled = true;
+                    return;
+                case Key.Up when _composerSuggestionItems.Count > 0:
+                    MoveComposerSuggestion(-1);
+                    eventArgs.Handled = true;
+                    return;
+                case Key.Enter or Key.Tab when _composerSuggestionItems.Count > 0:
+                    CommitComposerSuggestion(_composerSuggestionItems[_composerSuggestionIndex]);
+                    eventArgs.Handled = true;
+                    return;
+                case Key.Escape:
+                    CloseComposerSuggestions();
+                    eventArgs.Handled = true;
+                    return;
+            }
+        }
+
         if (eventArgs.Key != Key.Enter
             || !eventArgs.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
@@ -2062,6 +2631,7 @@ public partial class MainWindow : Window
         }
 
         eventArgs.Handled = true;
+        CloseComposerSuggestions();
         await _viewModel.SendAsync();
         FocusComposer();
         ScrollTranscript();
@@ -2072,6 +2642,13 @@ public partial class MainWindow : Window
         HideRailHint();
         HidePreviewCards();
         HideDropIndicator();
+        if (ComposerMenuPopup.IsOpen
+            && !ComposerCard.IsPointerOver
+            && !ComposerMenuCard.IsPointerOver)
+        {
+            CloseComposerSuggestions();
+        }
+
         if (!MorePopup.IsOpen || MoreButton.IsPointerOver || MoreMenuCard.IsPointerOver)
         {
             return;
@@ -2084,6 +2661,7 @@ public partial class MainWindow : Window
     {
         HideDropIndicator();
         HideRailHintAndMoreMenu();
+        CloseComposerSuggestions();
     }
 
     private void OnWindowKeyDown(object? sender, KeyEventArgs eventArgs)
@@ -2153,6 +2731,31 @@ public partial class MainWindow : Window
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs eventArgs)
     {
+        if (eventArgs.PropertyName is nameof(MainWindowViewModel.IsChatPage)
+            or nameof(MainWindowViewModel.IsProjectsPage)
+            or nameof(MainWindowViewModel.IsPluginsPage)
+            or nameof(MainWindowViewModel.IsAutomationPage))
+        {
+            FadeContent(ContentHost);
+            return;
+        }
+
+        if (eventArgs.PropertyName == nameof(MainWindowViewModel.IsSettingsOpen))
+        {
+            if (_viewModel.IsSettingsOpen)
+            {
+                FadeContent(SettingsHost);
+            }
+
+            return;
+        }
+
+        if (eventArgs.PropertyName == nameof(MainWindowViewModel.HasConversation))
+        {
+            UpdateJumpButton();
+            return;
+        }
+
         if (eventArgs.PropertyName == nameof(MainWindowViewModel.IsSidebarVisible))
         {
             if (!_viewModel.IsSidebarVisible)
@@ -2222,6 +2825,8 @@ public partial class MainWindow : Window
     private static readonly IBrush RulerTickCurrentBrush = new SolidColorBrush(Color.Parse("#55565A"));
     private static readonly IBrush RulerSelectionMarkerBrush = new SolidColorBrush(Color.Parse("#5E5E61"));
     private static readonly IBrush RulerSelectionMarkerHoverBrush = new SolidColorBrush(Color.Parse("#B6B7B9"));
+    private readonly Dictionary<Control, CancellationTokenSource> _sectionAnimations = new();
+    private int _sectionMenuCloseGeneration;
     private CancellationTokenSource? _sidebarAnimationCts;
     private double _sidebarAnimationTarget;
     private bool _sidebarAnimating;
@@ -2454,6 +3059,7 @@ public partial class MainWindow : Window
         }
 
         Dispatcher.UIThread.Post(BuildRulerTicks, DispatcherPriority.Background);
+        UpdateJumpButton();
         ScrollTranscript(force: eventArgs.Action is NotifyCollectionChangedAction.Add
             or NotifyCollectionChangedAction.Reset);
     }
@@ -2502,11 +3108,28 @@ public partial class MainWindow : Window
         }
 
 
-        var showJump = _viewModel.HasConversation && distanceFromBottom > 32;
+        UpdateJumpButton(distanceFromBottom);
+    }
+
+    private void UpdateJumpButton(double? distanceFromBottom = null)
+    {
+        if (!_viewModel.HasConversation)
+        {
+            JumpToBottomButton.IsVisible = false;
+            JumpToBottomButton.IsHitTestVisible = false;
+            return;
+        }
+
+        var distance = distanceFromBottom
+            ?? TranscriptScroller.Extent.Height
+               - TranscriptScroller.Viewport.Height
+               - TranscriptScroller.Offset.Y;
+        var showJump = distance > 32;
         JumpToBottomButton.IsVisible = true;
         JumpToBottomButton.IsHitTestVisible = showJump;
         JumpToBottomButton.Opacity = showJump ? 1 : 0;
-        JumpToBottomButton.RenderTransform = TransformOperations.Parse(showJump ? "translate(0px,0px)" : "translate(0px,6px)");
+        JumpToBottomButton.RenderTransform = TransformOperations.Parse(
+            showJump ? "translate(0px,0px)" : "translate(0px,6px)");
     }
 
     private void ApplyContentFontResources()
@@ -2626,10 +3249,96 @@ public partial class MainWindow : Window
     }
 
     private void OnToggleRecentClicked(object? sender, RoutedEventArgs eventArgs) =>
-        _viewModel.ToggleRecent();
+        AnimateSection(RecentItemsControl, _viewModel.IsRecentExpanded, _viewModel.ToggleRecent);
 
     private void OnTogglePinnedSectionClicked(object? sender, RoutedEventArgs eventArgs) =>
-        _viewModel.TogglePinned();
+        AnimateSection(PinnedItemsControl, _viewModel.IsPinnedExpanded, _viewModel.TogglePinned);
+
+    /// <summary>
+    /// Collapses or expands a sidebar list with a 160ms height ease. A collapse
+    /// animates while the list is still visible, then commits the toggle; an
+    /// expansion measures the list, then grows it from zero.
+    /// </summary>
+    private async void AnimateSection(Control? list, bool expanded, Action toggle)
+    {
+        if (list is null)
+        {
+            toggle();
+            return;
+        }
+
+        if (_sectionAnimations.Remove(list, out var previous))
+        {
+            previous.Cancel();
+            previous.Dispose();
+        }
+
+        var cancellation = new CancellationTokenSource();
+        _sectionAnimations[list] = cancellation;
+        try
+        {
+            if (expanded)
+            {
+                var start = list.Bounds.Height;
+                if (start > 0)
+                {
+                    list.ClipToBounds = true;
+                    await AnimateHeightAsync(list, start, 0, cancellation.Token);
+                }
+
+                toggle();
+            }
+            else
+            {
+                toggle();
+                list.Measure(new Size(
+                    SidebarPanelBorder.Width > 0 ? SidebarPanelBorder.Width : 240,
+                    double.PositiveInfinity));
+                var target = list.DesiredSize.Height;
+                if (target > 0)
+                {
+                    list.Height = 0;
+                    list.ClipToBounds = true;
+                    await AnimateHeightAsync(list, 0, target, cancellation.Token);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer toggle.
+        }
+        finally
+        {
+            list.Height = double.NaN;
+            if (_sectionAnimations.TryGetValue(list, out var current) && ReferenceEquals(current, cancellation))
+            {
+                _sectionAnimations.Remove(list);
+                cancellation.Dispose();
+            }
+        }
+    }
+
+    private static async Task AnimateHeightAsync(
+        Control list,
+        double from,
+        double to,
+        CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        const double durationMilliseconds = 160;
+        while (true)
+        {
+            var progress = Math.Min(1, stopwatch.Elapsed.TotalMilliseconds / durationMilliseconds);
+            var eased = 1 - Math.Pow(1 - progress, 3);
+            list.Height = from + ((to - from) * eased);
+            if (progress >= 1)
+            {
+                return;
+            }
+
+            await Task.Delay(10, cancellationToken);
+        }
+    }
 
     private void OnNotificationsButtonClicked(object? sender, RoutedEventArgs eventArgs)
     {
@@ -2714,6 +3423,35 @@ public partial class MainWindow : Window
     {
         _viewModel.CloseSearchPalette();
         await PickWorkspaceAsync();
+    }
+
+    private void OnPaletteFileClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is Button { Tag: PaletteFileGroupViewModel file })
+        {
+            InsertPaletteMention(file.RelativePath);
+        }
+    }
+
+    private void OnPaletteTextLineClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is Button { Tag: PaletteLineViewModel line })
+        {
+            InsertPaletteMention(line.RelativePath);
+        }
+    }
+
+    /// <summary>Palette file results become @-mentions so the next prompt can cite them.</summary>
+    private void InsertPaletteMention(string relativePath)
+    {
+        var mention = "@" + relativePath.Replace('\\', '/') + " ";
+        var composer = _viewModel.Composer;
+        _viewModel.Composer = string.IsNullOrWhiteSpace(composer)
+            ? mention
+            : composer.TrimEnd() + " " + mention;
+        _viewModel.CloseSearchPalette();
+        _viewModel.Navigate(AppSection.Chat);
+        Dispatcher.UIThread.Post(FocusComposer, DispatcherPriority.Background);
     }
 
     private async void OnPaletteSessionClicked(object? sender, RoutedEventArgs eventArgs)

@@ -401,6 +401,22 @@ public sealed class KlSessionClient : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Tries to take the write lease again, so a read-only observer can become
+    /// the writer once the previous lease holder lets go.
+    /// </summary>
+    public async Task<bool> TryTakeWriteLeaseAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await TryAcquireLeaseAsync(Client, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            return false;
+        }
+    }
+
     private KlCoreClient Client
     {
         get
@@ -553,7 +569,7 @@ public sealed class KlSessionClient : IAsyncDisposable
         try
         {
             await _presenter.OnEventAsync(
-                new SessionEvent(SessionEventKind.Error, Text: text),
+                new SessionEvent(SessionEventKind.Error, Text: text, ConnectionLost: true),
                 CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception)

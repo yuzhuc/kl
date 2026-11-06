@@ -43,6 +43,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rust-target", required=True)
     parser.add_argument("--zig", action="store_true")
     parser.add_argument("--self-contained", action="store_true", help="include the .NET runtime in the package")
+    parser.add_argument("--gui", action="store_true", help="also publish the Avalonia GUI under gui/ (Windows and macOS)")
     parser.add_argument("--output")
     return parser.parse_args()
 
@@ -79,14 +80,41 @@ def main() -> int:
         ]
     )
 
+    gui_output = output / "gui"
+    if args.gui:
+        run(
+            [
+                "dotnet",
+                "publish",
+                "gui/Kl.Gui/Kl.Gui.csproj",
+                "-c",
+                "Release",
+                "-r",
+                args.rid,
+                "--self-contained",
+                str(args.self_contained).lower(),
+                "-p:DebugType=None",
+                "-p:DebugSymbols=false",
+                "-o",
+                str(gui_output),
+            ]
+        )
+
     for item in output.iterdir():
         if item.is_file() and is_diagnostic_file(item.name):
             item.unlink()
+    if args.gui:
+        for item in gui_output.rglob("*"):
+            if item.is_file() and is_diagnostic_file(item.name):
+                item.unlink()
 
     core = cargo_target / args.rust_target / "release" / str(layout["core"])
     if not core.is_file():
         raise SystemExit(f"core binary not found: {core}")
     shutil.copy2(core, output / str(layout["core"]))
+    if args.gui:
+        # The GUI discovers kl-core next to its own executable.
+        shutil.copy2(core, gui_output / str(layout["core"]))
 
     schema_target = output / "schemas"
     if schema_target.exists():

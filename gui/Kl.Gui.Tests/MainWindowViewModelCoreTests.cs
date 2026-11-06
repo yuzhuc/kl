@@ -1,4 +1,5 @@
 using Kl.Client;
+using Kl.Gui.Models;
 using Kl.Gui.Services;
 using Kl.Gui.ViewModels;
 
@@ -386,6 +387,326 @@ public sealed class MainWindowViewModelCoreTests
     }
 
     [Fact]
+    public async Task TakeOverWriteRestoresSendingForAnObserver()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        var core = new FakeCoreSessionService { WriterAllowed = true };
+        var vm = CreateWithSession(temp, store, core, """{"messages":[]}""", isWriter: false);
+        await vm.OpenSessionAsync(Assert.Single(vm.Workspaces[0].Sessions));
+        Assert.True(vm.IsCoreReadOnly);
+        Assert.Equal("接管写入", vm.CoreBannerActionText);
+
+        await vm.TakeOverWriteAsync();
+
+        Assert.Equal(1, core.WriterCalls);
+        Assert.False(vm.IsCoreReadOnly);
+        Assert.Empty(vm.CoreBannerText);
+        vm.Composer = "观察者接管后可以发送";
+        Assert.True(vm.CanSend);
+    }
+
+    [Fact]
+    public async Task TakeOverWriteKeepsObserverNoticeWhenTheLeaseIsHeld()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        var core = new FakeCoreSessionService();
+        var vm = CreateWithSession(temp, store, core, """{"messages":[]}""", isWriter: false);
+        await vm.OpenSessionAsync(Assert.Single(vm.Workspaces[0].Sessions));
+
+        await vm.TakeOverWriteAsync();
+
+        Assert.True(vm.IsCoreReadOnly);
+        Assert.Contains("仍在写入", vm.CoreBannerText);
+    }
+
+    [Fact]
+    public async Task ConnectionLossAutoReconnectsAndReloadsHistoryWhenReopened()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        var core = new FakeCoreSessionService();
+        var vm = CreateWithSession(temp, store, core, """{"messages":[]}""");
+        await vm.OpenSessionAsync(Assert.Single(vm.Workspaces[0].Sessions));
+        var historyCalls = core.HistoryLimits.Count;
+        core.ReconnectResult = new CoreReconnectResult(true, false, string.Empty);
+
+        core.Raise(new SessionEvent(
+            SessionEventKind.Error,
+            Text: "core connection closed",
+            ConnectionLost: true));
+
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (core.ReconnectCalls == 0 || !vm.IsCoreReady)
+        {
+            Assert.True(DateTime.UtcNow < deadline, "auto reconnect did not finish in time");
+            await Task.Delay(50);
+        }
+
+        Assert.Equal(1, core.ReconnectCalls);
+        Assert.Empty(vm.CoreBannerText);
+        Assert.True(core.HistoryLimits.Count > historyCalls);
+        Assert.False(vm.IsCoreRetrying);
+    }
+
+    [Fact]
+    public async Task RetryCoreAsyncRestoresAnOpenSession()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        var core = new FakeCoreSessionService();
+        var vm = CreateWithSession(temp, store, core, """{"messages":[]}""");
+        await vm.OpenSessionAsync(Assert.Single(vm.Workspaces[0].Sessions));
+
+        await vm.RetryCoreAsync();
+
+        Assert.Equal(1, core.ReconnectCalls);
+        Assert.True(vm.IsCoreReady);
+        Assert.False(vm.IsCoreRetrying);
+    }
+
+    [Fact]
+    public async Task ForkActiveSessionCreatesABranchRow()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        var core = new FakeCoreSessionService();
+        var vm = CreateWithSession(temp, store, core, """{"messages":[]}""");
+        await vm.OpenSessionAsync(Assert.Single(vm.Workspaces[0].Sessions));
+        core.OpenResult = null;
+
+        await vm.ForkActiveSessionAsync();
+
+        Assert.Equal(1, core.ForkCalls);
+        var sessions = vm.Workspaces[0].Sessions.ToList();
+        Assert.Equal(2, sessions.Count);
+        Assert.Equal("forked-session-1", vm.ActiveSessionItem!.Id);
+        Assert.Contains("分支", Assert.Single(vm.Workspaces[0].State.Sessions, item => item.Id == "forked-session-1").Title);
+    }
+
+    [Fact]
+    public async Task CompactActiveSessionCallsCoreAndReloadsHistory()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        var core = new FakeCoreSessionService();
+        var vm = CreateWithSession(temp, store, core, """{"messages":[]}""");
+        await vm.OpenSessionAsync(Assert.Single(vm.Workspaces[0].Sessions));
+        var historyCalls = core.HistoryLimits.Count;
+
+        await vm.CompactActiveSessionAsync();
+
+        Assert.Equal(1, core.CompactCalls);
+        Assert.Contains("压缩", vm.CoreStatusText);
+        Assert.True(core.HistoryLimits.Count > historyCalls);
+        Assert.Contains(vm.Messages, message => message.Header.Contains("上下文已压缩"));
+    }
+
+    [Fact]
+    public async Task RunDoctorListsChecksAndSummary()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var core = new FakeCoreSessionService();
+        var (vm, _) = Create(temp, store, core);
+
+        await vm.RunDoctorAsync();
+
+        Assert.Equal(1, core.DoctorCalls);
+        Assert.Contains("core", Assert.Single(vm.DoctorChecks));
+        Assert.Contains("诊断通过", vm.DoctorSummary);
+        Assert.True(vm.CanRunDoctor);
+    }
+
+    [Fact]
+    public void SameNamedProjectsShowTheirPaths()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path, TestData.StoredSession("sess-1", "会话"));
+        var state = store.Load();
+        state.Workspaces.Add(new WorkspaceState { Name = "kl", Path = "C:/one/kl" });
+        state.Workspaces.Add(new WorkspaceState { Name = "kl", Path = "C:/two/kl" });
+        state.Workspaces.Add(new WorkspaceState { Name = "nook", Path = "C:/three/nook" });
+        store.Save(state);
+
+        var vm = TestData.CreateViewModel(temp, store, new FakeCoreSessionService());
+
+        var duplicates = vm.Workspaces.Where(workspace => workspace.Name == "kl").ToList();
+        Assert.Equal(2, duplicates.Count);
+        Assert.All(duplicates, workspace => Assert.True(workspace.HasPathLabel));
+        Assert.Equal("C:/one/kl", duplicates[0].PathLabel);
+        Assert.Equal("C:/two/kl", duplicates[1].PathLabel);
+        Assert.False(vm.Workspaces.Single(workspace => workspace.Name == "nook").HasPathLabel);
+    }
+
+    [Fact]
+    public void LibrarySavesPersistsInsertsAndDeletes()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var vm = TestData.CreateViewModel(temp, store, new FakeCoreSessionService());
+        Assert.False(vm.HasLibraryItems);
+
+        vm.LibraryDraftTitle = "提交规范";
+        vm.LibraryDraftContent = "先跑测试再提交";
+        vm.SaveLibraryItem();
+
+        var item = Assert.Single(vm.LibraryItems);
+        Assert.Equal("提交规范", item.Title);
+        Assert.True(vm.HasLibraryItems);
+        Assert.Empty(vm.LibraryDraftContent);
+
+        var reloaded = TestData.CreateViewModel(temp, store, new FakeCoreSessionService());
+        Assert.Equal("提交规范", Assert.Single(reloaded.LibraryItems).Title);
+
+        vm.InsertLibraryItem(item);
+        Assert.Contains("先跑测试再提交", vm.Composer);
+        Assert.True(vm.IsChatPage);
+
+        vm.DeleteLibraryItem(item);
+        Assert.Empty(vm.LibraryItems);
+        Assert.Empty(store.Load().LibraryItems);
+    }
+
+    [Fact]
+    public async Task SaveModelSendsTheChosenProviderAndModelToCore()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var core = new FakeCoreSessionService
+        {
+            Snapshot = new CoreCatalogSnapshot(
+                true,
+                string.Empty,
+                "test-core",
+                1,
+                "fake",
+                "fake-model",
+                ["fake-model", "other-model"],
+                true,
+                Array.Empty<CoreSessionSummary>())
+            {
+                ModelOptions =
+                [
+                    new CoreModelOption("fake", "fake-model", true, true),
+                    new CoreModelOption("other", "other-model", true, false)
+                ]
+            }
+        };
+        var (vm, _) = Create(temp, store, core);
+        await vm.TestConnectionAsync();
+        Assert.Equal(2, vm.SettingsModelChoices.Count);
+
+        vm.SettingsSelectedModel = "other / other-model";
+        await vm.SaveModelAsync();
+
+        var request = Assert.Single(core.Requests, item => item.Method == Protocol.ConfigSetDefaultModel);
+        Assert.Equal("other", FakeCoreSessionService.ReadParameter(request.Parameters, "provider"));
+        Assert.Equal("other-model", FakeCoreSessionService.ReadParameter(request.Parameters, "model"));
+        Assert.True(vm.IsSettingsStatusSuccess);
+    }
+
+    [Fact]
+    public async Task ReasoningEffortIsWrittenThroughCore()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var core = new FakeCoreSessionService();
+        var (vm, _) = Create(temp, store, core);
+
+        await vm.SetReasoningEffortAsync("high");
+
+        Assert.Equal(["high"], core.ReasoningSets);
+        Assert.Equal("high", vm.ReasoningEffort);
+        Assert.Equal("高", vm.ReasoningEffortLabel);
+        Assert.True(vm.HasReasoningEffort);
+        Assert.True(vm.IsReasoningHigh);
+        Assert.False(vm.IsReasoningDefault);
+    }
+
+    [Fact]
+    public async Task PermissionModeSwitchPersistsAndUpdatesTheChip()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var core = new FakeCoreSessionService();
+        var (vm, _) = Create(temp, store, core);
+        Assert.True(vm.IsPermissionFull);
+
+        vm.SetPermissionMode("请求批准");
+        await Task.CompletedTask;
+
+        Assert.Equal("请求批准", store.Load().PermissionMode);
+        Assert.False(vm.IsPermissionFull);
+        Assert.True(vm.IsPermissionAsk);
+        Assert.Equal("请求批准", vm.PermissionMode);
+    }
+
+    [Fact]
+    public async Task SaveApiKeyWritesThroughCoreAndClearsTheDraft()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var core = new FakeCoreSessionService();
+        var (vm, _) = Create(temp, store, core);
+        await vm.TestConnectionAsync();
+        vm.SettingsSelectedModel = "fake / fake-model";
+
+        vm.SettingsApiKeyDraft = "sk-test-value";
+        await vm.SaveApiKeyAsync();
+
+        var request = Assert.Single(core.Requests, item => item.Method == Protocol.ProviderSetApiKey);
+        Assert.Equal("fake", FakeCoreSessionService.ReadParameter(request.Parameters, "id"));
+        Assert.Equal("sk-test-value", FakeCoreSessionService.ReadParameter(request.Parameters, "key"));
+        Assert.Empty(vm.SettingsApiKeyDraft);
+        Assert.True(vm.IsSettingsStatusSuccess);
+    }
+
+    [Fact]
+    public async Task ParallelToolCallsRouteOutputByCallId()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        var core = new FakeCoreSessionService();
+        var vm = CreateWithSession(temp, store, core, """{"messages":[]}""");
+        await vm.OpenSessionAsync(Assert.Single(vm.Workspaces[0].Sessions));
+
+        core.Raise(new SessionEvent(SessionEventKind.ToolStarted, Name: "shell", Args: "echo 1", CallId: "call-1"));
+        core.Raise(new SessionEvent(SessionEventKind.ToolStarted, Name: "read_file", Args: "a.txt", CallId: "call-2"));
+        core.Raise(new SessionEvent(SessionEventKind.ToolOutput, Text: "output-one", CallId: "call-1"));
+        core.Raise(new SessionEvent(SessionEventKind.ToolOutput, Text: "output-two", CallId: "call-2"));
+        core.Raise(new SessionEvent(
+            SessionEventKind.ToolCompleted,
+            Name: "shell",
+            Summary: "first-done",
+            CallId: "call-1"));
+        core.Raise(new SessionEvent(
+            SessionEventKind.ToolCompleted,
+            Name: "read_file",
+            Summary: "second-done",
+            CallId: "call-2"));
+
+        var tools = vm.Messages
+            .SelectMany(message => message.IsToolGroup ? message.Children : [message])
+            .Where(message => message.IsTool)
+            .ToList();
+
+        Assert.Equal(2, tools.Count);
+        Assert.Contains(tools, tool => tool.Detail.Contains("output-one") && tool.Summary == "first-done");
+        Assert.Contains(tools, tool => tool.Detail.Contains("output-two") && tool.Summary == "second-done");
+        Assert.DoesNotContain("output-two", tools[0].Detail);
+        Assert.False(vm.IsBusy);
+    }
+
+    [Fact]
     public async Task NewSessionClosesCoreSessionAndReturnsToDraft()
     {
         using var temp = new TempDirectory();
@@ -554,11 +875,11 @@ public sealed class MainWindowViewModelCoreTests
         var vm = CreateWithSession(temp, store, core, """{"messages":[]}""");
         await vm.OpenSessionAsync(Assert.Single(vm.Workspaces[0].Sessions));
 
-        vm.SettingsPermissionMode = "按需确认";
+        vm.SettingsPermissionMode = "请求批准";
         await vm.SaveSettingsAsync();
 
         Assert.True(vm.IsSettingsStatusSuccess);
-        Assert.Equal("按需确认", store.Load().PermissionMode);
+        Assert.Equal("请求批准", store.Load().PermissionMode);
         vm.SettingsPermissionMode = "完全访问";
         await vm.SaveSettingsAsync();
 

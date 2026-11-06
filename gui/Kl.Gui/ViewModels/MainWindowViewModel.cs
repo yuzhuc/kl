@@ -11,9 +11,7 @@ namespace Kl.Gui.ViewModels;
 public enum AppSection
 {
     Chat,
-    Image,
     Library,
-    Map,
     Projects,
     Plugins,
     Automation,
@@ -776,6 +774,7 @@ public sealed class WorkspaceItemViewModel : ObservableObject
     private bool _isVisible = true;
     private bool _hasVisibleSessions = true;
     private bool _isSearchActive;
+    private string _pathLabel = string.Empty;
 
     public WorkspaceItemViewModel(WorkspaceState state)
     {
@@ -807,6 +806,26 @@ public sealed class WorkspaceItemViewModel : ObservableObject
     public string Id => State.Id;
     public string Name => State.Name;
     public string Path => State.Path;
+
+    /// <summary>
+    /// Shown only when two projects share a name, so the working directory can be
+    /// told apart from a same-named sibling (e.g. "kl" vs "kl · D:\kl").
+    /// </summary>
+    public string PathLabel
+    {
+        get => _pathLabel;
+        private set
+        {
+            if (SetProperty(ref _pathLabel, value))
+            {
+                OnPropertyChanged(nameof(HasPathLabel));
+            }
+        }
+    }
+
+    public bool HasPathLabel => !string.IsNullOrEmpty(PathLabel);
+
+    public void SetPathLabel(string value) => PathLabel = value;
 
     /// <summary>Codex-style project preview details.</summary>
     public string ChatCountLabel => $"{Sessions.Count} 次聊天";
@@ -952,12 +971,97 @@ public sealed class PluginItemViewModel
     public string ManifestPath { get; }
 }
 
+/// <summary>One row in the composer's reasoning-effort picker.</summary>
+public sealed class ReasoningEffortOption : ObservableObject
+{
+    private bool _isSelected;
+
+    public ReasoningEffortOption(string id, string label)
+    {
+        Id = id;
+        Label = label;
+    }
+
+    public string Id { get; }
+    public string Label { get; }
+
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set => SetProperty(ref _isSelected, value);
+    }
+}
+
+/// <summary>One file group in the palette (name matches, or content matches).</summary>
+public sealed class PaletteFileGroupViewModel
+{
+    public PaletteFileGroupViewModel(string relativePath, IReadOnlyList<PaletteLineMatch> lines)
+    {
+        RelativePath = relativePath;
+        Lines = lines.Select(line => new PaletteLineViewModel(relativePath, line)).ToList();
+    }
+
+    public string RelativePath { get; }
+    public string Name => Path.GetFileName(RelativePath);
+    public string Folder
+    {
+        get
+        {
+            var folder = Path.GetDirectoryName(RelativePath)?.Replace('\\', '/');
+            return string.IsNullOrEmpty(folder) ? "根目录" : folder;
+        }
+    }
+
+    public IReadOnlyList<PaletteLineViewModel> Lines { get; }
+    public string CountLabel => Lines.Count > 0 ? $"{Lines.Count} 处" : string.Empty;
+    public bool HasLines => Lines.Count > 0;
+}
+
+/// <summary>One matching line under a file group in the palette.</summary>
+public sealed class PaletteLineViewModel
+{
+    public PaletteLineViewModel(string relativePath, PaletteLineMatch match)
+    {
+        RelativePath = relativePath;
+        LineNumber = match.LineNumber;
+        Text = match.Text;
+    }
+
+    public string RelativePath { get; }
+    public int LineNumber { get; }
+    public string Text { get; }
+    public string LineLabel => LineNumber.ToString();
+}
+
+/// <summary>One Library row. The GUI keeps these locally; Core owns session data.</summary>
+public sealed class LibraryItemViewModel
+{
+    public LibraryItemViewModel(LibraryItemState state) => State = state;
+
+    public LibraryItemState State { get; }
+    public string Content => State.Content;
+    public string Title => string.IsNullOrWhiteSpace(State.Title) ? FirstLine(State.Content) : State.Title;
+    public string Preview => State.Content.Length <= 180 ? State.Content : State.Content[..180] + "…";
+    public string CreatedLabel => State.CreatedAt.ToLocalTime().ToString("MM-dd");
+
+    private static string FirstLine(string text)
+    {
+        var line = text.Split('\n').FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
+        if (string.IsNullOrEmpty(line))
+        {
+            return "未命名条目";
+        }
+
+        return line.Length <= 32 ? line : line[..32] + "…";
+    }
+}
+
 public sealed partial class MainWindowViewModel : ObservableObject
 {
     /// <summary>Codex-style transcript ruler ticks down the left edge of the chat column.</summary>
     public IReadOnlyList<int> RulerTicks { get; } = Enumerable.Range(0, 200).ToArray();
 
-    private static readonly string[] SupportedPermissionModes = ["完全访问", "按需确认"];
+    private static readonly string[] SupportedPermissionModes = ["完全访问", "帮我批准", "请求批准"];
     private static readonly HashSet<string> SupportedAttachmentExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".txt", ".md", ".json", ".jsonl", ".cs", ".ts", ".tsx", ".js", ".jsx", ".css", ".html",
@@ -982,6 +1086,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private string _settingsPermissionMode = "完全访问";
     private int _settingsContentFontSize = 14;
     private string _settingsStatus = string.Empty;
+    private string _settingsSelectedModel = string.Empty;
+    private string _libraryDraftTitle = string.Empty;
+    private string _doctorSummary = string.Empty;
+    private bool _isDoctorRunning;
+    private string _libraryDraftContent = string.Empty;
+    private string _settingsApiKeyDraft = string.Empty;
     private string _renameTitle = string.Empty;
     private string _deletePrompt = string.Empty;
     private bool _isBusy;
@@ -1046,6 +1156,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
         RefreshSettingsDraft();
         RefreshPlugins();
         BuildAutomationItems();
+        foreach (var item in _state.LibraryItems)
+        {
+            LibraryItems.Add(new LibraryItemViewModel(item));
+        }
+
         SaveState(silent: true);
 
         Messages.CollectionChanged += (_, _) =>
@@ -1069,6 +1184,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public ObservableCollection<SessionItemViewModel> ArchivedSessions { get; } = [];
     public ObservableCollection<PinnedRailItemViewModel> PinnedRailItems { get; } = [];
     public ObservableCollection<AutomationItemViewModel> Automations { get; } = [];
+    public ObservableCollection<LibraryItemViewModel> LibraryItems { get; } = [];
     public IReadOnlyList<AutomationIntervalOption> AutomationIntervals { get; } =
     [
         new(15, "每 15 分钟"),
@@ -1077,6 +1193,92 @@ public sealed partial class MainWindowViewModel : ObservableObject
         new(1440, "每天")
     ];
     public IReadOnlyList<string> PermissionModes => SupportedPermissionModes;
+
+    public IReadOnlyList<ReasoningEffortOption> ReasoningEffortOptions { get; } =
+    [
+        new("default", "默认"),
+        new("low", "低"),
+        new("medium", "中"),
+        new("high", "高")
+    ];
+
+    public string ReasoningEffort
+    {
+        get => _reasoningEffort;
+        private set
+        {
+            if (SetProperty(ref _reasoningEffort, value))
+            {
+                OnPropertyChanged(nameof(ReasoningEffortLabel));
+                OnPropertyChanged(nameof(HasReasoningEffort));
+                RaiseReasoningDisplay();
+                OnPropertyChanged(nameof(IsReasoningDefault));
+                OnPropertyChanged(nameof(IsReasoningLow));
+                OnPropertyChanged(nameof(IsReasoningMedium));
+                OnPropertyChanged(nameof(IsReasoningHigh));
+            }
+        }
+    }
+
+    public string ReasoningEffortLabel =>
+        ReasoningEffortOptions.FirstOrDefault(option => option.Id == _reasoningEffort)?.Label ?? "默认";
+
+    /// <summary>Live value while the slider thumb is being dragged.</summary>
+    public string ReasoningEffortDisplayLabel =>
+        ReasoningEffortOptions.FirstOrDefault(option => option.Id == (_reasoningEffortPreview ?? _reasoningEffort))
+            ?.Label ?? "默认";
+
+    public bool IsReasoningHighDisplay =>
+        string.Equals(_reasoningEffortPreview ?? _reasoningEffort, "high", StringComparison.Ordinal);
+
+    public bool HasReasoningEffortDisplay =>
+        !string.Equals(_reasoningEffortPreview ?? _reasoningEffort, "default", StringComparison.Ordinal);
+
+    /// <summary>Shows the dragged tier immediately, before Core is written.</summary>
+    public void PreviewReasoningEffort(string effort)
+    {
+        if (string.Equals(_reasoningEffortPreview, effort, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _reasoningEffortPreview = effort;
+        RaiseReasoningDisplay();
+    }
+
+    public void ClearReasoningEffortPreview()
+    {
+        if (_reasoningEffortPreview is null)
+        {
+            return;
+        }
+
+        _reasoningEffortPreview = null;
+        RaiseReasoningDisplay();
+    }
+
+    private void RaiseReasoningDisplay()
+    {
+        OnPropertyChanged(nameof(ReasoningEffortDisplayLabel));
+        OnPropertyChanged(nameof(IsReasoningHighDisplay));
+        OnPropertyChanged(nameof(HasReasoningEffortDisplay));
+    }
+
+    public bool HasReasoningEffort => !string.Equals(_reasoningEffort, "default", StringComparison.Ordinal);
+
+    public bool IsReasoningDefault => string.Equals(_reasoningEffort, "default", StringComparison.Ordinal);
+    public bool IsReasoningLow => string.Equals(_reasoningEffort, "low", StringComparison.Ordinal);
+    public bool IsReasoningMedium => string.Equals(_reasoningEffort, "medium", StringComparison.Ordinal);
+    public bool IsReasoningHigh => string.Equals(_reasoningEffort, "high", StringComparison.Ordinal);
+
+    public bool IsPermissionFull =>
+        string.Equals(_state.PermissionMode, "完全访问", StringComparison.Ordinal);
+
+    public bool IsPermissionAuto =>
+        string.Equals(_state.PermissionMode, "帮我批准", StringComparison.Ordinal);
+
+    public bool IsPermissionAsk =>
+        string.Equals(_state.PermissionMode, "请求批准", StringComparison.Ordinal);
     public IReadOnlyList<int> ContentFontSizes { get; } = [13, 14, 15, 16];
     public string VersionLabel => "0.3.0-gui.1";
     public AppState State => _state;
@@ -1398,6 +1600,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _state.Workspaces.Add(state);
         var item = new WorkspaceItemViewModel(state);
         Workspaces.Add(item);
+        RefreshWorkspacePathLabels();
         _state.ActiveWorkspaceId = state.Id;
         foreach (var workspace in Workspaces)
         {
@@ -1410,6 +1613,21 @@ public sealed partial class MainWindowViewModel : ObservableObject
     }
 
     public bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);
+    public ObservableCollection<string> SettingsModelChoices { get; } = [];
+    public ObservableCollection<string> DoctorChecks { get; } = [];
+
+    public string SettingsSelectedModel
+    {
+        get => _settingsSelectedModel;
+        set => SetProperty(ref _settingsSelectedModel, value);
+    }
+
+    public string SettingsApiKeyDraft
+    {
+        get => _settingsApiKeyDraft;
+        set => SetProperty(ref _settingsApiKeyDraft, value);
+    }
+
     public bool HasSettingsStatus => !string.IsNullOrWhiteSpace(SettingsStatus);
     public bool IsSettingsStatusError => _settingsStatusIsError;
     public bool IsSettingsStatusSuccess => HasSettingsStatus && !_settingsStatusIsError;
@@ -1513,6 +1731,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public bool HasSessions => Workspaces.Any(workspace => workspace.Sessions.Count > 0);
     public bool ShowNoSessions => !HasSessions && string.IsNullOrWhiteSpace(SearchText);
     public bool ShowNoSearchResults => !string.IsNullOrWhiteSpace(SearchText) && !Workspaces.Any(workspace => workspace.IsVisible);
+    public string ProductLabel => "kl";
+
     public string ActiveModeLabel => IsWorkMode ? "Work" : "Chat";
     public string SessionTitle
     {
@@ -1607,6 +1827,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
             {
                 ApplySearch();
                 OnPropertyChanged(nameof(ShowNoSessions));
+                RefreshPaletteSessions();
+                RefreshPaletteFileSearch();
             }
         }
     }
@@ -1627,6 +1849,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public bool CanSend => !IsBusy
         && !IsCoreReadOnly
+        && !IsCoreRetrying
         && (!string.IsNullOrWhiteSpace(Composer) || HasPendingAttachments);
     public bool HasPendingAttachments => PendingAttachments.Count > 0;
     public bool CanCancel => IsBusy;
@@ -1704,6 +1927,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
 
         workspace.State.Path = path;
+        RefreshWorkspacePathLabels();
         OnPropertyChanged(nameof(RenameSourcePath));
         OnPropertyChanged(nameof(RenameSourceParentPath));
         SaveState();
@@ -1822,10 +2046,15 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public ObservableCollection<NotificationItemViewModel> Notifications { get; } = [];
     public ObservableCollection<SessionItemViewModel> PaletteSessions { get; } = [];
+    public ObservableCollection<PaletteFileGroupViewModel> PaletteFiles { get; } = [];
+    public ObservableCollection<PaletteFileGroupViewModel> PaletteTextMatches { get; } = [];
     public bool HasNotifications => Notifications.Count > 0;
     public bool ShowNoNotifications => Notifications.Count == 0;
 
     private string _paletteFilter = "all";
+    private string _reasoningEffort = "default";
+    private string? _reasoningEffortPreview;
+    private CancellationTokenSource? _paletteSearchCancellation;
 
     public bool IsPaletteFilterAll => _paletteFilter == "all";
     public bool IsPaletteFilterActions => _paletteFilter == "actions";
@@ -1834,13 +2063,24 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public bool IsPaletteFilterText => _paletteFilter == "text";
     public bool ShowPaletteActions => _paletteFilter is "all" or "actions";
     public bool ShowPaletteChats => _paletteFilter is "all" or "chats";
-    public bool ShowPaletteEmpty => _paletteFilter is "files" or "text"
-        || (_paletteFilter == "chats" && PaletteSessions.Count == 0);
+    public bool ShowPaletteFiles => _paletteFilter is "all" or "files" && PaletteFiles.Count > 0;
+    public bool ShowPaletteText =>
+        _paletteFilter is "all" or "text" && PaletteTextMatches.Count > 0;
+    public bool ShowPaletteEmpty => _paletteFilter switch
+    {
+        "files" => PaletteFiles.Count == 0,
+        "text" => PaletteTextMatches.Count == 0,
+        "actions" => false,
+        "chats" => PaletteSessions.Count == 0,
+        _ => PaletteSessions.Count == 0 && PaletteFiles.Count == 0 && PaletteTextMatches.Count == 0
+    };
+
     public string PaletteEmptyText => _paletteFilter switch
     {
-        "files" => "没有匹配的文件",
-        "text" => "没有匹配的文本",
-        _ => "没有匹配的聊天"
+        "files" => SearchText.Trim().Length < 2 ? "输入至少 2 个字符搜索文件" : "没有匹配的文件",
+        "text" => SearchText.Trim().Length < 2 ? "输入至少 2 个字符搜索文本" : "没有匹配的文本",
+        "actions" => string.Empty,
+        _ => "没有匹配项"
     };
 
     public void SetPaletteFilter(string filter)
@@ -1866,6 +2106,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(IsPaletteFilterText));
         OnPropertyChanged(nameof(ShowPaletteActions));
         OnPropertyChanged(nameof(ShowPaletteChats));
+        OnPropertyChanged(nameof(ShowPaletteFiles));
+        OnPropertyChanged(nameof(ShowPaletteText));
         OnPropertyChanged(nameof(ShowPaletteEmpty));
         OnPropertyChanged(nameof(PaletteEmptyText));
         RefreshPaletteSessions();
@@ -1891,7 +2133,18 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IsSearchPaletteOpen = true;
     }
 
-    public void CloseSearchPalette() => IsSearchPaletteOpen = false;
+    public void CloseSearchPalette()
+    {
+        IsSearchPaletteOpen = false;
+        _paletteSearchCancellation?.Cancel();
+        _paletteSearchCancellation = null;
+        if (PaletteFiles.Count > 0 || PaletteTextMatches.Count > 0)
+        {
+            PaletteFiles.Clear();
+            PaletteTextMatches.Clear();
+            RaisePaletteSearchVisibility();
+        }
+    }
 
     private string _notificationFilter = "priority";
 
@@ -1956,6 +2209,87 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         OnPropertyChanged(nameof(HasNotifications));
         OnPropertyChanged(nameof(ShowNoNotifications));
+    }
+
+    /// <summary>
+    /// Debounced file-name and file-content search for the palette. Runs off the
+    /// UI thread and only while the palette is open.
+    /// </summary>
+    public void RefreshPaletteFileSearch()
+    {
+        var previous = _paletteSearchCancellation;
+        _paletteSearchCancellation = null;
+        previous?.Cancel();
+        previous?.Dispose();
+
+        if (PaletteFiles.Count > 0 || PaletteTextMatches.Count > 0)
+        {
+            PaletteFiles.Clear();
+            PaletteTextMatches.Clear();
+        }
+
+        RaisePaletteSearchVisibility();
+
+        var query = SearchText.Trim();
+        if (!IsSearchPaletteOpen || query.Length < 2)
+        {
+            return;
+        }
+
+        var cancellation = new CancellationTokenSource();
+        _paletteSearchCancellation = cancellation;
+        var workspace = WorkspacePath;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(220, cancellation.Token).ConfigureAwait(false);
+                var files = WorkspaceFileIndex.Files(workspace);
+                var nameMatches = WorkspaceFileIndex.MatchPaths(files, query, 12);
+                var textMatches = WorkspaceFileIndex.SearchContents(workspace, files, query, 6, 3);
+                if (cancellation.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                _dispatch(() =>
+                {
+                    if (cancellation.IsCancellationRequested
+                        || !ReferenceEquals(_paletteSearchCancellation, cancellation))
+                    {
+                        return;
+                    }
+
+                    PaletteFiles.Clear();
+                    foreach (var path in nameMatches)
+                    {
+                        PaletteFiles.Add(new PaletteFileGroupViewModel(
+                            path,
+                            Array.Empty<PaletteLineMatch>()));
+                    }
+
+                    PaletteTextMatches.Clear();
+                    foreach (var (relativePath, lines) in textMatches)
+                    {
+                        PaletteTextMatches.Add(new PaletteFileGroupViewModel(relativePath, lines));
+                    }
+
+                    RaisePaletteSearchVisibility();
+                });
+            }
+            catch (OperationCanceledException)
+            {
+                // Superseded by a newer query.
+            }
+        });
+    }
+
+    private void RaisePaletteSearchVisibility()
+    {
+        OnPropertyChanged(nameof(ShowPaletteFiles));
+        OnPropertyChanged(nameof(ShowPaletteText));
+        OnPropertyChanged(nameof(ShowPaletteEmpty));
+        OnPropertyChanged(nameof(PaletteEmptyText));
     }
 
     public void RefreshPaletteSessions()
@@ -2339,6 +2673,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
 
         RefreshRecentSessions();
+        RefreshWorkspacePathLabels();
         SaveState();
     }
 
@@ -2383,12 +2718,126 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _state.Workspaces.Add(state);
         var workspaceVm = new WorkspaceItemViewModel(state);
         Workspaces.Add(workspaceVm);
+        RefreshWorkspacePathLabels();
         OnPropertyChanged(nameof(WorkspaceCount));
         OnPropertyChanged(nameof(HasSessions));
         OnPropertyChanged(nameof(ShowNoSessions));
         _ = SelectWorkspaceAsync(workspaceVm);
         SaveState();
         return true;
+    }
+
+    /// <summary>Forks the open session in Core and opens the new branch.</summary>
+    public async Task ForkActiveSessionAsync()
+    {
+        if (IsBusy || IsCoreBusy)
+        {
+            return;
+        }
+
+        if (_activeSession is null || _activeSessionItem is null)
+        {
+            ReportError("请先打开一个 KL Core 会话，再复制为分支。");
+            return;
+        }
+
+        if (!await EnsureCoreSessionAsync(CancellationToken.None).ConfigureAwait(true))
+        {
+            ReportError("无法连接 KL Core 会话。");
+            return;
+        }
+
+        string newSessionId;
+        IsCoreBusy = true;
+        try
+        {
+            newSessionId = await _core.ForkAsync(CancellationToken.None).ConfigureAwait(true);
+        }
+        catch (Exception error) when (error is JsonRpcException or IOException or InvalidOperationException)
+        {
+            ReportError($"复制会话失败：{error.Message}");
+            return;
+        }
+        finally
+        {
+            IsCoreBusy = false;
+        }
+
+        if (string.IsNullOrWhiteSpace(newSessionId))
+        {
+            ReportError("KL Core 没有返回新会话 ID。");
+            return;
+        }
+
+        var state = new SessionState
+        {
+            Id = newSessionId,
+            Title = $"{_activeSession.Title} · 分支",
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now
+        };
+        _activeWorkspace.State.Sessions.Insert(0, state);
+        var item = new SessionItemViewModel(_activeWorkspace, state);
+        _activeWorkspace.Sessions.Insert(0, item);
+        SaveState(silent: true);
+        // Opens the branch; it refuses while IsCoreBusy is set, so the RPC above
+        // has already released it.
+        await OpenSessionAsync(item).ConfigureAwait(true);
+    }
+
+    /// <summary>Asks Core to compact the open session and reloads the transcript.</summary>
+    public async Task CompactActiveSessionAsync()
+    {
+        if (IsBusy || IsCoreBusy)
+        {
+            return;
+        }
+
+        if (_activeSession is null)
+        {
+            ReportError("当前没有打开的 KL Core 会话。");
+            return;
+        }
+
+        // A restored sidebar row has no live core session until it is opened.
+        if (!await EnsureCoreSessionAsync(CancellationToken.None).ConfigureAwait(true))
+        {
+            ReportError("无法连接 KL Core 会话。");
+            return;
+        }
+
+        IsCoreBusy = true;
+        CoreStatusText = "正在压缩上下文…";
+        _suppressCompactionUntil = DateTimeOffset.Now.AddSeconds(5);
+        try
+        {
+            var result = await _core.CompactAsync(CancellationToken.None).ConfigureAwait(true);
+            var omitted = result.TryGetProperty("omitted_messages", out var value)
+                && value.TryGetInt32(out var count)
+                ? count
+                : 0;
+            CoreStatusText = omitted > 0
+                ? $"上下文已压缩（省略 {omitted} 条消息）"
+                : "上下文已压缩";
+            await LoadHistoryAsync().ConfigureAwait(true);
+            var summary = omitted > 0 ? $"省略 {omitted} 条消息" : "无需省略消息";
+            // LoadHistoryAsync posts its rebuild, so the marker must be posted after
+            // it or the rebuilt transcript would clear it again.
+            _dispatch(() =>
+            {
+                var marker = ChatItemViewModel.Tool($"上下文已压缩 · {summary}", summary, string.Empty, summary);
+                marker.Complete("完成");
+                Messages.Add(marker);
+            });
+        }
+        catch (Exception error) when (error is JsonRpcException or IOException or InvalidOperationException)
+        {
+            ReportError($"压缩上下文失败：{error.Message}");
+        }
+        finally
+        {
+            IsCoreBusy = false;
+        }
     }
 
     public async Task CancelAsync()
@@ -2543,6 +2992,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             workspace.State.Name = title;
             workspace.RefreshName();
+            RefreshWorkspacePathLabels();
             if (workspace.Id == _activeWorkspace.Id)
             {
                 OnPropertyChanged(nameof(WorkspaceName));
@@ -2757,6 +3207,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _state.ContentFontSize = SettingsContentFontSize;
         OnPropertyChanged(nameof(ContentFontSize));
         OnPropertyChanged(nameof(PermissionMode));
+        OnPropertyChanged(nameof(IsPermissionFull));
+        OnPropertyChanged(nameof(IsPermissionAuto));
+        OnPropertyChanged(nameof(IsPermissionAsk));
         SaveState();
         await ApplyPermissionModeAsync(CancellationToken.None).ConfigureAwait(true);
         SetSettingsStatus("设置已保存。审批模式由 KL Core 执行。", isError: false);
@@ -2797,6 +3250,222 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    /// <summary>Applies the chosen model through Core; the GUI never calls a provider.</summary>
+    public async Task SaveModelAsync()
+    {
+        var choice = SettingsSelectedModel;
+        if (string.IsNullOrWhiteSpace(choice))
+        {
+            SetSettingsStatus("请选择要设为默认的模型。", isError: true);
+            return;
+        }
+
+        var (provider, model) = ParseModelChoice(choice);
+        if (provider.Length == 0)
+        {
+            SetSettingsStatus("该模型没有对应的 Provider，无法切换。", isError: true);
+            return;
+        }
+
+        try
+        {
+            await _core.RequestAsync(
+                Protocol.ConfigSetDefaultModel,
+                new { provider, model },
+                CancellationToken.None).ConfigureAwait(true);
+            await RefreshCatalogQuietlyAsync().ConfigureAwait(true);
+            SetSettingsStatus($"默认模型已切换为 {provider} / {model}。", isError: false);
+        }
+        catch (Exception error) when (error is JsonRpcException or IOException or InvalidOperationException)
+        {
+            SetSettingsStatus($"切换模型失败：{error.Message}", isError: true);
+        }
+    }
+
+    /// <summary>Reads Core's reasoning effort and reflects it in the chip + picker.</summary>
+    public async Task LoadReasoningEffortAsync()
+    {
+        try
+        {
+            ReasoningEffort = await _core.GetReasoningEffortAsync(CancellationToken.None)
+                .ConfigureAwait(true);
+            RefreshReasoningEffortSelection();
+        }
+        catch (Exception error) when (error is JsonRpcException
+            or IOException
+            or InvalidOperationException
+            or FileNotFoundException)
+        {
+            // Reasoning effort is optional metadata; the chip simply stays at 默认.
+        }
+    }
+
+    /// <summary>Applies a reasoning effort through Core and updates the picker.</summary>
+    public async Task SetReasoningEffortAsync(string effort)
+    {
+        try
+        {
+            ReasoningEffort = await _core.SetReasoningEffortAsync(effort, CancellationToken.None)
+                .ConfigureAwait(true);
+            RefreshReasoningEffortSelection();
+        }
+        catch (Exception error) when (error is JsonRpcException
+            or IOException
+            or InvalidOperationException
+            or FileNotFoundException)
+        {
+            ReportError($"切换推理强度失败：{error.Message}");
+        }
+    }
+
+    private void RefreshReasoningEffortSelection()
+    {
+        foreach (var option in ReasoningEffortOptions)
+        {
+            option.IsSelected = string.Equals(option.Id, _reasoningEffort, StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>Quick permission switch from the composer chip.</summary>
+    public void SetPermissionMode(string mode)
+    {
+        if (!SupportedPermissionModes.Contains(mode))
+        {
+            return;
+        }
+
+        _state.PermissionMode = mode;
+        SettingsPermissionMode = mode;
+        SaveState();
+        RaisePermissionModeChanged();
+        _ = ApplyPermissionModeAsync(CancellationToken.None);
+    }
+
+    private void RaisePermissionModeChanged()
+    {
+        OnPropertyChanged(nameof(PermissionMode));
+        OnPropertyChanged(nameof(IsPermissionFull));
+        OnPropertyChanged(nameof(IsPermissionAuto));
+        OnPropertyChanged(nameof(IsPermissionAsk));
+    }
+
+    /// <summary>Writes the API key into Core config; the draft is cleared afterwards.</summary>
+    public async Task SaveApiKeyAsync()
+    {
+        var key = SettingsApiKeyDraft.Trim();
+        if (key.Length == 0)
+        {
+            SetSettingsStatus("请先输入 API Key。", isError: true);
+            return;
+        }
+
+        var (provider, _) = ParseModelChoice(SettingsSelectedModel);
+        if (provider.Length == 0)
+        {
+            provider = CoreCatalogProvider;
+        }
+
+        if (provider.Length == 0)
+        {
+            SetSettingsStatus("KL Core 尚未报告可用的 Provider。", isError: true);
+            return;
+        }
+
+        try
+        {
+            await _core.RequestAsync(
+                Protocol.ProviderSetApiKey,
+                new { id = provider, key },
+                CancellationToken.None).ConfigureAwait(true);
+            SettingsApiKeyDraft = string.Empty;
+            await RefreshCatalogQuietlyAsync().ConfigureAwait(true);
+            SetSettingsStatus($"已把 {provider} 的 API Key 写入 KL Core。", isError: false);
+        }
+        catch (Exception error) when (error is JsonRpcException or IOException or InvalidOperationException)
+        {
+            SetSettingsStatus($"保存 API Key 失败：{error.Message}", isError: true);
+        }
+    }
+
+    private static (string Provider, string Model) ParseModelChoice(string choice)
+    {
+        var separator = choice.IndexOf(" / ", StringComparison.Ordinal);
+        return separator > 0
+            ? (choice[..separator], choice[(separator + 3)..])
+            : (string.Empty, choice);
+    }
+
+    /// <summary>Runs kl.doctor and lists its checks in the Models settings pane.</summary>
+    public async Task RunDoctorAsync()
+    {
+        if (IsDoctorRunning)
+        {
+            return;
+        }
+
+        IsDoctorRunning = true;
+        DoctorChecks.Clear();
+        DoctorSummary = "正在运行诊断…";
+        try
+        {
+            var result = await _core.DoctorAsync(CancellationToken.None).ConfigureAwait(true);
+            var healthy = result.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.True;
+            if (result.TryGetProperty("checks", out var checks)
+                && checks.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var check in checks.EnumerateArray())
+                {
+                    var name = check.TryGetProperty("name", out var nameValue)
+                        ? nameValue.GetString() ?? string.Empty
+                        : string.Empty;
+                    var passed = check.TryGetProperty("ok", out var passedValue)
+                        && passedValue.ValueKind == JsonValueKind.True;
+                    var detail = check.TryGetProperty("detail", out var detailValue)
+                        ? detailValue.GetString() ?? string.Empty
+                        : string.Empty;
+                    DoctorChecks.Add($"{(passed ? "✓" : "✕")} {name}"
+                        + (string.IsNullOrWhiteSpace(detail) ? string.Empty : $" — {detail}"));
+                }
+            }
+
+            var version = result.TryGetProperty("core_version", out var versionValue)
+                ? versionValue.GetString() ?? string.Empty
+                : string.Empty;
+            DoctorSummary = healthy ? "诊断通过。" : "诊断发现问题。";
+            if (!string.IsNullOrWhiteSpace(version))
+            {
+                DoctorSummary += $" Core {version}";
+            }
+        }
+        catch (Exception error) when (error is JsonRpcException
+            or IOException
+            or InvalidOperationException
+            or FileNotFoundException)
+        {
+            DoctorSummary = $"诊断失败：{error.Message}";
+        }
+        finally
+        {
+            IsDoctorRunning = false;
+        }
+    }
+
+    private async Task RefreshCatalogQuietlyAsync()
+    {
+        try
+        {
+            var snapshot = await _core.LoadSnapshotAsync(CancellationToken.None).ConfigureAwait(false);
+            if (snapshot.Success)
+            {
+                ApplyCatalogSnapshot(snapshot);
+            }
+        }
+        catch (Exception error) when (error is JsonRpcException or IOException or InvalidOperationException)
+        {
+            // The write already succeeded; a stale catalog is only cosmetic.
+        }
+    }
+
     public void ResetSettingsDefaults()
     {
         SettingsPermissionMode = "完全访问";
@@ -2809,6 +3478,82 @@ public sealed partial class MainWindowViewModel : ObservableObject
         SettingsPermissionMode = _state.PermissionMode;
         SettingsContentFontSize = _state.ContentFontSize;
         SetSettingsStatus(string.Empty, isError: false);
+    }
+
+    public string DoctorSummary
+    {
+        get => _doctorSummary;
+        private set => SetProperty(ref _doctorSummary, value);
+    }
+
+    public bool IsDoctorRunning
+    {
+        get => _isDoctorRunning;
+        private set
+        {
+            if (SetProperty(ref _isDoctorRunning, value))
+            {
+                OnPropertyChanged(nameof(CanRunDoctor));
+            }
+        }
+    }
+
+    public bool CanRunDoctor => !IsDoctorRunning;
+
+    public string LibraryDraftTitle
+    {
+        get => _libraryDraftTitle;
+        set => SetProperty(ref _libraryDraftTitle, value);
+    }
+
+    public string LibraryDraftContent
+    {
+        get => _libraryDraftContent;
+        set => SetProperty(ref _libraryDraftContent, value);
+    }
+
+    public bool HasLibraryItems => LibraryItems.Count > 0;
+
+    public string LibraryEmptyText =>
+        "资料库还没有条目。保存常用提示词或规范，之后可一键插入输入框。";
+
+    /// <summary>Saves the draft as a GUI-local library entry.</summary>
+    public void SaveLibraryItem()
+    {
+        var content = LibraryDraftContent.Trim();
+        if (content.Length == 0)
+        {
+            return;
+        }
+
+        var state = new LibraryItemState
+        {
+            Title = LibraryDraftTitle.Trim(),
+            Content = content
+        };
+        _state.LibraryItems.Insert(0, state);
+        LibraryItems.Insert(0, new LibraryItemViewModel(state));
+        LibraryDraftTitle = string.Empty;
+        LibraryDraftContent = string.Empty;
+        OnPropertyChanged(nameof(HasLibraryItems));
+        SaveState();
+    }
+
+    public void DeleteLibraryItem(LibraryItemViewModel item)
+    {
+        _state.LibraryItems.Remove(item.State);
+        LibraryItems.Remove(item);
+        OnPropertyChanged(nameof(HasLibraryItems));
+        SaveState();
+    }
+
+    /// <summary>Copies an entry into the composer and goes back to the chat draft.</summary>
+    public void InsertLibraryItem(LibraryItemViewModel item)
+    {
+        Composer = string.IsNullOrWhiteSpace(Composer)
+            ? item.Content
+            : Composer + "\n" + item.Content;
+        Navigate(AppSection.Chat);
     }
 
     public void BeginCreateAutomation()
@@ -3138,6 +3883,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _state.Model = string.IsNullOrWhiteSpace(_state.Model) ? "deepseek-chat" : _state.Model.Trim();
         _state.ApiKey ??= string.Empty;
         _state.ApiKeyEnvironmentVariable = _state.ApiKeyEnvironmentVariable?.Trim() ?? string.Empty;
+        if (string.Equals(_state.PermissionMode, "按需确认", StringComparison.Ordinal))
+        {
+            // The old two-mode label maps onto Codex's "请求批准".
+            _state.PermissionMode = "请求批准";
+        }
+
         _state.PermissionMode = SupportedPermissionModes.Contains(_state.PermissionMode)
             ? _state.PermissionMode
             : "完全访问";
@@ -3239,6 +3990,24 @@ public sealed partial class MainWindowViewModel : ObservableObject
         foreach (var workspaceState in _state.Workspaces)
         {
             Workspaces.Add(new WorkspaceItemViewModel(workspaceState));
+        }
+
+        RefreshWorkspacePathLabels();
+    }
+
+    /// <summary>
+    /// Same-named projects get a dim path suffix; unique names stay clean.
+    /// </summary>
+    private void RefreshWorkspacePathLabels()
+    {
+        var duplicated = Workspaces
+            .GroupBy(workspace => workspace.Name, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() > 1)
+            .SelectMany(group => group)
+            .ToHashSet();
+        foreach (var workspace in Workspaces)
+        {
+            workspace.SetPathLabel(duplicated.Contains(workspace) ? workspace.Path : string.Empty);
         }
     }
 

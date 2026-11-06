@@ -41,7 +41,8 @@ public sealed record SessionEvent(
     double? CostUsd = null,
     long Seq = 0,
     string? CallId = null,
-    string? Output = null);
+    string? Output = null,
+    bool ConnectionLost = false);
 
 public sealed record ApprovalRequestEvent(
     string ApprovalId,

@@ -28,6 +28,9 @@ public sealed record CoreHistoryMessage(
     string? ToolOutput,
     string? ToolDiff);
 
+/// <summary>One provider/model pair from <c>provider.list</c>.</summary>
+public sealed record CoreModelOption(string Provider, string Model, bool Enabled, bool KeyConfigured);
+
 /// <summary>Core handshake + provider catalog + session list gathered from one stdio probe.</summary>
 public sealed record CoreCatalogSnapshot(
     bool Success,
@@ -40,6 +43,8 @@ public sealed record CoreCatalogSnapshot(
     bool KeyConfigured,
     IReadOnlyList<CoreSessionSummary> Sessions)
 {
+    public IReadOnlyList<CoreModelOption> ModelOptions { get; init; } = Array.Empty<CoreModelOption>();
+
     public static CoreCatalogSnapshot Failed(string error) => new(
         false,
         error,
@@ -136,6 +141,7 @@ public static class CoreProtocolParser
         var activeProvider = GetString(providerList, "active_provider");
         var activeModel = GetString(providerList, "active_model");
         var models = new List<string>();
+        var options = new List<CoreModelOption>();
         var keyConfigured = false;
         if (providerList.ValueKind == JsonValueKind.Object
             && providerList.TryGetProperty("models", out var modelArray)
@@ -148,6 +154,13 @@ public static class CoreProtocolParser
                 if (name.Length > 0)
                 {
                     models.Add(name);
+                    options.Add(new CoreModelOption(
+                        provider,
+                        name,
+                        !model.TryGetProperty("enabled", out var enabled)
+                            || enabled.ValueKind == JsonValueKind.True,
+                        model.TryGetProperty("key_configured", out var key)
+                            && key.ValueKind == JsonValueKind.True));
                 }
 
                 if (!keyConfigured
@@ -169,7 +182,10 @@ public static class CoreProtocolParser
             activeModel,
             models,
             keyConfigured,
-            ParseSessions(sessionList));
+            ParseSessions(sessionList))
+        {
+            ModelOptions = options
+        };
     }
 
     public static string DeriveTitle(CoreSessionSummary session)

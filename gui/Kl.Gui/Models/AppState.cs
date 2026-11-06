@@ -20,6 +20,16 @@ public sealed class AppState
     public string? ActiveSessionId { get; set; }
     public List<WorkspaceState> Workspaces { get; set; } = [];
     public List<AutomationState> Automations { get; set; } = [];
+    public List<LibraryItemState> LibraryItems { get; set; } = [];
+}
+
+/// <summary>One saved prompt or note on the Library page (GUI-local state).</summary>
+public sealed class LibraryItemState
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Title { get; set; } = string.Empty;
+    public string Content { get; set; } = string.Empty;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.Now;
 }
 
 public sealed class WorkspaceState
