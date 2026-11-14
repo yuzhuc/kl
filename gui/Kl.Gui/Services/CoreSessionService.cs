@@ -84,6 +84,15 @@ public interface ICoreSessionService : IAsyncDisposable
     /// <summary>Runs <c>kl.doctor</c> against a fresh Core connection.</summary>
     Task<JsonElement> DoctorAsync(CancellationToken cancellationToken);
 
+    /// <summary>Reads <c>mcp.list</c> from a fresh handshaken Core connection.</summary>
+    Task<JsonElement> ListMcpToolsAsync(CancellationToken cancellationToken);
+
+    /// <summary>Reads the redacted <c>config.get</c> payload from a fresh connection.</summary>
+    Task<JsonElement> ReadConfigAsync(CancellationToken cancellationToken);
+
+    /// <summary>Reads <c>skill.list</c> for one workspace from a fresh connection.</summary>
+    Task<JsonElement> ListSkillsAsync(string workspace, CancellationToken cancellationToken);
+
     /// <summary>Reads Core's global reasoning effort (default/low/medium/high).</summary>
     Task<string> GetReasoningEffortAsync(CancellationToken cancellationToken);
 
@@ -320,6 +329,45 @@ public sealed class CoreSessionService : ICoreSessionService
             client = KlCoreClient.Start(_catalogOptions);
             await client.HandshakeAsync(cancellationToken).ConfigureAwait(false);
             return await client.DoctorAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (client is not null)
+            {
+                try
+                {
+                    await client.DisposeAsync().ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    // A one-shot probe must never leak into the caller.
+                }
+            }
+        }
+    }
+
+    public Task<JsonElement> ListMcpToolsAsync(CancellationToken cancellationToken) =>
+        OneShotRequestAsync(Protocol.McpList, null, cancellationToken);
+
+    public Task<JsonElement> ReadConfigAsync(CancellationToken cancellationToken) =>
+        OneShotRequestAsync("config.get", null, cancellationToken);
+
+    public Task<JsonElement> ListSkillsAsync(string workspace, CancellationToken cancellationToken) =>
+        OneShotRequestAsync("skill.list", new { workspace }, cancellationToken);
+
+    /// <summary>Runs one request over a handshaken throwaway Core connection.</summary>
+    private async Task<JsonElement> OneShotRequestAsync(
+        string method,
+        object? parameters,
+        CancellationToken cancellationToken)
+    {
+        KlCoreClient? client = null;
+        try
+        {
+            client = KlCoreClient.Start(_catalogOptions);
+            await client.HandshakeAsync(cancellationToken).ConfigureAwait(false);
+            return await client.RequestAsync(method, parameters, cancellationToken)
+                .ConfigureAwait(false);
         }
         finally
         {
@@ -608,6 +656,15 @@ public sealed class UnavailableCoreSessionService : ICoreSessionService
         throw new InvalidOperationException("KL Core 不可用。");
 
     public Task<JsonElement> DoctorAsync(CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("KL Core 不可用。");
+
+    public Task<JsonElement> ListMcpToolsAsync(CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("KL Core 不可用。");
+
+    public Task<JsonElement> ReadConfigAsync(CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("KL Core 不可用。");
+
+    public Task<JsonElement> ListSkillsAsync(string workspace, CancellationToken cancellationToken) =>
         throw new InvalidOperationException("KL Core 不可用。");
 
     public Task<string> GetReasoningEffortAsync(CancellationToken cancellationToken) =>

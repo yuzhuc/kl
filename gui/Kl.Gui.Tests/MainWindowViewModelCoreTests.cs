@@ -176,6 +176,9 @@ public sealed class MainWindowViewModelCoreTests
         Assert.Equal(
             new[] { "user", "reasoning", "assistant", "tool" },
             saved.Messages.Select(message => message.Kind));
+        Assert.Equal(10, saved.InputTokens);
+        Assert.Equal(20, saved.OutputTokens);
+        Assert.Equal(0.5, saved.CostUsd);
     }
 
     [Fact]

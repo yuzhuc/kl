@@ -21,9 +21,38 @@ public enum AppSection
 public enum SettingsPane
 {
     General,
+    Notifications,
+    Import,
+    Profile,
+    Appearance,
+    Account,
+    Archived,
+    Ads,
+    Parental,
+    Trusted,
+    Voice,
+    Storage,
+    Config,
+    Personalization,
+    Mini,
+    Shortcuts,
+    Usage,
+    DataManagement,
+    Plugins,
+    Passwords,
+    ComputerUse,
+    Browser,
+    CloudPc,
+    Hooks,
+    Connections,
+    CodeReview,
+    Git,
+    Environments,
+    Worktrees,
+    Memory,
     Models,
-    Data,
-    About
+    Integration,
+    Data
 }
 
 public enum AutomationFilter
@@ -995,13 +1024,18 @@ public sealed class ReasoningEffortOption : ObservableObject
 /// <summary>One file group in the palette (name matches, or content matches).</summary>
 public sealed class PaletteFileGroupViewModel
 {
-    public PaletteFileGroupViewModel(string relativePath, IReadOnlyList<PaletteLineMatch> lines)
+    public PaletteFileGroupViewModel(
+        string relativePath,
+        IReadOnlyList<PaletteLineMatch> lines,
+        string query = "")
     {
         RelativePath = relativePath;
-        Lines = lines.Select(line => new PaletteLineViewModel(relativePath, line)).ToList();
+        Query = query;
+        Lines = lines.Select(line => new PaletteLineViewModel(relativePath, line, query)).ToList();
     }
 
     public string RelativePath { get; }
+    public string Query { get; }
     public string Name => Path.GetFileName(RelativePath);
     public string Folder
     {
@@ -1020,14 +1054,16 @@ public sealed class PaletteFileGroupViewModel
 /// <summary>One matching line under a file group in the palette.</summary>
 public sealed class PaletteLineViewModel
 {
-    public PaletteLineViewModel(string relativePath, PaletteLineMatch match)
+    public PaletteLineViewModel(string relativePath, PaletteLineMatch match, string query = "")
     {
         RelativePath = relativePath;
         LineNumber = match.LineNumber;
         Text = match.Text;
+        Query = query;
     }
 
     public string RelativePath { get; }
+    public string Query { get; }
     public int LineNumber { get; }
     public string Text { get; }
     public string LineLabel => LineNumber.ToString();
@@ -1112,6 +1148,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private bool _settingsStatusIsError;
     private string _errorMessage = string.Empty;
     private string _pluginStatus = string.Empty;
+    private string _pluginSearch = string.Empty;
+    private IReadOnlyList<PluginItemViewModel> _allPlugins = [];
     private AutomationItemViewModel? _automationDialogTarget;
     private AutomationItemViewModel? _automationDeleteTarget;
     private AutomationIntervalOption? _selectedAutomationInterval;
@@ -1144,7 +1182,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         BuildWorkspaceItems();
         _activeWorkspace = Workspaces.First(workspace => workspace.Id == _state.ActiveWorkspaceId);
         _activeWorkspace.IsSelected = true;
-        if (TryFindSession(_state.ActiveSessionId, out var activeWorkspace, out var activeSession))
+        if (_state.RestoreLastSession
+            && TryFindSession(_state.ActiveSessionId, out var activeWorkspace, out var activeSession))
         {
             SelectSession(activeWorkspace, activeSession.State);
         }
@@ -1153,6 +1192,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
             StartDraftSession();
         }
 
+        MemoryEntries.CollectionChanged += (_, _) => OnPropertyChanged(nameof(ShowMemoryEntries));
+        UsageRows.CollectionChanged += (_, _) => OnPropertyChanged(nameof(ShowUsageRows));
+        McpTools.CollectionChanged += (_, _) => OnPropertyChanged(nameof(ShowMcpTools));
         RefreshSettingsDraft();
         RefreshPlugins();
         BuildAutomationItems();
@@ -1306,6 +1348,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// <summary>Expanded sidebar width; the rail collapses below 3/4 of this value.</summary>
     public double SidebarWidth => _state.SidebarWidth;
 
+    public bool IsSidebarNarrow => SidebarWidth < 260;
+    public bool IsSidebarStandard => SidebarWidth is >= 260 and < 320;
+    public bool IsSidebarWide => SidebarWidth >= 320;
+
     public void SetSidebarWidth(double width)
     {
         var clamped = Math.Clamp(width, 238, 468);
@@ -1317,6 +1363,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _state.SidebarWidth = clamped;
         SaveState();
         OnPropertyChanged(nameof(SidebarWidth));
+        OnPropertyChanged(nameof(IsSidebarNarrow));
+        OnPropertyChanged(nameof(IsSidebarStandard));
+        OnPropertyChanged(nameof(IsSidebarWide));
     }
 
     public void SetSidebarVisible(bool visible) => IsSidebarVisible = visible;
@@ -1475,30 +1524,99 @@ public sealed partial class MainWindowViewModel : ObservableObject
         : "随心输入";
 
     /// <summary>Codex-style empty-state headline that follows the selected mode.</summary>
-    public string EmptyStateTitle => IsChatMode ? "我们要做什么?" : "我们要构建什么?";
+    public string EmptyStateTitle => IsChatMode ? "我们要做什么?" : $"我们应该在{WorkspaceName}中做些什么?";
     public bool IsSettingsOpen
     {
         get => _isSettingsOpen;
         private set => SetProperty(ref _isSettingsOpen, value);
     }
     public bool IsSettingsGeneral => _settingsPane == SettingsPane.General;
+    public bool IsSettingsNotifications => _settingsPane == SettingsPane.Notifications;
+    public bool IsSettingsAppearance => _settingsPane == SettingsPane.Appearance;
+    public bool IsSettingsMemory => _settingsPane == SettingsPane.Memory;
+    public bool IsSettingsArchived => _settingsPane == SettingsPane.Archived;
+    public bool IsSettingsShortcuts => _settingsPane == SettingsPane.Shortcuts;
     public bool IsSettingsModels => _settingsPane == SettingsPane.Models;
+    public bool IsSettingsUsage => _settingsPane == SettingsPane.Usage;
+    public bool IsSettingsIntegration => _settingsPane == SettingsPane.Integration;
     public bool IsSettingsData => _settingsPane == SettingsPane.Data;
-    public bool IsSettingsAbout => _settingsPane == SettingsPane.About;
+    public bool IsSettingsDataManagement => _settingsPane == SettingsPane.DataManagement;
+    public bool IsSettingsConfig => _settingsPane == SettingsPane.Config;
+    public WorkspaceItemViewModel ActiveWorkspace => _activeWorkspace;
+
+    public bool IsSettingsImport => _settingsPane == SettingsPane.Import;
+    public bool IsSettingsProfile => _settingsPane == SettingsPane.Profile;
+    public bool IsSettingsAccount => _settingsPane == SettingsPane.Account;
+    public bool IsSettingsAds => _settingsPane == SettingsPane.Ads;
+    public bool IsSettingsParental => _settingsPane == SettingsPane.Parental;
+    public bool IsSettingsTrusted => _settingsPane == SettingsPane.Trusted;
+    public bool IsSettingsVoice => _settingsPane == SettingsPane.Voice;
+    public bool IsSettingsStorage => _settingsPane == SettingsPane.Storage;
+    public bool IsSettingsPersonalization => _settingsPane == SettingsPane.Personalization;
+    public bool IsSettingsMini => _settingsPane == SettingsPane.Mini;
+    public bool IsSettingsPlugins => _settingsPane == SettingsPane.Plugins;
+    public bool IsSettingsPasswords => _settingsPane == SettingsPane.Passwords;
+    public bool IsSettingsComputerUse => _settingsPane == SettingsPane.ComputerUse;
+    public bool IsSettingsBrowser => _settingsPane == SettingsPane.Browser;
+    public bool IsSettingsCloudPc => _settingsPane == SettingsPane.CloudPc;
+    public bool IsSettingsHooks => _settingsPane == SettingsPane.Hooks;
+    public bool IsSettingsConnections => _settingsPane == SettingsPane.Connections;
+    public bool IsSettingsCodeReview => _settingsPane == SettingsPane.CodeReview;
+    public bool IsSettingsGit => _settingsPane == SettingsPane.Git;
+    public bool IsSettingsEnvironments => _settingsPane == SettingsPane.Environments;
+    public bool IsSettingsWorktrees => _settingsPane == SettingsPane.Worktrees;
     public string SettingsPaneTitle => _settingsPane switch
     {
-        SettingsPane.Models => "模型",
-        SettingsPane.Data => "本地数据",
-        SettingsPane.About => "关于与快捷键",
-        _ => "通用设置"
+        SettingsPane.Notifications => "通知",
+        SettingsPane.Import => "导入",
+        SettingsPane.Profile => "个人资料",
+        SettingsPane.Appearance => "外观",
+        SettingsPane.Account => "账户",
+        SettingsPane.Archived => "已归档的聊天",
+        SettingsPane.Ads => "广告设置",
+        SettingsPane.Parental => "家长控制",
+        SettingsPane.Trusted => "受信任联系人",
+        SettingsPane.Voice => "语音",
+        SettingsPane.Storage => "存储空间",
+        SettingsPane.Config => "配置",
+        SettingsPane.Personalization => "个性化",
+        SettingsPane.Mini => "迷你界面和智能伙伴",
+        SettingsPane.Shortcuts => "键盘快捷键",
+        SettingsPane.Usage => "使用情况和计费",
+        SettingsPane.DataManagement => "数据管理",
+        SettingsPane.Plugins => "插件",
+        SettingsPane.Passwords => "密码",
+        SettingsPane.ComputerUse => "电脑操控",
+        SettingsPane.Browser => "浏览器",
+        SettingsPane.CloudPc => "云电脑",
+        SettingsPane.Hooks => "钩子",
+        SettingsPane.Connections => "连接",
+        SettingsPane.CodeReview => "代码审查",
+        SettingsPane.Git => "Git",
+        SettingsPane.Environments => "环境",
+        SettingsPane.Worktrees => "Worktrees",
+        SettingsPane.Memory => "记忆",
+        SettingsPane.Models => "模型与连接",
+        SettingsPane.Integration => "集成",
+        SettingsPane.Data => "存储",
+        _ => "常规"
     };
     public string SettingsPaneSubtitle => _settingsPane switch
     {
-        SettingsPane.Models => "查看 KL Core 运行时、模型与连接状态。",
-        SettingsPane.Data => "GUI 本地状态保存在 ~/.kl/gui；会话与消息真值由 KL Core 保存在 ~/.kl/sessions。",
-        SettingsPane.About => "版本、隐私和常用快捷键。",
-        _ => "调整权限模式和当前工作方式。"
+        SettingsPane.Import => "将其他 AI 应用的设置、项目和聊天导入 KL",
+        SettingsPane.Config => "配置新聊天的权限、网页访问和智能体回复",
+        SettingsPane.Mini => "按下 Alt+Win+P，即可显示并聚焦智能伙伴",
+        SettingsPane.Plugins => "管理插件、技能和 MCP",
+        SettingsPane.ComputerUse => "管理 KL 如何使用你电脑上的其他应用程序",
+        SettingsPane.Browser => "管理你的浏览器偏好设置和网站访问权限。",
+        SettingsPane.CloudPc => "管理云端浏览设置和已保存的网站 Cookie",
+        SettingsPane.Hooks => "通过配置和已启用的插件管理生命周期钩子。",
+        SettingsPane.Environments => "本地环境用于指导 KL 如何为项目设置工作树。",
+        _ => string.Empty
     };
+
+    public bool HasSettingsPaneSubtitle => SettingsPaneSubtitle.Length > 0;
+
     public bool IsAutomationFilterAll => _automationFilter == AutomationFilter.All;
     public bool IsAutomationFilterActive => _automationFilter == AutomationFilter.Active;
     public bool IsAutomationFilterEnded => _automationFilter == AutomationFilter.Ended;
@@ -1516,6 +1634,38 @@ public sealed partial class MainWindowViewModel : ObservableObject
         get => _isDeleteDialogOpen;
         private set => SetProperty(ref _isDeleteDialogOpen, value);
     }
+
+    private bool _isSettingsDetailOpen;
+    private string _settingsDetailTitle = string.Empty;
+    private string _settingsDetailBody = string.Empty;
+
+    public bool IsSettingsDetailOpen
+    {
+        get => _isSettingsDetailOpen;
+        private set => SetProperty(ref _isSettingsDetailOpen, value);
+    }
+
+    public string SettingsDetailTitle
+    {
+        get => _settingsDetailTitle;
+        private set => SetProperty(ref _settingsDetailTitle, value);
+    }
+
+    public string SettingsDetailBody
+    {
+        get => _settingsDetailBody;
+        private set => SetProperty(ref _settingsDetailBody, value);
+    }
+
+    /// <summary>Shows the shared placeholder sheet for settings rows that are UI-only.</summary>
+    public void OpenSettingsDetail(string title, string body)
+    {
+        SettingsDetailTitle = title;
+        SettingsDetailBody = body;
+        IsSettingsDetailOpen = true;
+    }
+
+    public void CloseSettingsDetail() => IsSettingsDetailOpen = false;
 
     private bool _isCreateProjectDialogOpen;
     private string _projectNameDraft = string.Empty;
@@ -1718,7 +1868,20 @@ public sealed partial class MainWindowViewModel : ObservableObject
     }
 
     public bool HasPlugins => Plugins.Count > 0;
-    public bool ShowNoPlugins => Plugins.Count == 0;
+    public bool ShowNoPlugins => _allPlugins.Count == 0;
+    public bool ShowNoPluginMatches =>
+        _pluginSearch.Trim().Length > 0 && Plugins.Count == 0 && _allPlugins.Count > 0;
+    public string PluginSearch
+    {
+        get => _pluginSearch;
+        set
+        {
+            if (SetProperty(ref _pluginSearch, value))
+            {
+                ApplyPluginFilter();
+            }
+        }
+    }
     public string PluginDirectoryPath => _pluginCatalogService.DirectoryPath;
     public string PluginStatus
     {
@@ -1746,7 +1909,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
     public string HeaderTitle => IsChatPage ? SessionTitle : SectionTitle;
-    public string SectionTitle => IsLibraryPage ? "资料库" : IsProjectsPage ? "项目" : IsPluginsPage ? "插件" : IsAutomationPage ? "自动化任务" : IsSettingsPage ? "设置" : "聊天";
+    public string SectionTitle => IsLibraryPage ? "资料库" : IsProjectsPage ? "项目" : IsPluginsPage ? (IsSkillsList ? "技能" : "插件") : IsAutomationPage ? "自动化任务" : IsSettingsPage ? "设置" : "聊天";
     public string WorkspaceName => _activeWorkspace.Name;
     public string WorkspacePath => _activeWorkspace.Path;
     public string ModelName => _core.IsSessionOpen
@@ -1953,6 +2116,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(IsLibraryPage));
         OnPropertyChanged(nameof(IsProjectsPage));
         OnPropertyChanged(nameof(IsPluginsPage));
+        OnPropertyChanged(nameof(IsPluginsList));
+        OnPropertyChanged(nameof(IsSkillsList));
         OnPropertyChanged(nameof(IsAutomationPage));
         OnPropertyChanged(nameof(IsSettingsPage));
         OnPropertyChanged(nameof(ShowConversationHeader));
@@ -1961,6 +2126,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
         UpdatePinnedRailActiveState();
         if (section == AppSection.Plugins)
         {
+            if (_isSkillsList)
+            {
+                _isSkillsList = false;
+                OnPropertyChanged(nameof(IsSkillsList));
+                OnPropertyChanged(nameof(IsPluginsList));
+                OnPropertyChanged(nameof(SectionTitle));
+            }
             RefreshPlugins();
         }
         if (section == AppSection.Automation)
@@ -2155,6 +2327,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public void SetNotificationFilter(string filter)
     {
         _notificationFilter = filter is "priority" or "pinned" or "automations" ? filter : "priority";
+        _state.NotificationFilter = _notificationFilter;
+        SaveState();
         OnPropertyChanged(nameof(IsNotificationFilterPriority));
         OnPropertyChanged(nameof(IsNotificationFilterPinned));
         OnPropertyChanged(nameof(IsNotificationFilterAutomations));
@@ -2265,13 +2439,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
                     {
                         PaletteFiles.Add(new PaletteFileGroupViewModel(
                             path,
-                            Array.Empty<PaletteLineMatch>()));
+                            Array.Empty<PaletteLineMatch>(),
+                            query));
                     }
 
                     PaletteTextMatches.Clear();
                     foreach (var (relativePath, lines) in textMatches)
                     {
-                        PaletteTextMatches.Add(new PaletteFileGroupViewModel(relativePath, lines));
+                        PaletteTextMatches.Add(new PaletteFileGroupViewModel(relativePath, lines, query));
                     }
 
                     RaisePaletteSearchVisibility();
@@ -2525,10 +2700,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
         UpdatePinnedRailActiveState();
     }
 
-    public void OpenSettings(SettingsPane pane = SettingsPane.General)
+    public void OpenSettings(SettingsPane? pane = null)
     {
         RefreshSettingsDraft();
-        SelectSettingsPane(pane);
+        var target = pane
+            ?? (Enum.TryParse<SettingsPane>(_state.LastSettingsPane, out var saved)
+                ? saved
+                : SettingsPane.General);
+        SelectSettingsPane(target);
         IsSettingsOpen = true;
     }
 
@@ -2537,12 +2716,658 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public void SelectSettingsPane(SettingsPane pane)
     {
         _settingsPane = pane;
+        if (_state.LastSettingsPane != pane.ToString())
+        {
+            _state.LastSettingsPane = pane.ToString();
+            SaveState();
+        }
         OnPropertyChanged(nameof(IsSettingsGeneral));
+        OnPropertyChanged(nameof(IsSettingsNotifications));
+        OnPropertyChanged(nameof(IsSettingsAppearance));
+        OnPropertyChanged(nameof(IsSettingsMemory));
+        OnPropertyChanged(nameof(IsSettingsArchived));
+        OnPropertyChanged(nameof(IsSettingsShortcuts));
         OnPropertyChanged(nameof(IsSettingsModels));
+        OnPropertyChanged(nameof(IsSettingsUsage));
+        OnPropertyChanged(nameof(IsSettingsIntegration));
         OnPropertyChanged(nameof(IsSettingsData));
-        OnPropertyChanged(nameof(IsSettingsAbout));
+        OnPropertyChanged(nameof(IsSettingsDataManagement));
+        OnPropertyChanged(nameof(IsSettingsConfig));
+        OnPropertyChanged(nameof(IsSettingsImport));
+        OnPropertyChanged(nameof(IsSettingsProfile));
+        OnPropertyChanged(nameof(IsSettingsAccount));
+        OnPropertyChanged(nameof(IsSettingsAds));
+        OnPropertyChanged(nameof(IsSettingsParental));
+        OnPropertyChanged(nameof(IsSettingsTrusted));
+        OnPropertyChanged(nameof(IsSettingsVoice));
+        OnPropertyChanged(nameof(IsSettingsStorage));
+        OnPropertyChanged(nameof(IsSettingsPersonalization));
+        OnPropertyChanged(nameof(IsSettingsMini));
+        OnPropertyChanged(nameof(IsSettingsPlugins));
+        OnPropertyChanged(nameof(IsSettingsPasswords));
+        OnPropertyChanged(nameof(IsSettingsComputerUse));
+        OnPropertyChanged(nameof(IsSettingsBrowser));
+        OnPropertyChanged(nameof(IsSettingsCloudPc));
+        OnPropertyChanged(nameof(IsSettingsHooks));
+        OnPropertyChanged(nameof(IsSettingsConnections));
+        OnPropertyChanged(nameof(IsSettingsCodeReview));
+        OnPropertyChanged(nameof(IsSettingsGit));
+        OnPropertyChanged(nameof(IsSettingsEnvironments));
+        OnPropertyChanged(nameof(IsSettingsWorktrees));
         OnPropertyChanged(nameof(SettingsPaneTitle));
         OnPropertyChanged(nameof(SettingsPaneSubtitle));
+        OnPropertyChanged(nameof(HasSettingsPaneSubtitle));
+        if (pane == SettingsPane.Personalization)
+        {
+            _ = RefreshMemoryAsync();
+        }
+        else if (pane == SettingsPane.Plugins)
+        {
+            _ = RefreshMcpToolsAsync();
+        }
+        else if (pane == SettingsPane.Memory)
+        {
+            _ = RefreshMemoryAsync();
+        }
+        else if (pane == SettingsPane.Archived)
+        {
+            RefreshRecentSessions();
+        }
+        else if (pane == SettingsPane.Usage)
+        {
+            RefreshUsage();
+        }
+        else if (pane == SettingsPane.Integration)
+        {
+            _ = RefreshMcpToolsAsync();
+        }
+        else if (pane == SettingsPane.Config)
+        {
+            _ = RefreshConfigAsync();
+        }
+    }
+
+    public ObservableCollection<UsageSessionRow> UsageRows { get; } = [];
+    public long UsageTotalInputTokens { get; private set; }
+    public long UsageTotalOutputTokens { get; private set; }
+    public double UsageTotalCostUsd { get; private set; }
+    public string UsageTokensText => $"{UsageTotalInputTokens:N0} / {UsageTotalOutputTokens:N0}";
+    public string UsageCostText => UsageTotalCostUsd > 0 ? $"${UsageTotalCostUsd:0.0000}" : "$0";
+    public bool ShowUsageRows => UsageRows.Count > 0;
+
+    /// <summary>Aggregates the per-session usage persisted on completed turns.</summary>
+    public void RefreshUsage()
+    {
+        var sessions = _state.Workspaces
+            .SelectMany(workspace => workspace.Sessions)
+            .Where(session => session.InputTokens > 0 || session.OutputTokens > 0 || session.CostUsd > 0)
+            .OrderByDescending(session => session.InputTokens + session.OutputTokens)
+            .Take(20)
+            .ToList();
+        UsageTotalInputTokens = sessions.Sum(session => session.InputTokens);
+        UsageTotalOutputTokens = sessions.Sum(session => session.OutputTokens);
+        UsageTotalCostUsd = sessions.Sum(session => session.CostUsd);
+        UsageRows.Clear();
+        foreach (var session in sessions)
+        {
+            UsageRows.Add(new UsageSessionRow(
+                session.Title,
+                $"{session.InputTokens:N0} / {session.OutputTokens:N0}",
+                session.CostUsd > 0 ? $"${session.CostUsd:0.0000}" : "—"));
+        }
+
+        OnPropertyChanged(nameof(UsageTotalInputTokens));
+        OnPropertyChanged(nameof(UsageTotalOutputTokens));
+        OnPropertyChanged(nameof(UsageTotalCostUsd));
+        OnPropertyChanged(nameof(UsageTokensText));
+        OnPropertyChanged(nameof(UsageCostText));
+        OnPropertyChanged(nameof(ShowUsageRows));
+    }
+
+    public ObservableCollection<McpToolRow> McpTools { get; } = [];
+    public string McpStatusText { get; private set; } = "打开此页时从 KL Core 读取。";
+    public bool ShowMcpTools => McpTools.Count > 0;
+
+    /// <summary>Reads the MCP tool list from Core; the page stays read-only.</summary>
+    public async Task RefreshMcpToolsAsync()
+    {
+        McpStatusText = "正在读取…";
+        OnPropertyChanged(nameof(McpStatusText));
+        List<McpToolRow> rows;
+        try
+        {
+            var result = await _core.ListMcpToolsAsync(CancellationToken.None);
+            rows = ParseMcpTools(result);
+            McpStatusText = rows.Count == 0 ? "Core 当前没有可用的 MCP 工具。" : $"共 {rows.Count} 个 MCP 工具";
+        }
+        catch (InvalidOperationException)
+        {
+            rows = [];
+            McpStatusText = "需要先打开一个聊天会话，然后点刷新。";
+        }
+        catch (Exception error)
+        {
+            rows = [];
+            McpStatusText = $"无法读取 MCP 列表：{error.Message}";
+        }
+
+        _dispatch(() =>
+        {
+            McpTools.Clear();
+            foreach (var row in rows)
+            {
+                McpTools.Add(row);
+            }
+
+            OnPropertyChanged(nameof(McpStatusText));
+            OnPropertyChanged(nameof(ShowMcpTools));
+        });
+    }
+
+    private static List<McpToolRow> ParseMcpTools(JsonElement result)
+    {
+        var rows = new List<McpToolRow>();
+        if (result.ValueKind != JsonValueKind.Object
+            || !result.TryGetProperty("tools", out var tools)
+            || tools.ValueKind != JsonValueKind.Array)
+        {
+            return rows;
+        }
+
+        foreach (var tool in tools.EnumerateArray())
+        {
+            var name = tool.TryGetProperty("name", out var nameValue)
+                ? nameValue.GetString() ?? string.Empty
+                : string.Empty;
+            if (name.Length == 0)
+            {
+                continue;
+            }
+
+            var description = tool.TryGetProperty("description", out var descriptionValue)
+                ? descriptionValue.GetString() ?? string.Empty
+                : string.Empty;
+            rows.Add(new McpToolRow(name, description));
+        }
+
+        return rows;
+    }
+
+    public ObservableCollection<ConfigValueRow> ConfigRows { get; } = [];
+    public string ConfigPathText { get; private set; } = "—";
+    public string ConfigStatusText { get; private set; } = "打开此页时从 KL Core 读取。";
+    public bool ShowConfigRows => ConfigRows.Count > 0;
+    public string KlHomeDirectory => ResolveCoreHomeText();
+    public string ConfigFilePath => Path.Combine(KlHomeDirectory, "config.toml");
+    public bool RestoreLastSession
+    {
+        get => _state.RestoreLastSession;
+        set
+        {
+            if (_state.RestoreLastSession == value)
+            {
+                return;
+            }
+
+            _state.RestoreLastSession = value;
+            SaveState();
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>Reads the redacted config from a one-shot Core connection.</summary>
+    public async Task RefreshConfigAsync()
+    {
+        ConfigStatusText = "正在读取…";
+        OnPropertyChanged(nameof(ConfigStatusText));
+        List<ConfigValueRow> rows;
+        string path;
+        string status;
+        try
+        {
+            var result = await _core.ReadConfigAsync(CancellationToken.None);
+            path = result.TryGetProperty("path", out var pathValue)
+                ? pathValue.GetString() ?? "—"
+                : "—";
+            rows = ParseConfig(result);
+            status = rows.Count == 0 ? "Core 未返回配置内容。" : string.Empty;
+        }
+        catch (Exception error)
+        {
+            rows = [];
+            path = ConfigFilePath;
+            status = $"无法读取配置：{error.Message}";
+        }
+
+        _dispatch(() =>
+        {
+            ConfigPathText = path;
+            ConfigRows.Clear();
+            foreach (var row in rows)
+            {
+                ConfigRows.Add(row);
+            }
+
+            ConfigStatusText = status;
+            OnPropertyChanged(nameof(ConfigPathText));
+            OnPropertyChanged(nameof(ConfigStatusText));
+            OnPropertyChanged(nameof(ShowConfigRows));
+        });
+    }
+
+    private static List<ConfigValueRow> ParseConfig(JsonElement result)
+    {
+        var rows = new List<ConfigValueRow>();
+        if (result.ValueKind != JsonValueKind.Object
+            || !result.TryGetProperty("config", out var config)
+            || config.ValueKind != JsonValueKind.Object)
+        {
+            return rows;
+        }
+
+        if (config.TryGetProperty("agent", out var agent) && agent.ValueKind == JsonValueKind.Object)
+        {
+            AddConfigRow(rows, agent, "provider", "Provider");
+            AddConfigRow(rows, agent, "model", "模型");
+            AddConfigRow(rows, agent, "approval_mode", "审批模式");
+            AddConfigRow(rows, agent, "reasoning_effort", "推理强度");
+        }
+
+        if (result.TryGetProperty("providers", out var providers)
+            && providers.ValueKind == JsonValueKind.Object
+            && providers.TryGetProperty("providers", out var list)
+            && list.ValueKind == JsonValueKind.Array)
+        {
+            var ids = new List<string>();
+            foreach (var provider in list.EnumerateArray())
+            {
+                if (provider.TryGetProperty("id", out var id) && id.GetString() is { Length: > 0 } value)
+                {
+                    ids.Add(value);
+                }
+            }
+
+            if (ids.Count > 0)
+            {
+                rows.Add(new ConfigValueRow("提供方", string.Join("、", ids)));
+            }
+        }
+
+        return rows;
+    }
+
+    private static void AddConfigRow(List<ConfigValueRow> rows, JsonElement source, string property, string label)
+    {
+        if (!source.TryGetProperty(property, out var value))
+        {
+            return;
+        }
+
+        var text = value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString() ?? string.Empty,
+            JsonValueKind.Number => value.ToString(),
+            JsonValueKind.True => "是",
+            JsonValueKind.False => "否",
+            _ => string.Empty
+        };
+        if (text.Length > 0)
+        {
+            rows.Add(new ConfigValueRow(label, text));
+        }
+    }
+
+    public string BackupStatusText { get; private set; } = string.Empty;
+    public bool HasBackupStatus => BackupStatusText.Length > 0;
+    public string DataDirectoryPath => StateDirectory;
+
+    /// <summary>Copies the GUI state file to a user-chosen backup location.</summary>
+    public bool ExportStateBackup(string targetPath)
+    {
+        try
+        {
+            File.Copy(_stateStore.Path, targetPath, overwrite: true);
+            BackupStatusText = $"已导出到 {targetPath}";
+            OnPropertyChanged(nameof(BackupStatusText));
+            OnPropertyChanged(nameof(HasBackupStatus));
+            return true;
+        }
+        catch (Exception error)
+        {
+            BackupStatusText = $"导出失败：{error.Message}";
+            OnPropertyChanged(nameof(BackupStatusText));
+            OnPropertyChanged(nameof(HasBackupStatus));
+            return false;
+        }
+    }
+
+    private bool _isSkillsList;
+
+    public bool IsSkillsList => IsPluginsPage && _isSkillsList;
+    public bool IsPluginsList => IsPluginsPage && !_isSkillsList;
+    public ObservableCollection<SkillRow> Skills { get; } = [];
+    public string SkillsStatusText { get; private set; } = "打开技能页时读取当前工作区。";
+    public bool ShowSkills => Skills.Count > 0;
+
+    public void ShowPluginsList()
+    {
+        if (!_isSkillsList)
+        {
+            return;
+        }
+
+        _isSkillsList = false;
+        OnPropertyChanged(nameof(IsSkillsList));
+        OnPropertyChanged(nameof(IsPluginsList));
+        OnPropertyChanged(nameof(SectionTitle));
+    }
+
+    public void ShowSkillsList()
+    {
+        if (!_isSkillsList)
+        {
+            _isSkillsList = true;
+            OnPropertyChanged(nameof(IsSkillsList));
+            OnPropertyChanged(nameof(IsPluginsList));
+            OnPropertyChanged(nameof(SectionTitle));
+        }
+
+        _ = RefreshSkillsAsync();
+    }
+
+    /// <summary>Reads skills discovered by Core for the active workspace.</summary>
+    public async Task RefreshSkillsAsync()
+    {
+        SkillsStatusText = "正在读取…";
+        OnPropertyChanged(nameof(SkillsStatusText));
+        List<SkillRow> rows;
+        string status;
+        try
+        {
+            var result = await _core.ListSkillsAsync(_activeWorkspace.Path, CancellationToken.None);
+            rows = ParseSkills(result);
+            status = rows.Count == 0 ? "当前工作区没有技能。" : $"共 {rows.Count} 个技能";
+        }
+        catch (Exception error)
+        {
+            rows = [];
+            status = $"无法读取技能：{error.Message}";
+        }
+
+        _dispatch(() =>
+        {
+            Skills.Clear();
+            foreach (var row in rows)
+            {
+                Skills.Add(row);
+            }
+
+            SkillsStatusText = status;
+            OnPropertyChanged(nameof(SkillsStatusText));
+            OnPropertyChanged(nameof(ShowSkills));
+        });
+    }
+
+    private static List<SkillRow> ParseSkills(JsonElement result)
+    {
+        var rows = new List<SkillRow>();
+        if (result.ValueKind != JsonValueKind.Object
+            || !result.TryGetProperty("skills", out var skills)
+            || skills.ValueKind != JsonValueKind.Array)
+        {
+            return rows;
+        }
+
+        foreach (var skill in skills.EnumerateArray())
+        {
+            var name = skill.TryGetProperty("name", out var nameValue)
+                ? nameValue.GetString() ?? string.Empty
+                : string.Empty;
+            if (name.Length == 0)
+            {
+                continue;
+            }
+
+            var description = skill.TryGetProperty("description", out var descriptionValue)
+                ? descriptionValue.GetString() ?? string.Empty
+                : string.Empty;
+            rows.Add(new SkillRow(name, description));
+        }
+
+        return rows;
+    }
+
+    private string _memoryScope = "workspace";
+    private string _memoryName = string.Empty;
+    private string _memoryContent = string.Empty;
+    private string _memoryStatus = "打开此页时从 KL Core 读取。";
+
+    public ObservableCollection<MemoryEntryRow> MemoryEntries { get; } = [];
+    public bool IsMemoryScopeWorkspace => _memoryScope == "workspace";
+    public bool IsMemoryScopeUser => _memoryScope == "user";
+    public string MemoryScopeHint => IsMemoryScopeUser
+        ? "用户记忆保存在 KL Home，对所有项目生效。"
+        : "工作区记忆保存在当前项目，只在该项目内生效。";
+    public bool ShowMemoryEntries => MemoryEntries.Count > 0;
+
+    public string MemoryName
+    {
+        get => _memoryName;
+        set
+        {
+            if (SetProperty(ref _memoryName, value))
+            {
+                OnPropertyChanged(nameof(CanSaveMemory));
+            }
+        }
+    }
+
+    public string MemoryContent
+    {
+        get => _memoryContent;
+        set => SetProperty(ref _memoryContent, value);
+    }
+
+    public string MemoryStatus
+    {
+        get => _memoryStatus;
+        private set => SetProperty(ref _memoryStatus, value);
+    }
+
+    public bool CanSaveMemory => _memoryName.Trim().Length > 0;
+
+    public void SetMemoryScope(string scope)
+    {
+        var value = scope == "user" ? "user" : "workspace";
+        if (_memoryScope == value)
+        {
+            return;
+        }
+
+        _memoryScope = value;
+        OnPropertyChanged(nameof(IsMemoryScopeWorkspace));
+        OnPropertyChanged(nameof(IsMemoryScopeUser));
+        OnPropertyChanged(nameof(MemoryScopeHint));
+        _ = RefreshMemoryAsync();
+    }
+
+    /// <summary>Lists memory entries for the open Core session and current scope.</summary>
+    public async Task RefreshMemoryAsync()
+    {
+        if (!TryMemorySession(out var sessionId))
+        {
+            MemoryEntries.Clear();
+            OnPropertyChanged(nameof(ShowMemoryEntries));
+            SetMemoryStatus("先打开一个聊天会话，然后点刷新。");
+            return;
+        }
+
+        try
+        {
+            var result = await _core.RequestAsync(
+                "memory.list",
+                new { session_id = sessionId, scope = _memoryScope },
+                CancellationToken.None);
+            var entries = ParseMemoryEntries(result);
+            _dispatch(() =>
+            {
+                MemoryEntries.Clear();
+                foreach (var entry in entries)
+                {
+                    MemoryEntries.Add(entry);
+                }
+
+                OnPropertyChanged(nameof(ShowMemoryEntries));
+                MemoryStatus = entries.Count == 0 ? "还没有记忆条目。" : $"共 {entries.Count} 条记忆";
+            });
+        }
+        catch (Exception error)
+        {
+            SetMemoryStatus($"无法读取记忆：{error.Message}");
+        }
+    }
+
+    /// <summary>Loads one entry into the editor.</summary>
+    public async Task LoadMemoryAsync(string name)
+    {
+        if (!TryMemorySession(out var sessionId))
+        {
+            SetMemoryStatus("先打开一个聊天会话，然后点刷新。");
+            return;
+        }
+
+        try
+        {
+            var result = await _core.RequestAsync(
+                "memory.read",
+                new { session_id = sessionId, name, scope = _memoryScope },
+                CancellationToken.None);
+            var content = result.TryGetProperty("content", out var contentValue)
+                ? contentValue.GetString() ?? string.Empty
+                : string.Empty;
+            _dispatch(() =>
+            {
+                MemoryName = name;
+                MemoryContent = content;
+                MemoryStatus = $"已载入 {name}";
+            });
+        }
+        catch (Exception error)
+        {
+            SetMemoryStatus($"无法读取 {name}：{error.Message}");
+        }
+    }
+
+    public async Task SaveMemoryAsync()
+    {
+        var name = MemoryName.Trim();
+        if (name.Length == 0)
+        {
+            SetMemoryStatus("先填写条目名称。");
+            return;
+        }
+
+        if (!TryMemorySession(out var sessionId))
+        {
+            SetMemoryStatus("先打开一个聊天会话，然后点刷新。");
+            return;
+        }
+
+        try
+        {
+            await _core.RequestAsync(
+                "memory.write",
+                new { session_id = sessionId, name, content = MemoryContent, scope = _memoryScope },
+                CancellationToken.None);
+            _dispatch(() => MemoryStatus = $"已保存 {name}");
+            await RefreshMemoryAsync();
+        }
+        catch (Exception error)
+        {
+            SetMemoryStatus($"无法保存：{error.Message}");
+        }
+    }
+
+    public async Task DeleteMemoryAsync()
+    {
+        var name = MemoryName.Trim();
+        if (name.Length == 0)
+        {
+            SetMemoryStatus("先选择或填写要删除的条目。");
+            return;
+        }
+
+        if (!TryMemorySession(out var sessionId))
+        {
+            SetMemoryStatus("先打开一个聊天会话，然后点刷新。");
+            return;
+        }
+
+        try
+        {
+            await _core.RequestAsync(
+                "memory.delete",
+                new { session_id = sessionId, name, scope = _memoryScope },
+                CancellationToken.None);
+            _dispatch(() =>
+            {
+                MemoryName = string.Empty;
+                MemoryContent = string.Empty;
+                MemoryStatus = $"已删除 {name}";
+            });
+            await RefreshMemoryAsync();
+        }
+        catch (Exception error)
+        {
+            SetMemoryStatus($"无法删除：{error.Message}");
+        }
+    }
+
+    public void StartNewMemory()
+    {
+        MemoryName = string.Empty;
+        MemoryContent = string.Empty;
+        MemoryStatus = "输入名称与内容后保存。";
+    }
+
+    private bool TryMemorySession(out string sessionId)
+    {
+        sessionId = _core.IsSessionOpen ? _core.SessionId : string.Empty;
+        return !string.IsNullOrWhiteSpace(sessionId);
+    }
+
+    private void SetMemoryStatus(string text) =>
+        _dispatch(() => MemoryStatus = text);
+
+    private static List<MemoryEntryRow> ParseMemoryEntries(JsonElement result)
+    {
+        var rows = new List<MemoryEntryRow>();
+        if (result.ValueKind != JsonValueKind.Object
+            || !result.TryGetProperty("entries", out var entries)
+            || entries.ValueKind != JsonValueKind.Array)
+        {
+            return rows;
+        }
+
+        foreach (var entry in entries.EnumerateArray())
+        {
+            var name = entry.TryGetProperty("name", out var nameValue)
+                ? nameValue.GetString() ?? string.Empty
+                : string.Empty;
+            if (name.Length == 0)
+            {
+                continue;
+            }
+
+            var size = entry.TryGetProperty("size_bytes", out var sizeValue)
+                       && sizeValue.ValueKind == JsonValueKind.Number
+                       && sizeValue.TryGetInt64(out var parsed)
+                ? $"{parsed:N0} B"
+                : "—";
+            rows.Add(new MemoryEntryRow(name, size));
+        }
+
+        return rows;
     }
 
     public void SetAutomationFilter(AutomationFilter filter)
@@ -2565,6 +3390,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(IsWorkMode));
         OnPropertyChanged(nameof(IsChatMode));
         OnPropertyChanged(nameof(ActiveModeLabel));
+        OnPropertyChanged(nameof(EmptyStateTitle));
         SaveState();
     }
 
@@ -2581,6 +3407,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _activeWorkspace.IsExpanded = true;
         _state.ActiveWorkspaceId = workspace.Id;
         OnPropertyChanged(nameof(WorkspaceName));
+        OnPropertyChanged(nameof(EmptyStateTitle));
         OnPropertyChanged(nameof(WorkspacePath));
 
         await CloseCoreSessionQuietlyAsync().ConfigureAwait(true);
@@ -2659,6 +3486,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 _activeWorkspace.IsExpanded = true;
                 _state.ActiveWorkspaceId = next.Id;
                 OnPropertyChanged(nameof(WorkspaceName));
+                OnPropertyChanged(nameof(EmptyStateTitle));
+        OnPropertyChanged(nameof(EmptyStateTitle));
                 OnPropertyChanged(nameof(WorkspacePath));
                 var recent = next.Sessions.FirstOrDefault();
                 if (recent is null)
@@ -2996,6 +3825,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
             if (workspace.Id == _activeWorkspace.Id)
             {
                 OnPropertyChanged(nameof(WorkspaceName));
+                OnPropertyChanged(nameof(EmptyStateTitle));
+        OnPropertyChanged(nameof(EmptyStateTitle));
             }
             CloseDialogs();
             SaveState();
@@ -3067,6 +3898,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IsRenameDialogOpen = false;
         IsDeleteDialogOpen = false;
         IsCreateProjectDialogOpen = false;
+        IsSettingsDetailOpen = false;
         DeletePrompt = string.Empty;
         CloseAutomationDialogs();
     }
@@ -3846,23 +4678,47 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public void RefreshPlugins()
     {
-        Plugins.Clear();
+        _allPlugins = [];
         try
         {
-            foreach (var plugin in _pluginCatalogService.Load())
-            {
-                Plugins.Add(new PluginItemViewModel(plugin));
-            }
-            PluginStatus = Plugins.Count == 0
-                ? "尚未发现本地插件。将插件目录放入上方路径后点击刷新。"
-                : $"已发现 {Plugins.Count} 个本地插件。";
+            _allPlugins = _pluginCatalogService.Load()
+                .Select(plugin => new PluginItemViewModel(plugin))
+                .ToList();
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
+            _allPlugins = [];
             PluginStatus = $"无法读取插件目录：{error.Message}";
+            ApplyPluginFilter(keepStatus: true);
+            return;
+        }
+        ApplyPluginFilter();
+    }
+
+    private void ApplyPluginFilter(bool keepStatus = false)
+    {
+        var query = _pluginSearch.Trim();
+        var matches = query.Length == 0
+            ? _allPlugins
+            : _allPlugins.Where(plugin =>
+                plugin.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
+                || plugin.Description.Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
+        Plugins.Clear();
+        foreach (var plugin in matches)
+        {
+            Plugins.Add(plugin);
+        }
+        if (!keepStatus)
+        {
+            PluginStatus = _allPlugins.Count == 0
+                ? "尚未发现本地插件。将插件目录放入上方路径后点击刷新。"
+                : query.Length == 0
+                    ? $"已发现 {_allPlugins.Count} 个本地插件。"
+                    : $"找到 {Plugins.Count} 个匹配插件。";
         }
         OnPropertyChanged(nameof(HasPlugins));
         OnPropertyChanged(nameof(ShowNoPlugins));
+        OnPropertyChanged(nameof(ShowNoPluginMatches));
         OnPropertyChanged(nameof(PluginDirectoryPath));
     }
 
@@ -3899,6 +4755,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _state.PinnedSort = string.Equals(_state.PinnedSort, "recent", StringComparison.OrdinalIgnoreCase)
             ? "recent"
             : "manual";
+        _state.NotificationFilter = _state.NotificationFilter is "priority" or "pinned" or "automations"
+            ? _state.NotificationFilter
+            : "priority";
+        _notificationFilter = _state.NotificationFilter;
         _state.Workspaces ??= [];
         _state.Automations ??= [];
 
@@ -4057,6 +4917,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         ClearAttachments();
         LoadMessages(session);
         OnPropertyChanged(nameof(WorkspaceName));
+        OnPropertyChanged(nameof(EmptyStateTitle));
         OnPropertyChanged(nameof(WorkspacePath));
         OnPropertyChanged(nameof(HeaderTitle));
         OnPropertyChanged(nameof(HasSessions));
@@ -4085,6 +4946,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Composer = string.Empty;
         ClearAttachments();
         OnPropertyChanged(nameof(WorkspaceName));
+        OnPropertyChanged(nameof(EmptyStateTitle));
         OnPropertyChanged(nameof(WorkspacePath));
         OnPropertyChanged(nameof(HeaderTitle));
     }
@@ -4392,3 +5254,18 @@ public sealed class NotificationItemViewModel
     public string RelativeLabel => Session.RelativeLabel;
     public string Preview => Session.State.Messages.LastOrDefault()?.Text ?? string.Empty;
 }
+
+/// <summary>One session row on the usage settings page.</summary>
+public sealed record UsageSessionRow(string Title, string Tokens, string Cost);
+
+/// <summary>One MCP tool row on the integration settings page.</summary>
+public sealed record McpToolRow(string Name, string Description);
+
+/// <summary>One memory entry on the memory settings page.</summary>
+public sealed record MemoryEntryRow(string Name, string SizeLabel);
+
+/// <summary>One label/value row on the config settings page.</summary>
+public sealed record ConfigValueRow(string Label, string Value);
+
+/// <summary>One skill row on the plugins page.</summary>
+public sealed record SkillRow(string Name, string Description);

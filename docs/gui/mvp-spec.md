@@ -8,7 +8,7 @@
 >
 > Shared client: `sdk/Kl.Client`
 >
-> Verification: GUI test project `91 passed / 0 failed`
+> Verification: GUI test project `103 passed / 0 failed`
 
 ## 1. Goal
 
@@ -130,12 +130,38 @@ so overlapping tools keep independent cards, output and status.
 
 ## 9. Settings, plugins and automation
 
-- General settings: permission mode through Core and content font size.
+- Layout follows Codex: settings column with grouped navigation, large page
+  title, then section headings over cards whose rows are split by hairlines.
+  Row controls sit on the right; the search box filters whole sections.
+- Pages mirror Codex Desktop (UI only for the new surfaces):
+  个人: 常规 / 通知 / 导入 / 个人资料 / 外观 / 账户 / 已归档的聊天 / 广告设置 /
+  家长控制 / 受信任联系人 / 语音 / 存储 / 配置 / 个性化 / 迷你界面和智能伙伴 /
+  键盘快捷键 / 使用情况和计费 / 数据管理 / 关于;
+  集成: 插件 / 密码 / 电脑操控 / 浏览器 / 云电脑;
+  编码: 钩子 / 连接 / 代码审查 / Git / 环境 / Worktrees.
+- General settings: permission mode through Core, applied on change with no save
+  button, plus work mode, session sort and pinned sort.
+- Notifications: the panel filter (优先事项 / 已置顶 / 定时任务) is persisted in
+  GUI state, and 全部标为已读 clears unread markers.
+- Appearance: content font size, sidebar width presets (238 / 300 / 360) and
+  sidebar grouping (by project or merged).
+- Archived chats: archived sessions with their updated time; rows reopen the
+  session (closing settings) and the action restores it to the sidebar.
+- Shortcuts: read-only table for Ctrl+N, Ctrl+Enter, Ctrl+F, Ctrl+, and Esc.
 - Model settings: choose the default model and write a provider API key through
   Core RPCs (`config.set_default_model`, `provider.set_api_key`); the key is
   never displayed again. Runtime/provider/model status stays read-only below.
-- Data settings: GUI state location and Core-managed history paths.
-- About: version, privacy and shortcuts.
+- Usage: completed turns add input/output tokens and cost to their session in
+  GUI state; the page totals them across sessions and lists per-session usage
+  (sessions that predate the change show nothing).
+- Integrations: `mcp.list` is read through a one-shot handshaken Core
+  connection, so MCP tools appear without an open chat session; the refresh
+  button repeats the probe.
+- Memory: lists, reads, writes and deletes Core memory entries
+  (`memory.list/read/write/delete`) for the open session, with a workspace/user
+  scope switch; edits go through Core so the agent sees them on its next turn.
+- Storage settings: GUI state location, local counts and adding a workspace.
+- About: version, privacy and the Core/GUI split.
 - Library: local prompt/note entries stored in GUI state, insertable into the
   composer. It is GUI-local by design; Core owns session data only.
 - Plugins: shared `~/.kl/plugins` catalog and explicit import/open-directory
@@ -153,12 +179,20 @@ so overlapping tools keep independent cards, output and status.
 | G5 Approval/cancel/error | Done |
 | G6 Settings/status | Done for current Core-backed scope |
 | G7 Ruler, Markdown code, drag/drop and previews | Done |
-| G8 Tests/local build | Done: 91 GUI tests pass, `bin/gui` build available |
+| G8 Tests/local build | Done: 103 GUI tests pass, `bin/gui` build available |
 | G9 Release archive and automatic reconnect UX | Done: auto reconnect with backoff, observer takeover, `--gui` release packaging on win-x64, win-arm64 and osx-arm64 |
 | G10 Parallel tools, model/key settings, library and motion | Done: per-`CallId` tool routing, Core-backed model/API-key form, local library page, activity chevron rotation, panel/menu/dialog fades, page fades, pulsing run state, sidebar section height animation |
 | G11 Composer `/` and `@` menus | Done: slash commands with Core actions, workspace file mentions with prefix ranking, keyboard and click selection |
 | G12 Palette file/text search | Done: live chat filtering, file-name matches, content matches grouped by file with line numbers, shared cached file index |
 | G13 Composer permission/model menus | Done: quick approval menu, reasoning-effort menu written through Core, effort shown in the chip |
+| G14 Search and drop polish | Done: live plugin search, settings card filter, palette hit highlighting, dropping files on the composer adds attachments |
+| G15 Codex-style settings | Done: grouped nav with 30 pages, sectioned hairline cards, inline row controls, section-filtered settings search, settings apply on change |
+| G16 Usage and MCP integration | Done: per-session token/cost persistence with totals page, one-shot `mcp.list` probe on the integration page |
+| G17 Memory editor | Done: workspace/user memory list, read, write, delete and new-entry flow through Core |
+| G18 Config, data management and skills | Done: redacted `config.get` rows with config-file open, state JSON export via save picker, skills tab backed by one-shot `skill.list`, Codex-style toggle for restoring the last session |
+| G19 Codex settings parity | Done: captures of every Codex settings page were used to rebuild the nav and all 30 panes (import, profile, account, ads, parental, trusted contacts, voice, storage, personalization, mini companions, shortcut editor, usage/plan, data management, plugins/MCP, passwords, computer use, browser, cloud PC, hooks, connections, code review, Git, environments, worktrees). New surfaces are UI-only; existing Core-backed controls stay wired |
+| G20 Settings interactions and motion | Done: segmented groups select, usage/plugins/connections/code-review tabs switch content, every inert button opens a shared detail sheet, chevron rows are clickable with hover feedback, appearance mode cards select, pane switches fade and slide with scroll reset, toggle thumbs animate, nav tightened to 32px rows |
+| G21 Settings usability | Done: the settings pane is remembered across launches and the active nav row scrolls into view; Ctrl+F focuses settings search, Esc clears the filter before closing; the detail sheet dismisses on backdrop click; profile stats and popular plugins use real workspace/session/plugin counts |
 
 ## 11. Verification
 

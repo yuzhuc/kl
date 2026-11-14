@@ -264,10 +264,38 @@ internal sealed class FakeCoreSessionService : ICoreSessionService
         return Task.FromResult(Snapshot);
     }
 
+    public string RequestJson { get; set; } = "{}";
+    public Dictionary<string, string> RequestResponses { get; } = [];
+    public string McpToolsJson { get; set; } = "{}";
+    public int McpListCalls { get; private set; }
+    public string ConfigJson { get; set; } = "{}";
+    public int ConfigCalls { get; private set; }
+    public string SkillsJson { get; set; } = "{}";
+    public List<string> SkillWorkspaces { get; } = [];
+
+    public Task<JsonElement> ListMcpToolsAsync(CancellationToken cancellationToken)
+    {
+        McpListCalls++;
+        return Task.FromResult(TestData.Json(McpToolsJson));
+    }
+
+    public Task<JsonElement> ReadConfigAsync(CancellationToken cancellationToken)
+    {
+        ConfigCalls++;
+        return Task.FromResult(TestData.Json(ConfigJson));
+    }
+
+    public Task<JsonElement> ListSkillsAsync(string workspace, CancellationToken cancellationToken)
+    {
+        SkillWorkspaces.Add(workspace);
+        return Task.FromResult(TestData.Json(SkillsJson));
+    }
+
     public Task<JsonElement> RequestAsync(string method, object? parameters, CancellationToken cancellationToken)
     {
         Requests.Add((method, parameters));
-        return Task.FromResult(TestData.Json("{}"));
+        var json = RequestResponses.TryGetValue(method, out var response) ? response : RequestJson;
+        return Task.FromResult(TestData.Json(json));
     }
 
     public Task<TurnOutcome> RunTurnAsync(string prompt, CancellationToken cancellationToken)

@@ -41,9 +41,6 @@ public sealed partial class MainWindowViewModel
     private string _approvalResource = string.Empty;
     private string _approvalReason = string.Empty;
     private string _approvalArgs = string.Empty;
-    private long _usageInputTokens;
-    private long _usageOutputTokens;
-    private double _usageCostUsd;
 
     public string CoreStatusText
     {
@@ -221,10 +218,14 @@ public sealed partial class MainWindowViewModel
         }
     }
 
-    public string UsageText => _usageInputTokens == 0 && _usageOutputTokens == 0
-        ? string.Empty
-        : $"tokens {_usageInputTokens}/{_usageOutputTokens}"
-          + (_usageCostUsd > 0 ? $" · ${_usageCostUsd:0.000000}" : string.Empty);
+    /// <summary>Usage of the active session, persisted on every completed turn.</summary>
+    public string UsageText => _activeSession switch
+    {
+        { InputTokens: 0, OutputTokens: 0 } => string.Empty,
+        { } session => $"tokens {session.InputTokens}/{session.OutputTokens}"
+                       + (session.CostUsd > 0 ? $" · ${session.CostUsd:0.000000}" : string.Empty),
+        _ => string.Empty
+    };
 
     private void OnCoreEventReceived(SessionEvent sessionEvent) =>
         _dispatch(() => ApplyCoreEvent(sessionEvent));
@@ -924,10 +925,13 @@ public sealed partial class MainWindowViewModel
                 Messages.Add(compacted);
                 break;
             case SessionEventKind.TurnCompleted:
-                _usageInputTokens += sessionEvent.InputTokens;
-                _usageOutputTokens += sessionEvent.OutputTokens;
-                _usageCostUsd += sessionEvent.CostUsd ?? 0;
-                OnPropertyChanged(nameof(UsageText));
+                if (_activeSession is { } usageSession)
+                {
+                    usageSession.InputTokens += sessionEvent.InputTokens;
+                    usageSession.OutputTokens += sessionEvent.OutputTokens;
+                    usageSession.CostUsd += sessionEvent.CostUsd ?? 0;
+                    OnPropertyChanged(nameof(UsageText));
+                }
                 FinishTurn(sessionEvent.Status == "cancelled" ? "已停止" : "完成");
                 break;
             case SessionEventKind.TurnFailed:

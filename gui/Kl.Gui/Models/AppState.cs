@@ -16,6 +16,9 @@ public sealed class AppState
     public bool IsSidebarGrouped { get; set; } = true;
     public string SessionSort { get; set; } = "updated";
     public string PinnedSort { get; set; } = "manual";
+    public string NotificationFilter { get; set; } = "priority";
+    public string LastSettingsPane { get; set; } = "General";
+    public bool RestoreLastSession { get; set; } = true;
     public string? ActiveWorkspaceId { get; set; }
     public string? ActiveSessionId { get; set; }
     public List<WorkspaceState> Workspaces { get; set; } = [];
@@ -56,6 +59,11 @@ public sealed class SessionState
 
     /// <summary>Manual order inside its project list after a drag.</summary>
     public int SortOrder { get; set; }
+
+    /// <summary>Usage accumulated from TurnCompleted events (0 for older sessions).</summary>
+    public long InputTokens { get; set; }
+    public long OutputTokens { get; set; }
+    public double CostUsd { get; set; }
     public List<StoredMessage> Messages { get; set; } = [];
 }
 

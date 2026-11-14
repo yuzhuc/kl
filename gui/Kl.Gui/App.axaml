@@ -5,10 +5,10 @@
 
     <Application.Resources>
         <!-- Codex-style palette -->
-        <SolidColorBrush x:Key="BgBase" Color="#0D0D0F" />
+        <SolidColorBrush x:Key="BgBase" Color="#0F0F11" />
         <SolidColorBrush x:Key="SidebarRailFill" Color="#0D0D0F" />
         <SolidColorBrush x:Key="SidebarFill" Color="#0F0F10" />
-        <SolidColorBrush x:Key="SidebarHoverFill" Color="#1D1D1F" />
+        <SolidColorBrush x:Key="SidebarHoverFill" Color="#1F1F20" />
         <SolidColorBrush x:Key="SidebarActiveFill" Color="#1D1D1F" />
         <SolidColorBrush x:Key="SidebarText" Color="#C3C4C6" />
         <SolidColorBrush x:Key="SidebarTextHover" Color="#E3E4E6" />
@@ -20,13 +20,13 @@
         <SolidColorBrush x:Key="ElevatedFill" Color="#141416" />
         <SolidColorBrush x:Key="ElevatedHover" Color="#1A1A1D" />
         <SolidColorBrush x:Key="ComposerFill" Color="#262729" />
-        <SolidColorBrush x:Key="Line" Color="#1E1E21" />
+        <SolidColorBrush x:Key="Line" Color="#131315" />
         <SolidColorBrush x:Key="SidebarDivider" Color="#1D1D1F" />
         <SolidColorBrush x:Key="LineStrong" Color="#2A2A2E" />
         <SolidColorBrush x:Key="TextPrimary" Color="#E3E4E6" />
-        <SolidColorBrush x:Key="TextSecondary" Color="#A0A1A3" />
-        <SolidColorBrush x:Key="TextTertiary" Color="#727275" />
-        <SolidColorBrush x:Key="TextCaption" Color="#6E6E70" />
+        <SolidColorBrush x:Key="TextSecondary" Color="#A2A3A6" />
+        <SolidColorBrush x:Key="TextTertiary" Color="#7C7D81" />
+        <SolidColorBrush x:Key="TextCaption" Color="#797A7E" />
         <SolidColorBrush x:Key="AccentBlue" Color="#4D9FFF" />
         <SolidColorBrush x:Key="UserBubbleFill" Color="#19191C" />
         <SolidColorBrush x:Key="HoverFill" Color="#17171A" />
@@ -41,7 +41,7 @@
         <SolidColorBrush x:Key="RailIconActive" Color="#E3E4E6" />
         <SolidColorBrush x:Key="RailActiveFill" Color="#1C1C1E" />
         <SolidColorBrush x:Key="TooltipFill" Color="#202022" />
-        <SolidColorBrush x:Key="TooltipText" Color="#C0C1C3" />
+        <SolidColorBrush x:Key="TooltipText" Color="#E3E4E6" />
         <SolidColorBrush x:Key="MoreMenuFill" Color="#1C1C1E" />
         <SolidColorBrush x:Key="MoreMenuHoverFill" Color="#2C2C2F" />
         <!-- Alpha-0 brushes with the hover RGB avoid a white flash when a
@@ -80,17 +80,19 @@
         <!-- Icons (stroke-friendly StreamGeometry) -->
         <StreamGeometry x:Key="PlusIcon">M12 5V19 M5 12H19</StreamGeometry>
         <StreamGeometry x:Key="EditIcon">M4 20L8.5 19L20 7.5L16.5 4L5 15.5Z M14.5 6L18 9.5</StreamGeometry>
+        <StreamGeometry x:Key="SquarePenIcon">M12 3H5A2 2 0 0 0 3 5V19A2 2 0 0 0 5 21H19A2 2 0 0 0 21 19V12 M18.375 2.625A2.121 2.121 0 1 1 21.375 5.625L12 15L8 16L9 12Z</StreamGeometry>
         <StreamGeometry x:Key="ChatIcon">M5 5H19V17H10L5 21V5Z M4 13 M20 13</StreamGeometry>
-        <StreamGeometry x:Key="RailChatIcon">M10 20V14H14V20H19V12H22L12 3L2 12H5V20Z</StreamGeometry>
+        <StreamGeometry x:Key="RailChatIcon">M12 3.0 L22.8 10.8 V19.8 A2.4 2.4 0 0 1 20.4 22.2 H3.6 A2.4 2.4 0 0 1 1.2 19.8 V10.8 Z M14.7 22.2 V16.4 A1 1 0 0 0 13.7 15.4 H10.3 A1 1 0 0 0 9.3 16.4 V22.2 Z</StreamGeometry>
         <StreamGeometry x:Key="PluginIcon">M4 4H10V10H4Z M14 4H20V10H14Z M9 14H15V20H9Z</StreamGeometry>
         <StreamGeometry x:Key="AutomationIcon">M20 8A9 9 0 1 0 21 15 M20 3V8H15</StreamGeometry>
-        <StreamGeometry x:Key="RailAutomationIcon">M12 1.33A10.67 10.67 0 1 0 12 22.67A10.67 10.67 0 1 0 12 1.33 M12 7.33V12 M12 12L9.33 13.33</StreamGeometry>
-        <StreamGeometry x:Key="RailLibraryIcon">M5 6.5A1.5 1.5 0 0 1 6.5 5H8A1.5 1.5 0 0 1 9.5 6.5V19H5Z M11 5.5A1.5 1.5 0 0 1 12.5 4H14A1.5 1.5 0 0 1 15.5 5.5V19H11Z M15.9 6.9L18.3 6.1L20.2 18.1L17.8 18.9Z</StreamGeometry>
-        <StreamGeometry x:Key="RailPluginIcon">M12 1.33A10.67 10.67 0 1 0 12 22.67A10.67 10.67 0 1 0 12 1.33 M12 13.2A3.2 3.2 0 1 0 12 6.8A3.2 3.2 0 1 0 12 13.2 M15.2 8.4V12.4A2.4 2.4 0 0 0 19.4 13.6</StreamGeometry>
+        <StreamGeometry x:Key="RailAutomationIcon">M12 1.33A10.67 10.67 0 1 0 12 22.67A10.67 10.67 0 1 0 12 1.33 M12 6V12 M12 12L7 16</StreamGeometry>
+        <StreamGeometry x:Key="RailLibraryIcon">M3 3.6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M9 1.6v18 M15 1.6v18</StreamGeometry>
+        <StreamGeometry x:Key="RailProjectsIcon">M11 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z M3 10h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2z</StreamGeometry>
+        <StreamGeometry x:Key="RailPluginIcon">M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0-8 M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8</StreamGeometry>
         <!-- filled variants for the active rail state -->
         <StreamGeometry x:Key="RailAutomationSolid">M12 1.33A10.67 10.67 0 1 0 12 22.67A10.67 10.67 0 1 0 12 1.33Z</StreamGeometry>
         <StreamGeometry x:Key="RailAutomationHands">M12 7.33V12 M12 12L9.33 13.33</StreamGeometry>
-        <StreamGeometry x:Key="RailLibrarySolid">M5 6.5A1.5 1.5 0 0 1 6.5 5H8A1.5 1.5 0 0 1 9.5 6.5V19H5Z M11 5.5A1.5 1.5 0 0 1 12.5 4H14A1.5 1.5 0 0 1 15.5 5.5V19H11Z M15.9 6.9L18.3 6.1L20.2 18.1L17.8 18.9Z</StreamGeometry>
+        <StreamGeometry x:Key="RailLibrarySolid">M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M8.25 3h1.5v18h-1.5z M14.25 3h1.5v18h-1.5z</StreamGeometry>
         <StreamGeometry x:Key="RailPluginSolid">M12 1.33A10.67 10.67 0 1 0 12 22.67A10.67 10.67 0 1 0 12 1.33Z</StreamGeometry>
         <StreamGeometry x:Key="RailPluginInner">M12 13.2A3.2 3.2 0 1 0 12 6.8A3.2 3.2 0 1 0 12 13.2 M15.2 8.4V12.4A2.4 2.4 0 0 0 19.4 13.6</StreamGeometry>
         <StreamGeometry x:Key="FolderIcon">M3 5H9L11 7H21V19H3Z M12 3 M12 21</StreamGeometry>
@@ -98,18 +100,22 @@
         <StreamGeometry x:Key="SearchIcon">M10.5 4A6.5 6.5 0 1 0 10.5 17A6.5 6.5 0 1 0 10.5 4 M15.5 15.5L21 21</StreamGeometry>
         <!-- Move-only points pad the bounds to a square; Stretch="Uniform" centres
              the scaled geometry, so wide glyphs stay vertically centred in their box. -->
+        <StreamGeometry x:Key="MoreDotsIcon">M3.45 12A0.55 0.55 0 1 0 4.55 12A0.55 0.55 0 1 0 3.45 12 M11.45 12A0.55 0.55 0 1 0 12.55 12A0.55 0.55 0 1 0 11.45 12 M19.45 12A0.55 0.55 0 1 0 20.55 12A0.55 0.55 0 1 0 19.45 12 M3.45 3.45 M20.55 20.55</StreamGeometry>
         <StreamGeometry x:Key="MoreIcon">M5 12A2.2 2.2 0 1 0 9.4 12A2.2 2.2 0 1 0 5 12 M10 12A2.2 2.2 0 1 0 14.4 12A2.2 2.2 0 1 0 10 12 M15 12A2.2 2.2 0 1 0 19.4 12A2.2 2.2 0 1 0 15 12 M12 4.8 M12 19.2</StreamGeometry>
         <StreamGeometry x:Key="PanelIcon">M4 4H20V20H4Z M9 4V20</StreamGeometry>
-        <StreamGeometry x:Key="QueueIcon">M3.6 6.4A1.35 1.35 0 1 0 3.61 6.4 M8.2 6.4H21 M3.6 12.8A1.35 1.35 0 1 0 3.61 12.8 M8.2 12.8H21</StreamGeometry>
-        <StreamGeometry x:Key="ConversationIcon">M4 5H20V18H11L6 22V18H4Z M4 9H20</StreamGeometry>
-        <StreamGeometry x:Key="ShieldIcon">M12 3L20 6V12C20 16.4 16.6 20 12 21C7.4 20 4 16.4 4 12V6Z</StreamGeometry>
+        <StreamGeometry x:Key="QueueIcon">M2.57 6.5A3.33 3.33 0 1 1 9.23 6.5A3.33 3.33 0 1 1 2.57 6.5 M11.6 6.5H21.4 M2.57 17.5A3.33 3.33 0 1 1 9.23 17.5A3.33 3.33 0 1 1 2.57 17.5 M11.6 17.5H21.4 M2 2 M22 22</StreamGeometry>
+        <StreamGeometry x:Key="ConversationIcon">M4 5H20V18H11L6 22V18H4Z M4 9H20 M3.5 5 M20.5 22</StreamGeometry>
+        <StreamGeometry x:Key="ShieldIcon">M12 3L20 6V12C20 16.4 16.6 20 12 21C7.4 20 4 16.4 4 12V6Z M3 3 M21 21</StreamGeometry>
         <StreamGeometry x:Key="AlertIcon">M6 12A6 6 0 1 0 18 12A6 6 0 1 0 6 12 M12 8V12.4 M12 15.5V15.7</StreamGeometry>
-        <StreamGeometry x:Key="MicIcon">M12 4A3 3 0 0 0 9 7V12A3 3 0 0 0 15 12V7A3 3 0 0 0 12 4Z M6 11V12A6 6 0 0 0 18 12V11 M12 18V21</StreamGeometry>
+        <StreamGeometry x:Key="MicIcon">M12 4A3 3 0 0 0 9 7V12A3 3 0 0 0 15 12V7A3 3 0 0 0 12 4Z M6 11V12A6 6 0 0 0 18 12V11 M12 18V21 M3.5 4 M20.5 21</StreamGeometry>
+        <StreamGeometry x:Key="ArrowLeftIcon">M19 12H5 M12 19L5 12L12 5</StreamGeometry>
+        <StreamGeometry x:Key="ArrowRightIcon">M5 12H19 M12 5L19 12L12 19</StreamGeometry>
+        <StreamGeometry x:Key="AnchorIcon">M12 21V8 M12 2A3 3 0 1 0 12 8A3 3 0 1 0 12 2 M5 12H2A10 10 0 0 0 22 12H19</StreamGeometry>
         <StreamGeometry x:Key="RingIcon">M12 6A6 6 0 1 0 18 12A6 6 0 0 0 12 6Z</StreamGeometry>
         <StreamGeometry x:Key="SortIcon">M7 4V20 M7 4L4 7 M7 4L10 7 M17 20V4 M17 20L14 17 M17 20L20 17</StreamGeometry>
         <StreamGeometry x:Key="ListIcon">M4 6H7 M10 6H20 M4 12H7 M10 12H20 M4 18H7 M10 18H20 M12 4 M12 20</StreamGeometry>
-        <StreamGeometry x:Key="MoonIcon">M15 3A9 9 0 1 0 21 16A7 7 0 0 1 15 3</StreamGeometry>
-        <StreamGeometry x:Key="ImageIcon">M4 5H20V19H4Z M4 16L9 10L13 14L16 11L20 14 M8.5 9A1.2 1.2 0 1 0 8.51 9</StreamGeometry>
+        <StreamGeometry x:Key="MoonIcon">M15 3A9 9 0 1 0 21 16A7 7 0 0 1 15 3 M3.52 2.79 M21.52 20.79</StreamGeometry>
+        <StreamGeometry x:Key="ImageIcon">M4 5H20V19H4Z M4 16L9 10L13 14L16 11L20 14 M8.5 9A1.2 1.2 0 1 0 8.51 9 M4 4 M20 20</StreamGeometry>
         <StreamGeometry x:Key="SettingsIcon">M12 2L14 4L17 3L18 6L21 7L20 10L22 12L20 14L21 17L18 18L17 21L14 20L12 22L10 20L7 21L6 18L3 17L4 14L2 12L4 10L3 7L6 6L7 3L10 4Z M12 8A4 4 0 1 0 12 16A4 4 0 1 0 12 8</StreamGeometry>
         <StreamGeometry x:Key="ChevronDownIcon">M7 9L12 14L17 9 M12 6.5 M12 16.5</StreamGeometry>
         <StreamGeometry x:Key="CheckIcon">M5 12.5L10 17.5L19 7 M12 5.25 M12 19.25</StreamGeometry>
@@ -121,22 +127,36 @@
         <StreamGeometry x:Key="SendIcon">M12 19V5 M6 11L12 5L18 11 M5 12 M19 12</StreamGeometry>
         <StreamGeometry x:Key="ThoughtIcon">M12 3L13.4 8.6L19 10L13.4 11.4L12 17L10.6 11.4L5 10L10.6 8.6Z</StreamGeometry>
         <StreamGeometry x:Key="SparkIcon">M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5Z</StreamGeometry>
+        <StreamGeometry x:Key="CodexCloudIcon">M20.0,1.0 L22.0,1.0 L25.4,1.8 L29.2,4.4 L31.4,4.1 L35.3,4.4 L38.2,5.6 L40.0,6.9 L41.7,8.8 L43.3,11.7 L43.9,14.7 L43.6,18.8 L45.6,21.5 L46.7,24.3 L47.0,26.8 L46.7,29.9 L44.6,34.1 L42.2,36.5 L38.5,38.2 L36.3,42.4 L34.1,44.6 L29.9,46.7 L27.1,47.0 L24.3,46.7 L21.5,45.6 L18.8,43.6 L13.6,43.8 L11.4,43.1 L8.6,41.6 L6.4,39.4 L4.7,36.3 L4.1,33.1 L4.4,29.2 L2.9,27.3 L1.3,23.7 L1.0,21.2 L1.3,18.1 L3.4,13.9 L6.3,11.2 L9.5,9.8 L11.2,6.3 L13.9,3.4 L17.0,1.7 L19.8,1.2 Z</StreamGeometry>
+        <StreamGeometry x:Key="CodexPromptIcon">M13.5,17.5 L18,24 L13.5,30.5 M24.5,30.5 L35,30.5 M13.5 13.25 M35 34.75</StreamGeometry>
+        <StreamGeometry x:Key="ComposeIcon">M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .505-.853z</StreamGeometry>
         <StreamGeometry x:Key="ToolIcon">M4 5H20V19H4Z M7 9L10 12L7 15 M12 15H17 M12 4 M12 20</StreamGeometry>
         <StreamGeometry x:Key="StopIcon">M7 7H17V17H7Z</StreamGeometry>
+        <StreamGeometry x:Key="MonitorIcon">M4 3.5H20A1.5 1.5 0 0 1 21.5 5V15.5A1.5 1.5 0 0 1 20 17H4A1.5 1.5 0 0 1 2.5 15.5V5A1.5 1.5 0 0 1 4 3.5Z M2 20.5H22 M12 17V20.5 M2 2 M22 22</StreamGeometry>
         <StreamGeometry x:Key="ClockIcon">M12 3A9 9 0 1 0 12 21A9 9 0 1 0 12 3 M12 7V12L15 14</StreamGeometry>
         <StreamGeometry x:Key="WarningIcon">M12 3L22 20H2Z M12 9V14 M12 17V17.2 M12 1.5 M12 21.5</StreamGeometry>
         <StreamGeometry x:Key="CopyIcon">M8 8H20V20H8Z M4 16V4H16</StreamGeometry>
-        <StreamGeometry x:Key="CodeIcon">M9 6L3 12L9 18 M15 6L21 12L15 18</StreamGeometry>
+        <StreamGeometry x:Key="DownloadIcon">M12 4V15 M7 10L12 15L17 10 M5 19H19 M4.5 4 M19.5 19</StreamGeometry>
+        <StreamGeometry x:Key="PersonIcon">M12 3.2A8.8 8.8 0 1 0 12 20.8A8.8 8.8 0 1 0 12 3.2 M12 8A2.7 2.7 0 1 0 12 13.4A2.7 2.7 0 1 0 12 8 M6.6 18.6C7.6 16.3 9.6 15 12 15C14.4 15 16.4 16.3 17.4 18.6</StreamGeometry>
+        <StreamGeometry x:Key="SunIcon">M12 8.2A3.8 3.8 0 1 0 12 15.8A3.8 3.8 0 1 0 12 8.2 M12 2.2V4.2 M12 19.8V21.8 M2.2 12H4.2 M19.8 12H21.8 M5.1 5.1L6.5 6.5 M17.5 17.5L18.9 18.9 M18.9 5.1L17.5 6.5 M6.5 17.5L5.1 18.9</StreamGeometry>
+        <StreamGeometry x:Key="CircleIcon">M12 4A8 8 0 1 0 12 20A8 8 0 1 0 12 4</StreamGeometry>
+        <StreamGeometry x:Key="SmileyIcon">M12 4A8 8 0 1 0 12 20A8 8 0 1 0 12 4 M9.3 10V10.2 M14.7 10V10.2 M8.8 13.5C9.6 15 10.7 15.7 12 15.7C13.3 15.7 14.4 15 15.2 13.5</StreamGeometry>
+        <StreamGeometry x:Key="RobotIcon">M12 4A8 8 0 1 0 12 20A8 8 0 1 0 12 4 M10 10V12 M14 10V12</StreamGeometry>
+        <StreamGeometry x:Key="KeyboardIcon">M5 6H19V18H5Z M8 12H16 M12 9V15 M5 5 M19 19</StreamGeometry>
+        <StreamGeometry x:Key="GaugeIcon">M12 4A8 8 0 1 0 12 20A8 8 0 1 0 12 4 M8.5 12.2L11 14.6L15.6 9.6</StreamGeometry>
+        <StreamGeometry x:Key="PowerIcon">M12 4A8 8 0 1 0 12 20A8 8 0 1 0 12 4 M12 8.5V12 M12 14.5V14.7</StreamGeometry>
+        <StreamGeometry x:Key="ArrowUpRightIcon">M7 17L17 7 M9 7H17V15</StreamGeometry>
+        <StreamGeometry x:Key="CodeIcon">M9 6L3 12L9 18 M15 6L21 12L15 18 M3 3 M21 21</StreamGeometry>
         <StreamGeometry x:Key="WrapIcon">M4 6H20 M4 12H15L18 15 M4 18H20 M18 15H14 M12 4 M12 20</StreamGeometry>
         <StreamGeometry x:Key="TrashIcon">M4 7H20 M9 4H15 M7 7L8 21H16L17 7 M10 11V17 M14 11V17 M3.5 12.5 M20.5 12.5</StreamGeometry>
         <StreamGeometry x:Key="BellIcon">M12 3A5 5 0 0 0 7 8V12L5 15H19L17 12V8A5 5 0 0 0 12 3Z M10 18A2 2 0 0 0 14 18 M3.5 11.5 M20.5 11.5</StreamGeometry>
         <StreamGeometry x:Key="MinimizeIcon">M5 12H19 M12 5 M12 19</StreamGeometry>
         <StreamGeometry x:Key="MaximizeIcon">M5 5H19V19H5Z</StreamGeometry>
         <StreamGeometry x:Key="CloseIcon">M6 6L18 18 M18 6L6 18</StreamGeometry>
-        <StreamGeometry x:Key="RefreshIcon">M19 12A7 7 0 1 1 16.5 6.5 M19 4V9H14</StreamGeometry>
-        <StreamGeometry x:Key="LogoutIcon">M9 4H5V20H9 M14 8L18 12L14 16 M18 12H9</StreamGeometry>
+        <StreamGeometry x:Key="RefreshIcon">M19 12A7 7 0 1 1 16.5 6.5 M19 4V9H14 M4.57 4 M19.43 18.86</StreamGeometry>
+        <StreamGeometry x:Key="LogoutIcon">M9 4H5V20H9 M14 8L18 12L14 16 M18 12H9 M3.5 4 M19.5 20</StreamGeometry>
         <StreamGeometry x:Key="HelpIcon">M12 3A9 9 0 1 0 12 21A9 9 0 1 0 12 3 M9.5 9.5A2.5 2.5 0 1 1 12 12V13.5 M12 16.5V16.8</StreamGeometry>
-        <StreamGeometry x:Key="PinIcon">M16 9V4H17C17.55 4 18 3.55 18 3H6C6 3.55 6.45 4 7 4H8V9C8 10.66 6.66 12 5 12V14H11V21H13V14H19V12C17.34 12 16 10.66 16 9Z M3 12 M21 12</StreamGeometry>
+        <StreamGeometry x:Key="PinIcon">M12 17V22 M9 10.76A2 2 0 0 1 7.89 12.55L6.11 13.45A2 2 0 0 0 5 15.24V16A1 1 0 0 0 6 17H18A1 1 0 0 0 19 16V15.24A2 2 0 0 0 17.89 13.45L16.11 12.55A2 2 0 0 1 15 10.76V7A1 1 0 0 1 16 6A2 2 0 0 0 16 2H8A2 2 0 0 0 8 6A1 1 0 0 1 9 7Z M2 2 M22 22</StreamGeometry>
         <StreamGeometry x:Key="ArchiveIcon">M4 5H20V9H4Z M6 9V19H18V9 M10 13H14 M12 4 M12 20</StreamGeometry>
     </Application.Resources>
 
@@ -146,9 +166,9 @@
         <Style Selector="ToolTip">
             <Setter Property="Background" Value="{DynamicResource TooltipFill}" />
             <Setter Property="BorderBrush" Value="#2A2A2C" />
-            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="8" />
-            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="Padding" Value="12,5" />
             <Setter Property="Foreground" Value="{DynamicResource TooltipText}" />
             <Setter Property="FontSize" Value="13.5" />
         </Style>
@@ -165,7 +185,7 @@
 
         <!-- Title bar -->
         <Style Selector="Button.titlebar-icon">
-            <Setter Property="Width" Value="28" />
+            <Setter Property="Width" Value="32" />
             <Setter Property="Height" Value="28" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="CornerRadius" Value="6" />
@@ -189,12 +209,12 @@
 
         <Style Selector="Button.titlebar-menu">
             <Setter Property="Height" Value="28" />
-            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="Padding" Value="12,4" />
             <Setter Property="CornerRadius" Value="6" />
             <Setter Property="Background" Value="#001A1A1D" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
-            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontSize" Value="14" />
         </Style>
         <Style Selector="Button.titlebar-menu:pointerover">
             <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
@@ -396,8 +416,8 @@
 
         <!-- Codex-style row hover actions (pin / archive) -->
         <Style Selector="Button.row-action">
-            <Setter Property="Width" Value="22" />
-            <Setter Property="Height" Value="22" />
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="CornerRadius" Value="6" />
             <Setter Property="Background" Value="#001E1E1F" />
@@ -413,7 +433,7 @@
             <Setter Property="Opacity" Value="1" />
         </Style>
         <Style Selector="Button.row-action:pointerover">
-            <Setter Property="Background" Value="{DynamicResource SidebarIconButtonHover}" />
+            <Setter Property="Background" Value="Transparent" />
         </Style>
         <Style Selector="Button.row-action Path">
             <Setter Property="Stroke" Value="{DynamicResource SidebarLabel}" />
@@ -428,7 +448,7 @@
             </Setter>
         </Style>
         <Style Selector="Button.row-action:pointerover Path">
-            <Setter Property="Stroke" Value="{DynamicResource SidebarTextHover}" />
+            <Setter Property="Stroke" Value="{DynamicResource SidebarText}" />
         </Style>
         <Style Selector="Button.row-action.pinned Path">
             <Setter Property="Stroke" Value="{DynamicResource SidebarTextHover}" />
@@ -544,9 +564,6 @@
             <Setter Property="Stroke" Value="{DynamicResource SidebarTextHover}" />
         </Style>
 
-        <Style Selector="Button.session-row.nested">
-            <Setter Property="Padding" Value="16,0,6,0" />
-        </Style>
         <Style Selector="Button.session-row">
             <Setter Property="Height" Value="30" />
             <Setter Property="Padding" Value="8,0,6,0" />
@@ -577,6 +594,10 @@
         </Style>
         <Style Selector="Button.session-row.active TextBlock">
             <Setter Property="Foreground" Value="{DynamicResource SidebarText}" />
+        </Style>
+
+        <Style Selector="Button.session-row.nested">
+            <Setter Property="Padding" Value="32,0,6,0" />
         </Style>
 
         <!-- Recent section chevron: rotates while the section collapses -->
@@ -612,6 +633,44 @@
         <Style Selector="Button.nav.active TextBlock">
             <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         </Style>
+        <Style Selector="Border.sidebar-resize Border.resize-line">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border.sidebar-resize:pointerover Border.resize-line">
+            <Setter Property="Background" Value="#33FFFFFF" />
+        </Style>
+
+        <Style Selector="Button.nav.settings-nav">
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Foreground" Value="#C6C7C9" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+        <Style Selector="Button.nav.settings-nav:pointerover">
+            <Setter Property="Background" Value="#1A1A1C" />
+        </Style>
+        <Style Selector="Button.nav.settings-nav.active">
+            <Setter Property="Background" Value="#232326" />
+            <Setter Property="Foreground" Value="#F0F1F3" />
+        </Style>
+        <Style Selector="Button.nav.settings-nav Path">
+            <Setter Property="Stroke" Value="#B0B1B3" />
+            <Setter Property="Fill" Value="Transparent" />
+            <Setter Property="StrokeThickness" Value="1.25" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+        </Style>
+        <Style Selector="Button.nav.settings-nav.active Path">
+            <Setter Property="Stroke" Value="#E3E4E6" />
+        </Style>
+
         <Style Selector="Button.nav.active Path">
             <Setter Property="Stroke" Value="{DynamicResource TextSecondary}" />
         </Style>
@@ -731,6 +790,22 @@
             <Setter Property="Opacity" Value="0.45" />
         </Style>
 
+        <Style Selector="Button.settings-button">
+            <Setter Property="MinHeight" Value="28" />
+            <Setter Property="Padding" Value="9,5" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="#232327" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="FontSize" Value="12.5" />
+        </Style>
+        <Style Selector="Button.settings-button:pointerover">
+            <Setter Property="Background" Value="#2C2C31" />
+        </Style>
+        <Style Selector="Button.settings-button:disabled">
+            <Setter Property="Opacity" Value="0.45" />
+        </Style>
+
         <Style Selector="Button.subtle">
             <Setter Property="MinHeight" Value="28" />
             <Setter Property="Padding" Value="10,4" />
@@ -759,10 +834,10 @@
         </Style>
 
         <Style Selector="Button.send">
-            <Setter Property="Width" Value="34" />
-            <Setter Property="Height" Value="34" />
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
             <Setter Property="Padding" Value="0" />
-            <Setter Property="CornerRadius" Value="17" />
+            <Setter Property="CornerRadius" Value="14" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Background" Value="{DynamicResource TextPrimary}" />
         </Style>
@@ -777,11 +852,11 @@
             <Setter Property="Background" Value="#FFFFFF" />
         </Style>
         <Style Selector="Button.send:disabled">
-        <Setter Property="Background" Value="#8A8B8D" />
+        <Setter Property="Background" Value="#858587" />
         <Setter Property="Opacity" Value="1" />
     </Style>
     <Style Selector="Button.send:disabled Path">
-        <Setter Property="Stroke" Value="#2E2E30" />
+        <Setter Property="Stroke" Value="#232325" />
     </Style>
 
         <Style Selector="Button.stop">
@@ -807,7 +882,7 @@
             <Setter Property="Padding" Value="0" />
             <Setter Property="CornerRadius" Value="14" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Background" Value="#303033" />
+            <Setter Property="Background" Value="Transparent" />
         </Style>
         <Style Selector="Button.attach Path">
             <Setter Property="Stroke" Value="{DynamicResource TextPrimary}" />
@@ -817,7 +892,7 @@
             <Setter Property="Fill" Value="Transparent" />
         </Style>
         <Style Selector="Button.attach:pointerover">
-            <Setter Property="Background" Value="#3A3A3E" />
+            <Setter Property="Background" Value="#2A2A2C" />
         </Style>
 
         <Style Selector="StackPanel.chat-user-actions">
@@ -1085,16 +1160,22 @@
         <Style Selector="ScrollBar:vertical">
             <Setter Property="Width" Value="6" />
             <Setter Property="MinWidth" Value="6" />
-            <Setter Property="Margin" Value="0,0,2,0" />
-            <Setter Property="Background" Value="#1F1F20" />
+        </Style>
+        <Style Selector="ScrollBar:vertical /template/ Rectangle#TrackRect">
+            <Setter Property="Fill" Value="Transparent" />
         </Style>
         <Style Selector="ScrollBar:vertical /template/ Thumb">
-            <Setter Property="Background" Value="#2D2D2E" />
+            <Setter Property="Background" Value="#202021" />
             <Setter Property="CornerRadius" Value="3" />
             <Setter Property="MinHeight" Value="24" />
         </Style>
+        <!-- Codex brightens the slider when the scrolling surface is hovered, not
+             just the 6px bar itself. -->
+        <Style Selector="ScrollViewer:pointerover /template/ ScrollBar:vertical /template/ Thumb">
+            <Setter Property="Background" Value="#2E2E2F" />
+        </Style>
         <Style Selector="ScrollBar:vertical:pointerover /template/ Thumb">
-            <Setter Property="Background" Value="#3A3A3D" />
+            <Setter Property="Background" Value="#2E2E2F" />
         </Style>
         <Style Selector="ScrollBar:vertical /template/ RepeatButton">
             <Setter Property="Height" Value="0" />
@@ -1125,7 +1206,7 @@
         <Style Selector="TextBox.composer">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="Padding" Value="4,2" />
+        <Setter Property="Padding" Value="6,2" />
         <Setter Property="CornerRadius" Value="0" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         <Setter Property="PlaceholderForeground" Value="#7E7F82" />
@@ -1143,7 +1224,7 @@
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="MinHeight" Value="24" />
-            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="FontSize" Value="13.5" />
             <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
             <Setter Property="PlaceholderForeground" Value="#727275" />
             <Setter Property="CaretBrush" Value="{DynamicResource AccentBlue}" />
@@ -1227,6 +1308,74 @@
             <Setter Property="Padding" Value="16,14" />
         </Style>
 
+        <!-- Codex-style settings: raised cards, rows split by hairlines. -->
+        <Style Selector="Border.settings-card">
+            <Setter Property="Background" Value="#17171A" />
+            <Setter Property="BorderBrush" Value="#2A2A2D" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+        </Style>
+        <Style Selector="Border.settings-divider">
+            <Setter Property="Height" Value="1" />
+            <Setter Property="Background" Value="#26262A" />
+            <Setter Property="Margin" Value="16,0" />
+        </Style>
+        <Style Selector="TextBlock.settings-heading">
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="LetterSpacing" Value="0.1" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+        <Style Selector="TextBlock.settings-title">
+            <Setter Property="FontSize" Value="13.5" />
+            <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+        <Style Selector="TextBlock.settings-desc">
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="LineHeight" Value="19" />
+        </Style>
+        <Style Selector="TextBlock.settings-value">
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style Selector="TextBlock.settings-key">
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextCaption}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBox.settings-input">
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="Background" Value="#202024" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+        <Style Selector="ComboBox.settings-select">
+            <Setter Property="MinHeight" Value="28" />
+            <Setter Property="MinWidth" Value="115" />
+            <Setter Property="Padding" Value="14,2,2,2" />
+            <Setter Property="Background" Value="#202024" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+            <Setter Property="HorizontalAlignment" Value="Right" />
+        </Style>
+
+        <Style Selector="ComboBox.flat-select">
+            <Setter Property="MinHeight" Value="26" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Padding" Value="6,2,2,2" />
+            <Setter Property="Background" Value="#0F0F11" />
+        </Style>
+
         <!-- ============ Motion: Codex-style fast entrances, no layout jumps ============ -->
 
         <!-- Colour transitions for controls whose hover/pressed states used to snap. -->
@@ -1301,10 +1450,10 @@
 
         <!-- Composer permission chip + its Codex-style popover rows. -->
         <Style Selector="Button.permission-chip">
-            <Setter Property="Height" Value="30" />
-            <Setter Property="Padding" Value="12,0" />
-            <Setter Property="CornerRadius" Value="15" />
-            <Setter Property="Background" Value="#2A2A2C" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Padding" Value="8,0" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Background" Value="#001A1A1D" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Transitions">
                 <Transitions>
@@ -1393,6 +1542,78 @@
         <Style Selector="Border.overlay-card.open">
             <Setter Property="Opacity" Value="1" />
             <Setter Property="RenderTransform" Value="none" />
+        </Style>
+
+        <!-- Chevron rows give hover feedback and open the detail sheet. -->
+        <Style Selector="Grid.settings-link-row">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Grid.settings-link-row:pointerover">
+            <Setter Property="Background" Value="#1D1D20" />
+        </Style>
+
+        <!-- Settings content fades and slides on pane changes. -->
+        <Style Selector="StackPanel#SettingsColumn">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.14" Easing="CubicEaseOut" />
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.14"
+                                                   Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="StackPanel.settings-tab-page">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.12" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+
+        <!-- Codex-style switch: 40x24 track with an 18px thumb. -->
+        <Style Selector="ToggleSwitch.setting">
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="20" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Grid Width="32" Height="20">
+                        <Border Name="Track" CornerRadius="10" Background="#3C3C41" />
+                        <Panel Name="PART_MovingKnobs">
+                            <Ellipse Name="Thumb" Width="12" Height="12" Fill="#B6B7BA"
+                                     HorizontalAlignment="Left" VerticalAlignment="Center"
+                                     Margin="4,0,0,0" />
+                        </Panel>
+                    </Grid>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="ToggleSwitch.setting /template/ Border#Track">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="ToggleSwitch.setting:checked /template/ Border#Track">
+            <Setter Property="Background" Value="#4B52A5" />
+        </Style>
+        <Style Selector="ToggleSwitch.setting:checked /template/ Ellipse#Thumb">
+            <Setter Property="Fill" Value="#DCDDDF" />
+        </Style>
+        <Style Selector="ToggleSwitch.setting /template/ Ellipse#Thumb">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <ThicknessTransition Property="Margin" Duration="0:0:0.14" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="ToggleSwitch.setting:checked /template/ Ellipse#Thumb">
+            <Setter Property="Margin" Value="16,0,0,0" />
         </Style>
     </Application.Styles>
 </Application>

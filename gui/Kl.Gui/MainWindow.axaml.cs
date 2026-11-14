@@ -9,8 +9,10 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
+using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Media.Transformation;
 using Avalonia.Platform.Storage;
 using Avalonia.Styling;
@@ -28,7 +30,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _moreMenuOpenTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
     private readonly DispatcherTimer _moreMenuCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
     private readonly DispatcherTimer _previewCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(140) };
-    private readonly DispatcherTimer _previewShowTimer = new() { Interval = TimeSpan.FromMilliseconds(90) };
+    private readonly DispatcherTimer _previewShowTimer = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private readonly DispatcherTimer _sectionSubmenuCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
     private SessionItemViewModel? _pinnedDragSession;
     private SessionItemViewModel? _nestedDragSession;
@@ -56,6 +58,9 @@ public partial class MainWindow : Window
         // badly on near-black surfaces.
         TextOptions.SetTextRenderingMode(this, TextRenderingMode.Antialias);
         DataContext = _viewModel;
+        Opened += (_, _) => WireSettingsChevrons();
+        SettingsNavScroller.SizeChanged += (_, _) => FitSettingsNavWidth();
+        _viewModel.PropertyChanged += OnSettingsPaneChanged;
         // Popup contents live in their own visual tree; give the More menu the
         // view-model explicitly so the pin bindings (Classes.pinned) resolve.
         MoreMenuCard.DataContext = _viewModel;
@@ -68,6 +73,11 @@ public partial class MainWindow : Window
         SidebarPanelBorder.Width = _viewModel.IsSidebarVisible
             ? Math.Clamp(_viewModel.SidebarWidth, SidebarMinWidth, SidebarMaxWidth)
             : 0;
+        if (CreateColumnResizeCursor() is { } columnResizeCursor)
+        {
+            SidebarResizeHandle.Cursor = columnResizeCursor;
+            SettingsNavResizeHandle.Cursor = columnResizeCursor;
+        }
         _viewModel.Messages.CollectionChanged += OnMessagesChanged;
         RulerStrip.SizeChanged += (_, _) => BuildRulerTicks();
         _rulerPreviewCloseTimer.Tick += (_, _) =>
@@ -103,6 +113,17 @@ public partial class MainWindow : Window
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         MorePopup.PlacementTarget = MoreButton;
         ComposerMenuPopup.PlacementTarget = ComposerCard;
+        // Codex keeps the settings column at a fixed, centred width instead of
+        // letting it stretch edge to edge on wide windows.
+        SettingsScroller.SizeChanged += (_, _) => SettingsColumn.Width = Math.Min(
+            760,
+            Math.Max(320, SettingsScroller.Bounds.Width - SettingsScroller.Padding.Left
+                - SettingsScroller.Padding.Right));
+        DragDrop.SetAllowDrop(ComposerCard, true);
+        ComposerCard.AddHandler(DragDrop.DragOverEvent, OnComposerDragOver,
+            RoutingStrategies.Bubble, handledEventsToo: true);
+        ComposerCard.AddHandler(DragDrop.DropEvent, OnComposerDrop,
+            RoutingStrategies.Bubble, handledEventsToo: true);
         _railHintOpenTimer.Tick += OnRailHintOpenTimerTick;
         _moreMenuOpenTimer.Tick += OnMoreMenuOpenTimerTick;
         _moreMenuCloseTimer.Tick += OnMoreMenuCloseTimerTick;
@@ -896,6 +917,29 @@ public partial class MainWindow : Window
         FocusComposer();
     }
 
+    private void OnComposerDragOver(object? sender, DragEventArgs eventArgs)
+    {
+        eventArgs.DragEffects = eventArgs.DataTransfer.Contains(DataFormat.File)
+            ? DragDropEffects.Copy
+            : DragDropEffects.None;
+    }
+
+    private void OnComposerDrop(object? sender, DragEventArgs eventArgs)
+    {
+        var paths = (eventArgs.DataTransfer.TryGetFiles() ?? [])
+            .Select(file => file.TryGetLocalPath())
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Cast<string>()
+            .ToList();
+        if (paths.Count == 0)
+        {
+            return;
+        }
+        _viewModel.AddAttachments(paths);
+        FocusComposer();
+        eventArgs.Handled = true;
+    }
+
     private void OnRemoveAttachmentClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (sender is Control { DataContext: AttachmentItemViewModel attachment })
@@ -945,6 +989,7 @@ public partial class MainWindow : Window
 
         if (sender is Button { DataContext: SessionItemViewModel session })
         {
+            _viewModel.CloseSettings();
             _viewModel.Navigate(AppSection.Chat);
             await _viewModel.OpenSessionAsync(session);
             FocusComposer();
@@ -1464,7 +1509,7 @@ public partial class MainWindow : Window
         WorkspacePreviewCard.IsVisible = false;
         SessionPreviewCard.DataContext = session;
         ShowPreviewCard(SessionPreviewCard);
-        PlacePreviewCard(row, SessionPreviewCard, overlap: true);
+        PlacePreviewCard(row, SessionPreviewCard);
     }
 
     private void ShowWorkspacePreview(Control row, WorkspaceItemViewModel workspace)
@@ -1479,7 +1524,7 @@ public partial class MainWindow : Window
         SessionPreviewCard.IsVisible = false;
         WorkspacePreviewCard.DataContext = workspace;
         ShowPreviewCard(WorkspacePreviewCard);
-        PlacePreviewCard(row, WorkspacePreviewCard, overlap: false);
+        PlacePreviewCard(row, WorkspacePreviewCard);
     }
 
     private void ShowPreviewCard(Control card)
@@ -1494,14 +1539,14 @@ public partial class MainWindow : Window
         Dispatcher.UIThread.Post(() => card.Opacity = 1, DispatcherPriority.Render);
     }
 
-    private void PlacePreviewCard(Control row, Control card, bool overlap)
+    private void PlacePreviewCard(Control row, Control card)
     {
         if (row.TranslatePoint(new Point(0, 0), PreviewCanvas) is not { } origin)
         {
             return;
         }
 
-        var left = origin.X + row.Bounds.Width + (overlap ? -33 : -9);
+        var left = origin.X + row.Bounds.Width + 4;
         Canvas.SetLeft(card, Math.Round(left));
         Canvas.SetTop(card, Math.Round(origin.Y));
         card.Measure(Size.Infinity);
@@ -1760,6 +1805,9 @@ public partial class MainWindow : Window
     private void OnNavLibraryClicked(object? sender, RoutedEventArgs eventArgs) =>
         ActivateRailSection(AppSection.Library);
 
+    private void OnNavProjectsClicked(object? sender, RoutedEventArgs eventArgs) =>
+        ActivateRailSection(AppSection.Projects);
+
     private void OnNavPluginsClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (SkipPointerGeneratedRailClick())
@@ -1768,6 +1816,15 @@ public partial class MainWindow : Window
         }
         ActivateRailSection(AppSection.Plugins);
     }
+
+    private void OnPluginsTabClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.ShowPluginsList();
+
+    private void OnSkillsTabClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.ShowSkillsList();
+
+    private void OnRefreshSkillsClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _ = _viewModel.RefreshSkillsAsync();
 
     private void OnNavAutomationClicked(object? sender, RoutedEventArgs eventArgs)
     {
@@ -1889,7 +1946,7 @@ public partial class MainWindow : Window
     private void OnOpenModelSettingsClicked(object? sender, RoutedEventArgs eventArgs)
     {
         HideOwnerFlyout(sender);
-        _viewModel.OpenSettings(SettingsPane.Models);
+        _viewModel.OpenSettings(SettingsPane.Config);
     }
 
     private void OnWorkspacePickerClicked(object? sender, RoutedEventArgs eventArgs)
@@ -1916,17 +1973,250 @@ public partial class MainWindow : Window
         flyout.ShowAt(button);
     }
 
-    private void OnSettingsGeneralClicked(object? sender, RoutedEventArgs eventArgs) =>
-        _viewModel.SelectSettingsPane(SettingsPane.General);
+    private void OnMemoryScopeWorkspaceClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.SetMemoryScope("workspace");
 
-    private void OnSettingsModelsClicked(object? sender, RoutedEventArgs eventArgs) =>
-        _viewModel.SelectSettingsPane(SettingsPane.Models);
+    private void OnMemoryScopeUserClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.SetMemoryScope("user");
 
-    private void OnSettingsDataClicked(object? sender, RoutedEventArgs eventArgs) =>
-        _viewModel.SelectSettingsPane(SettingsPane.Data);
+    private void OnRefreshMemoryClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _ = _viewModel.RefreshMemoryAsync();
 
-    private void OnSettingsAboutClicked(object? sender, RoutedEventArgs eventArgs) =>
-        _viewModel.SelectSettingsPane(SettingsPane.About);
+    private void OnNewMemoryClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.StartNewMemory();
+
+    private async void OnSaveMemoryClicked(object? sender, RoutedEventArgs eventArgs) =>
+        await _viewModel.SaveMemoryAsync();
+
+    private async void OnDeleteMemoryClicked(object? sender, RoutedEventArgs eventArgs) =>
+        await _viewModel.DeleteMemoryAsync();
+
+    private async void OnMemoryEntryClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is Control { Tag: string name })
+        {
+            await _viewModel.LoadMemoryAsync(name);
+        }
+    }
+
+    private void OnRefreshMcpToolsClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _ = _viewModel.RefreshMcpToolsAsync();
+
+    private void OnSettingsNavClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is Control { Tag: string name }
+            && Enum.TryParse<SettingsPane>(name, out var pane))
+        {
+            SwitchSettingsPane(pane);
+        }
+    }
+
+    private void SwitchSettingsPane(SettingsPane pane)
+    {
+        _viewModel.SelectSettingsPane(pane);
+        ApplySettingsSearch();
+        SettingsScroller.Offset = new Vector(0, 0);
+        SettingsColumn.Opacity = 0;
+        SettingsColumn.RenderTransform = TransformOperations.Parse("translate(0px,6px)");
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                SettingsColumn.Opacity = 1;
+                SettingsColumn.RenderTransform = TransformOperations.Parse("translate(0px,0px)");
+            },
+            DispatcherPriority.Render);
+    }
+
+    /// <summary>Settings controls that are UI-only still respond: segments select, rows open the detail sheet.</summary>
+    private void OnSettingsPlaceholderClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is not Button button)
+        {
+            return;
+        }
+
+        if (button.Classes.Contains("filter") && button.Parent is Panel panel)
+        {
+            foreach (var sibling in panel.Children.OfType<Button>())
+            {
+                sibling.Classes.Set("active", sibling == button);
+            }
+            return;
+        }
+
+        _viewModel.OpenSettingsDetail(
+            SettingsRowTitle(button),
+            "这个设置项目前只有界面。接入 KL Core 后会提供真实数据与操作。");
+    }
+
+    private void OnSettingsTabClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is not Button { Tag: string tag })
+        {
+            return;
+        }
+
+        var group = tag.Split(':')[0];
+        if (sender is Button current && current.Parent is Panel panel)
+        {
+            foreach (var sibling in panel.Children.OfType<Button>())
+            {
+                if (sibling.Tag is string siblingTag && siblingTag.StartsWith(group + ":", StringComparison.Ordinal))
+                {
+                    sibling.Classes.Set("active", sibling == current);
+                }
+            }
+        }
+
+        foreach (var page in SettingsPanesPanel.GetLogicalDescendants().OfType<Control>())
+        {
+            if (!page.Classes.Contains("settings-tab-page") || page.Tag is not string pageTag)
+            {
+                continue;
+            }
+
+            if (!pageTag.StartsWith(group + ":", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var show = pageTag == tag;
+            page.IsVisible = show;
+            if (show)
+            {
+                page.Opacity = 0;
+                Dispatcher.UIThread.Post(() => page.Opacity = 1, DispatcherPriority.Render);
+            }
+        }
+    }
+
+    private void OnCloseSettingsDetailClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.CloseSettingsDetail();
+
+    private void OnSettingsDetailBackdropPressed(object? sender, PointerPressedEventArgs eventArgs)
+    {
+        if (ReferenceEquals(eventArgs.Source, sender))
+        {
+            _viewModel.CloseSettingsDetail();
+        }
+    }
+
+    private static string SettingsRowTitle(Control control)
+    {
+        if (control is Button { Content: string text } && text.Length > 0)
+        {
+            return text;
+        }
+
+        var label = control.GetLogicalDescendants().OfType<TextBlock>()
+            .FirstOrDefault(block => block.Classes.Contains("settings-title"));
+        return label?.Text is { Length: > 0 } value
+            ? value
+            : control.GetLogicalDescendants().OfType<TextBlock>().FirstOrDefault()?.Text ?? "设置项";
+    }
+
+    /// <summary>Chevron rows without a destination become clickable and open the detail sheet.</summary>
+    private void OnSettingsPaneChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is null || !e.PropertyName.StartsWith("IsSettings", StringComparison.Ordinal))
+            return;
+        Dispatcher.UIThread.Post(ScrollActiveSettingsNavIntoView, DispatcherPriority.Loaded);
+    }
+
+    // Keep the selected row visible, as Codex does when a pane deep in the list is opened.
+    private void ScrollActiveSettingsNavIntoView()
+    {
+        foreach (var child in SettingsNavPanel.Children)
+        {
+            if (child is Button { Classes: var classes } button && classes.Contains("active"))
+            {
+                button.BringIntoView();
+                break;
+            }
+        }
+    }
+
+    // The ScrollViewer measures its content at content width, so stretch the nav rows ourselves.
+    private void FitSettingsNavWidth()
+    {
+        if (SettingsNavScroller.Bounds.Width > 0)
+            SettingsNavPanel.Width = SettingsNavScroller.Bounds.Width - 16;
+    }
+
+    private void WireSettingsChevrons()
+    {
+        foreach (var path in SettingsPanesPanel.GetLogicalDescendants().OfType<Avalonia.Controls.Shapes.Path>())
+        {
+            if (!path.Classes.Contains("row-chevron") || path.Parent is not StackPanel right)
+            {
+                continue;
+            }
+
+            if (right.Parent is not Grid row || row.FindAncestorOfType<Button>() is not null)
+            {
+                continue;
+            }
+
+            row.Cursor = new Cursor(StandardCursorType.Hand);
+            row.Classes.Add("settings-link-row");
+            row.PointerPressed += (_, _) =>
+                _viewModel.OpenSettingsDetail(
+                    SettingsRowTitle(row),
+                    "这个设置项目前只有界面。接入 KL Core 后会提供真实数据与操作。");
+        }
+
+        var modeCards = SettingsPanesPanel.GetLogicalDescendants().OfType<Border>()
+            .Where(card => card.Classes.Contains("settings-mode-card"))
+            .ToList();
+        foreach (var card in modeCards)
+        {
+            card.Cursor = new Cursor(StandardCursorType.Hand);
+            card.PointerPressed += (_, _) =>
+            {
+                foreach (var other in modeCards)
+                {
+                    var active = other == card;
+                    other.BorderBrush = active
+                        ? new SolidColorBrush(Color.Parse("#606ACC"))
+                        : new SolidColorBrush(Color.Parse("#2E2E31"));
+                    other.BorderThickness = new Thickness(active ? 2 : 1);
+                }
+            };
+        }
+    }
+
+    private void OnSettingsSearchChanged(object? sender, TextChangedEventArgs eventArgs) =>
+        ApplySettingsSearch();
+
+    /// <summary>
+    /// Settings panes are static XAML, so the search matches each card's own text
+    /// instead of duplicating a keyword list in the view model.
+    /// </summary>
+    private void ApplySettingsSearch()
+    {
+        var query = SettingsSearchBox.Text?.Trim() ?? string.Empty;
+        var paneHasMatch = false;
+        foreach (var pane in SettingsPanesPanel.Children.OfType<StackPanel>())
+        {
+            if (!pane.IsVisible)
+            {
+                continue;
+            }
+            foreach (var card in pane.Children.OfType<Control>())
+            {
+                var match = query.Length == 0
+                    || card.GetLogicalDescendants().OfType<TextBlock>().Any(
+                        block => block.Text?.Contains(query, StringComparison.OrdinalIgnoreCase) == true);
+                paneHasMatch |= match;
+                // Tab pages own their visibility; the search must not reveal every tab at once.
+                if (!card.Classes.Contains("settings-tab-page"))
+                {
+                    card.IsVisible = match;
+                }
+            }
+        }
+        SettingsNoMatch.IsVisible = query.Length > 0 && !paneHasMatch;
+    }
 
     private void OnAddWorkspaceClicked(object? sender, RoutedEventArgs eventArgs)
     {
@@ -1968,8 +2258,27 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OnSaveSettingsClicked(object? sender, RoutedEventArgs eventArgs)
+    /// <summary>Codex settings apply on change; only write when the draft
+    /// actually differs from the saved state so binding on open is a no-op.</summary>
+    private async void OnGeneralSettingsSelectionChanged(object? sender, SelectionChangedEventArgs eventArgs)
     {
+        if (sender is not ComboBox { SelectedItem: { } selected })
+        {
+            return;
+        }
+        if (selected is int fontSize)
+        {
+            _viewModel.SettingsContentFontSize = fontSize;
+        }
+        else
+        {
+            _viewModel.SettingsPermissionMode = selected.ToString() ?? string.Empty;
+        }
+        if (_viewModel.SettingsPermissionMode == _viewModel.PermissionMode
+            && _viewModel.SettingsContentFontSize == _viewModel.ContentFontSize)
+        {
+            return;
+        }
         await _viewModel.SaveSettingsAsync();
         ApplyContentFontResources();
     }
@@ -2207,6 +2516,36 @@ public partial class MainWindow : Window
 
     private void OnOpenStateDirectoryClicked(object? sender, RoutedEventArgs eventArgs) =>
         OpenDirectory(_viewModel.StateDirectory, "数据目录");
+
+    private void OnOpenKlHomeClicked(object? sender, RoutedEventArgs eventArgs) =>
+        OpenDirectory(_viewModel.KlHomeDirectory, "KL Home");
+
+    private void OnOpenCoreConfigClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        var path = _viewModel.ConfigFilePath;
+        if (File.Exists(path))
+        {
+            Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true });
+            return;
+        }
+        OpenDirectory(_viewModel.KlHomeDirectory, "KL Home");
+    }
+
+    private async void OnExportStateBackupClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "导出设置备份",
+            SuggestedFileName = "kl-gui-state.json",
+            DefaultExtension = "json",
+            FileTypeChoices = [new FilePickerFileType("JSON") { Patterns = ["*.json"] }]
+        });
+        var path = file?.TryGetLocalPath();
+        if (!string.IsNullOrWhiteSpace(path))
+        {
+            _viewModel.ExportStateBackup(path);
+        }
+    }
 
     private void OnOpenPluginDirectoryClicked(object? sender, RoutedEventArgs eventArgs) =>
         OpenDirectory(_viewModel.PluginDirectoryPath, "插件目录");
@@ -2673,10 +3012,26 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (eventArgs.Key == Key.Escape && _viewModel.IsSettingsDetailOpen)
+        {
+            eventArgs.Handled = true;
+            _viewModel.CloseSettingsDetail();
+            return;
+        }
+
         if (eventArgs.Key == Key.Escape && _viewModel.IsSettingsOpen)
         {
             eventArgs.Handled = true;
-            _viewModel.CloseSettings();
+            if (!string.IsNullOrEmpty(SettingsSearchBox.Text))
+            {
+                SettingsSearchBox.Text = string.Empty;
+                ApplySettingsSearch();
+            }
+            else
+            {
+                _viewModel.CloseSettings();
+            }
+
             return;
         }
 
@@ -2715,7 +3070,14 @@ public partial class MainWindow : Window
         if (eventArgs.Key == Key.F && eventArgs.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
             eventArgs.Handled = true;
-            SearchBox.Focus();
+            if (_viewModel.IsSettingsOpen)
+            {
+                SettingsSearchBox.Focus();
+            }
+            else
+            {
+                SearchBox.Focus();
+            }
         }
     }
 
@@ -2744,7 +3106,16 @@ public partial class MainWindow : Window
         {
             if (_viewModel.IsSettingsOpen)
             {
+                SettingsNavPanelBorder.Width = Math.Clamp(
+                    _viewModel.SidebarWidth, SidebarMinWidth, SidebarMaxWidth);
+                SettingsSearchBox.Text = string.Empty;
+                ApplySettingsSearch();
                 FadeContent(SettingsHost);
+                Dispatcher.UIThread.Post(
+                    () => SettingsNavScroller.GetLogicalDescendants().OfType<Button>()
+                        .FirstOrDefault(button => button.Classes.Contains("active"))
+                        ?.BringIntoView(),
+                    DispatcherPriority.Background);
             }
 
             return;
@@ -2804,6 +3175,7 @@ public partial class MainWindow : Window
     private const double SidebarCollapseThreshold = SidebarMinWidth * 0.5;
 
     private bool _sidebarDragging;
+    private bool _settingsNavDragging;
     private bool _transcriptPinnedToBottom = true;
     private readonly List<Border> _rulerTicks = new();
     private readonly List<double> _rulerTickYs = new();
@@ -3015,6 +3387,114 @@ public partial class MainWindow : Window
             SidebarPanelBorder.Width = target;
             _viewModel.SetSidebarWidth(target);
             AnimateSidebar(true);
+        }
+
+        eventArgs.Handled = true;
+    }
+
+    // Chromium's bundled column-resize cursor (32x32, hotspot 10,8): a 1px
+    // double vertical line with a left/right arrow. SizeWestEast is the plain
+    // system double arrow and looks different.
+    private static readonly string[] ColumnResizeCursorGlyph =
+    {
+        ".........#.#....................",
+        ".........#.#....................",
+        ".........#.#....................",
+        ".........#.#....................",
+        ".........#.#....................",
+        "...#.....#.#.....#..............",
+        "..##.....#.#.....##.............",
+        ".##......#.#......##............",
+        "#######..#.#..#######...........",
+        ".##......#.#......##............",
+        "..##.....#.#.....##.............",
+        "...#.....#.#.....#..............",
+        ".........#.#....................",
+        ".........#.#....................",
+        ".........#.#....................",
+        ".........#.#....................",
+        ".........#.#....................",
+    };
+
+    private static Cursor? CreateColumnResizeCursor()
+    {
+        try
+        {
+            var bitmap = new RenderTargetBitmap(new PixelSize(32, 32), new Vector(96, 96));
+            using (var context = bitmap.CreateDrawingContext())
+            {
+                for (var y = 0; y < ColumnResizeCursorGlyph.Length; y++)
+                {
+                    var row = ColumnResizeCursorGlyph[y];
+                    for (var x = 0; x < row.Length; x++)
+                    {
+                        if (row[x] == '#')
+                        {
+                            context.FillRectangle(Brushes.White, new Rect(x, y, 1, 1));
+                        }
+                    }
+                }
+            }
+
+            return new Cursor(bitmap, new PixelPoint(10, 8));
+        }
+        catch
+        {
+            // Platform cursor factories may not support bitmap cursors; the XAML
+            // SizeWestEast fallback still works there.
+            return null;
+        }
+    }
+
+    private void OnSettingsNavResizePressed(object? sender, PointerPressedEventArgs eventArgs)
+    {
+        if (!eventArgs.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        if (sender is Control handle)
+        {
+            eventArgs.Pointer.Capture(handle);
+        }
+
+        _settingsNavDragging = true;
+        eventArgs.Handled = true;
+    }
+
+    private void OnSettingsNavResizeMoved(object? sender, PointerEventArgs eventArgs)
+    {
+        if (!_settingsNavDragging)
+        {
+            return;
+        }
+
+        SettingsNavPanelBorder.Width = Math.Clamp(
+            eventArgs.GetPosition(SettingsHost).X, SidebarMinWidth, SidebarMaxWidth);
+        eventArgs.Handled = true;
+    }
+
+    private void OnSettingsNavResizeReleased(object? sender, PointerReleasedEventArgs eventArgs)
+    {
+        if (!_settingsNavDragging)
+        {
+            return;
+        }
+
+        _settingsNavDragging = false;
+        if (sender is Control handle)
+        {
+            eventArgs.Pointer.Capture(null);
+        }
+
+        var width = Math.Clamp(SettingsNavPanelBorder.Width, SidebarMinWidth, SidebarMaxWidth);
+        SettingsNavPanelBorder.Width = width;
+        _viewModel.SetSidebarWidth(width);
+        // Both columns share one width; keep the hidden sidebar in step without
+        // expanding it while it is collapsed.
+        if (_viewModel.IsSidebarVisible)
+        {
+            SidebarPanelBorder.Width = width;
         }
 
         eventArgs.Handled = true;
@@ -3486,9 +3966,6 @@ public partial class MainWindow : Window
             _viewModel.CloseSearchPalette();
         }
     }
-
-    private void OnShowAboutClicked(object? sender, RoutedEventArgs eventArgs) =>
-        _viewModel.OpenSettings(SettingsPane.About);
 
     private void OnExitClicked(object? sender, RoutedEventArgs eventArgs) => Close();
 
