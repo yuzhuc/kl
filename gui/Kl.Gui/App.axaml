@@ -50,6 +50,70 @@
         <SolidColorBrush x:Key="SidebarHoverFillZero" Color="#001D1D1F" />
         <SolidColorBrush x:Key="SidebarIconHoverFillZero" Color="#001E1E1F" />
         <SolidColorBrush x:Key="MenuFill" Color="#1A1A1D" />
+        <!-- ComboBox popups: same card as the context menus. -->
+        <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="#1F1F22" />
+        <SolidColorBrush x:Key="ComboBoxDropDownBorderBrush" Color="#303034" />
+        <SolidColorBrush x:Key="ComboBoxDropDownGlyphForeground" Color="#A6A7AA" />
+        <SolidColorBrush x:Key="ComboBoxDropDownGlyphForegroundFocusedPressed" Color="#A6A7AA" />
+        <!-- Appearance contrast slider: accent track with a plain white thumb. -->
+        <SolidColorBrush x:Key="SliderTrackFill" Color="#606ACC" />
+        <SolidColorBrush x:Key="SliderTrackFillPointerOver" Color="#606ACC" />
+        <SolidColorBrush x:Key="SliderTrackFillPressed" Color="#606ACC" />
+        <SolidColorBrush x:Key="SliderTrackValueFill" Color="#414885" />
+        <SolidColorBrush x:Key="SliderTrackValueFillPointerOver" Color="#414885" />
+        <SolidColorBrush x:Key="SliderTrackValueFillPressed" Color="#414885" />
+        <SolidColorBrush x:Key="SliderThumbBackground" Color="#FFFFFF" />
+        <SolidColorBrush x:Key="SliderThumbBackgroundPointerOver" Color="#FFFFFF" />
+        <SolidColorBrush x:Key="SliderThumbBackgroundPressed" Color="#FFFFFF" />
+        <CornerRadius x:Key="SliderThumbCornerRadius">7</CornerRadius>
+        <x:Double x:Key="SliderTrackThemeHeight">2</x:Double>
+        <x:Double x:Key="SliderHorizontalThumbWidth">14</x:Double>
+        <x:Double x:Key="SliderHorizontalThumbHeight">14</x:Double>
+        <Thickness x:Key="ComboBoxDropdownBorderPadding">5</Thickness>
+        <!-- Codex menu rows: no fill on the selected row, a check mark instead. -->
+        <ControlTheme x:Key="{x:Type ComboBoxItem}" TargetType="ComboBoxItem">
+            <Setter Property="MinWidth" Value="220" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="#E9EAEC" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Name="Root" Background="{TemplateBinding Background}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Padding="{TemplateBinding Padding}">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <ContentPresenter Name="PART_ContentPresenter" Grid.Column="0"
+                                              Content="{TemplateBinding Content}"
+                                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                                              Foreground="{TemplateBinding Foreground}"
+                                              VerticalAlignment="Center" />
+                            <Path Name="Check" Grid.Column="1" Width="12" Height="12"
+                                  Data="{DynamicResource CheckIcon}" Stretch="Uniform"
+                                  Stroke="{TemplateBinding Foreground}" StrokeThickness="1.7"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Fill="Transparent"
+                                  VerticalAlignment="Center" Margin="12,0,2,0"
+                                  IsVisible="{TemplateBinding IsSelected}" />
+                        </Grid>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+            <Style Selector="^:pointerover /template/ Border#Root">
+                <Setter Property="Background" Value="#2A2A2E" />
+            </Style>
+            <Style Selector="^:selected /template/ Border#Root">
+                <Setter Property="Background" Value="Transparent" />
+            </Style>
+            <Style Selector="^:selected:pointerover /template/ Border#Root">
+                <Setter Property="Background" Value="#2A2A2E" />
+            </Style>
+            <Style Selector="^:pressed /template/ Border#Root">
+                <Setter Property="Background" Value="#2A2A2E" />
+            </Style>
+        </ControlTheme>
+        <CornerRadius x:Key="OverlayCornerRadius">10</CornerRadius>
         <SolidColorBrush x:Key="CardFill" Color="#141416" />
         <SolidColorBrush x:Key="ToolCardFill" Color="#101012" />
         <SolidColorBrush x:Key="WarningOrange" Color="#DC9F5B" />
@@ -255,11 +319,7 @@
             <Setter Property="CornerRadius" Value="10" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Background" Value="{DynamicResource RailHoverFillZero}" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition Property="Background" Duration="0:0:0.12" />
-                </Transitions>
-            </Setter>
+            <Setter Property="Transitions" Value="{x:Null}" />
         </Style>
         <Style Selector="Button.rail Path">
             <Setter Property="Stroke" Value="{DynamicResource RailIcon}" />
@@ -267,19 +327,11 @@
             <Setter Property="StrokeThickness" Value="1.5" />
             <Setter Property="StrokeLineCap" Value="Round" />
             <Setter Property="StrokeJoin" Value="Round" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition Property="Stroke" Duration="0:0:0.12" />
-                </Transitions>
-            </Setter>
+            <Setter Property="Transitions" Value="{x:Null}" />
         </Style>
         <Style Selector="Button.rail Ellipse">
             <Setter Property="Fill" Value="{DynamicResource RailIcon}" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition Property="Fill" Duration="0:0:0.12" />
-                </Transitions>
-            </Setter>
+            <Setter Property="Transitions" Value="{x:Null}" />
         </Style>
         <Style Selector="Button.rail:pointerover">
             <Setter Property="Background" Value="{DynamicResource RailActiveFill}" />
@@ -368,19 +420,11 @@
         <!-- Sidebar icon buttons (bell / search) -->
         <Style Selector="Button.sidebar-icon">
             <Setter Property="Background" Value="{DynamicResource SidebarIconHoverFillZero}" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition Property="Background" Duration="0:0:0.12" />
-                </Transitions>
-            </Setter>
+            <Setter Property="Transitions" Value="{x:Null}" />
         </Style>
         <Style Selector="Button.sidebar-icon Path">
             <Setter Property="Stroke" Value="{DynamicResource SidebarIconIdle}" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition Property="Stroke" Duration="0:0:0.12" />
-                </Transitions>
-            </Setter>
+            <Setter Property="Transitions" Value="{x:Null}" />
         </Style>
         <Style Selector="Button.sidebar-icon:pointerover">
             <Setter Property="Background" Value="{DynamicResource SidebarIconButtonHover}" />
@@ -397,11 +441,7 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Opacity" Value="0" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <DoubleTransition Property="Opacity" Duration="0:0:0.12" />
-                </Transitions>
-            </Setter>
+            <Setter Property="Transitions" Value="{x:Null}" />
         </Style>
         <Style Selector="Grid.session-row-container:pointerover Button.session-actions">
             <Setter Property="Opacity" Value="1" />
@@ -423,11 +463,7 @@
             <Setter Property="Background" Value="#001E1E1F" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Opacity" Value="0" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <DoubleTransition Property="Opacity" Duration="0:0:0.12" />
-                </Transitions>
-            </Setter>
+            <Setter Property="Transitions" Value="{x:Null}" />
         </Style>
         <Style Selector="Grid.session-row-container:pointerover Button.row-action">
             <Setter Property="Opacity" Value="1" />
@@ -441,11 +477,7 @@
             <Setter Property="StrokeLineCap" Value="Round" />
             <Setter Property="StrokeJoin" Value="Round" />
             <Setter Property="Fill" Value="Transparent" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition Property="Stroke" Duration="0:0:0.12" />
-                </Transitions>
-            </Setter>
+            <Setter Property="Transitions" Value="{x:Null}" />
         </Style>
         <Style Selector="Button.row-action:pointerover Path">
             <Setter Property="Stroke" Value="{DynamicResource SidebarText}" />
@@ -473,12 +505,7 @@
             <Setter Property="Fill" Value="Transparent" />
             <Setter Property="Opacity" Value="0" />
             <Setter Property="RenderTransform" Value="rotate(0deg)" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <DoubleTransition Property="Opacity" Duration="0:0:0.12" />
-                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" />
-                </Transitions>
-            </Setter>
+            <Setter Property="Transitions" Value="{x:Null}" />
         </Style>
         <Style Selector="Button.section-header:pointerover Path.section-chevron">
             <Setter Property="Opacity" Value="1" />
@@ -494,11 +521,7 @@
             <Setter Property="Background" Value="#001D1D1F" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="CornerRadius" Value="6" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition Property="Background" Duration="0:0:0.12" />
-                </Transitions>
-            </Setter>
+            <Setter Property="Transitions" Value="{x:Null}" />
         </Style>
         <Style Selector="Button.product-menu-toggle:pointerover">
             <Setter Property="Background" Value="{DynamicResource SidebarHoverFill}" />
@@ -510,11 +533,7 @@
             <Setter Property="CornerRadius" Value="8" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition Property="Background" Duration="0:0:0.12" />
-                </Transitions>
-            </Setter>
+            <Setter Property="Transitions" Value="{x:Null}" />
         </Style>
         <Style Selector="Button.mode-menu-item:pointerover">
             <Setter Property="Background" Value="{DynamicResource ProductMenuHoverFill}" />
@@ -531,22 +550,14 @@
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="FontSize" Value="14" />
             <Setter Property="Foreground" Value="{DynamicResource SidebarText}" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition Property="Background" Duration="0:0:0.12" />
-                </Transitions>
-            </Setter>
+            <Setter Property="Transitions" Value="{x:Null}" />
         </Style>
         <Style Selector="Button.row TextBlock">
             <Setter Property="Foreground" Value="{DynamicResource SidebarText}" />
         </Style>
         <Style Selector="Button.row Path">
             <Setter Property="Stroke" Value="{DynamicResource SidebarText}" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition Property="Stroke" Duration="0:0:0.12" />
-                </Transitions>
-            </Setter>
+            <Setter Property="Transitions" Value="{x:Null}" />
         </Style>
         <Style Selector="Button.row:pointerover">
             <Setter Property="Background" Value="{DynamicResource SidebarHoverFill}" />
@@ -572,19 +583,11 @@
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition Property="Background" Duration="0:0:0.12" />
-                </Transitions>
-            </Setter>
+            <Setter Property="Transitions" Value="{x:Null}" />
         </Style>
         <Style Selector="Button.session-row TextBlock">
             <Setter Property="Foreground" Value="{DynamicResource SidebarText}" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition Property="Foreground" Duration="0:0:0.12" />
-                </Transitions>
-            </Setter>
+            <Setter Property="Transitions" Value="{x:Null}" />
         </Style>
         <Style Selector="Button.session-row:pointerover">
             <Setter Property="Background" Value="{DynamicResource SidebarHoverFill}" />
@@ -604,11 +607,7 @@
         <Style Selector="Button.recent-toggle Path">
             <Setter Property="Stroke" Value="{DynamicResource SidebarLabel}" />
             <Setter Property="RenderTransform" Value="rotate(0deg)" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" />
-                </Transitions>
-            </Setter>
+            <Setter Property="Transitions" Value="{x:Null}" />
         </Style>
         <Style Selector="Button.recent-toggle.collapsed Path">
             <Setter Property="RenderTransform" Value="rotate(-90deg)" />
@@ -649,26 +648,26 @@
             <Setter Property="Height" Value="30" />
             <Setter Property="Padding" Value="10,4" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
-            <Setter Property="CornerRadius" Value="6" />
-            <Setter Property="Foreground" Value="#C6C7C9" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Foreground" Value="#DCDDE0" />
             <Setter Property="FontSize" Value="13" />
         </Style>
         <Style Selector="Button.nav.settings-nav:pointerover">
             <Setter Property="Background" Value="#1A1A1C" />
         </Style>
         <Style Selector="Button.nav.settings-nav.active">
-            <Setter Property="Background" Value="#232326" />
-            <Setter Property="Foreground" Value="#F0F1F3" />
+            <Setter Property="Background" Value="#1F1F20" />
+            <Setter Property="Foreground" Value="#FFFFFF" />
         </Style>
         <Style Selector="Button.nav.settings-nav Path">
-            <Setter Property="Stroke" Value="#B0B1B3" />
+            <Setter Property="Stroke" Value="#E3E4E6" />
             <Setter Property="Fill" Value="Transparent" />
-            <Setter Property="StrokeThickness" Value="1.25" />
+            <Setter Property="StrokeThickness" Value="1.4" />
             <Setter Property="StrokeLineCap" Value="Round" />
             <Setter Property="StrokeJoin" Value="Round" />
         </Style>
         <Style Selector="Button.nav.settings-nav.active Path">
-            <Setter Property="Stroke" Value="#E3E4E6" />
+            <Setter Property="Stroke" Value="#FFFFFF" />
         </Style>
 
         <Style Selector="Button.nav.active Path">
@@ -965,11 +964,7 @@
     <Style Selector="Button.activity-row Path.activity-chevron">
         <Setter Property="Opacity" Value="0" />
         <Setter Property="RenderTransform" Value="rotate(0deg)" />
-        <Setter Property="Transitions">
-            <Transitions>
-                <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.14" />
-            </Transitions>
-        </Setter>
+            <Setter Property="Transitions" Value="{x:Null}" />
     </Style>
     <Style Selector="Button.activity-row:pointerover Path.activity-chevron">
         <Setter Property="Opacity" Value="1" />
@@ -1044,12 +1039,7 @@
             <Setter Property="StrokeJoin" Value="Round" />
             <Setter Property="Fill" Value="Transparent" />
             <Setter Property="RenderTransform" Value="rotate(45deg)" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition Property="Stroke" Duration="0:0:0.12" />
-                    <BrushTransition Property="Fill" Duration="0:0:0.12" />
-                </Transitions>
-            </Setter>
+            <Setter Property="Transitions" Value="{x:Null}" />
         </Style>
         <Style Selector="Button.more-menu-pin:pointerover">
             <Setter Property="Background" Value="#232326" />
@@ -1124,6 +1114,36 @@
         </Style>
         <Style Selector="Button.subtle:pressed, Button.secondary:pressed">
             <Setter Property="Background" Value="{DynamicResource PressedFillStrong}" />
+        </Style>
+
+        <!-- Selection rows keep their resting fill while pressed. Flashing a
+             lighter fill on every click read as an animation, especially when
+             the already-selected row was clicked again. -->
+        <Style Selector="Button.nav:pressed, Button.row:pressed, Button.session-row:pressed">
+            <Setter Property="Background" Value="{DynamicResource HoverFill}" />
+        </Style>
+        <Style Selector="Button.nav.active:pressed">
+            <Setter Property="Background" Value="{DynamicResource ActiveFill}" />
+        </Style>
+        <Style Selector="Button.row.active:pressed, Button.session-row.active:pressed">
+            <Setter Property="Background" Value="{DynamicResource SidebarActiveFill}" />
+        </Style>
+        <Style Selector="Button.nav.settings-nav:pressed">
+            <Setter Property="Background" Value="#1A1A1C" />
+        </Style>
+        <Style Selector="Button.nav.settings-nav.active:pressed">
+            <Setter Property="Background" Value="#1F1F20" />
+        </Style>
+        <Style Selector="Button.filter:pressed">
+            <Setter Property="Background" Value="{DynamicResource HoverFill}" />
+        </Style>
+        <!-- Fluent scales every button to 98% while pressed. The row visibly
+             shrank and sprang back on click, which read as an animation. -->
+        <Style Selector="Button:pressed">
+            <Setter Property="RenderTransform" Value="none" />
+        </Style>
+        <Style Selector="Button.filter.active:pressed">
+            <Setter Property="Background" Value="#1D1D1F" />
         </Style>
 
         <!-- Notifications bell active state + command palette rows -->
@@ -1219,15 +1239,25 @@
             <Setter Property="BorderThickness" Value="0" />
         </Style>
 
+        <!-- Codex search fields: 32px pill, raised fill with a hairline border. -->
+        <Style Selector="Border.search-field">
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Background" Value="#202022" />
+            <Setter Property="BorderBrush" Value="#3B3B3D" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="16" />
+            <Setter Property="Padding" Value="14,0" />
+        </Style>
         <Style Selector="TextBox.search">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="MinHeight" Value="24" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="FontSize" Value="13.5" />
             <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-            <Setter Property="PlaceholderForeground" Value="#727275" />
-            <Setter Property="CaretBrush" Value="{DynamicResource AccentBlue}" />
+            <Setter Property="PlaceholderForeground" Value="#8A8A8D" />
+            <Setter Property="CaretBrush" Value="#E9EAEC" />
             <Setter Property="FocusAdorner" Value="{x:Null}" />
         </Style>
         <Style Selector="TextBox.search /template/ Border#PART_BorderElement">
@@ -1238,6 +1268,7 @@
         <Style Selector="TextBox.field">
             <Setter Property="MinHeight" Value="34" />
             <Setter Property="Padding" Value="9,6" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
             <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
             <Setter Property="BorderBrush" Value="Transparent" />
@@ -1277,8 +1308,8 @@
             <Setter Property="Padding" Value="8,4" />
             <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
             <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-            <Setter Property="BorderBrush" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="BorderBrush" Value="#343437" />
+            <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="8" />
             <Setter Property="FontSize" Value="13" />
             <Setter Property="FocusAdorner" Value="{x:Null}" />
@@ -1310,10 +1341,19 @@
 
         <!-- Codex-style settings: raised cards, rows split by hairlines. -->
         <Style Selector="Border.settings-card">
-            <Setter Property="Background" Value="#17171A" />
+            <Setter Property="Background" Value="#18181A" />
             <Setter Property="BorderBrush" Value="#2A2A2D" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="12" />
+        </Style>
+        <Style Selector="Border.color-value">
+            <Setter Property="Height" Value="27" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="CornerRadius" Value="13.5" />
+            <Setter Property="BorderBrush" Value="#272729" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
         <Style Selector="Border.settings-divider">
             <Setter Property="Height" Value="1" />
@@ -1347,9 +1387,34 @@
             <Setter Property="Foreground" Value="{DynamicResource TextCaption}" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
+        <Style Selector="TextBox.settings-textarea">
+            <Setter Property="MinHeight" Value="130" />
+            <Setter Property="Padding" Value="12,10" />
+            <Setter Property="Background" Value="#202022" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="BorderBrush" Value="#3C3C3D" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="AcceptsReturn" Value="True" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="VerticalContentAlignment" Value="Top" />
+            <Setter Property="PlaceholderForeground" Value="#8A8A8D" />
+            <Setter Property="SelectionBrush" Value="#4A55B8" />
+            <Setter Property="CaretBrush" Value="#E9EAEC" />
+        </Style>
+        <Style Selector="TextBox.settings-textarea:pointerover /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="#232325" />
+            <Setter Property="BorderBrush" Value="#3C3C3D" />
+        </Style>
+        <Style Selector="TextBox.settings-textarea:focus /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="#202022" />
+            <Setter Property="BorderBrush" Value="#606ACC" />
+        </Style>
         <Style Selector="TextBox.settings-input">
             <Setter Property="MinHeight" Value="32" />
             <Setter Property="Padding" Value="10,4" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="Background" Value="#202024" />
             <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
             <Setter Property="BorderThickness" Value="0" />
@@ -1358,46 +1423,134 @@
         </Style>
         <Style Selector="ComboBox.settings-select">
             <Setter Property="MinHeight" Value="28" />
-            <Setter Property="MinWidth" Value="115" />
-            <Setter Property="Padding" Value="14,2,2,2" />
-            <Setter Property="Background" Value="#202024" />
-            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Padding" Value="13,2,13,2" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Background" Value="#212124" />
+            <Setter Property="Foreground" Value="#E9EAEC" />
+            <Setter Property="BorderBrush" Value="#343437" />
+            <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="8" />
-            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="FontSize" Value="13" />
             <Setter Property="FocusAdorner" Value="{x:Null}" />
             <Setter Property="HorizontalAlignment" Value="Right" />
         </Style>
 
+        <Style Selector="TextBox.settings-number">
+            <Setter Property="Width" Value="66" />
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="#303034" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
         <Style Selector="ComboBox.flat-select">
             <Setter Property="MinHeight" Value="26" />
             <Setter Property="MinWidth" Value="0" />
-            <Setter Property="Padding" Value="6,2,2,2" />
+            <Setter Property="Padding" Value="12,2,12,2" />
+            <Setter Property="Background" Value="#212124" />
+            <Setter Property="BorderBrush" Value="#343437" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+
+        <!-- Fluent turns the pill border white on hover and shifts the fill on
+             press, which read as a flash while opening the menu. Keep one
+             border; the fill only lifts on hover and stays lifted while open. -->
+        <Style Selector="ComboBox.field /template/ Border#Background,
+                         ComboBox.settings-select /template/ Border#Background,
+                         ComboBox.flat-select /template/ Border#Background">
+            <Setter Property="BorderBrush" Value="#343437" />
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="ComboBox.field:pointerover /template/ Border#Background,
+                         ComboBox.settings-select:pointerover /template/ Border#Background,
+                         ComboBox.flat-select:pointerover /template/ Border#Background">
+            <Setter Property="Background" Value="#2A2A2E" />
+            <Setter Property="BorderBrush" Value="#343437" />
+        </Style>
+        <Style Selector="ComboBox.field:pressed /template/ Border#Background,
+                         ComboBox.settings-select:pressed /template/ Border#Background,
+                         ComboBox.flat-select:pressed /template/ Border#Background,
+                         ComboBox.field:dropdownopen /template/ Border#Background,
+                         ComboBox.settings-select:dropdownopen /template/ Border#Background,
+                         ComboBox.flat-select:dropdownopen /template/ Border#Background">
+            <Setter Property="Background" Value="#2A2A2E" />
+            <Setter Property="BorderBrush" Value="#343437" />
+        </Style>
+
+        <!-- Fluent flashes the pill label white while pressed. -->
+        <Style Selector="ComboBox.field:pressed ContentControl#ContentPresenter">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+        <Style Selector="ComboBox.flat-select:pressed ContentControl#ContentPresenter">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+        <Style Selector="ComboBox.settings-select:pressed ContentControl#ContentPresenter">
+            <Setter Property="Foreground" Value="#E9EAEC" />
+        </Style>
+
+        <!-- While the popup is open it owns pointerover, so closing the menu with
+             the pill would drop the hover fill for a frame and flash. Focus keeps
+             the same fill; it clears when focus moves elsewhere. -->
+        <Style Selector="ComboBox.field:focus /template/ Border#Background,
+                         ComboBox.settings-select:focus /template/ Border#Background,
+                         ComboBox.flat-select:focus /template/ Border#Background">
+            <Setter Property="Background" Value="#2A2A2E" />
+            <Setter Property="BorderBrush" Value="#343437" />
+        </Style>
+        <Style Selector="ComboBox.recessed-select:focus /template/ Border#Background">
+            <Setter Property="Background" Value="#151517" />
+            <Setter Property="BorderBrush" Value="#272729" />
+        </Style>
+
+        <!-- Codex draws the theme/accent pickers as recessed wells, not raised pills. -->
+        <Style Selector="ComboBox.settings-pill">
+            <Setter Property="CornerRadius" Value="13" />
+        </Style>
+        <Style Selector="ComboBox.recessed-select">
             <Setter Property="Background" Value="#0F0F11" />
+            <Setter Property="BorderBrush" Value="#272729" />
+        </Style>
+        <Style Selector="ComboBox.recessed-select:pointerover /template/ Border#Background,
+                         ComboBox.recessed-select:pressed /template/ Border#Background,
+                         ComboBox.recessed-select:dropdownopen /template/ Border#Background">
+            <Setter Property="Background" Value="#151517" />
+            <Setter Property="BorderBrush" Value="#272729" />
+        </Style>
+
+        <!-- Dropdown lists reuse the context-menu card instead of Fluent's popup. -->
+        <Style Selector="Border#PopupBorder">
+            <Setter Property="BoxShadow" Value="0 16 40 0 #B3000000" />
         </Style>
 
         <!-- ============ Motion: Codex-style fast entrances, no layout jumps ============ -->
 
         <!-- Colour transitions for controls whose hover/pressed states used to snap. -->
+        <!-- Buttons repaint instantly: hover/press fades read as click animations. -->
         <Style Selector="Button.icon, Button.nav, Button.chip, Button.filter, Button.primary,
                          Button.secondary, Button.subtle, Button.danger, Button.send, Button.stop,
                          Button.attach, Button.titlebar-icon, Button.titlebar-menu, Button.caption,
                          Button.activity-row, Button.palette-row">
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition Property="Background" Duration="0:0:0.12" />
-                    <BrushTransition Property="Foreground" Duration="0:0:0.12" />
-                    <BrushTransition Property="BorderBrush" Duration="0:0:0.12" />
-                </Transitions>
-            </Setter>
+            <Setter Property="Transitions" Value="{x:Null}" />
         </Style>
+
+        <!-- Selection rows switch state instantly. The 0.12s background fade
+             read as an animation on the clicked nav/session row itself. -->
+        <Style Selector="Button.nav.settings-nav">
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.session-row, Button.row, Button.filter">
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.session-row TextBlock, Button.row TextBlock, Button.row Path">
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+
         <Style Selector="Button.message-action">
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition Property="Background" Duration="0:0:0.12" />
-                    <DoubleTransition Property="Opacity" Duration="0:0:0.12" />
-                </Transitions>
-            </Setter>
+            <Setter Property="Transitions" Value="{x:Null}" />
         </Style>
         <Style Selector="ScrollBar:vertical /template/ Thumb, ScrollBar:horizontal /template/ Thumb">
             <Setter Property="Transitions">
@@ -1411,12 +1564,7 @@
         <Style Selector="Border.tool-panel, ItemsControl.tool-panel">
             <Setter Property="Opacity" Value="0" />
             <Setter Property="RenderTransform" Value="translate(0px,-3px)" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <DoubleTransition Property="Opacity" Duration="0:0:0.14" Easing="CubicEaseOut" />
-                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.14" Easing="CubicEaseOut" />
-                </Transitions>
-            </Setter>
+            <Setter Property="Transitions" Value="{x:Null}" />
         </Style>
         <Style Selector="Border.tool-panel.open, ItemsControl.tool-panel.open">
             <Setter Property="Opacity" Value="1" />
@@ -1455,11 +1603,7 @@
             <Setter Property="CornerRadius" Value="14" />
             <Setter Property="Background" Value="#001A1A1D" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition Property="Background" Duration="0:0:0.10" />
-                </Transitions>
-            </Setter>
+            <Setter Property="Transitions" Value="{x:Null}" />
         </Style>
         <Style Selector="Button.permission-chip:pointerover">
             <Setter Property="Background" Value="#343437" />
@@ -1471,11 +1615,7 @@
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition Property="Background" Duration="0:0:0.10" />
-                </Transitions>
-            </Setter>
+            <Setter Property="Transitions" Value="{x:Null}" />
         </Style>
         <Style Selector="Button.permission-row:pointerover">
             <Setter Property="Background" Value="#232326" />
@@ -1509,11 +1649,7 @@
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition Property="Background" Duration="0:0:0.10" />
-                </Transitions>
-            </Setter>
+            <Setter Property="Transitions" Value="{x:Null}" />
         </Style>
         <Style Selector="Button.composer-menu-row:pointerover, Button.composer-menu-row.selected">
             <Setter Property="Background" Value="#232326" />
@@ -1521,23 +1657,14 @@
 
         <!-- Page switches fade the content host instead of swapping hard. -->
         <Style Selector="Grid.content-host, Grid.settings-host">
-            <Setter Property="Transitions">
-                <Transitions>
-                    <DoubleTransition Property="Opacity" Duration="0:0:0.12" Easing="CubicEaseOut" />
-                </Transitions>
-            </Setter>
+            <Setter Property="Transitions" Value="{x:Null}" />
         </Style>
 
         <!-- Dialogs and the command palette: fade up 4px instead of popping. -->
         <Style Selector="Border.overlay-card">
             <Setter Property="Opacity" Value="0" />
             <Setter Property="RenderTransform" Value="translate(0px,4px)" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <DoubleTransition Property="Opacity" Duration="0:0:0.12" Easing="CubicEaseOut" />
-                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.12" Easing="CubicEaseOut" />
-                </Transitions>
-            </Setter>
+            <Setter Property="Transitions" Value="{x:Null}" />
         </Style>
         <Style Selector="Border.overlay-card.open">
             <Setter Property="Opacity" Value="1" />
@@ -1546,34 +1673,15 @@
 
         <!-- Chevron rows give hover feedback and open the detail sheet. -->
         <Style Selector="Grid.settings-link-row">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition Property="Background" Duration="0:0:0.12" />
-                </Transitions>
-            </Setter>
+            <Setter Property="Background" Value="#001D1D20" />
+            <Setter Property="Transitions" Value="{x:Null}" />
         </Style>
         <Style Selector="Grid.settings-link-row:pointerover">
             <Setter Property="Background" Value="#1D1D20" />
         </Style>
 
-        <!-- Settings content fades and slides on pane changes. -->
-        <Style Selector="StackPanel#SettingsColumn">
-            <Setter Property="Transitions">
-                <Transitions>
-                    <DoubleTransition Property="Opacity" Duration="0:0:0.14" Easing="CubicEaseOut" />
-                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.14"
-                                                   Easing="CubicEaseOut" />
-                </Transitions>
-            </Setter>
-        </Style>
-        <Style Selector="StackPanel.settings-tab-page">
-            <Setter Property="Transitions">
-                <Transitions>
-                    <DoubleTransition Property="Opacity" Duration="0:0:0.12" Easing="CubicEaseOut" />
-                </Transitions>
-            </Setter>
-        </Style>
+        <!-- Settings panes and tabs swap instantly: any fade read as an
+             animation on the clicked nav row. -->
 
         <!-- Codex-style switch: 40x24 track with an 18px thumb. -->
         <Style Selector="ToggleSwitch.setting">
@@ -1582,11 +1690,11 @@
             <Setter Property="Template">
                 <ControlTemplate>
                     <Grid Width="32" Height="20">
-                        <Border Name="Track" CornerRadius="10" Background="#3C3C41" />
+                        <Border Name="Track" CornerRadius="10" Background="#2D2D2E" />
                         <Panel Name="PART_MovingKnobs">
-                            <Ellipse Name="Thumb" Width="12" Height="12" Fill="#B6B7BA"
+                            <Ellipse Name="Thumb" Width="16" Height="16" Fill="#FFFFFF"
                                      HorizontalAlignment="Left" VerticalAlignment="Center"
-                                     Margin="4,0,0,0" />
+                                     Margin="2,0,0,0" />
                         </Panel>
                     </Grid>
                 </ControlTemplate>
@@ -1600,10 +1708,10 @@
             </Setter>
         </Style>
         <Style Selector="ToggleSwitch.setting:checked /template/ Border#Track">
-            <Setter Property="Background" Value="#4B52A5" />
+            <Setter Property="Background" Value="#606ACC" />
         </Style>
         <Style Selector="ToggleSwitch.setting:checked /template/ Ellipse#Thumb">
-            <Setter Property="Fill" Value="#DCDDDF" />
+            <Setter Property="Fill" Value="#FFFFFF" />
         </Style>
         <Style Selector="ToggleSwitch.setting /template/ Ellipse#Thumb">
             <Setter Property="Transitions">
@@ -1613,7 +1721,7 @@
             </Setter>
         </Style>
         <Style Selector="ToggleSwitch.setting:checked /template/ Ellipse#Thumb">
-            <Setter Property="Margin" Value="16,0,0,0" />
+            <Setter Property="Margin" Value="14,0,0,0" />
         </Style>
     </Application.Styles>
 </Application>

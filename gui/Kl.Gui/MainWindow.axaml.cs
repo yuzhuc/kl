@@ -59,6 +59,7 @@ public partial class MainWindow : Window
         TextOptions.SetTextRenderingMode(this, TextRenderingMode.Antialias);
         DataContext = _viewModel;
         Opened += (_, _) => WireSettingsChevrons();
+        WireComboBoxMenus();
         SettingsNavScroller.SizeChanged += (_, _) => FitSettingsNavWidth();
         _viewModel.PropertyChanged += OnSettingsPaneChanged;
         // Popup contents live in their own visual tree; give the More menu the
@@ -106,7 +107,7 @@ public partial class MainWindow : Window
             (PinnedSectionMenuPopup, PinnedSectionMenuCard)
         })
         {
-            popup.Opened += (_, _) => FadeInCard(card);
+            popup.Opened += (_, _) => card.Opacity = 1;
             popup.Closed += (_, _) => card.Opacity = 0;
         }
 
@@ -169,17 +170,6 @@ public partial class MainWindow : Window
             }, TimeSpan.FromMilliseconds(900));
         }
     }
-
-    /// <summary>Restarts the low fade used for page and overlay switches.</summary>
-    private static void FadeContent(Control host)
-    {
-        host.Opacity = 0.6;
-        Dispatcher.UIThread.Post(() => host.Opacity = 1, DispatcherPriority.Render);
-    }
-
-    /// <summary>Fades a card in one frame after it is shown, so the transition runs.</summary>
-    private static void FadeInCard(Control card) =>
-        Dispatcher.UIThread.Post(() => card.Opacity = 1, DispatcherPriority.Render);
 
     private void OnJumpToBottomClicked(object? sender, RoutedEventArgs eventArgs) =>
         TranscriptScroller.ScrollToEnd();
@@ -840,6 +830,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Already on the code-review draft: don't wipe the composer again.
+        if (item.IsActive)
+        {
+            FocusComposer();
+            return;
+        }
+
         CloseMoreMenu();
         _viewModel.StartCodeReviewDraft();
         FocusComposer();
@@ -854,7 +851,10 @@ public partial class MainWindow : Window
     private void OnMoreCodeReviewClicked(object? sender, RoutedEventArgs eventArgs)
     {
         CloseMoreMenu();
-        _viewModel.StartCodeReviewDraft();
+        if (!_viewModel.IsCodeReviewDraftActive)
+        {
+            _viewModel.StartCodeReviewDraft();
+        }
         FocusComposer();
     }
 
@@ -989,6 +989,14 @@ public partial class MainWindow : Window
 
         if (sender is Button { DataContext: SessionItemViewModel session })
         {
+            // Clicking the already-open session must not reload it: reopening
+            // clears the composer draft and resets the message scroll.
+            if (session.IsSelected)
+            {
+                FocusComposer();
+                return;
+            }
+
             _viewModel.CloseSettings();
             _viewModel.Navigate(AppSection.Chat);
             await _viewModel.OpenSessionAsync(session);
@@ -1143,12 +1151,8 @@ public partial class MainWindow : Window
         Canvas.SetLeft(SectionMenuStack, origin.X);
         Canvas.SetTop(SectionMenuStack, origin.Y + anchor.Bounds.Height + 4);
         ProjectSectionSubmenuCard.IsVisible = false;
-        _sectionMenuCloseGeneration++;
-        SectionMenuOverlay.Opacity = 0;
+        SectionMenuOverlay.Opacity = 1;
         SectionMenuOverlay.IsVisible = true;
-        Dispatcher.UIThread.Post(
-            () => SectionMenuOverlay.Opacity = 1,
-            DispatcherPriority.Render);
         eventArgs.Handled = true;
     }
 
@@ -1670,15 +1674,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var generation = ++_sectionMenuCloseGeneration;
-        SectionMenuOverlay.Opacity = 0;
-        DispatcherTimer.RunOnce(() =>
-        {
-            if (generation == _sectionMenuCloseGeneration)
-            {
-                SectionMenuOverlay.IsVisible = false;
-            }
-        }, TimeSpan.FromMilliseconds(100));
+        SectionMenuOverlay.IsVisible = false;
     }
 
     private void OnSectionMenuDismissPressed(object? sender, PointerPressedEventArgs eventArgs)
@@ -1864,6 +1860,23 @@ public partial class MainWindow : Window
         }
 
         SetRailSection(section);
+
+        // Clicking the rail item of the section already on screen is a no-op;
+        // re-navigating used to refresh lists and reset the page state.
+        var alreadyHere = section switch
+        {
+            AppSection.Chat => _viewModel.IsChatPage,
+            AppSection.Library => _viewModel.IsLibraryPage,
+            AppSection.Projects => _viewModel.IsProjectsPage,
+            AppSection.Plugins => _viewModel.IsPluginsPage,
+            AppSection.Automation => _viewModel.IsAutomationPage,
+            _ => false
+        };
+        if (alreadyHere && !_viewModel.IsSettingsOpen)
+        {
+            return;
+        }
+
         _viewModel.Navigate(section);
         if (section == AppSection.Chat)
         {
@@ -1940,6 +1953,13 @@ public partial class MainWindow : Window
     private void OnNavSettingsClicked(object? sender, RoutedEventArgs eventArgs)
     {
         CloseMoreMenu();
+        // Re-clicking the settings icon while settings is open would reload the
+        // draft fields from saved state and drop in-progress edits.
+        if (_viewModel.IsSettingsOpen)
+        {
+            return;
+        }
+
         _viewModel.OpenSettings();
     }
 
@@ -2013,18 +2033,16 @@ public partial class MainWindow : Window
 
     private void SwitchSettingsPane(SettingsPane pane)
     {
+        // Clicking the already-selected item is a no-op: re-running the switch
+        // would reset the pane scroll under the user.
+        if (pane == _viewModel.ActiveSettingsPane)
+        {
+            return;
+        }
+
         _viewModel.SelectSettingsPane(pane);
         ApplySettingsSearch();
         SettingsScroller.Offset = new Vector(0, 0);
-        SettingsColumn.Opacity = 0;
-        SettingsColumn.RenderTransform = TransformOperations.Parse("translate(0px,6px)");
-        Dispatcher.UIThread.Post(
-            () =>
-            {
-                SettingsColumn.Opacity = 1;
-                SettingsColumn.RenderTransform = TransformOperations.Parse("translate(0px,0px)");
-            },
-            DispatcherPriority.Render);
     }
 
     /// <summary>Settings controls that are UI-only still respond: segments select, rows open the detail sheet.</summary>
@@ -2049,15 +2067,55 @@ public partial class MainWindow : Window
             "这个设置项目前只有界面。接入 KL Core 后会提供真实数据与操作。");
     }
 
+    /// <summary>Clicking blank space drops the text focus, as Codex does.</summary>
+    private void OnSettingsScrollerPointerPressed(object? sender, PointerPressedEventArgs eventArgs) =>
+        FocusManager?.Focus(null, NavigationMethod.Unspecified, KeyModifiers.None);
+
+    /// <summary>Codex keeps the appearance pane's advanced card collapsed until asked for.</summary>
+    private void OnAppearanceAdvancedClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (this.FindControl<StackPanel>("AppearanceAdvancedPanel") is not { } panel
+            || this.FindControl<Avalonia.Controls.Shapes.Path>("AppearanceAdvancedChevronRight") is not { } right
+            || this.FindControl<Avalonia.Controls.Shapes.Path>("AppearanceAdvancedChevronDown") is not { } down)
+        {
+            return;
+        }
+
+        panel.IsVisible = !panel.IsVisible;
+        right.IsVisible = !panel.IsVisible;
+        down.IsVisible = panel.IsVisible;
+    }
+
+    /// <summary>Same collapsed-by-default advanced row as the appearance pane.</summary>
+    private void OnVoiceAdvancedClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (this.FindControl<StackPanel>("VoiceAdvancedPanel") is not { } panel
+            || this.FindControl<Avalonia.Controls.Shapes.Path>("VoiceAdvancedChevronRight") is not { } right
+            || this.FindControl<Avalonia.Controls.Shapes.Path>("VoiceAdvancedChevronDown") is not { } down)
+        {
+            return;
+        }
+
+        panel.IsVisible = !panel.IsVisible;
+        right.IsVisible = !panel.IsVisible;
+        down.IsVisible = panel.IsVisible;
+    }
+
     private void OnSettingsTabClicked(object? sender, RoutedEventArgs eventArgs)
     {
-        if (sender is not Button { Tag: string tag })
+        if (sender is not Button { Tag: string tag } current)
+        {
+            return;
+        }
+
+        // Re-clicking the selected tab would replay the page fade; keep it still.
+        if (current.Classes.Contains("active"))
         {
             return;
         }
 
         var group = tag.Split(':')[0];
-        if (sender is Button current && current.Parent is Panel panel)
+        if (current.Parent is Panel panel)
         {
             foreach (var sibling in panel.Children.OfType<Button>())
             {
@@ -2080,13 +2138,7 @@ public partial class MainWindow : Window
                 continue;
             }
 
-            var show = pageTag == tag;
-            page.IsVisible = show;
-            if (show)
-            {
-                page.Opacity = 0;
-                Dispatcher.UIThread.Post(() => page.Opacity = 1, DispatcherPriority.Render);
-            }
+            page.IsVisible = pageTag == tag;
         }
     }
 
@@ -2143,16 +2195,38 @@ public partial class MainWindow : Window
             SettingsNavPanel.Width = SettingsNavScroller.Bounds.Width - 16;
     }
 
+    /// <summary>Codex hangs a menu off the right edge of its trigger instead of centring it.</summary>
+    private void WireComboBoxMenus()
+    {
+        foreach (var combo in this.GetLogicalDescendants().OfType<ComboBox>())
+        {
+            combo.DropDownOpened += (_, _) =>
+            {
+                if (combo.GetVisualDescendants().OfType<Popup>().FirstOrDefault() is { } popup)
+                {
+                    popup.Placement = PlacementMode.BottomEdgeAlignedRight;
+                }
+            };
+        }
+    }
+
     private void WireSettingsChevrons()
     {
         foreach (var path in SettingsPanesPanel.GetLogicalDescendants().OfType<Avalonia.Controls.Shapes.Path>())
         {
-            if (!path.Classes.Contains("row-chevron") || path.Parent is not StackPanel right)
+            if (!path.Classes.Contains("row-chevron"))
             {
                 continue;
             }
 
-            if (right.Parent is not Grid row || row.FindAncestorOfType<Button>() is not null)
+            // The chevron sits in a right-hand panel, or directly in the row grid for list rows.
+            var row = path.Parent switch
+            {
+                StackPanel right => right.Parent as Grid,
+                Grid grid => grid,
+                _ => null,
+            };
+            if (row is null || row.FindAncestorOfType<Button>() is not null)
             {
                 continue;
             }
@@ -3098,7 +3172,6 @@ public partial class MainWindow : Window
             or nameof(MainWindowViewModel.IsPluginsPage)
             or nameof(MainWindowViewModel.IsAutomationPage))
         {
-            FadeContent(ContentHost);
             return;
         }
 
@@ -3110,7 +3183,6 @@ public partial class MainWindow : Window
                     _viewModel.SidebarWidth, SidebarMinWidth, SidebarMaxWidth);
                 SettingsSearchBox.Text = string.Empty;
                 ApplySettingsSearch();
-                FadeContent(SettingsHost);
                 Dispatcher.UIThread.Post(
                     () => SettingsNavScroller.GetLogicalDescendants().OfType<Button>()
                         .FirstOrDefault(button => button.Classes.Contains("active"))
@@ -3198,7 +3270,6 @@ public partial class MainWindow : Window
     private static readonly IBrush RulerSelectionMarkerBrush = new SolidColorBrush(Color.Parse("#5E5E61"));
     private static readonly IBrush RulerSelectionMarkerHoverBrush = new SolidColorBrush(Color.Parse("#B6B7B9"));
     private readonly Dictionary<Control, CancellationTokenSource> _sectionAnimations = new();
-    private int _sectionMenuCloseGeneration;
     private CancellationTokenSource? _sidebarAnimationCts;
     private double _sidebarAnimationTarget;
     private bool _sidebarAnimating;

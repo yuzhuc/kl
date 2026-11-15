@@ -694,7 +694,7 @@
                         </Grid>
 
                         <Border Grid.Row="1" IsVisible="{Binding IsSearchVisible}"
-                                Background="{StaticResource ElevatedHover}" CornerRadius="8"
+                                Background="#1F1F20" CornerRadius="17"
                                 Height="34" Margin="6,0,6,8" Padding="12,0">
                             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="7">
                                 <Path Width="13" Height="13" Data="{StaticResource SearchIcon}" Stretch="Uniform"
@@ -1223,6 +1223,7 @@
                                                  PlaceholderText="标题（可选）" />
                                         <TextBox Classes="field" MinHeight="120" MaxHeight="260"
                                                  AcceptsReturn="True" TextWrapping="Wrap"
+                                                 VerticalContentAlignment="Top"
                                                  Text="{Binding LibraryDraftContent, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                  PlaceholderText="粘贴常用提示词、规范或说明…" />
                                         <Button Classes="primary" Click="OnSaveLibraryItemClicked"
@@ -1321,7 +1322,7 @@
                                 </Grid>
                                 <TextBlock Text="{Binding EmptyStateTitle}" FontSize="28" FontWeight="SemiBold"
                                            Foreground="{StaticResource TextPrimary}"
-                                           HorizontalAlignment="Center" Margin="0,24,14,0" />
+                                           HorizontalAlignment="Center" Margin="0,24,0,0" />
                             </StackPanel>
 
                             <ScrollViewer x:Name="TranscriptScroller" IsVisible="{Binding HasConversation}"
@@ -1816,8 +1817,7 @@
                                 </StackPanel>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
                                             VerticalAlignment="Center">
-                                    <Border Width="260" Height="34" Background="{StaticResource ElevatedHover}"
-                                            CornerRadius="8" Padding="9,0">
+                                    <Border Classes="search-field" Width="260">
                                         <Grid ColumnDefinitions="Auto,*" ColumnSpacing="7">
                                             <Path Width="13" Height="13" Data="{StaticResource SearchIcon}"
                                                   Stretch="Uniform" Stroke="{StaticResource TextTertiary}"
@@ -2066,9 +2066,7 @@
                                     <Button Classes="filter" Classes.active="{Binding IsAutomationFilterEnded}"
                                             Click="OnAutomationFilterEndedClicked" Content="已结束" />
                                 </StackPanel>
-                                <Border Grid.Column="2" Width="320" Height="32"
-                                        Background="{StaticResource ElevatedHover}"
-                                        CornerRadius="8" Padding="9,0">
+                                <Border Grid.Column="2" Classes="search-field" Width="320">
                                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="7">
                                         <Path Width="13" Height="13" Data="{StaticResource SearchIcon}"
                                               Stretch="Uniform" Stroke="{StaticResource TextTertiary}"
@@ -2218,7 +2216,7 @@
                                       StrokeThickness="1.35" StrokeLineCap="Round" StrokeJoin="Round"
                                       Fill="Transparent" VerticalAlignment="Center" />
                                 <TextBox x:Name="SettingsSearchBox" Grid.Column="1" Classes="search"
-                                         FontSize="15" Padding="0,2,0,0"
+                                         FontSize="13.5" Padding="0,2,0,0"
                                          TextChanged="OnSettingsSearchChanged"
                                          PlaceholderText="搜索" VerticalAlignment="Center" />
                             </Grid>
@@ -2246,47 +2244,16 @@
                         <TextBlock Grid.Column="1" Text="导入" FontSize="13" VerticalAlignment="Center" />
                         </Grid>
                         </Button>
-                        <Button Classes="nav settings-nav" Classes.active="{Binding IsSettingsProfile}" Click="OnSettingsNavClicked" Tag="Profile">
-                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
-                        <Path Width="14" Height="14" Data="{StaticResource PersonIcon}" Stretch="Uniform" />
-                        <TextBlock Grid.Column="1" Text="个人资料" FontSize="13" VerticalAlignment="Center" />
-                        <Path Grid.Column="2" Width="10" Height="10" Data="{StaticResource ArrowUpRightIcon}" Stretch="Uniform" VerticalAlignment="Center" />
-                        </Grid>
-                        </Button>
                         <Button Classes="nav settings-nav" Classes.active="{Binding IsSettingsAppearance}" Click="OnSettingsNavClicked" Tag="Appearance">
                         <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
                         <Path Width="14" Height="14" Data="{StaticResource SunIcon}" Stretch="Uniform" />
                         <TextBlock Grid.Column="1" Text="外观" FontSize="13" VerticalAlignment="Center" />
                         </Grid>
                         </Button>
-                        <Button Classes="nav settings-nav" Classes.active="{Binding IsSettingsAccount}" Click="OnSettingsNavClicked" Tag="Account">
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                        <Path Width="14" Height="14" Data="{StaticResource PersonIcon}" Stretch="Uniform" />
-                        <TextBlock Grid.Column="1" Text="账户" FontSize="13" VerticalAlignment="Center" />
-                        </Grid>
-                        </Button>
                         <Button Classes="nav settings-nav" Classes.active="{Binding IsSettingsArchived}" Click="OnSettingsNavClicked" Tag="Archived">
                         <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
                         <Path Width="14" Height="14" Data="{StaticResource ArchiveIcon}" Stretch="Uniform" />
                         <TextBlock Grid.Column="1" Text="已归档的聊天" FontSize="13" VerticalAlignment="Center" />
-                        </Grid>
-                        </Button>
-                        <Button Classes="nav settings-nav" Classes.active="{Binding IsSettingsAds}" Click="OnSettingsNavClicked" Tag="Ads">
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                        <Path Width="14" Height="14" Data="{StaticResource CircleIcon}" Stretch="Uniform" />
-                        <TextBlock Grid.Column="1" Text="广告设置" FontSize="13" VerticalAlignment="Center" />
-                        </Grid>
-                        </Button>
-                        <Button Classes="nav settings-nav" Classes.active="{Binding IsSettingsParental}" Click="OnSettingsNavClicked" Tag="Parental">
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                        <Path Width="14" Height="14" Data="{StaticResource ShieldIcon}" Stretch="Uniform" />
-                        <TextBlock Grid.Column="1" Text="家长控制" FontSize="13" VerticalAlignment="Center" />
-                        </Grid>
-                        </Button>
-                        <Button Classes="nav settings-nav" Classes.active="{Binding IsSettingsTrusted}" Click="OnSettingsNavClicked" Tag="Trusted">
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                        <Path Width="14" Height="14" Data="{StaticResource PersonIcon}" Stretch="Uniform" />
-                        <TextBlock Grid.Column="1" Text="受信任联系人" FontSize="13" VerticalAlignment="Center" />
                         </Grid>
                         </Button>
                         <Button Classes="nav settings-nav" Classes.active="{Binding IsSettingsVoice}" Click="OnSettingsNavClicked" Tag="Voice">
@@ -2313,12 +2280,6 @@
                         <TextBlock Grid.Column="1" Text="个性化" FontSize="13" VerticalAlignment="Center" />
                         </Grid>
                         </Button>
-                        <Button Classes="nav settings-nav" Classes.active="{Binding IsSettingsMini}" Click="OnSettingsNavClicked" Tag="Mini">
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                        <Path Width="14" Height="14" Data="{StaticResource RobotIcon}" Stretch="Uniform" />
-                        <TextBlock Grid.Column="1" Text="迷你界面和智能伙伴" FontSize="13" VerticalAlignment="Center" />
-                        </Grid>
-                        </Button>
                         <Button Classes="nav settings-nav" Classes.active="{Binding IsSettingsShortcuts}" Click="OnSettingsNavClicked" Tag="Shortcuts">
                         <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
                         <Path Width="14" Height="14" Data="{StaticResource KeyboardIcon}" Stretch="Uniform" />
@@ -2329,12 +2290,6 @@
                         <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
                         <Path Width="14" Height="14" Data="{StaticResource GaugeIcon}" Stretch="Uniform" />
                         <TextBlock Grid.Column="1" Text="使用情况和计费" FontSize="13" VerticalAlignment="Center" />
-                        </Grid>
-                        </Button>
-                        <Button Classes="nav settings-nav" Classes.active="{Binding IsSettingsDataManagement}" Click="OnSettingsNavClicked" Tag="DataManagement">
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                        <Path Width="14" Height="14" Data="{StaticResource CircleIcon}" Stretch="Uniform" />
-                        <TextBlock Grid.Column="1" Text="数据管理" FontSize="13" VerticalAlignment="Center" />
                         </Grid>
                         </Button>
                         <TextBlock Classes="section-label" Text="集成" FontSize="13.5" Margin="8,18,0,8" />
@@ -2411,9 +2366,10 @@
                 </Border>
 
                 <Grid Grid.Column="1">
-                    <ScrollViewer x:Name="SettingsScroller" VerticalScrollBarVisibility="Auto" AllowAutoHide="False"
+                    <ScrollViewer x:Name="SettingsScroller" VerticalScrollBarVisibility="Visible" AllowAutoHide="False"
                                   HorizontalScrollBarVisibility="Disabled"
-                                  Padding="1,0,14,40">
+                                  Padding="1,0,14,40" Margin="0,0,7,0"
+                                  PointerPressed="OnSettingsScrollerPointerPressed">
                       <StackPanel x:Name="SettingsColumn" MaxWidth="726"
                                   HorizontalAlignment="Center">
                         <Grid ColumnDefinitions="*,Auto" Margin="0,26,0,42">
@@ -2423,10 +2379,6 @@
                                     IsVisible="{Binding IsSettingsPlugins}">
                         <Button Classes="secondary settings-button" Height="32" Click="OnOpenPluginDirectoryClicked" Content="浏览目录" />
                         <Button Classes="secondary settings-button" Height="32" Click="OnImportPluginClicked"><StackPanel Orientation="Horizontal" Spacing="5"><TextBlock Text="添加" /><Path Width="10" Height="10" Data="{StaticResource ChevronDownIcon}" Stretch="Uniform" Stroke="{StaticResource TextPrimary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" VerticalAlignment="Center" /></StackPanel></Button>
-                        </StackPanel>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Top" Margin="0,22,0,-22"
-                                    IsVisible="{Binding IsSettingsMini}">
-                        <Button Classes="secondary settings-button" Height="32" Click="OnSettingsPlaceholderClicked" Content="显示 Mini" />
                         </StackPanel>
                         </Grid>
 
@@ -2899,266 +2851,6 @@
                             </StackPanel>
                             </StackPanel>
 
-                            <StackPanel IsVisible="{Binding IsSettingsProfile}" Spacing="50">
-                            <Grid ColumnDefinitions="*,Auto">
-                            <StackPanel Spacing="10" HorizontalAlignment="Center" Margin="0,6,0,0">
-                            <Border Width="96" Height="96" CornerRadius="48" Background="#274A6B">
-                            <TextBlock Text="KL" FontSize="30" FontWeight="Medium" Foreground="#CFE2F5" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            </Border>
-                            <TextBlock Text="本地用户" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" />
-                            <TextBlock Text="@local" FontSize="12.5" Foreground="{StaticResource TextCaption}" HorizontalAlignment="Center" />
-                            </StackPanel>
-                            <Button Grid.Column="1" Classes="subtle" Content="编辑" VerticalAlignment="Top" Click="OnSettingsPlaceholderClicked" />
-                            </Grid>
-                            <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="10">
-                            <Border Grid.Column="0" Background="#1A1A1D" CornerRadius="12" Height="68">
-                            <StackPanel Spacing="2" VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <TextBlock Text="{Binding WorkspaceCount}" FontSize="20" FontWeight="Medium" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" />
-                            <TextBlock Text="工作区" FontSize="11.5" Foreground="{StaticResource TextCaption}" HorizontalAlignment="Center" />
-                            </StackPanel>
-                            </Border>
-                            <Border Grid.Column="1" Background="#1A1A1D" CornerRadius="12" Height="68">
-                            <StackPanel Spacing="2" VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <TextBlock Text="{Binding SavedSessionCount}" FontSize="20" FontWeight="Medium" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" />
-                            <TextBlock Text="会话" FontSize="11.5" Foreground="{StaticResource TextCaption}" HorizontalAlignment="Center" />
-                            </StackPanel>
-                            </Border>
-                            <Border Grid.Column="2" Background="#1A1A1D" CornerRadius="12" Height="68">
-                            <StackPanel Spacing="2" VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <TextBlock Text="{Binding AutomationCount}" FontSize="20" FontWeight="Medium" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" />
-                            <TextBlock Text="自动化" FontSize="11.5" Foreground="{StaticResource TextCaption}" HorizontalAlignment="Center" />
-                            </StackPanel>
-                            </Border>
-                            <Border Grid.Column="3" Background="#1A1A1D" CornerRadius="12" Height="68">
-                            <StackPanel Spacing="2" VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <TextBlock Text="{Binding Plugins.Count}" FontSize="20" FontWeight="Medium" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" />
-                            <TextBlock Text="插件" FontSize="11.5" Foreground="{StaticResource TextCaption}" HorizontalAlignment="Center" />
-                            </StackPanel>
-                            </Border>
-                            <Border Grid.Column="4" Background="#1A1A1D" CornerRadius="12" Height="68">
-                            <StackPanel Spacing="2" VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <TextBlock Text="{Binding Skills.Count}" FontSize="20" FontWeight="Medium" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" />
-                            <TextBlock Text="技能" FontSize="11.5" Foreground="{StaticResource TextCaption}" HorizontalAlignment="Center" />
-                            </StackPanel>
-                            </Border>
-                            </Grid>
-                            <StackPanel Spacing="0">
-                            <Grid ColumnDefinitions="*,Auto">
-                            <TextBlock Text="Token 活动" FontSize="14" FontWeight="Medium" Foreground="{StaticResource TextPrimary}" />
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
-                            <Button Classes="filter" Classes.active="True" Content="每天" Click="OnSettingsPlaceholderClicked" />
-                            <Button Classes="filter" Content="每周" Click="OnSettingsPlaceholderClicked" />
-                            <Button Classes="filter" Content="累计总量" Click="OnSettingsPlaceholderClicked" />
-                            </StackPanel>
-                            </Grid>
-                            <UniformGrid Columns="26" Rows="7" Margin="0,10,0,0">
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#2E2E32" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#2E2E32" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#2E2E32" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#2E2E32" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#2E2E32" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#2E2E32" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#2E2E32" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#2E2E32" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#2E2E32" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#2E2E32" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#2E2E32" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#2E2E32" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#2E2E32" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#2E2E32" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#2E2E32" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#2E2E32" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#2E2E32" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            <Border Margin="1.5" Height="12" CornerRadius="2" Background="#232326" />
-                            </UniformGrid>
-                            </StackPanel>
-                            <StackPanel Spacing="0">
-                            <TextBlock Classes="settings-heading" Text="最常用的插件" />
-                            <Border Classes="settings-card" Margin="0,17,0,0">
-                            <StackPanel>
-                            <ItemsControl ItemsSource="{Binding Plugins}">
-                            <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:PluginItemViewModel">
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Margin="16,10">
-                            <Border Width="26" Height="26" CornerRadius="7" Background="#232326">
-                            <Path Width="14" Height="14" Data="{StaticResource PluginIcon}" Stretch="Uniform"
-                                  Stroke="{StaticResource TextSecondary}" StrokeThickness="1.2"
-                                  HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
-                            <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="13"
-                                       Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="2" Text="{Binding Version}" FontSize="11.5"
-                                       Foreground="{StaticResource TextCaption}" VerticalAlignment="Center" />
-                            </Grid></DataTemplate></ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                            <TextBlock Text="还没有安装插件" IsVisible="{Binding !HasPlugins}" FontSize="12.5"
-                                       Foreground="{StaticResource TextCaption}" Margin="16,12,16,11" />
-                            </StackPanel>
-                            </Border>
-                            </StackPanel>
-                            </StackPanel>
 
                             <StackPanel IsVisible="{Binding IsSettingsAppearance}" Spacing="50">
                             <StackPanel Spacing="0">
@@ -3192,7 +2884,7 @@
                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                             <Button Classes="subtle" Width="28" Height="28" Padding="0" HorizontalContentAlignment="Center" Click="OnSettingsPlaceholderClicked"><Path Width="14" Height="14" Data="{StaticResource DownloadIcon}" Stretch="Uniform" Stroke="{StaticResource TextSecondary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" /></Button>
                             <Button Classes="subtle" Width="28" Height="28" Padding="0" HorizontalContentAlignment="Center" Click="OnSettingsPlaceholderClicked"><Path Width="14" Height="14" Data="{StaticResource CopyIcon}" Stretch="Uniform" Stroke="{StaticResource TextSecondary}" StrokeThickness="1.3" /></Button>
-                            <ComboBox Width="174" Classes="settings-select flat-select" SelectedIndex="0"><ComboBoxItem><StackPanel Orientation="Horizontal" Spacing="6"><TextBlock Text="Aa" FontSize="12" Foreground="#7B84E0" VerticalAlignment="Center" /><TextBlock Text="Linear" VerticalAlignment="Center" /></StackPanel></ComboBoxItem><ComboBoxItem Content="Classic" /></ComboBox>
+                            <ComboBox Width="174" Classes="settings-select flat-select recessed-select settings-pill" SelectedIndex="0"><ComboBoxItem><StackPanel Orientation="Horizontal" Spacing="6"><TextBlock Text="Aa" FontSize="12" Foreground="#7B84E0" VerticalAlignment="Center" /><TextBlock Text="Linear" VerticalAlignment="Center" /></StackPanel></ComboBoxItem><ComboBoxItem Content="Classic" /></ComboBox>
                             </StackPanel>
                             </Grid>
                             <Border Classes="settings-divider" />
@@ -3200,28 +2892,28 @@
                             <StackPanel Spacing="3" VerticalAlignment="Center">
                             <TextBlock Classes="settings-title" Text="强调色" />
                             </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center" Margin="0,0,16,0"><ComboBox Width="78" Classes="settings-select flat-select" SelectedIndex="0"><ComboBoxItem Content="自定义" /><ComboBoxItem Content="默认" /></ComboBox><StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center"><Border Width="14" Height="14" CornerRadius="7" Background="#606ACC" /><TextBlock Text="#606ACC" FontSize="12" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" /></StackPanel></StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center" Margin="0,0,16,0"><ComboBox MinWidth="80" Classes="settings-select flat-select recessed-select settings-pill" SelectedIndex="8"><ComboBoxItem><StackPanel Orientation="Horizontal" Spacing="8"><Border Width="13" Height="13" CornerRadius="6.5" Background="#FFFFFF" /><TextBlock Text="默认" VerticalAlignment="Center" /></StackPanel></ComboBoxItem><ComboBoxItem><StackPanel Orientation="Horizontal" Spacing="8"><Border Width="13" Height="13" CornerRadius="6.5" Background="#3566F0" /><TextBlock Text="蓝色" VerticalAlignment="Center" /></StackPanel></ComboBoxItem><ComboBoxItem><StackPanel Orientation="Horizontal" Spacing="8"><Border Width="13" Height="13" CornerRadius="6.5" Background="#179E8A" /><TextBlock Text="绿色" VerticalAlignment="Center" /></StackPanel></ComboBoxItem><ComboBoxItem><StackPanel Orientation="Horizontal" Spacing="8"><Border Width="13" Height="13" CornerRadius="6.5" Background="#FFCC38" /><TextBlock Text="黄色" VerticalAlignment="Center" /></StackPanel></ComboBoxItem><ComboBoxItem><StackPanel Orientation="Horizontal" Spacing="8"><Border Width="13" Height="13" CornerRadius="6.5" Background="#FA70AB" /><TextBlock Text="粉色" VerticalAlignment="Center" /></StackPanel></ComboBoxItem><ComboBoxItem><StackPanel Orientation="Horizontal" Spacing="8"><Border Width="13" Height="13" CornerRadius="6.5" Background="#FF8066" /><TextBlock Text="橙色" VerticalAlignment="Center" /></StackPanel></ComboBoxItem><ComboBoxItem><StackPanel Orientation="Horizontal" Spacing="8"><Border Width="13" Height="13" CornerRadius="6.5" Background="#A25BFF" /><TextBlock Text="紫色" VerticalAlignment="Center" /></StackPanel></ComboBoxItem><ComboBoxItem><StackPanel Orientation="Horizontal" Spacing="8"><Border Width="13" Height="13" CornerRadius="6.5" Background="#FFFFFF" /><TextBlock Text="白色" VerticalAlignment="Center" /></StackPanel></ComboBoxItem><ComboBoxItem Content="自定义" /></ComboBox><Border Classes="color-value"><StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"><Border Width="14" Height="14" CornerRadius="7" Background="#606ACC" /><TextBlock Text="#606ACC" FontSize="12" Foreground="#C6C7C9" VerticalAlignment="Center" /></StackPanel></Border></StackPanel>
                             </Grid>
                             <Border Classes="settings-divider" />
                             <Grid ColumnDefinitions="*,Auto" Height="43" Margin="16,0,16,0">
                             <StackPanel Spacing="3" VerticalAlignment="Center">
                             <TextBlock Classes="settings-title" Text="背景" />
                             </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center" Margin="0,0,16,0"><Border Width="14" Height="14" CornerRadius="7" Background="#0F0F11" BorderBrush="#272729" BorderThickness="1" /><TextBlock Classes="settings-value" Text="#0F0F11" VerticalAlignment="Center" /></StackPanel>
+                            <Border Grid.Column="1" Classes="color-value" Margin="0,0,16,0"><StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"><Border Width="14" Height="14" CornerRadius="7" Background="#0F0F11" BorderBrush="#272729" BorderThickness="1" /><TextBlock Classes="settings-value" Text="#0F0F11" Foreground="#C6C7C9" VerticalAlignment="Center" /></StackPanel></Border>
                             </Grid>
                             <Border Classes="settings-divider" />
                             <Grid ColumnDefinitions="*,Auto" Height="43" Margin="16,0,16,0">
                             <StackPanel Spacing="3" VerticalAlignment="Center">
                             <TextBlock Classes="settings-title" Text="前景" />
                             </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center" Margin="0,0,16,0"><Border Width="14" Height="14" CornerRadius="7" Background="#E3E4E6" BorderBrush="#272729" BorderThickness="1" /><TextBlock Classes="settings-value" Text="#E3E4E6" VerticalAlignment="Center" /></StackPanel>
+                            <Border Grid.Column="1" Classes="color-value" Margin="0,0,16,0"><StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"><Border Width="14" Height="14" CornerRadius="7" Background="#E3E4E6" BorderBrush="#272729" BorderThickness="1" /><TextBlock Classes="settings-value" Text="#E3E4E6" Foreground="#C6C7C9" VerticalAlignment="Center" /></StackPanel></Border>
                             </Grid>
                             <Border Classes="settings-divider" />
                             <Grid ColumnDefinitions="*,Auto" Height="44" Margin="16,0,16,0">
                             <StackPanel Spacing="3" VerticalAlignment="Center">
                             <TextBlock Classes="settings-title" Text="字体" />
                             </StackPanel>
-                            <ComboBox Width="66" MinWidth="0" MinHeight="26" Padding="6,2,2,2" Grid.Column="1" Classes="settings-select" VerticalAlignment="Center" SelectedIndex="0">
+                            <ComboBox Width="66" MinWidth="0" MinHeight="26" Padding="6,2,2,2" Grid.Column="1" Classes="settings-select settings-pill" VerticalAlignment="Center" SelectedIndex="0">
                             <ComboBoxItem Content="Inter" />
                             <ComboBoxItem Content="系统" />
                             </ComboBox>
@@ -3229,135 +2921,151 @@
                             </StackPanel>
                             </Border>
                             </StackPanel>
-                            <Grid ColumnDefinitions="*,Auto" Margin="2,2,2,35">
+                            <StackPanel Spacing="0" Margin="0,0,0,35">
+                            <Grid ColumnDefinitions="*,Auto">
+                            <Button Classes="subtle" Click="OnAppearanceAdvancedClicked" Padding="6,2" Margin="-6,0,0,0" HorizontalAlignment="Left">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                             <TextBlock Text="高级" FontSize="12.5" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" />
-                            <Path Width="11" Height="11" Data="{StaticResource ChevronRightIcon}" Stretch="Uniform" Stroke="{StaticResource TextSecondary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" VerticalAlignment="Center" />
+                            <Path x:Name="AppearanceAdvancedChevronRight" Width="11" Height="11" Data="{StaticResource ChevronRightIcon}" Stretch="Uniform" Stroke="{StaticResource TextSecondary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" VerticalAlignment="Center" />
+                            <Path x:Name="AppearanceAdvancedChevronDown" Width="11" Height="11" Data="{StaticResource ChevronDownIcon}" Stretch="Uniform" Stroke="{StaticResource TextSecondary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" VerticalAlignment="Center" IsVisible="False" />
                             </StackPanel>
-                            <TextBlock Grid.Column="1" Text="重置为默认设置" FontSize="12.5" Foreground="{StaticResource TextCaption}" />
+                            </Button>
+                            <TextBlock Grid.Column="1" Text="重置为默认设置" FontSize="12.5" Foreground="{StaticResource TextCaption}" VerticalAlignment="Center" />
                             </Grid>
-                            </StackPanel>
-                            <StackPanel IsVisible="{Binding IsSettingsAccount}" Spacing="50">
-                            <StackPanel Spacing="0">
-                            <TextBlock Classes="settings-heading" Text="常规" />
-                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel x:Name="AppearanceAdvancedPanel" IsVisible="False" Spacing="16" Margin="0,14,0,0">
+                            <Border Classes="settings-card">
                             <StackPanel>
-                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="姓名" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,10,16,9">
+                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="界面字号" />
+                            <TextBlock Classes="settings-desc" Text="调整 KL 的基础字号" HorizontalAlignment="Left" MaxWidth="650" />
                             </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"><TextBlock Classes="settings-value" Text="未设置" VerticalAlignment="Center" /><Path Width="13" Height="13" Data="{StaticResource EditIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" /></StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <TextBox Classes="settings-number" Text="14" />
+                            <TextBlock Classes="settings-value" Text="px" VerticalAlignment="Center" />
+                            </StackPanel>
                             </Grid>
                             <Border Classes="settings-divider" />
-                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="用户名" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,10,16,9">
+                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="代码字体大小" />
+                            <TextBlock Classes="settings-desc" Text="调整聊天和差异视图中代码使用的基础字号" HorizontalAlignment="Left" MaxWidth="650" />
                             </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"><TextBlock Classes="settings-value" Text="@local" VerticalAlignment="Center" /><Path Width="13" Height="13" Data="{StaticResource EditIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" /></StackPanel>
-                            </Grid>
-                            <Border Classes="settings-divider" />
-                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="电子邮箱" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <TextBox Classes="settings-number" Text="12" />
+                            <TextBlock Classes="settings-value" Text="px" VerticalAlignment="Center" />
                             </StackPanel>
-                            <TextBlock Grid.Column="1" Classes="settings-value" Text="未设置" MaxWidth="420" TextAlignment="Right" VerticalAlignment="Center" />
-                            </Grid>
-                            <Border Classes="settings-divider" />
-                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="套餐" />
-                            </StackPanel>
-                            <TextBlock Grid.Column="1" Classes="settings-value" Text="免费版" MaxWidth="420" TextAlignment="Right" VerticalAlignment="Center" />
-                            </Grid>
-                            <Border Classes="settings-divider" />
-                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="个人资料" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"><TextBlock Classes="settings-value" Text="未设置" VerticalAlignment="Center" /><Path Width="13" Height="13" Data="{StaticResource EditIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" /></StackPanel>
-                            </Grid>
-                            <Border Classes="settings-divider" />
-                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="年龄" />
-                            </StackPanel>
-                            <TextBlock Grid.Column="1" Classes="settings-value" Text="18 岁及以上" MaxWidth="420" TextAlignment="Right" VerticalAlignment="Center" />
                             </Grid>
                             </StackPanel>
                             </Border>
-                            </StackPanel>
-                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <Border Classes="settings-card">
                             <StackPanel>
-                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11"><TextBlock Classes="settings-title" Text="删除账户" VerticalAlignment="Center" /><Button Grid.Column="1" Classes="danger" Content="删除" Click="OnSettingsPlaceholderClicked" /></Grid>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,10,16,9">
+                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="减少动态效果" />
+                            <TextBlock Classes="settings-desc" Text="减少动画效果或匹配系统设置" HorizontalAlignment="Left" MaxWidth="650" />
                             </StackPanel>
-                            </Border>
-                            </StackPanel>
-
-                            <StackPanel IsVisible="{Binding IsSettingsAds}" Spacing="50">
-                            <Border Classes="settings-card" Margin="0,17,0,0">
-                            <StackPanel>
-                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="历史" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-                            <Path Classes="row-chevron" Width="10" Height="10" Data="{StaticResource ChevronRightIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                            <Button Classes="filter" Classes.active="True" Content="系统" Click="OnSettingsPlaceholderClicked" />
+                            <Button Classes="filter" Content="开启" Click="OnSettingsPlaceholderClicked" />
+                            <Button Classes="filter" Content="关闭" Click="OnSettingsPlaceholderClicked" />
                             </StackPanel>
                             </Grid>
                             <Border Classes="settings-divider" />
-                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="广告主题" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,10,16,9">
+                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="分别设置浅色和深色模式" />
+                            <TextBlock Classes="settings-desc" Text="分别选择各自的主题、颜色和字体" HorizontalAlignment="Left" MaxWidth="650" />
                             </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-                            <Path Classes="row-chevron" Width="10" Height="10" Data="{StaticResource ChevronRightIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round" VerticalAlignment="Center" />
-                            </StackPanel>
-                            </Grid>
-                            <Border Classes="settings-divider" />
-                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="删除广告数据" />
-                            <TextBlock Classes="settings-desc" Text="清除所有广告历史记录和广告主题数据，不会影响你的聊天。" HorizontalAlignment="Left" MaxWidth="650" />
-                            </StackPanel>
-                            <Button Grid.Column="1" Classes="danger" Content="删除" Click="OnSettingsPlaceholderClicked" />
+                            <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="False" VerticalAlignment="Center" />
                             </Grid>
                             </StackPanel>
                             </Border>
-                            <StackPanel Spacing="0">
-                            <TextBlock Classes="settings-heading" Text="广告个性化" />
-                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <Border Classes="settings-card">
                             <StackPanel>
-                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="个性化广告" />
-                            <TextBlock Classes="settings-desc" Text="允许 KL 根据你过去的聊天、活动和偏好选择广告。广告仍可能基于你当前的聊天内容。" HorizontalAlignment="Left" MaxWidth="650" />
+                            <Grid ColumnDefinitions="*,Auto" Height="34" Margin="16,0,16,0">
+                            <TextBlock Classes="settings-title" Text="界面字体样式" VerticalAlignment="Center" />
+                            <ComboBox Grid.Column="1" Width="84" Classes="settings-select flat-select settings-pill" VerticalAlignment="Center" SelectedIndex="0">
+                            <ComboBoxItem Content="常规" />
+                            <ComboBoxItem Content="中等" />
+                            <ComboBoxItem Content="粗体" />
+                            </ComboBox>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Height="34" Margin="16,0,16,0">
+                            <TextBlock Classes="settings-title" Text="内容字体" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <ComboBox Classes="settings-select flat-select settings-pill" VerticalAlignment="Center" SelectedIndex="0">
+                            <ComboBoxItem Content="与界面字体相同" />
+                            <ComboBoxItem Content="Inter" />
+                            <ComboBoxItem Content="系统" />
+                            </ComboBox>
+                            <ComboBox Width="84" Classes="settings-select flat-select settings-pill" VerticalAlignment="Center" SelectedIndex="0">
+                            <ComboBoxItem Content="常规" />
+                            <ComboBoxItem Content="中等" />
+                            <ComboBoxItem Content="粗体" />
+                            </ComboBox>
+                            </StackPanel>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Height="34" Margin="16,0,16,0">
+                            <TextBlock Classes="settings-title" Text="代码字体" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <ComboBox Classes="settings-select flat-select settings-pill" VerticalAlignment="Center" SelectedIndex="0">
+                            <ComboBoxItem Content="Geist Mono" />
+                            <ComboBoxItem Content="JetBrains Mono" />
+                            <ComboBoxItem Content="系统等宽" />
+                            </ComboBox>
+                            <ComboBox Width="84" Classes="settings-select flat-select settings-pill" VerticalAlignment="Center" SelectedIndex="0">
+                            <ComboBoxItem Content="常规" />
+                            <ComboBoxItem Content="中等" />
+                            <ComboBoxItem Content="粗体" />
+                            </ComboBox>
+                            </StackPanel>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Height="34" Margin="16,0,16,0">
+                            <TextBlock Classes="settings-title" Text="半透明侧边栏" VerticalAlignment="Center" />
+                            <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="False" VerticalAlignment="Center" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Height="44" Margin="16,0,16,0">
+                            <TextBlock Classes="settings-title" Text="对比度" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <Slider x:Name="ContrastSlider" Width="140" Minimum="0" Maximum="100" Value="50" IsSnapToTickEnabled="True" TickFrequency="1" VerticalAlignment="Center" />
+                            <TextBlock Classes="settings-value" Text="{Binding #ContrastSlider.Value, StringFormat={}{0:0}}" Width="26" TextAlignment="Right" TextWrapping="NoWrap" VerticalAlignment="Center" />
+                            </StackPanel>
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            <Border Classes="settings-card">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,10,16,9">
+                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="差异标记" />
+                            <TextBlock Classes="settings-desc" Text="使用颜色或 +/- 标记显示更改" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                            <Button Classes="filter" Classes.active="True" Content="颜色" Click="OnSettingsPlaceholderClicked" />
+                            <Button Classes="filter" Content="+/-" Click="OnSettingsPlaceholderClicked" />
+                            </StackPanel>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,10,16,9">
+                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="使用指针光标" />
+                            <TextBlock Classes="settings-desc" Text="悬停交互元素时切换为指针光标" HorizontalAlignment="Left" MaxWidth="650" />
                             </StackPanel>
                             <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="False" VerticalAlignment="Center" />
                             </Grid>
                             </StackPanel>
                             </Border>
                             </StackPanel>
-                            <Border Classes="settings-card" Margin="0,17,0,0">
-                            <StackPanel>
-                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11"><TextBlock Classes="settings-title" Text="更换套餐以升级至无广告体验" VerticalAlignment="Center" /><Button Grid.Column="1" Classes="secondary settings-button" Content="更换套餐" Click="OnSettingsPlaceholderClicked" /></Grid>
-                            </StackPanel>
-                            </Border>
-                            </StackPanel>
-
-                            <StackPanel IsVisible="{Binding IsSettingsParental}" Spacing="50">
-                            <StackPanel Spacing="16" Margin="0,2,0,0">
-                            <TextBlock Text="家长和青少年可以关联彼此的账号，让家长能够调整部分功能、设置限制，并添加适合家庭需求的安全保护措施。" FontSize="13" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" MaxWidth="720" />
-                            <Button Classes="secondary settings-button" Content="＋ 添加家庭成员" HorizontalAlignment="Left" Click="OnSettingsPlaceholderClicked" />
                             </StackPanel>
                             </StackPanel>
 
-                            <StackPanel IsVisible="{Binding IsSettingsTrusted}" Spacing="50">
-                            <StackPanel Spacing="16" Margin="0,2,0,0">
-                            <TextBlock Text="有了受信任联系人，你可以更轻松地从熟悉你的人那里获得支持。" FontSize="13" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" MaxWidth="720" />
-                            <TextBlock Text="日后，如果你与 KL 谈论自杀话题，且相关表述表明你可能面临严重的安全风险，我们可能会自动通知你的受信任联系人，以便对方主动联系、了解你的情况。对方必须年满 18 岁才能参与。" FontSize="13" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" MaxWidth="720" />
-                            <Button Classes="secondary settings-button" Content="＋ 添加联系人" HorizontalAlignment="Left" Click="OnSettingsPlaceholderClicked" />
-                            </StackPanel>
-                            </StackPanel>
+
+
 
                             <StackPanel IsVisible="{Binding IsSettingsVoice}" Spacing="50">
                             <StackPanel Spacing="0">
@@ -3407,11 +3115,31 @@
                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center"><TextBlock Classes="settings-value" Text="关闭" VerticalAlignment="Center" /><Path Width="13" Height="13" Data="{StaticResource EditIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" /></StackPanel>
                             </Grid>
                             <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,5,16,5">
+                            <Button Classes="subtle" Click="OnVoiceAdvancedClicked" Padding="6,2" Margin="-6,0,0,0" HorizontalAlignment="Left">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="高级" FontSize="12.5" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" />
+                            <Path x:Name="VoiceAdvancedChevronRight" Width="11" Height="11" Data="{StaticResource ChevronRightIcon}" Stretch="Uniform" Stroke="{StaticResource TextSecondary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" VerticalAlignment="Center" />
+                            <Path x:Name="VoiceAdvancedChevronDown" Width="11" Height="11" Data="{StaticResource ChevronDownIcon}" Stretch="Uniform" Stroke="{StaticResource TextSecondary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" VerticalAlignment="Center" IsVisible="False" />
+                            </StackPanel>
+                            </Button>
+                            </Grid>
+                            <StackPanel x:Name="VoiceAdvancedPanel" IsVisible="False">
                             <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
                             <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="高级 &gt;" />
+                            <TextBlock Classes="settings-title" Text="单击快捷键" />
+                            <TextBlock Classes="settings-desc" Text="按一次开始，再按一次结束" HorizontalAlignment="Left" MaxWidth="650" />
                             </StackPanel>
-                            <TextBlock Grid.Column="1" Text="" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center"><TextBlock Classes="settings-value" Text="关闭" VerticalAlignment="Center" /><Path Width="13" Height="13" Data="{StaticResource EditIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" /></StackPanel>
+                            </Grid>
+                            </StackPanel>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="Lower other app audio" />
+                            <TextBlock Classes="settings-desc" Text="Lower the volume of other apps while dictating" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="True" VerticalAlignment="Center" />
                             </Grid>
                             <Border Classes="settings-divider" />
                             <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
@@ -3855,112 +3583,9 @@
                             </StackPanel>
                             </StackPanel>
 
-                            <StackPanel IsVisible="{Binding IsSettingsMini}" Spacing="50">
-                            <Border Background="#1A1A1D" CornerRadius="12" Padding="24,42,24,31" Margin="0,-12,0,0">
-                            <Grid ColumnDefinitions="*,Auto">
-                            <StackPanel Spacing="12" HorizontalAlignment="Center">
-                            <Border Width="92" Height="92" CornerRadius="46" Background="#2F6BFF">
-                            <TextBlock Text="▶" FontSize="30" Foreground="#F2F3F5" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
-                            <Border Background="#232327" CornerRadius="18" Padding="2" HorizontalAlignment="Center"><StackPanel Orientation="Horizontal" Spacing="2">
-                            <Button Classes="subtle" Width="32" Height="32" Padding="0" HorizontalContentAlignment="Center" Click="OnSettingsPlaceholderClicked"><Path Width="14" Height="14" Data="{StaticResource EditIcon}" Stretch="Uniform" Stroke="{StaticResource TextSecondary}" StrokeThickness="1.3" /></Button>
-                            <Button Classes="subtle" Width="32" Height="32" Padding="0" HorizontalContentAlignment="Center" Click="OnSettingsPlaceholderClicked"><Path Width="14" Height="14" Data="{StaticResource MicIcon}" Stretch="Uniform" Stroke="{StaticResource TextSecondary}" StrokeThickness="1.3" /></Button>
-                            <Button Classes="subtle" Width="32" Height="32" Padding="0" HorizontalContentAlignment="Center" Click="OnSettingsPlaceholderClicked"><Path Width="12" Height="12" Data="{StaticResource ChevronDownIcon}" Stretch="Uniform" Stroke="{StaticResource TextSecondary}" StrokeThickness="1.3" /></Button>
-                            </StackPanel></Border>
-                            </StackPanel>
-                            <Button Grid.Column="1" Classes="secondary settings-button" Content="自定义" VerticalAlignment="Bottom" Click="OnSettingsPlaceholderClicked" />
-                            </Grid>
-                            </Border>
-                            <StackPanel Spacing="0">
-                            <Grid ColumnDefinitions="*,Auto">
-                            <TextBlock Classes="settings-heading" Text="我的智能伙伴" VerticalAlignment="Center" />
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"><Button Classes="subtle" Width="28" Height="28" Padding="0" HorizontalContentAlignment="Center" Click="OnSettingsPlaceholderClicked"><Path Width="14" Height="14" Data="{StaticResource RefreshIcon}" Stretch="Uniform" Stroke="{StaticResource TextSecondary}" StrokeThickness="1.3" /></Button><Button Classes="secondary settings-button" Content="创建智能伙伴" Click="OnSettingsPlaceholderClicked" /></StackPanel>
-                            </Grid>
-                            <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="10" Margin="0,10,0,0">
-                            <Border Background="#1A1A1D" CornerRadius="12" Padding="16" Grid.Row="0" Grid.Column="0" Height="194" Margin="0">
-                            <StackPanel Spacing="10" VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <Border Background="#232327" CornerRadius="14" Padding="2"><StackPanel Orientation="Horizontal" Spacing="2"><Button Classes="subtle" Width="24" Height="24" Padding="0" HorizontalContentAlignment="Center" Click="OnSettingsPlaceholderClicked"><Path Width="12" Height="12" Data="{StaticResource EditIcon}" Stretch="Uniform" Stroke="{StaticResource TextSecondary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" /></Button><Button Classes="subtle" Width="24" Height="24" Padding="0" HorizontalContentAlignment="Center" Click="OnSettingsPlaceholderClicked"><Path Width="12" Height="12" Data="{StaticResource MicIcon}" Stretch="Uniform" Stroke="{StaticResource TextSecondary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" /></Button><Button Classes="subtle" Width="24" Height="24" Padding="0" HorizontalContentAlignment="Center" Click="OnSettingsPlaceholderClicked"><Path Width="10" Height="10" Data="{StaticResource ChevronDownIcon}" Stretch="Uniform" Stroke="{StaticResource TextSecondary}" StrokeThickness="1.3" /></Button></StackPanel></Border>
-                            <TextBlock Text="无" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" />
-                            <TextBlock Text="轻量级 KL 小伙伴" FontSize="11.5" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="180" />
-                            </StackPanel>
-                            </Border>
-                            <Border Background="#1A1A1D" CornerRadius="12" Padding="16" Grid.Row="0" Grid.Column="1" Height="194" Margin="0">
-                            <StackPanel Spacing="10" VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <Border Width="52" Height="52" CornerRadius="26" Background="#2F6BFF">
-                            <TextBlock Text="▶" FontSize="20" Foreground="#F2F3F5" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
-                            <TextBlock Text="Codex" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" />
-                            <TextBlock Text="The original Codex companion." FontSize="11.5" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="180" />
-                            </StackPanel>
-                            </Border>
-                            <Border Background="#1A1A1D" CornerRadius="12" Padding="16" Grid.Row="0" Grid.Column="2" Height="194" Margin="0">
-                            <StackPanel Spacing="10" VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <Border Width="52" Height="52" CornerRadius="26" Background="#3FA9C9">
-                            <TextBlock Text="◈" FontSize="20" Foreground="#F2F3F5" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
-                            <TextBlock Text="Dewey" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" />
-                            <TextBlock Text="A calm companion for focused workspace days." FontSize="11.5" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="180" />
-                            </StackPanel>
-                            </Border>
-                            <Border Background="#1A1A1D" CornerRadius="12" Padding="16" Grid.Row="1" Grid.Column="0" Height="194" Margin="0">
-                            <StackPanel Spacing="10" VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <Border Width="52" Height="52" CornerRadius="26" Background="#E2672F">
-                            <TextBlock Text="▲" FontSize="20" Foreground="#F2F3F5" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
-                            <TextBlock Text="Fireball" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" />
-                            <TextBlock Text="Hot path energy for fast iteration." FontSize="11.5" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="180" />
-                            </StackPanel>
-                            </Border>
-                            <Border Background="#1A1A1D" CornerRadius="12" Padding="16" Grid.Row="1" Grid.Column="1" Height="194" Margin="0">
-                            <StackPanel Spacing="10" VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <Border Width="52" Height="52" CornerRadius="26" Background="#E39A2F">
-                            <TextBlock Text="●" FontSize="20" Foreground="#F2F3F5" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
-                            <TextBlock Text="Hoots" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" />
-                            <TextBlock Text="A sharp-eyed owl for polished work in a blink." FontSize="11.5" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="180" />
-                            </StackPanel>
-                            </Border>
-                            <Border Background="#1A1A1D" CornerRadius="12" Padding="16" Grid.Row="1" Grid.Column="2" Height="194" Margin="0">
-                            <StackPanel Spacing="10" VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <Border Width="52" Height="52" CornerRadius="26" Background="#8A7B6A">
-                            <TextBlock Text="■" FontSize="20" Foreground="#F2F3F5" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
-                            <TextBlock Text="Rocky" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" />
-                            <TextBlock Text="A steady rock when the diff gets large." FontSize="11.5" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="180" />
-                            </StackPanel>
-                            </Border>
-                            <Border Background="#1A1A1D" CornerRadius="12" Padding="16" Grid.Row="2" Grid.Column="0" Height="194" Margin="0">
-                            <StackPanel Spacing="10" VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <Border Width="52" Height="52" CornerRadius="26" Background="#4CAF7D">
-                            <TextBlock Text="❖" FontSize="20" Foreground="#F2F3F5" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
-                            <TextBlock Text="Steedy" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" />
-                            <TextBlock Text="Small green shoots for new ideas." FontSize="11.5" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="180" />
-                            </StackPanel>
-                            </Border>
-                            <Border Background="#1A1A1D" CornerRadius="12" Padding="16" Grid.Row="2" Grid.Column="1" Height="194" Margin="0">
-                            <StackPanel Spacing="10" VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <Border Width="52" Height="52" CornerRadius="26" Background="#7C6FD0">
-                            <TextBlock Text="≡" FontSize="20" Foreground="#F2F3F5" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
-                            <TextBlock Text="Stacky" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" />
-                            <TextBlock Text="A balanced stack for deep work." FontSize="11.5" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="180" />
-                            </StackPanel>
-                            </Border>
-                            <Border Background="#1A1A1D" CornerRadius="12" Padding="16" Grid.Row="2" Grid.Column="2" Height="194" Margin="0">
-                            <StackPanel Spacing="10" VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <Border Width="52" Height="52" CornerRadius="26" Background="#4C9FE8">
-                            <TextBlock Text="☹" FontSize="20" Foreground="#F2F3F5" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
-                            <TextBlock Text="BSOD" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" />
-                            <TextBlock Text="A tiny blue-screen gremlin." FontSize="11.5" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="180" />
-                            </StackPanel>
-                            </Border>
-                            <Border Background="#1A1A1D" CornerRadius="12" Padding="16" Grid.Row="3" Grid.Column="0" Height="194" Margin="0">
-                            <StackPanel Spacing="10" VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <Border Width="52" Height="52" CornerRadius="26" Background="#5C5C66">
-                            <TextBlock Text="◇" FontSize="20" Foreground="#F2F3F5" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
-                            <TextBlock Text="Null Signal" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" />
-                            <TextBlock Text="Quiet signal from the void." FontSize="11.5" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="180" />
-                            </StackPanel>
-                            </Border>
-                            </Grid>
-                            </StackPanel>
-                            </StackPanel>
 
                             <StackPanel IsVisible="{Binding IsSettingsShortcuts}" Spacing="50">
-                            <Border Height="36" Background="{StaticResource ElevatedHover}" CornerRadius="10" Padding="10,0" Margin="0,6,0,0">
+                            <Border Classes="search-field" Margin="0,6,0,0">
                             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
                             <Path Width="13" Height="13" Data="{StaticResource SearchIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.35" StrokeLineCap="Round" StrokeJoin="Round" VerticalAlignment="Center" />
                             <TextBox Grid.Column="1" Classes="search" PlaceholderText="搜索快捷键" />
@@ -4296,93 +3921,6 @@
                             </StackPanel>
                             </StackPanel>
 
-                            <StackPanel IsVisible="{Binding IsSettingsDataManagement}" Spacing="50">
-                            <Border Classes="settings-card" Margin="0,17,0,0">
-                            <StackPanel>
-                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="共享链接" />
-                            </StackPanel>
-                            <Button Grid.Column="1" Classes="secondary settings-button" Content="管理" Click="OnSettingsPlaceholderClicked" />
-                            </Grid>
-                            <Border Classes="settings-divider" />
-                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="为所有用户改进模型" />
-                            <TextBlock Classes="settings-desc" Text="设置是否将你的聊天内容用于模型训练" HorizontalAlignment="Left" MaxWidth="650" />
-                            </StackPanel>
-                            <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="True" VerticalAlignment="Center" />
-                            </Grid>
-                            <Border Classes="settings-divider" />
-                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="位置" />
-                            <TextBlock Classes="settings-desc" Text="允许 KL 在提供信息时使用你的设备的精确位置。" HorizontalAlignment="Left" MaxWidth="650" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"><Button Classes="subtle" Content="开启 ↗" Click="OnSettingsPlaceholderClicked" /><ToggleSwitch Classes="setting" IsChecked="False" VerticalAlignment="Center" /></StackPanel>
-                            </Grid>
-                            <Border Classes="settings-divider" />
-                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="工作模式网络访问" />
-                            </StackPanel>
-                            <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="True" VerticalAlignment="Center" />
-                            </Grid>
-                            <Border Classes="settings-divider" />
-                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="共享给应用的信息" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-                            <Path Classes="row-chevron" Width="10" Height="10" Data="{StaticResource ChevronRightIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round" VerticalAlignment="Center" />
-                            </StackPanel>
-                            </Grid>
-                            <Border Classes="settings-divider" />
-                            <Button Classes="nav" Height="NaN" Padding="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Click="OnSettingsNavClicked" Tag="Archived">
-                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="已归档的聊天" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-                            <Path Classes="row-chevron" Width="10" Height="10" Data="{StaticResource ChevronRightIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round" VerticalAlignment="Center" />
-                            </StackPanel>
-                            </Grid>
-                            </Button>
-                            <Border Classes="settings-divider" />
-                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="归档所有聊天" />
-                            </StackPanel>
-                            <Button Grid.Column="1" Classes="secondary settings-button" Content="全部归档" Click="OnSettingsPlaceholderClicked" />
-                            </Grid>
-                            <Border Classes="settings-divider" />
-                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="删除所有聊天" />
-                            </StackPanel>
-                            <Button Grid.Column="1" Classes="danger" Content="全部删除" Click="OnSettingsPlaceholderClicked" />
-                            </Grid>
-                            <Border Classes="settings-divider" />
-                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="导出数据" />
-                            </StackPanel>
-                            <Button Grid.Column="1" Classes="secondary settings-button" Click="OnExportStateBackupClicked" Content="导出" />
-                            </Grid>
-                            <Border Classes="settings-divider" />
-                            <Button Classes="nav" Height="NaN" Padding="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Click="OnSettingsNavClicked" Tag="Ads">
-                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="广告设置" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-                            <Path Classes="row-chevron" Width="10" Height="10" Data="{StaticResource ChevronRightIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round" VerticalAlignment="Center" />
-                            </StackPanel>
-                            </Grid>
-                            </Button>
-                            </StackPanel>
-                            </Border>
-                            </StackPanel>
 
                             <StackPanel IsVisible="{Binding IsSettingsPlugins}" Spacing="50">
                             <Grid ColumnDefinitions="*,Auto" Margin="0,-8,0,-8">
@@ -4392,7 +3930,7 @@
                             <Button Classes="filter" Tag="plugins:mcp" Click="OnSettingsTabClicked"><StackPanel Orientation="Horizontal" Spacing="6"><TextBlock Text="MCP" /><TextBlock Text="{Binding McpTools.Count}" Foreground="{StaticResource TextCaption}" /></StackPanel></Button>
                             <Button Classes="filter" Tag="plugins:market" Click="OnSettingsTabClicked"><StackPanel Orientation="Horizontal" Spacing="6"><TextBlock Text="市场" /><TextBlock Text="0" Foreground="{StaticResource TextCaption}" /></StackPanel></Button>
                             </StackPanel>
-                            <Border Grid.Column="1" Width="223" Height="30" Background="#1F1F20" CornerRadius="15" Padding="10,0" VerticalAlignment="Center">
+                            <Border Grid.Column="1" Classes="search-field" Width="223" VerticalAlignment="Center">
                             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
                             <Path Width="13" Height="13" Data="{StaticResource SearchIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.35" StrokeLineCap="Round" StrokeJoin="Round" VerticalAlignment="Center" />
                             <TextBox Grid.Column="1" Classes="search" PlaceholderText="搜索插件" />
@@ -4435,7 +3973,7 @@
                             </StackPanel>
 
                              <StackPanel IsVisible="{Binding IsSettingsPasswords}" Spacing="50">
-                            <Border Height="36" Background="{StaticResource ElevatedHover}" CornerRadius="10" Padding="10,0" Margin="0,6,0,0">
+                            <Border Classes="search-field" Margin="0,6,0,0">
                             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
                             <Path Width="13" Height="13" Data="{StaticResource SearchIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.35" StrokeLineCap="Round" StrokeJoin="Round" VerticalAlignment="Center" />
                             <TextBox Grid.Column="1" Classes="search" PlaceholderText="搜索密码" />
@@ -4721,9 +4259,9 @@
                             <TextBlock Classes="settings-heading" Text="代码仓库" />
                             <Border Classes="settings-card" Margin="0,17,0,0">
                             <StackPanel>
-                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11"><StackPanel Spacing="3"><TextBlock Classes="settings-title" Text="代码仓库" /><TextBlock Classes="settings-desc" Text="选择一个代码仓库，为其配置自动审查" /></StackPanel><ComboBox Grid.Column="1" Classes="settings-select" SelectedIndex="0"><ComboBoxItem Content="GitHub" /><ComboBoxItem Content="GitLab" /></ComboBox></Grid>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11"><TextBlock Classes="settings-desc" Text="选择一个代码仓库，为其配置自动审查" VerticalAlignment="Center" /><ComboBox Grid.Column="1" Classes="settings-select" SelectedIndex="0"><ComboBoxItem Content="GitHub" /><ComboBoxItem Content="GitLab" /></ComboBox></Grid>
                             <Border Classes="settings-divider" />
-                            <Border Height="36" Background="{StaticResource ElevatedHover}" CornerRadius="10" Padding="10,0" Margin="16,0,16,10"><Grid ColumnDefinitions="Auto,*" ColumnSpacing="8"><Path Width="13" Height="13" Data="{StaticResource SearchIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.35" VerticalAlignment="Center" /><TextBox Grid.Column="1" Classes="search" PlaceholderText="搜索代码仓库" /></Grid></Border>
+                            <Border Classes="search-field" Margin="16,0,16,12"><Grid ColumnDefinitions="Auto,*" ColumnSpacing="8"><Path Width="13" Height="13" Data="{StaticResource SearchIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.35" VerticalAlignment="Center" /><TextBox Grid.Column="1" Classes="search" PlaceholderText="搜索代码仓库" /></Grid></Border>
                             <Border Classes="settings-divider" />
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="16,0,16,13"><Path Width="14" Height="14" Data="{StaticResource RefreshIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" VerticalAlignment="Center" /><TextBlock Text="正在加载代码仓库..." FontSize="12" Foreground="{StaticResource TextCaption}" VerticalAlignment="Center" /></StackPanel>
                             </StackPanel>
@@ -4767,11 +4305,35 @@
                                         IsVisible="False">
                             <TextBlock Classes="settings-heading" Text="审查智能体" />
                             <Border Classes="settings-card" Margin="0,17,0,0">
-                            <StackPanel Spacing="8" Margin="16,12,16,11">
-                            <TextBlock Classes="settings-title" Text="审查智能体配置" />
-                            <TextBlock Classes="settings-desc" Text="接入后会在这里选择审查所用的模型与指令。" />
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="审查模型" />
+                            <TextBlock Classes="settings-desc" Text="选择运行代码审查时使用的模型" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" Classes="settings-select" VerticalAlignment="Center" SelectedIndex="0">
+                            <ComboBoxItem Content="模型默认" />
+                            <ComboBoxItem Content="继承聊天模型" />
+                            </ComboBox>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="审查范围" />
+                            <TextBlock Classes="settings-desc" Text="选择审查智能体检查改动的方式" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" Classes="settings-select" VerticalAlignment="Center" SelectedIndex="0">
+                            <ComboBoxItem Content="仅改动的行" />
+                            <ComboBoxItem Content="完整文件" />
+                            </ComboBox>
+                            </Grid>
                             </StackPanel>
                             </Border>
+                            <StackPanel Spacing="0" Margin="0,50,0,0">
+                            <TextBlock Classes="settings-heading" Text="审查指令" />
+                            <TextBlock Classes="settings-desc" Text="将添加到审查智能体的提示中" Margin="0,8,0,0" HorizontalAlignment="Left" />
+                            <TextBox Classes="settings-textarea" Margin="0,10,0,0" PlaceholderText="添加审查智能体指引..." />
+                            </StackPanel>
                             </StackPanel>
                             </StackPanel>
 
@@ -4821,19 +4383,13 @@
                             </Border>
                             <StackPanel Spacing="0">
                             <TextBlock Classes="settings-heading" Text="提交指令" />
-                            <Border Classes="settings-card" Margin="0,17,0,0">
-                            <StackPanel>
-                            <StackPanel Spacing="8" Margin="16,12,16,11"><TextBlock Classes="settings-desc" Text="将添加到提交信息生成提示中" /><TextBox Classes="settings-input" Height="96" AcceptsReturn="True" TextWrapping="Wrap" VerticalContentAlignment="Top" PlaceholderText="添加提交信息指引..." /></StackPanel>
-                            </StackPanel>
-                            </Border>
+                            <TextBlock Classes="settings-desc" Text="将添加到提交信息生成提示中" Margin="0,8,0,0" HorizontalAlignment="Left" />
+                            <TextBox Classes="settings-textarea" Margin="0,10,0,0" PlaceholderText="添加提交信息指引..." />
                             </StackPanel>
                             <StackPanel Spacing="0">
                             <TextBlock Classes="settings-heading" Text="Pull Request 指令" />
-                            <Border Classes="settings-card" Margin="0,17,0,0">
-                            <StackPanel>
-                            <StackPanel Spacing="8" Margin="16,12,16,11"><TextBlock Classes="settings-desc" Text="将添加到 PR 标题/描述生成提示中" /><TextBox Classes="settings-input" Height="96" AcceptsReturn="True" TextWrapping="Wrap" VerticalContentAlignment="Top" PlaceholderText="添加 Pull Request 指引..." /></StackPanel>
-                            </StackPanel>
-                            </Border>
+                            <TextBlock Classes="settings-desc" Text="将添加到 PR 标题/描述生成提示中" Margin="0,8,0,0" HorizontalAlignment="Left" />
+                            <TextBox Classes="settings-textarea" Margin="0,10,0,0" PlaceholderText="添加 Pull Request 指引..." />
                             </StackPanel>
                             </StackPanel>
 
@@ -5656,6 +5212,7 @@
                                    Foreground="{StaticResource TextSecondary}" />
                         <TextBox Classes="field" MinHeight="130" MaxHeight="220"
                                  AcceptsReturn="True" TextWrapping="Wrap"
+                                 VerticalContentAlignment="Top"
                                  Text="{Binding AutomationPrompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                  PlaceholderText="检查当前工作区并总结今天需要处理的事项。" />
                     </StackPanel>

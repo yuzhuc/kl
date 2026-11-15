@@ -322,6 +322,23 @@ public sealed class MainWindowViewModelStateTests
     }
 
     [Fact]
+    public async Task NewSessionKeepsUnsentDraftComposer()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var vm = TestData.CreateViewModel(temp, store, new FakeCoreSessionService());
+
+        vm.Composer = "写一半的提示词";
+        await vm.NewSessionAsync();
+        Assert.Equal("写一半的提示词", vm.Composer);
+
+        vm.StartCodeReviewDraft();
+        await vm.NewSessionAsync();
+        Assert.Empty(vm.Composer);
+    }
+
+    [Fact]
     public void WorkspaceCanBeAddedAndBecomesActive()
     {
         using var temp = new TempDirectory();

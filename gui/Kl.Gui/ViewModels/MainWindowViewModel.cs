@@ -1530,6 +1530,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         get => _isSettingsOpen;
         private set => SetProperty(ref _isSettingsOpen, value);
     }
+    public SettingsPane ActiveSettingsPane => _settingsPane;
     public bool IsSettingsGeneral => _settingsPane == SettingsPane.General;
     public bool IsSettingsNotifications => _settingsPane == SettingsPane.Notifications;
     public bool IsSettingsAppearance => _settingsPane == SettingsPane.Appearance;
@@ -2101,6 +2102,22 @@ public sealed partial class MainWindowViewModel : ObservableObject
         if (section == AppSection.Settings)
         {
             OpenSettings();
+            return;
+        }
+
+        // Re-clicking the section already on screen would replay the page fade
+        // and reset list state; keep it still.
+        var sameSection = !IsSettingsOpen && section switch
+        {
+            AppSection.Chat => _isChatPage,
+            AppSection.Library => _isLibraryPage,
+            AppSection.Projects => _isProjectsPage,
+            AppSection.Plugins => _isPluginsPage,
+            AppSection.Automation => _isAutomationPage,
+            _ => false
+        };
+        if (sameSection)
+        {
             return;
         }
 
@@ -2690,6 +2707,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         RefreshPinnedRailItems();
     }
 
+    public bool IsCodeReviewDraftActive => _isCodeReviewDraftActive;
+
     public void StartCodeReviewDraft()
     {
         Navigate(AppSection.Chat);
@@ -2707,6 +2726,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
             ?? (Enum.TryParse<SettingsPane>(_state.LastSettingsPane, out var saved)
                 ? saved
                 : SettingsPane.General);
+        // Panes removed from the nav may still be saved in an older state file.
+        if (target is SettingsPane.Profile or SettingsPane.Account or SettingsPane.Ads
+            or SettingsPane.Parental or SettingsPane.Trusted or SettingsPane.Mini
+            or SettingsPane.DataManagement)
+        {
+            target = SettingsPane.General;
+        }
         SelectSettingsPane(target);
         IsSettingsOpen = true;
     }
@@ -3396,7 +3422,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public async Task SelectWorkspaceAsync(WorkspaceItemViewModel workspace)
     {
-        if (IsBusy || (workspace.Id == _activeWorkspace.Id && _activeSession is null))
+        // Re-clicking the selected project must not reopen its latest session
+        // (that clears the composer draft); only do it when nothing is open.
+        if (IsBusy || (workspace.Id == _activeWorkspace.Id && _activeSession is not null))
         {
             return;
         }

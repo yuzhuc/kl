@@ -609,6 +609,13 @@ public sealed partial class MainWindowViewModel
             return;
         }
 
+        // Re-opening the session that is already active reloads its history and
+        // clears the composer draft; treat it as a no-op.
+        if (ReferenceEquals(session, _activeSessionItem))
+        {
+            return;
+        }
+
         IsCoreBusy = true;
         SetCoreStatus("正在打开会话…");
         try
@@ -651,6 +658,12 @@ public sealed partial class MainWindowViewModel
     public async Task NewSessionAsync()
     {
         if (IsBusy)
+        {
+            return;
+        }
+
+        // Already on an unsent draft: keep it instead of wiping the composer.
+        if (_activeSessionItem is null && !_isCodeReviewDraftActive)
         {
             return;
         }
