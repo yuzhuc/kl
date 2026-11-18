@@ -500,6 +500,7 @@ public sealed class MarkdownTextBlock : UserControl
                     Margin = new Thickness(1, 0),
                     Height = 17,
                     VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                    RenderTransform = new TranslateTransform(0, 4),
                     Child = new TextBlock
                     {
                         Text = codeText,

@@ -35,18 +35,19 @@ use kl_protocol::{
     MemoryDeleteParams, MemoryDeleteResult, MemoryEntryInfo, MemoryListParams, MemoryListResult,
     MemoryReadParams, MemoryReadResult, MemoryWriteParams, MemoryWriteResult, PROTOCOL_VERSION,
     PermissionsResult, PermissionsSetParams, PingParams, PingResult, PluginIdParams,
-    PluginInstallParams, PluginListResult, ProviderEnabledResult, ProviderKeyResult,
-    ProviderListResult, ProviderModelSummary, ProviderSetApiKeyParams, ProviderSetEnabledParams,
-    ProviderUpsertParams, ProviderUpsertResult, RequestId, ReviewFinding, ReviewResult,
-    ReviewRunParams, RpcError, SandboxCapabilitiesSummary, SandboxSummary, SessionArchiveParams,
-    SessionArchiveResult, SessionCompactParams, SessionCompactResult, SessionCreateParams,
-    SessionDeleteParams, SessionDeleteResult, SessionHistoryEntry, SessionHistoryParams,
-    SessionHistoryResult, SessionHistoryToolSummary, SessionInfo, SessionListResult,
-    SessionRenameParams, SessionResumeParams, SessionStatusParams, SessionStatusResult,
-    SetDefaultModelParams, SkillGetParams, SkillGetResult, SkillInfo, SkillListParams,
-    SkillListResult, TurnCancelParams, TurnCancelResult, TurnStartParams, TurnStartResult,
-    WorkspaceInitParams, WorkspaceInitResult, error_codes, failure, failure_with_data, methods,
-    negotiate, success, validate_envelope,
+    PluginInstallParams, PluginListResult, ProviderDeleteParams, ProviderEnabledResult,
+    ProviderKeyResult, ProviderListResult, ProviderModelSummary, ProviderModelsParams,
+    ProviderModelsResult, ProviderProtocolSummary, ProviderSetApiKeyParams,
+    ProviderSetEnabledParams, ProviderUpsertParams, ProviderUpsertResult, RequestId, ReviewFinding,
+    ReviewResult, ReviewRunParams, RpcError, SandboxCapabilitiesSummary, SandboxSummary,
+    SessionArchiveParams, SessionArchiveResult, SessionCompactParams, SessionCompactResult,
+    SessionCreateParams, SessionDeleteParams, SessionDeleteResult, SessionHistoryEntry,
+    SessionHistoryParams, SessionHistoryResult, SessionHistoryToolSummary, SessionInfo,
+    SessionListResult, SessionRenameParams, SessionResumeParams, SessionStatusParams,
+    SessionStatusResult, SetDefaultModelParams, SkillGetParams, SkillGetResult, SkillInfo,
+    SkillListParams, SkillListResult, TurnCancelParams, TurnCancelResult, TurnStartParams,
+    TurnStartResult, WorkspaceInitParams, WorkspaceInitResult, error_codes, failure,
+    failure_with_data, methods, negotiate, success, validate_envelope,
 };
 use kl_provider::{
     AnthropicAdapter, BoundProvider, CancellationToken, ChatEvent, ChatMessage, ChatOutcome,
@@ -1134,6 +1135,8 @@ impl Core {
             methods::PERMISSIONS_GET => self.permissions_get(),
             methods::PERMISSIONS_SET => self.permissions_set(params),
             methods::PROVIDER_LIST => self.provider_list(),
+            methods::PROVIDER_MODELS => self.provider_models(params),
+            methods::PROVIDER_DELETE => self.provider_delete(params),
             methods::PROVIDER_UPSERT => self.provider_upsert(params),
             methods::PROVIDER_SET_API_KEY => self.provider_set_api_key(params),
             methods::PROVIDER_SET_ENABLED => self.provider_set_enabled(params),
@@ -2215,11 +2218,63 @@ impl Core {
                 detail: model.detail,
             })
             .collect();
+        let providers = self
+            .catalog
+            .providers
+            .iter()
+            .map(|provider| ProviderProtocolSummary {
+                provider: provider.id.clone(),
+                protocols: provider.protocols.clone(),
+            })
+            .collect();
         to_value(ProviderListResult {
             active_provider: self.config.agent.provider.clone(),
             active_model: self.config.agent.model.clone(),
             models,
+            providers,
         })
+    }
+
+    fn provider_models(&self, params: Value) -> Result<Value, RpcError> {
+        let params: ProviderModelsParams = parse_params(params, methods::PROVIDER_MODELS)?;
+        let endpoints = config::provider_model_endpoints(
+            &self.context.config_path,
+            &self.context.home,
+            &params.id,
+        )
+        .map_err(config_write_error)?;
+
+        let mut last_error = "无法获取模型列表".to_owned();
+        for endpoint in endpoints {
+            for models_url in endpoint.models_urls {
+                match kl_provider::fetch_model_ids(
+                    &models_url,
+                    endpoint.api_key.as_deref(),
+                    endpoint.protocol,
+                ) {
+                    Ok(models) if !models.is_empty() => {
+                        return to_value(ProviderModelsResult {
+                            provider: params.id,
+                            protocol: endpoint.protocol.as_str().to_owned(),
+                            url: endpoint.chat_url,
+                            models,
+                        });
+                    }
+                    Ok(_) => last_error = "提供商没有返回模型".to_owned(),
+                    Err(error) => last_error = error.message,
+                }
+            }
+        }
+
+        Err(rpc_error(error_codes::PROVIDER_UNAVAILABLE, last_error))
+    }
+
+    fn provider_delete(&self, params: Value) -> Result<Value, RpcError> {
+        let params: ProviderDeleteParams = parse_params(params, methods::PROVIDER_DELETE)?;
+        let result =
+            config::provider_delete(&self.context.config_path, &self.context.home, &params.id)
+                .map_err(config_write_error)?;
+        to_value(result)
     }
 
     fn provider_upsert(&self, params: Value) -> Result<Value, RpcError> {

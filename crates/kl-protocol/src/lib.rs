@@ -48,6 +48,8 @@ pub mod methods {
     pub const PROVIDER_UPSERT: &str = "provider.upsert";
     pub const PROVIDER_SET_API_KEY: &str = "provider.set_api_key";
     pub const PROVIDER_SET_ENABLED: &str = "provider.set_enabled";
+    pub const PROVIDER_MODELS: &str = "provider.models";
+    pub const PROVIDER_DELETE: &str = "provider.delete";
     pub const CONFIG_SET_DEFAULT_MODEL: &str = "config.set_default_model";
     pub const AUDIT_TAIL: &str = "audit.tail";
     pub const REVIEW_RUN: &str = "review.run";
@@ -296,6 +298,38 @@ pub struct ProviderListResult {
     pub active_provider: String,
     pub active_model: String,
     pub models: Vec<ProviderModelSummary>,
+    #[serde(default)]
+    pub providers: Vec<ProviderProtocolSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProviderProtocolSummary {
+    pub provider: String,
+    pub protocols: ProviderProtocolUrls,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProviderDeleteParams {
+    pub id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProviderDeleteResult {
+    pub provider: String,
+    pub deleted: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProviderModelsParams {
+    pub id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProviderModelsResult {
+    pub provider: String,
+    pub protocol: String,
+    pub url: String,
+    pub models: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]

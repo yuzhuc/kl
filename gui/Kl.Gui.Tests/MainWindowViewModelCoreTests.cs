@@ -637,15 +637,19 @@ public sealed class MainWindowViewModelCoreTests
         TestData.Seed(store, temp.Path);
         var core = new FakeCoreSessionService();
         core.RequestResponses[Protocol.ProviderUpsert] =
-            """{"provider":"deepseek","path":"providers/deepseek.toml","models":1,"enabled":true}""";
+            """{"provider":"deepseek","path":"providers/deepseek.toml","models":0,"enabled":true}""";
         core.RequestResponses[Protocol.ProviderSetApiKey] =
             """{"provider":"deepseek","key_configured":true}""";
         var (vm, _) = Create(temp, store, core);
 
         vm.OpenProviderForm();
         Assert.True(vm.IsProviderFormOpen);
-        Assert.Equal("deepseek", vm.ProviderDraftId);
-        Assert.Equal("deepseek-chat", vm.ProviderDraftModel);
+        Assert.Empty(vm.ProviderDraftName);
+        vm.ProviderDraftName = "DeepSeek";
+        vm.ProviderDraftNote = "团队共享额度";
+        vm.ProviderDraftWebsite = "https://www.deepseek.com";
+        vm.ProviderDraftChatUrl = "https://api.deepseek.com";
+        vm.ProviderChatSuffixIndex = 1;
         vm.ProviderDraftApiKey = "sk-test";
         await vm.SaveProviderAsync();
 
@@ -655,14 +659,23 @@ public sealed class MainWindowViewModelCoreTests
         var json = JsonSerializer.SerializeToElement(upsert.Parameters);
         Assert.Equal("deepseek", json.GetProperty("id").GetString());
         Assert.True(json.GetProperty("enabled").GetBoolean());
-        var model = json.GetProperty("models")[0];
-        Assert.Equal("deepseek-chat", model.GetProperty("id").GetString());
-        Assert.Equal("openai-chat", model.GetProperty("protocol").GetString());
+        Assert.Equal(0, json.GetProperty("models").GetArrayLength());
+        var protocols = json.GetProperty("protocols");
         Assert.Equal(
             "https://api.deepseek.com/chat/completions",
-            json.GetProperty("protocols").GetProperty("openai-chat").GetString());
+            protocols.GetProperty("openai-chat").GetString());
+        Assert.Equal(
+            "https://api.deepseek.com/responses",
+            protocols.GetProperty("openai-responses").GetString());
+        Assert.Equal(
+            "https://api.deepseek.com/messages",
+            protocols.GetProperty("anthropic").GetString());
         var key = Assert.Single(core.Requests, request => request.Method == Protocol.ProviderSetApiKey);
         Assert.Equal("sk-test", FakeCoreSessionService.ReadParameter(key.Parameters, "key"));
+        var profile = store.Load().ProviderProfiles["deepseek"];
+        Assert.Equal("DeepSeek", profile.DisplayName);
+        Assert.Equal("团队共享额度", profile.Note);
+        Assert.Equal("https://www.deepseek.com", profile.Website);
         Assert.Contains("已写入 deepseek", vm.ProviderStatusText);
     }
 
@@ -675,12 +688,102 @@ public sealed class MainWindowViewModelCoreTests
         var (vm, core) = Create(temp, store);
 
         vm.OpenProviderForm();
-        vm.ProviderDraftBaseUrl = "api.deepseek.com";
+        vm.ProviderDraftName = "DeepSeek";
+        vm.ProviderDraftChatUrl = "api.deepseek.com";
         await vm.SaveProviderAsync();
 
         Assert.True(vm.IsProviderFormOpen);
-        Assert.Contains("Base URL", vm.ProviderFormStatus);
+        Assert.Contains("请求地址", vm.ProviderFormStatus);
         Assert.Empty(core.Requests);
+    }
+
+    [Fact]
+    public async Task AddProviderDefaultsToShortSuffix()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var (vm, core) = Create(temp, store);
+
+        vm.OpenProviderForm();
+        Assert.Equal(1, vm.ProviderChatSuffixIndex);
+        vm.ProviderDraftName = "default-suffix";
+        vm.ProviderDraftChatUrl = "https://api.deepseek.com";
+        await vm.SaveProviderAsync();
+
+        var upsert = Assert.Single(core.Requests, request => request.Method == Protocol.ProviderUpsert);
+        var protocols = JsonSerializer.SerializeToElement(upsert.Parameters).GetProperty("protocols");
+        Assert.Equal(
+            "https://api.deepseek.com/chat/completions",
+            protocols.GetProperty("openai-chat").GetString());
+        Assert.Equal(
+            "https://api.deepseek.com/messages",
+            protocols.GetProperty("anthropic").GetString());
+        Assert.Equal(
+            "https://api.deepseek.com/responses",
+            protocols.GetProperty("openai-responses").GetString());
+    }
+
+    [Fact]
+    public async Task AddProviderNullSuffixKeepsTheEnteredUrl()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var (vm, core) = Create(temp, store);
+
+        vm.OpenProviderForm();
+        vm.ProviderDraftName = "null-suffix";
+        vm.ProviderDraftChatUrl = "https://api.deepseek.com/custom";
+        vm.ProviderChatSuffixIndex = 0;
+        await vm.SaveProviderAsync();
+
+        var upsert = Assert.Single(core.Requests, request => request.Method == Protocol.ProviderUpsert);
+        var protocols = JsonSerializer.SerializeToElement(upsert.Parameters).GetProperty("protocols");
+        Assert.Equal(
+            "https://api.deepseek.com/custom",
+            protocols.GetProperty("openai-chat").GetString());
+        Assert.Equal(
+            "https://api.deepseek.com/custom",
+            protocols.GetProperty("anthropic").GetString());
+        Assert.Equal(
+            "https://api.deepseek.com/custom",
+            protocols.GetProperty("openai-responses").GetString());
+    }
+
+    [Theory]
+    [InlineData(
+        1,
+        "https://api.deepseek.com/chat/completions",
+        "https://api.deepseek.com/messages",
+        "https://api.deepseek.com/responses")]
+    [InlineData(
+        2,
+        "https://api.deepseek.com/v1/chat/completions",
+        "https://api.deepseek.com/v1/messages",
+        "https://api.deepseek.com/v1/responses")]
+    public async Task AddProviderBuildsAllProtocolUrlsFromSuffix(
+        int suffixIndex,
+        string chatUrl,
+        string anthropicUrl,
+        string responsesUrl)
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var (vm, core) = Create(temp, store);
+
+        vm.OpenProviderForm();
+        vm.ProviderDraftName = "suffix";
+        vm.ProviderDraftChatUrl = "https://api.deepseek.com";
+        vm.ProviderChatSuffixIndex = suffixIndex;
+        await vm.SaveProviderAsync();
+
+        var upsert = Assert.Single(core.Requests, request => request.Method == Protocol.ProviderUpsert);
+        var protocols = JsonSerializer.SerializeToElement(upsert.Parameters).GetProperty("protocols");
+        Assert.Equal(chatUrl, protocols.GetProperty("openai-chat").GetString());
+        Assert.Equal(anthropicUrl, protocols.GetProperty("anthropic").GetString());
+        Assert.Equal(responsesUrl, protocols.GetProperty("openai-responses").GetString());
     }
 
     [Fact]
@@ -785,6 +888,35 @@ public sealed class MainWindowViewModelCoreTests
         };
 
     [Fact]
+    public async Task FetchingProviderModelsFillsTheAddModelForm()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var core = new FakeCoreSessionService
+        {
+            Snapshot = Snapshot("deepseek", "deepseek-chat")
+        };
+        core.RequestResponses[Protocol.ProviderModels] =
+            """{"provider":"deepseek","protocol":"openai-responses","url":"https://api.deepseek.com/v1/responses","models":["deepseek-reasoner","deepseek-chat","deepseek-reasoner"]}""";
+        var (vm, _) = Create(temp, store, core);
+        await vm.TestConnectionAsync();
+        vm.OpenProviderDetail(Assert.Single(vm.ProviderCards));
+        vm.OpenAddProviderModel();
+
+        await vm.FetchProviderModelsAsync();
+
+        Assert.Equal(
+            new[] { "deepseek-reasoner", "deepseek-chat" },
+            vm.ProviderFetchedModels);
+        Assert.Equal("deepseek-reasoner", vm.SelectedProviderFetchedModel);
+        Assert.Equal("deepseek-reasoner", vm.ProviderModelDraftId);
+        Assert.Equal(2, vm.ProviderModelProtocolIndex);
+        Assert.Equal("https://api.deepseek.com/v1/responses", vm.ProviderModelDraftUrl);
+        Assert.Contains("已获取 2 个模型", vm.ProviderModelFetchStatus);
+    }
+
+    [Fact]
     public async Task ProviderDetailAddsAModelAndWritesUpsert()
     {
         using var temp = new TempDirectory();
@@ -825,6 +957,90 @@ public sealed class MainWindowViewModelCoreTests
     }
 
     [Fact]
+    public async Task ProviderDetailLoadsConnectionFieldsAndSavesProtocols()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var core = new FakeCoreSessionService { Snapshot = Snapshot("deepseek", "deepseek-chat") };
+        var (vm, _) = Create(temp, store, core);
+        await vm.TestConnectionAsync();
+
+        vm.OpenProviderDetail(Assert.Single(vm.ProviderCards));
+        Assert.Equal("https://api.example.com/chat/completions", vm.ProviderDraftChatUrl);
+        Assert.Equal(0, vm.ProviderChatSuffixIndex);
+        Assert.True(vm.ProviderChatProtocolEnabled);
+        Assert.False(vm.ProviderAnthropicProtocolEnabled);
+
+        vm.ProviderDraftChatUrl = "https://api.deepseek.com/v1/chat/completions";
+        vm.ProviderDraftAnthropicUrl = "https://api.deepseek.com/messages";
+        vm.ProviderAnthropicProtocolEnabled = true;
+        await vm.SaveProviderConnectionAsync();
+
+        var request = Assert.Single(core.Requests, item => item.Method == Protocol.ProviderUpsert);
+        var json = JsonSerializer.SerializeToElement(request.Parameters);
+        var protocols = json.GetProperty("protocols");
+        Assert.Equal(
+            "https://api.deepseek.com/v1/chat/completions",
+            protocols.GetProperty("openai-chat").GetString());
+        Assert.Equal(
+            "https://api.deepseek.com/messages",
+            protocols.GetProperty("anthropic").GetString());
+        Assert.False(protocols.TryGetProperty("openai-responses", out _));
+        var model = Assert.Single(json.GetProperty("models").EnumerateArray());
+        Assert.Equal("deepseek-chat", model.GetProperty("id").GetString());
+        Assert.Equal(
+            "https://api.example.com/chat/completions",
+            model.GetProperty("url").GetString());
+        Assert.Contains("连接配置已写入", vm.ProviderConnectionStatus);
+    }
+
+    [Fact]
+    public async Task ProviderDetailShowsConfiguredUrlsWithoutModels()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var core = new FakeCoreSessionService
+        {
+            Snapshot = new CoreCatalogSnapshot(
+                true,
+                string.Empty,
+                "test-core",
+                1,
+                string.Empty,
+                string.Empty,
+                Array.Empty<string>(),
+                false,
+                Array.Empty<CoreSessionSummary>())
+            {
+                ProviderProtocols =
+                [
+                    new CoreProviderProtocols(
+                        "deepseek",
+                        "https://api.deepseek.com/chat/completions",
+                        "https://api.deepseek.com/messages",
+                        string.Empty)
+                ]
+            }
+        };
+        var (vm, _) = Create(temp, store, core);
+        await vm.TestConnectionAsync();
+
+        var provider = Assert.Single(vm.ProviderCards);
+        Assert.Equal("deepseek", provider.Id);
+        Assert.Empty(provider.Models);
+        vm.OpenProviderDetail(provider);
+
+        Assert.Equal("https://api.deepseek.com/chat/completions", vm.ProviderDraftChatUrl);
+        Assert.Equal("https://api.deepseek.com/messages", vm.ProviderDraftAnthropicUrl);
+        Assert.Empty(vm.ProviderDraftResponsesUrl);
+        Assert.True(vm.ProviderChatProtocolEnabled);
+        Assert.True(vm.ProviderAnthropicProtocolEnabled);
+        Assert.False(vm.ProviderResponsesProtocolEnabled);
+    }
+
+    [Fact]
     public async Task ProviderModelRejectsMalformedUrl()
     {
         using var temp = new TempDirectory();
@@ -862,6 +1078,38 @@ public sealed class MainWindowViewModelCoreTests
     }
 
     [Fact]
+    public async Task ProviderDeleteRequiresConfirmationAndWritesCore()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var core = new FakeCoreSessionService { Snapshot = Snapshot("deepseek", "deepseek-chat") };
+        var (vm, _) = Create(temp, store, core);
+        await vm.TestConnectionAsync();
+        vm.OpenProviderDetail(Assert.Single(vm.ProviderCards));
+
+        vm.OpenProviderDeleteConfirm();
+
+        Assert.True(vm.IsProviderDetailOpen);
+        Assert.True(vm.IsProviderDeleteConfirmOpen);
+        Assert.DoesNotContain(core.Requests, item => item.Method == Protocol.ProviderDelete);
+
+        vm.CancelProviderDeleteConfirm();
+
+        Assert.False(vm.IsProviderDeleteConfirmOpen);
+        Assert.DoesNotContain(core.Requests, item => item.Method == Protocol.ProviderDelete);
+
+        vm.OpenProviderDeleteConfirm();
+        await vm.ConfirmDeleteProviderAsync();
+
+        var request = Assert.Single(core.Requests, item => item.Method == Protocol.ProviderDelete);
+        Assert.Equal("deepseek", FakeCoreSessionService.ReadParameter(request.Parameters, "id"));
+        Assert.False(vm.IsProviderDetailOpen);
+        Assert.False(vm.IsProviderDeleteConfirmOpen);
+        Assert.Contains("已删除提供商 deepseek", vm.ProviderStatusText);
+    }
+
+    [Fact]
     public async Task RefreshProvidersMergesDisabledProvidersFromConfig()
     {
         using var temp = new TempDirectory();
@@ -884,13 +1132,235 @@ public sealed class MainWindowViewModelCoreTests
         };
         var (vm, _) = Create(temp, store, core);
 
-        await vm.RefreshProvidersAsync();
+        await vm.RefreshProvidersAsync(force: true);
 
         var provider = Assert.Single(vm.ProviderCards);
         Assert.Equal("deepseek", provider.Id);
         Assert.Equal("DeepSeek", provider.Name);
         Assert.False(provider.Enabled);
         Assert.True(provider.HasNote);
+    }
+
+    [Fact]
+    public async Task SilentProviderRefreshKeepsTheOneTimeStatusHidden()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var (vm, _) = Create(temp, store);
+
+        await vm.RefreshProvidersAsync(force: true);
+        Assert.Contains("已刷新提供商目录", vm.ProviderStatusText);
+        vm.ClearProviderRefreshStatus();
+
+        await vm.RefreshProvidersAsync(force: true, announce: false);
+
+        Assert.Empty(vm.ProviderStatusText);
+    }
+
+    [Fact]
+    public async Task TestConnectionWarmsTheProviderCache()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var (vm, core) = Create(temp, store);
+
+        await vm.TestConnectionAsync();
+        await vm.RefreshProvidersAsync();
+
+        Assert.Equal(0, core.ProviderCatalogCalls);
+    }
+
+    [Fact]
+    public void ProviderPaneOpensWithEmptyStateAndNoLoadingMessage()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var core = new FakeCoreSessionService
+        {
+            Snapshot = new CoreCatalogSnapshot(
+                true,
+                string.Empty,
+                "test-core",
+                1,
+                string.Empty,
+                string.Empty,
+                Array.Empty<string>(),
+                false,
+                Array.Empty<CoreSessionSummary>())
+        };
+        var (vm, _) = Create(temp, store, core);
+
+        vm.SelectSettingsPane(SettingsPane.Providers);
+
+        Assert.True(vm.ShowNoProviderCards);
+        Assert.DoesNotContain("正在刷新提供商", vm.ProviderStatusText);
+    }
+
+    [Fact]
+    public async Task ProviderRefreshIsCachedUntilForced()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var (vm, core) = Create(temp, store);
+
+        await vm.RefreshProvidersAsync(force: true);
+        await vm.RefreshProvidersAsync();
+        Assert.Equal(1, core.ProviderCatalogCalls);
+
+        await vm.RefreshProvidersAsync(force: true);
+        Assert.Equal(2, core.ProviderCatalogCalls);
+    }
+
+    [Fact]
+    public void CachedProvidersRenderBeforeCoreAnswers()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var cachePath = Path.Combine(temp.Path, "providers-cache.json");
+        new ProviderCacheStore(cachePath).Save(
+        [
+            new ProviderCacheEntry
+            {
+                Id = "cached",
+                Name = "Cached",
+                Note = "缓存备注",
+                Website = "https://cached.example",
+                Enabled = true,
+                KeyConfigured = true,
+                Models =
+                [
+                    new CoreModelOption("cached", "cached-model", true, true)
+                    {
+                        Protocol = "openai-chat",
+                        Url = "https://cached.example/chat/completions",
+                        ContextWindow = 64000,
+                        CompactThreshold = 0.75,
+                        MaxOutputTokens = 4096
+                    }
+                ]
+            }
+        ]);
+        var core = new FakeCoreSessionService
+        {
+            Snapshot = CoreCatalogSnapshot.Failed("offline")
+        };
+
+        var (vm, _) = Create(temp, store, core);
+
+        var provider = Assert.Single(vm.ProviderCards);
+        Assert.Equal("cached", provider.Id);
+        Assert.Equal("Cached", provider.Name);
+        Assert.Equal("缓存备注", provider.Note);
+        Assert.Equal("https://cached.example", provider.Website);
+        Assert.True(provider.Enabled);
+        Assert.True(provider.KeyConfigured);
+        Assert.Single(provider.Models);
+        Assert.Equal(0, core.ProviderCatalogCalls);
+        Assert.Empty(vm.ProviderStatusText);
+
+        vm.OpenProviderDetail(provider);
+        var model = Assert.Single(vm.ProviderModels);
+        Assert.Equal("cached-model", model.Id);
+        Assert.Equal("openai-chat", model.Protocol);
+        Assert.Equal(64000, model.ContextWindow);
+    }
+
+    [Fact]
+    public async Task ProviderRefreshWritesTheCompleteCache()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var core = new FakeCoreSessionService
+        {
+            Snapshot = Snapshot("deepseek", "deepseek-chat"),
+            ConfigJson =
+                """{"config":{"providers":{"ds":{"enabled":false}}}}"""
+        };
+        var (vm, _) = Create(temp, store, core);
+
+        await vm.RefreshProvidersAsync(force: true);
+
+        var cache = new ProviderCacheStore(
+            Path.Combine(temp.Path, "providers-cache.json")).Load();
+        Assert.NotNull(cache);
+        Assert.Equal(2, cache.Providers.Count);
+        var deepseek = Assert.Single(cache.Providers, entry => entry.Id == "deepseek");
+        Assert.Equal("openai-chat", Assert.Single(deepseek.Models).Protocol);
+        var disabled = Assert.Single(cache.Providers, entry => entry.Id == "ds");
+        Assert.False(disabled.Enabled);
+        Assert.Empty(disabled.Models);
+    }
+
+    [Fact]
+    public async Task ProviderListFailureKeepsCachedCardsAndFile()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var cachePath = Path.Combine(temp.Path, "providers-cache.json");
+        var cache = new ProviderCacheStore(cachePath);
+        cache.Save([new ProviderCacheEntry { Id = "cached", Name = "Cached", Enabled = true }]);
+        var core = new FakeCoreSessionService
+        {
+            Snapshot = CoreCatalogSnapshot.Failed("offline"),
+            ProviderListReadResult = false
+        };
+        var (vm, _) = Create(temp, store, core);
+        core.Snapshot = Snapshot("new", "new-model");
+
+        await vm.RefreshProvidersAsync(force: true);
+
+        Assert.Equal("cached", Assert.Single(vm.ProviderCards).Id);
+        Assert.Contains("无法刷新提供商", vm.ProviderStatusText);
+        Assert.Equal("cached", Assert.Single(Assert.IsType<ProviderCacheFile>(cache.Load()).Providers).Id);
+    }
+
+    [Fact]
+    public async Task ConfigReadFailureUpdatesCardsButKeepsTheCache()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var cachePath = Path.Combine(temp.Path, "providers-cache.json");
+        var cache = new ProviderCacheStore(cachePath);
+        cache.Save([new ProviderCacheEntry { Id = "cached", Name = "Cached", Enabled = true }]);
+        var core = new FakeCoreSessionService
+        {
+            Snapshot = CoreCatalogSnapshot.Failed("offline"),
+            ConfigReadResult = false
+        };
+        var (vm, _) = Create(temp, store, core);
+        core.Snapshot = Snapshot("new", "new-model");
+
+        await vm.RefreshProvidersAsync(force: true);
+
+        Assert.Equal("new", Assert.Single(vm.ProviderCards).Id);
+        Assert.Equal("cached", Assert.Single(Assert.IsType<ProviderCacheFile>(cache.Load()).Providers).Id);
+    }
+
+    [Fact]
+    public void CorruptProviderCacheLeavesThePageEmpty()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        File.WriteAllText(
+            Path.Combine(temp.Path, "providers-cache.json"),
+            "not json");
+        var core = new FakeCoreSessionService
+        {
+            Snapshot = CoreCatalogSnapshot.Failed("offline")
+        };
+
+        var (vm, _) = Create(temp, store, core);
+
+        Assert.Empty(vm.ProviderCards);
     }
 
     [Fact]

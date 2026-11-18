@@ -1235,6 +1235,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly string _homeDirectory;
     private string _agentsPath;
     private readonly StateStore _stateStore;
+    private readonly ProviderCacheStore _providerCacheStore;
+    /// <summary>An imported state file must survive until restart instead of being overwritten by autosave.</summary>
+    private bool _stateImported;
     private readonly IPluginCatalogService _pluginCatalogService;
     private AppState _state;
     private WorkspaceItemViewModel _activeWorkspace;
@@ -1298,17 +1301,24 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IPluginCatalogService? pluginCatalogService = null,
         ICoreSessionService? coreSessionService = null,
         Action<Action>? dispatcher = null,
-        string? homeDirectory = null)
+        string? homeDirectory = null,
+        ProviderCacheStore? providerCacheStore = null)
     {
         _homeDirectory = homeDirectory ?? KlDataPaths.Default.HomeDirectory;
         _agentsPath = Path.Combine(_homeDirectory, "AGENTS.md");
         _stateStore = stateStore ?? new StateStore();
+        _providerCacheStore = providerCacheStore
+            ?? new ProviderCacheStore(Path.Combine(
+                Path.GetDirectoryName(_stateStore.Path) ?? _homeDirectory,
+                "providers-cache.json"));
         _pluginCatalogService = pluginCatalogService ?? new LocalPluginCatalogService();
         _core = coreSessionService ?? new UnavailableCoreSessionService();
         _dispatch = dispatcher ?? (static action => action());
         _core.EventReceived += OnCoreEventReceived;
         _state = _stateStore.Load();
         NormalizeState();
+        HydrateProviderCache();
+        BuildShortcutRows();
         LoadRemoteCoreSettings();
         RefreshPinnedRailItems();
         BuildWorkspaceItems();
@@ -1805,7 +1815,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         SettingsPane.Hooks => "通过配置和已启用的插件管理生命周期钩子。",
         SettingsPane.Environments => "本地环境用于指导 KL 如何为项目设置工作树。",
         SettingsPane.Memory => "用户记忆对所有项目生效；工作区记忆只属于当前项目。",
-        SettingsPane.Providers => "接入 DeepSeek、OpenCode、OpenAI 等多个模型提供商；密钥与用量由 KL Core 管理。",
+        SettingsPane.Providers => "连接你使用的模型提供商；请求地址、协议和密钥由 KL Core 管理。",
         SettingsPane.Models => "KL Core 执行所有模型调用；这里只保存默认选择和凭据。",
         _ => string.Empty
     };
@@ -2509,6 +2519,142 @@ public sealed partial class MainWindowViewModel : ObservableObject
         CloseSettings();
         Navigate(AppSection.Chat);
         await OpenSessionAsync(session).ConfigureAwait(true);
+    }
+
+    public ObservableCollection<ShortcutRowViewModel> ShortcutRows { get; } = [];
+
+    private string _shortcutSearch = string.Empty;
+    public string ShortcutSearch
+    {
+        get => _shortcutSearch;
+        set
+        {
+            if (SetProperty(ref _shortcutSearch, value))
+            {
+                ApplyShortcutFilter();
+            }
+        }
+    }
+
+    public bool ShowNoShortcutMatches => ShortcutRows.Count > 0 && ShortcutRows.All(row => !row.IsVisible);
+
+    private ShortcutRowViewModel? _capturingShortcut;
+    public bool IsShortcutCapturing => _capturingShortcut is not null;
+    public string ShortcutCaptureTitle =>
+        _capturingShortcut is null ? string.Empty : $"为“{_capturingShortcut.Title}”录制快捷键";
+
+    private string _shortcutCaptureStatus = string.Empty;
+    public string ShortcutCaptureStatus
+    {
+        get => _shortcutCaptureStatus;
+        private set
+        {
+            if (SetProperty(ref _shortcutCaptureStatus, value))
+            {
+                OnPropertyChanged(nameof(HasShortcutCaptureStatus));
+            }
+        }
+    }
+
+    public bool HasShortcutCaptureStatus => ShortcutCaptureStatus.Length > 0;
+
+    private void BuildShortcutRows()
+    {
+        ShortcutRows.Clear();
+        var bindings = _state.ShortcutBindings ??= [];
+        var definitions = new (string Id, string Title, string Description, string Default)[]
+        {
+            ("newChat", "新聊天", "开始新聊天", "Ctrl+N"),
+            ("archiveChat", "归档聊天", "归档当前聊天", "Ctrl+Shift+A"),
+            ("copyLastCodeBlock", "复制最后一个代码块", "复制当前聊天中助手提供的最后一个代码块", "Ctrl+Shift+;"),
+            ("markUnread", "标记为未读", "将当前聊天标记为未读", "Ctrl+Shift+U"),
+            ("togglePin", "切换置顶状态", "置顶或取消置顶当前聊天", "Ctrl+Alt+P"),
+            ("searchSessions", "搜索会话", "在侧边栏中搜索聊天", "Ctrl+F"),
+            ("openSettings", "打开设置", "打开设置页面", "Ctrl+,"),
+            ("closeWindow", "关闭窗口", "关闭当前窗口", "Ctrl+Shift+W")
+        };
+
+        foreach (var definition in definitions)
+        {
+            var gesture = bindings.TryGetValue(definition.Id, out var custom)
+                && !string.IsNullOrWhiteSpace(custom)
+                    ? custom
+                    : definition.Default;
+            ShortcutRows.Add(new ShortcutRowViewModel(
+                definition.Id,
+                definition.Title,
+                definition.Description,
+                definition.Default,
+                gesture));
+        }
+
+        ApplyShortcutFilter();
+    }
+
+    private void ApplyShortcutFilter()
+    {
+        var query = ShortcutSearch.Trim();
+        foreach (var row in ShortcutRows)
+        {
+            row.IsVisible = query.Length == 0
+                || row.Title.Contains(query, StringComparison.CurrentCultureIgnoreCase)
+                || row.Description.Contains(query, StringComparison.CurrentCultureIgnoreCase)
+                || row.Gesture.Contains(query, StringComparison.CurrentCultureIgnoreCase);
+        }
+
+        OnPropertyChanged(nameof(ShowNoShortcutMatches));
+    }
+
+    /// <summary>Returns the custom binding matching one formatted gesture.</summary>
+    public ShortcutRowViewModel? FindShortcut(string gesture) =>
+        ShortcutRows.FirstOrDefault(row =>
+            row.Gesture.Length > 0
+            && string.Equals(row.Gesture, gesture, StringComparison.OrdinalIgnoreCase));
+
+    public void BeginShortcutCapture(ShortcutRowViewModel row)
+    {
+        _capturingShortcut = row;
+        ShortcutCaptureStatus = string.Empty;
+        OnPropertyChanged(nameof(IsShortcutCapturing));
+        OnPropertyChanged(nameof(ShortcutCaptureTitle));
+    }
+
+    public void CancelShortcutCapture()
+    {
+        _capturingShortcut = null;
+        ShortcutCaptureStatus = string.Empty;
+        OnPropertyChanged(nameof(IsShortcutCapturing));
+        OnPropertyChanged(nameof(ShortcutCaptureTitle));
+    }
+
+    public bool ApplyShortcutGesture(string gesture)
+    {
+        if (_capturingShortcut is null)
+        {
+            return false;
+        }
+
+        var duplicate = ShortcutRows.FirstOrDefault(row =>
+            !ReferenceEquals(row, _capturingShortcut)
+            && string.Equals(row.Gesture, gesture, StringComparison.OrdinalIgnoreCase));
+        if (duplicate is not null)
+        {
+            ShortcutCaptureStatus = $"{gesture} 已用于“{duplicate.Title}”。";
+            return false;
+        }
+
+        _state.ShortcutBindings[_capturingShortcut.ActionId] = gesture;
+        _capturingShortcut.Gesture = gesture;
+        SaveState(silent: true);
+        CancelShortcutCapture();
+        return true;
+    }
+
+    public void ResetShortcut(ShortcutRowViewModel row)
+    {
+        _state.ShortcutBindings.Remove(row.ActionId);
+        row.Gesture = row.DefaultGesture;
+        SaveState(silent: true);
     }
 
     public string CloseWindowAction => _state.CloseWindowAction;
@@ -4114,7 +4260,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
         else if (pane == SettingsPane.Providers)
         {
-            _ = RefreshProvidersAsync();
+            _ = RefreshProvidersAsync(force: HasProviderCards, announce: false);
         }
         else if (pane == SettingsPane.Passwords)
         {
@@ -4226,22 +4372,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public bool HasProviderStatus => ProviderStatusText.Length > 0;
 
-    public IReadOnlyList<ProviderPreset> ProviderPresets { get; } =
-    [
-        new("deepseek", "DeepSeek", "deepseek-chat", "https://api.deepseek.com", "openai-chat",
-            "DeepSeek 官方 API", "https://www.deepseek.com"),
-        new("opencode", "OpenCode", "gpt-5-chat", "https://opencode.ai/zen/go/v1", "openai-chat",
-            "OpenAI 兼容网关", "https://opencode.ai"),
-        new("openai", "OpenAI", "gpt-5-chat", "https://api.openai.com/v1", "openai-chat",
-            "OpenAI 官方 API", "https://openai.com"),
-        new("anthropic", "Anthropic", "claude-sonnet-4-5", "https://api.anthropic.com/v1", "anthropic",
-            "Anthropic 官方 API", "https://www.anthropic.com"),
-        new("openrouter", "OpenRouter", "openai/gpt-5", "https://openrouter.ai/api/v1", "openai-chat",
-            "多模型聚合网关", "https://openrouter.ai"),
-        new(string.Empty, "自定义提供商", string.Empty, string.Empty, "openai-chat",
-            "自定义 OpenAI 兼容端点", string.Empty)
-    ];
-
     private bool _isProviderFormOpen;
     public bool IsProviderFormOpen
     {
@@ -4249,45 +4379,46 @@ public sealed partial class MainWindowViewModel : ObservableObject
         private set => SetProperty(ref _isProviderFormOpen, value);
     }
 
-    private ProviderPreset? _selectedProviderPreset;
-    public ProviderPreset? SelectedProviderPreset
+    private string _providerDraftName = string.Empty;
+    public string ProviderDraftName
     {
-        get => _selectedProviderPreset;
-        set
-        {
-            if (ReferenceEquals(_selectedProviderPreset, value))
-            {
-                return;
-            }
-
-            _selectedProviderPreset = value;
-            OnPropertyChanged();
-            if (value is not null)
-            {
-                FillProviderDraft(value);
-            }
-        }
+        get => _providerDraftName;
+        set => SetProperty(ref _providerDraftName, value);
     }
 
-    private string _providerDraftId = string.Empty;
-    public string ProviderDraftId
+    private string _providerDraftNote = string.Empty;
+    public string ProviderDraftNote
     {
-        get => _providerDraftId;
-        set => SetProperty(ref _providerDraftId, value);
+        get => _providerDraftNote;
+        set => SetProperty(ref _providerDraftNote, value);
     }
 
-    private string _providerDraftModel = string.Empty;
-    public string ProviderDraftModel
+    private string _providerDraftWebsite = string.Empty;
+    public string ProviderDraftWebsite
     {
-        get => _providerDraftModel;
-        set => SetProperty(ref _providerDraftModel, value);
+        get => _providerDraftWebsite;
+        set => SetProperty(ref _providerDraftWebsite, value);
     }
 
-    private string _providerDraftBaseUrl = string.Empty;
-    public string ProviderDraftBaseUrl
+    private string _providerDraftChatUrl = string.Empty;
+    public string ProviderDraftChatUrl
     {
-        get => _providerDraftBaseUrl;
-        set => SetProperty(ref _providerDraftBaseUrl, value);
+        get => _providerDraftChatUrl;
+        set => SetProperty(ref _providerDraftChatUrl, value);
+    }
+
+    private string _providerDraftAnthropicUrl = string.Empty;
+    public string ProviderDraftAnthropicUrl
+    {
+        get => _providerDraftAnthropicUrl;
+        set => SetProperty(ref _providerDraftAnthropicUrl, value);
+    }
+
+    private string _providerDraftResponsesUrl = string.Empty;
+    public string ProviderDraftResponsesUrl
+    {
+        get => _providerDraftResponsesUrl;
+        set => SetProperty(ref _providerDraftResponsesUrl, value);
     }
 
     private string _providerDraftApiKey = string.Empty;
@@ -4297,11 +4428,46 @@ public sealed partial class MainWindowViewModel : ObservableObject
         set => SetProperty(ref _providerDraftApiKey, value);
     }
 
-    private int _providerProtocolIndex;
-    public int ProviderProtocolIndex
+    private int _providerChatSuffixIndex = 1;
+    public int ProviderChatSuffixIndex
     {
-        get => _providerProtocolIndex;
-        set => SetProperty(ref _providerProtocolIndex, value);
+        get => _providerChatSuffixIndex;
+        set => SetProperty(ref _providerChatSuffixIndex, value);
+    }
+
+    private int _providerAnthropicSuffixIndex = 1;
+    public int ProviderAnthropicSuffixIndex
+    {
+        get => _providerAnthropicSuffixIndex;
+        set => SetProperty(ref _providerAnthropicSuffixIndex, value);
+    }
+
+    private int _providerResponsesSuffixIndex = 1;
+    public int ProviderResponsesSuffixIndex
+    {
+        get => _providerResponsesSuffixIndex;
+        set => SetProperty(ref _providerResponsesSuffixIndex, value);
+    }
+
+    private bool _providerChatProtocolEnabled = true;
+    public bool ProviderChatProtocolEnabled
+    {
+        get => _providerChatProtocolEnabled;
+        set => SetProperty(ref _providerChatProtocolEnabled, value);
+    }
+
+    private bool _providerAnthropicProtocolEnabled;
+    public bool ProviderAnthropicProtocolEnabled
+    {
+        get => _providerAnthropicProtocolEnabled;
+        set => SetProperty(ref _providerAnthropicProtocolEnabled, value);
+    }
+
+    private bool _providerResponsesProtocolEnabled;
+    public bool ProviderResponsesProtocolEnabled
+    {
+        get => _providerResponsesProtocolEnabled;
+        set => SetProperty(ref _providerResponsesProtocolEnabled, value);
     }
 
     private string _providerFormStatus = string.Empty;
@@ -4358,6 +4524,28 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public bool HasProviderDetailStatus => ProviderDetailStatus.Length > 0;
 
+    private string _providerConnectionStatus = string.Empty;
+    public string ProviderConnectionStatus
+    {
+        get => _providerConnectionStatus;
+        private set
+        {
+            if (SetProperty(ref _providerConnectionStatus, value))
+            {
+                OnPropertyChanged(nameof(HasProviderConnectionStatus));
+            }
+        }
+    }
+
+    public bool HasProviderConnectionStatus => ProviderConnectionStatus.Length > 0;
+
+    private bool _isProviderDeleteConfirmOpen;
+    public bool IsProviderDeleteConfirmOpen
+    {
+        get => _isProviderDeleteConfirmOpen;
+        private set => SetProperty(ref _isProviderDeleteConfirmOpen, value);
+    }
+
     public ObservableCollection<ProviderModelRow> ProviderModels { get; } = [];
     public bool HasProviderModels => ProviderModels.Count > 0;
     public bool ShowNoProviderModels => !HasProviderModels;
@@ -4410,6 +4598,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         ProviderEditStatus = string.Empty;
         ProviderDetailStatus = string.Empty;
         ProviderDetailApiKey = string.Empty;
+        IsProviderDeleteConfirmOpen = false;
         ProviderModels.Clear();
         foreach (var model in provider.Models)
         {
@@ -4422,6 +4611,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 model.MaxOutputTokens));
         }
 
+        LoadProviderConnections(provider);
         CloseProviderModelForm();
         IsProviderFormOpen = false;
         NotifyProviderModelsChanged();
@@ -4436,11 +4626,198 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _editingProviderId = string.Empty;
         ProviderEditStatus = string.Empty;
         ProviderDetailStatus = string.Empty;
+        ProviderConnectionStatus = string.Empty;
         ProviderDetailApiKey = string.Empty;
+        IsProviderDeleteConfirmOpen = false;
         ProviderModels.Clear();
         CloseProviderModelForm();
         NotifyProviderModelsChanged();
         NotifyProviderDetailChanged();
+    }
+
+    /// <summary>Fills the detail form with each protocol's complete request URL.</summary>
+    private void LoadProviderConnections(ProviderCardRow provider)
+    {
+        string Find(string protocol)
+        {
+            if (provider.Protocols.TryGetValue(protocol, out var url)
+                && !string.IsNullOrWhiteSpace(url))
+            {
+                return url.Trim();
+            }
+
+            return provider.Models.FirstOrDefault(model =>
+                string.Equals(model.Protocol, protocol, StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(model.Url))?.Url ?? string.Empty;
+        }
+
+        var chat = Find("openai-chat");
+        var anthropic = Find("anthropic");
+        var responses = Find("openai-responses");
+
+        // 详情页直接编辑完整地址；suffix 置 0 让保存时原样写入。
+        ProviderDraftChatUrl = chat;
+        ProviderChatSuffixIndex = 0;
+        ProviderChatProtocolEnabled = chat.Length > 0;
+
+        ProviderDraftAnthropicUrl = anthropic;
+        ProviderAnthropicSuffixIndex = 0;
+        ProviderAnthropicProtocolEnabled = anthropic.Length > 0;
+
+        ProviderDraftResponsesUrl = responses;
+        ProviderResponsesSuffixIndex = 0;
+        ProviderResponsesProtocolEnabled = responses.Length > 0;
+
+        ProviderConnectionStatus = string.Empty;
+    }
+
+    /// <summary>Writes the detail page's protocol URLs without changing its models.</summary>
+    public async Task SaveProviderConnectionAsync()
+    {
+        if (_detailProvider is null)
+        {
+            ProviderConnectionStatus = "请先打开一个提供商。";
+            return;
+        }
+
+        var protocols = new Dictionary<string, string?>();
+        bool AddProtocol(string key, string url, bool enabled, string label)
+        {
+            if (!enabled)
+            {
+                return true;
+            }
+
+            url = url.Trim();
+            if (url.Length == 0)
+            {
+                ProviderConnectionStatus = $"请填写 {label} 的请求地址。";
+                return false;
+            }
+
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)
+                || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            {
+                ProviderConnectionStatus = $"{label} 的请求地址必须是完整的 http:// 或 https:// 地址。";
+                return false;
+            }
+
+            protocols[key] = url;
+            return true;
+        }
+
+        if (!AddProtocol("openai-chat", ProviderChatEndpoint(), ProviderChatProtocolEnabled, "OpenAI Chat")
+            || !AddProtocol("anthropic", ProviderAnthropicEndpoint(), ProviderAnthropicProtocolEnabled, "Anthropic")
+            || !AddProtocol("openai-responses", ProviderResponsesEndpoint(), ProviderResponsesProtocolEnabled, "OpenAI Responses"))
+        {
+            return;
+        }
+        if (protocols.Count == 0)
+        {
+            ProviderConnectionStatus = "请至少启用一种协议。";
+            return;
+        }
+
+        var parameters = new Dictionary<string, object?>
+        {
+            ["id"] = _detailProvider.Id,
+            ["enabled"] = _detailProvider.Enabled,
+            ["protocols"] = protocols,
+            ["models"] = ProviderModels.Select(model => new Dictionary<string, object?>
+            {
+                ["id"] = model.Id,
+                ["protocol"] = model.Protocol,
+                ["context_window"] = model.ContextWindow,
+                ["compact_threshold"] = model.CompactThreshold,
+                ["max_output_tokens"] = model.MaxOutputTokens,
+                ["url"] = model.Url
+            }).ToArray()
+        };
+
+        try
+        {
+            await _core.UpsertProviderAsync(parameters, CancellationToken.None).ConfigureAwait(true);
+            ProviderConnectionStatus = "连接配置已写入 KL Core；重新连接后应用到聊天。";
+        }
+        catch (Exception error) when (error is JsonRpcException
+            or IOException
+            or InvalidOperationException
+            or NotSupportedException)
+        {
+            ProviderConnectionStatus = $"保存连接配置失败：{error.Message}";
+        }
+    }
+
+    public void OpenProviderDeleteConfirm()
+    {
+        if (_detailProvider is null)
+        {
+            return;
+        }
+
+        ProviderDetailStatus = string.Empty;
+        IsProviderDeleteConfirmOpen = true;
+    }
+
+    public void CancelProviderDeleteConfirm()
+    {
+        IsProviderDeleteConfirmOpen = false;
+        ProviderDetailStatus = string.Empty;
+    }
+
+    /// <summary>Removes the provider from the UI immediately, then confirms with Core.</summary>
+    public async Task ConfirmDeleteProviderAsync()
+    {
+        if (_detailProvider is null || !IsProviderDeleteConfirmOpen)
+        {
+            return;
+        }
+
+        var id = _detailProvider.Id;
+        var row = ProviderCards.FirstOrDefault(card =>
+            string.Equals(card.Id, id, StringComparison.OrdinalIgnoreCase));
+        var index = row is null ? -1 : ProviderCards.IndexOf(row);
+
+        IsProviderDeleteConfirmOpen = false;
+        if (row is not null)
+        {
+            ProviderCards.Remove(row);
+            NotifyProviderCardsChanged();
+        }
+
+        CloseProviderDetail();
+        ProviderStatusText = $"正在删除提供商 {id}…";
+
+        try
+        {
+            await _core.DeleteProviderAsync(id, CancellationToken.None).ConfigureAwait(true);
+            var profiles = _state.ProviderProfiles;
+            if (profiles is not null && profiles.Remove(id.ToLowerInvariant()))
+            {
+                SaveState();
+            }
+
+            ProviderStatusText = $"已删除提供商 {id}。";
+            SaveProviderCache();
+            await RefreshProvidersAsync(force: true, announce: false).ConfigureAwait(true);
+        }
+        catch (Exception error) when (error is JsonRpcException
+            or IOException
+            or InvalidOperationException
+            or NotSupportedException
+            or OperationCanceledException
+            or TimeoutException)
+        {
+            if (row is not null
+                && !ProviderCards.Any(card =>
+                    string.Equals(card.Id, id, StringComparison.OrdinalIgnoreCase)))
+            {
+                ProviderCards.Insert(Math.Clamp(index, 0, ProviderCards.Count), row);
+                NotifyProviderCardsChanged();
+            }
+
+            ProviderStatusText = $"无法删除提供商 {id}：{error.Message}";
+        }
     }
 
     private void NotifyProviderDetailChanged()
@@ -4578,6 +4955,140 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public bool HasProviderModelFormStatus => ProviderModelFormStatus.Length > 0;
 
+    public ObservableCollection<string> ProviderFetchedModels { get; } = [];
+    public bool HasProviderFetchedModels => ProviderFetchedModels.Count > 0;
+
+    private string _selectedProviderFetchedModel = string.Empty;
+    public string SelectedProviderFetchedModel
+    {
+        get => _selectedProviderFetchedModel;
+        set
+        {
+            if (SetProperty(ref _selectedProviderFetchedModel, value)
+                && !string.IsNullOrWhiteSpace(value))
+            {
+                ProviderModelDraftId = value;
+            }
+        }
+    }
+
+    private bool _isFetchingProviderModels;
+    public bool IsFetchingProviderModels
+    {
+        get => _isFetchingProviderModels;
+        private set
+        {
+            if (SetProperty(ref _isFetchingProviderModels, value))
+            {
+                OnPropertyChanged(nameof(CanFetchProviderModels));
+            }
+        }
+    }
+
+    public bool CanFetchProviderModels => !IsFetchingProviderModels;
+
+    private string _providerModelFetchStatus = string.Empty;
+    public string ProviderModelFetchStatus
+    {
+        get => _providerModelFetchStatus;
+        private set
+        {
+            if (SetProperty(ref _providerModelFetchStatus, value))
+            {
+                OnPropertyChanged(nameof(HasProviderModelFetchStatus));
+            }
+        }
+    }
+
+    public bool HasProviderModelFetchStatus => ProviderModelFetchStatus.Length > 0;
+
+    public async Task FetchProviderModelsAsync()
+    {
+        if (_detailProvider is null || IsFetchingProviderModels)
+        {
+            return;
+        }
+
+        IsFetchingProviderModels = true;
+        ProviderModelFetchStatus = "正在从 /models 获取模型…";
+        try
+        {
+            var result = await _core.FetchProviderModelsAsync(
+                _detailProvider.Id,
+                CancellationToken.None).ConfigureAwait(true);
+            var models = new List<string>();
+            if (result.ValueKind == JsonValueKind.Object
+                && result.TryGetProperty("models", out var values)
+                && values.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var value in values.EnumerateArray())
+                {
+                    if (value.ValueKind == JsonValueKind.String
+                        && value.GetString() is { Length: > 0 } model
+                        && !models.Contains(model, StringComparer.OrdinalIgnoreCase))
+                    {
+                        models.Add(model);
+                    }
+                }
+            }
+
+            ProviderFetchedModels.Clear();
+            foreach (var model in models)
+            {
+                ProviderFetchedModels.Add(model);
+            }
+            OnPropertyChanged(nameof(HasProviderFetchedModels));
+
+            if (models.Count == 0)
+            {
+                ProviderModelFetchStatus = "提供商没有返回模型。";
+                return;
+            }
+
+            if (result.TryGetProperty("protocol", out var protocol)
+                && protocol.ValueKind == JsonValueKind.String
+                && _editingProviderModel is null)
+            {
+                ProviderModelProtocolIndex = protocol.GetString() switch
+                {
+                    "anthropic" => 1,
+                    "openai-responses" => 2,
+                    _ => 0
+                };
+                if (result.TryGetProperty("url", out var url)
+                    && url.ValueKind == JsonValueKind.String
+                    && string.IsNullOrWhiteSpace(ProviderModelDraftUrl))
+                {
+                    ProviderModelDraftUrl = url.GetString() ?? string.Empty;
+                }
+            }
+
+            SelectedProviderFetchedModel = ProviderFetchedModels[0];
+            ProviderModelFetchStatus =
+                $"已获取 {models.Count} 个模型；选择后自动填入模型 ID。";
+        }
+        catch (Exception error) when (error is JsonRpcException
+            or IOException
+            or InvalidOperationException
+            or NotSupportedException)
+        {
+            ProviderModelFetchStatus = $"获取模型列表失败：{error.Message}";
+        }
+        finally
+        {
+            IsFetchingProviderModels = false;
+        }
+    }
+
+    private void ClearProviderFetchedModels()
+    {
+        ProviderFetchedModels.Clear();
+        _selectedProviderFetchedModel = string.Empty;
+        OnPropertyChanged(nameof(SelectedProviderFetchedModel));
+        OnPropertyChanged(nameof(HasProviderFetchedModels));
+        ProviderModelFetchStatus = string.Empty;
+    }
+
     public void OpenAddProviderModel()
     {
         _editingProviderModel = null;
@@ -4588,6 +5099,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         ProviderModelDraftMaxOutput = "8192";
         ProviderModelProtocolIndex = 0;
         ProviderModelFormStatus = string.Empty;
+        ClearProviderFetchedModels();
         OnPropertyChanged(nameof(ProviderModelFormTitle));
         IsProviderModelFormOpen = true;
     }
@@ -4608,6 +5120,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             _ => 0
         };
         ProviderModelFormStatus = string.Empty;
+        ClearProviderFetchedModels();
         OnPropertyChanged(nameof(ProviderModelFormTitle));
         IsProviderModelFormOpen = true;
     }
@@ -4617,6 +5130,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IsProviderModelFormOpen = false;
         _editingProviderModel = null;
         ProviderModelFormStatus = string.Empty;
+        ClearProviderFetchedModels();
     }
 
     public async Task SaveProviderModelAsync()
@@ -4843,6 +5357,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
     };
 
     private readonly HashSet<string> _providerTogglesInFlight = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly TimeSpan ProviderRefreshCache = TimeSpan.FromMinutes(5);
+    private DateTimeOffset _providersRefreshedAt;
+    private bool _providersRefreshing;
 
     /// <summary>Persists a provider's enabled flag through Core.</summary>
     public async Task SetProviderEnabledAsync(ProviderCardRow provider, bool enabled)
@@ -4879,9 +5396,19 @@ public sealed partial class MainWindowViewModel : ObservableObject
         ProviderFormStatus = string.Empty;
         ProviderStatusText = string.Empty;
         CloseProviderDetail();
-        _selectedProviderPreset = ProviderPresets[0];
-        OnPropertyChanged(nameof(SelectedProviderPreset));
-        FillProviderDraft(_selectedProviderPreset);
+        ProviderDraftName = string.Empty;
+        ProviderDraftNote = string.Empty;
+        ProviderDraftWebsite = string.Empty;
+        ProviderDraftChatUrl = string.Empty;
+        ProviderDraftAnthropicUrl = string.Empty;
+        ProviderDraftResponsesUrl = string.Empty;
+        ProviderChatSuffixIndex = 1;
+        ProviderAnthropicSuffixIndex = 1;
+        ProviderResponsesSuffixIndex = 1;
+        ProviderDraftApiKey = string.Empty;
+        ProviderChatProtocolEnabled = true;
+        ProviderAnthropicProtocolEnabled = false;
+        ProviderResponsesProtocolEnabled = false;
         IsProviderFormOpen = true;
     }
 
@@ -4892,49 +5419,59 @@ public sealed partial class MainWindowViewModel : ObservableObject
         ProviderFormStatus = string.Empty;
     }
 
-    private void FillProviderDraft(ProviderPreset preset)
+    /// <summary>Re-reads Core's provider catalog and config over one Core connection.</summary>
+    public async Task RefreshProvidersAsync(bool force = false, bool announce = true)
     {
-        ProviderDraftId = preset.Id;
-        ProviderDraftModel = preset.Model;
-        ProviderDraftBaseUrl = preset.BaseUrl;
-        ProviderDraftApiKey = string.Empty;
-        ProviderProtocolIndex = preset.Protocol switch
+        if (_providersRefreshing
+            || (!force && DateTimeOffset.Now - _providersRefreshedAt < ProviderRefreshCache))
         {
-            "anthropic" => 1,
-            "openai-responses" => 2,
-            _ => 0
-        };
-        ProviderFormStatus = string.Empty;
-    }
+            return;
+        }
 
-    /// <summary>Re-reads Core's provider catalog for the Usage card.</summary>
-    public async Task RefreshProvidersAsync()
-    {
-        ProviderStatusText = "正在刷新提供商…";
+        _providersRefreshing = true;
+        if (announce)
+        {
+            ProviderStatusText = "正在刷新提供商…";
+        }
+
         try
         {
-            var snapshot = await _core.LoadSnapshotAsync(CancellationToken.None).ConfigureAwait(true);
+            var catalog = await _core.LoadProviderCatalogAsync(CancellationToken.None)
+                .ConfigureAwait(true);
+            var snapshot = catalog.Snapshot;
             if (!snapshot.Success)
             {
                 ProviderStatusText = $"无法读取提供商：{snapshot.Error}";
                 return;
             }
 
-            ApplyCatalogSnapshot(snapshot);
-            try
+            if (!catalog.ProviderListRead)
             {
-                var config = await _core.ReadConfigAsync(CancellationToken.None).ConfigureAwait(true);
-                MergeConfiguredProviders(config);
-            }
-            catch (Exception error) when (error is JsonRpcException
-                or IOException
-                or InvalidOperationException
-                or NotSupportedException)
-            {
-                // Provider cards from the live catalog are still useful.
+                ProviderStatusText = "无法刷新提供商：读取 provider.list 失败。";
+                return;
             }
 
-            ProviderStatusText = $"已刷新提供商目录（{DateTimeOffset.Now:HH:mm}）。";
+            ApplyProviderCards(
+                snapshot.ModelOptions,
+                snapshot.Models,
+                snapshot.Provider,
+                snapshot.Provider,
+                snapshot.KeyConfigured,
+                snapshot.ProviderProtocols);
+            MergeConfiguredProviders(catalog.Config);
+            _providersRefreshedAt = DateTimeOffset.Now;
+            if (catalog.ConfigRead)
+            {
+                SaveProviderCache();
+            }
+            if (announce)
+            {
+                ProviderStatusText = $"已刷新提供商目录（{_providersRefreshedAt:HH:mm}）。";
+            }
+            else if (ProviderStatusText.StartsWith("无法", StringComparison.Ordinal))
+            {
+                ProviderStatusText = string.Empty;
+            }
         }
         catch (Exception error) when (error is JsonRpcException
             or IOException
@@ -4943,56 +5480,81 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             ProviderStatusText = $"无法刷新提供商：{error.Message}";
         }
+        finally
+        {
+            _providersRefreshing = false;
+        }
+    }
+
+    /// <summary>Hides the one-time refresh notice when leaving the provider page.</summary>
+    public void ClearProviderRefreshStatus()
+    {
+        if (ProviderStatusText.StartsWith("已刷新提供商目录", StringComparison.Ordinal)
+            || ProviderStatusText.StartsWith("正在刷新提供商", StringComparison.Ordinal))
+        {
+            ProviderStatusText = string.Empty;
+        }
     }
 
     /// <summary>Writes a provider (and optional key) into Core config.</summary>
     public async Task SaveProviderAsync()
     {
-        var id = NormalizeProviderId(ProviderDraftId);
-        var model = ProviderDraftModel.Trim();
-        var baseUrl = ProviderDraftBaseUrl.Trim().TrimEnd('/');
-        if (id.Length == 0)
+        var name = ProviderDraftName.Trim();
+        if (name.Length == 0)
         {
-            ProviderFormStatus = "请填写提供商 ID。";
+            ProviderFormStatus = "请填写提供商名称。";
             return;
         }
 
-        if (model.Length == 0)
+        var website = ProviderDraftWebsite.Trim();
+        if (website.Length > 0
+            && (!Uri.TryCreate(website, UriKind.Absolute, out var websiteUri)
+                || (websiteUri.Scheme != Uri.UriSchemeHttp
+                    && websiteUri.Scheme != Uri.UriSchemeHttps)))
         {
-            ProviderFormStatus = "请填写模型 ID。";
+            ProviderFormStatus = "官网链接必须是完整的 http:// 或 https:// 地址。";
             return;
         }
 
-        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri)
-            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        var baseUrl = ProviderDraftChatUrl.Trim();
+        if (baseUrl.Length == 0)
         {
-            ProviderFormStatus = "Base URL 必须是完整的 http:// 或 https:// 地址。";
+            ProviderFormStatus = "请填写请求地址。";
             return;
         }
 
-        var protocol = ProviderProtocol(ProviderProtocolIndex);
-        var (contextWindow, maxOutput) = ProviderLimits(protocol);
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri)
+            || (baseUri.Scheme != Uri.UriSchemeHttp && baseUri.Scheme != Uri.UriSchemeHttps))
+        {
+            ProviderFormStatus = "请求地址必须是完整的 http:// 或 https:// 地址。";
+            return;
+        }
+
+        // 添加表单把共享的 chat URL 属性当作基础地址，一次生成三种协议。
+        var suffixIndex = ProviderChatSuffixIndex;
+        var protocols = new Dictionary<string, string?>
+        {
+            ["openai-chat"] = AppendEndpointSuffix(
+                baseUrl, suffixIndex, "/chat/completions", "/v1/chat/completions"),
+            ["anthropic"] = AppendEndpointSuffix(
+                baseUrl, suffixIndex, "/messages", "/v1/messages"),
+            ["openai-responses"] = AppendEndpointSuffix(
+                baseUrl, suffixIndex, "/responses", "/v1/responses")
+        };
+
+        var id = ProviderIdFromName(name);
+        if (ProviderCards.Any(row => string.Equals(row.Id, id, StringComparison.OrdinalIgnoreCase)))
+        {
+            ProviderFormStatus = "这个提供商已存在，请从列表中编辑它。";
+            return;
+        }
+
         var parameters = new Dictionary<string, object?>
         {
             ["id"] = id,
             ["enabled"] = true,
-            ["protocols"] = new Dictionary<string, string?>
-            {
-                ["openai-chat"] = EndpointFor(baseUrl, "chat/completions"),
-                ["anthropic"] = EndpointFor(baseUrl, "messages"),
-                ["openai-responses"] = EndpointFor(baseUrl, "responses")
-            },
-            ["models"] = new[]
-            {
-                new Dictionary<string, object?>
-                {
-                    ["id"] = model,
-                    ["protocol"] = protocol,
-                    ["context_window"] = contextWindow,
-                    ["compact_threshold"] = 0.8,
-                    ["max_output_tokens"] = maxOutput
-                }
-            }
+            ["protocols"] = protocols,
+            ["models"] = Array.Empty<object>()
         };
 
         ProviderFormStatus = "正在写入提供商…";
@@ -5005,11 +5567,25 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 await _core.SetProviderApiKeyAsync(id, key, CancellationToken.None).ConfigureAwait(true);
             }
 
-            await RefreshCatalogQuietlyAsync().ConfigureAwait(true);
+            var profiles = _state.ProviderProfiles ??= [];
+            profiles[id] = new ProviderProfileState
+            {
+                DisplayName = name,
+                Note = ProviderDraftNote.Trim(),
+                Website = website
+            };
+            SaveState();
+            await RefreshProvidersAsync(force: true).ConfigureAwait(true);
+            if (ProviderCards.FirstOrDefault(row =>
+                    string.Equals(row.Id, id, StringComparison.OrdinalIgnoreCase)) is { } row)
+            {
+                row.SetKeyConfigured(key.Length > 0);
+            }
+
             IsProviderFormOpen = false;
             ProviderDraftApiKey = string.Empty;
             ProviderFormStatus = string.Empty;
-            ProviderStatusText = $"已写入 {id}；重新连接 KL Core 后应用到聊天。";
+            ProviderStatusText = $"已写入 {id}；可在提供商详情中继续添加模型。";
         }
         catch (Exception error) when (error is JsonRpcException
             or IOException
@@ -5018,6 +5594,47 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             ProviderFormStatus = $"保存提供商失败：{error.Message}";
         }
+    }
+
+    private string ProviderChatEndpoint() =>
+        AppendEndpointSuffix(
+            ProviderDraftChatUrl, ProviderChatSuffixIndex, "/chat/completions", "/v1/chat/completions");
+
+    private string ProviderAnthropicEndpoint() =>
+        AppendEndpointSuffix(
+            ProviderDraftAnthropicUrl, ProviderAnthropicSuffixIndex, "/messages", "/v1/messages");
+
+    private string ProviderResponsesEndpoint() =>
+        AppendEndpointSuffix(
+            ProviderDraftResponsesUrl, ProviderResponsesSuffixIndex, "/responses", "/v1/responses");
+
+    private static string AppendEndpointSuffix(
+        string url,
+        int suffixIndex,
+        string shortSuffix,
+        string versionedSuffix)
+    {
+        url = url.Trim().TrimEnd('/');
+        if (url.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var suffix = suffixIndex switch
+        {
+            1 => shortSuffix,
+            2 => versionedSuffix,
+            _ => string.Empty
+        };
+        return suffix.Length > 0 && !url.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
+            ? url + suffix
+            : url;
+    }
+
+    private static string ProviderIdFromName(string name)
+    {
+        var id = NormalizeProviderId(name);
+        return id.Length > 0 ? id : $"provider-{Guid.NewGuid():N}"[..17];
     }
 
     private static string NormalizeProviderId(string value)
@@ -5047,11 +5664,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
             "openai-responses" => (256_000, 16_384),
             _ => (128_000, 8_192)
         };
-
-    private static string EndpointFor(string baseUrl, string suffix) =>
-        baseUrl.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
-            ? baseUrl
-            : $"{baseUrl.TrimEnd('/')}/{suffix}";
     public bool HasUsageBars => UsageBars.Count > 0;
 
     public ObservableCollection<McpToolRow> McpTools { get; } = [];
@@ -5398,6 +6010,51 @@ public sealed partial class MainWindowViewModel : ObservableObject
         catch (Exception error)
         {
             BackupStatusText = $"导出失败：{error.Message}";
+            OnPropertyChanged(nameof(BackupStatusText));
+            OnPropertyChanged(nameof(HasBackupStatus));
+            return false;
+        }
+    }
+
+    /// <summary>Replaces the GUI state file with a validated backup.</summary>
+    public bool ImportStateBackup(string sourcePath)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(sourcePath));
+            var root = document.RootElement;
+            var looksLikeState = root.ValueKind == JsonValueKind.Object
+                && (root.TryGetProperty("Workspaces", out _)
+                    || root.TryGetProperty("workspaces", out _));
+            if (!looksLikeState)
+            {
+                throw new InvalidDataException("文件不是 KL 的 GUI 设置备份。");
+            }
+
+            var statePath = _stateStore.Path;
+            if (File.Exists(statePath))
+            {
+                File.Copy(
+                    statePath,
+                    $"{statePath}.before-import-{DateTimeOffset.Now:yyyyMMdd-HHmmss}",
+                    overwrite: true);
+            }
+
+            var temporary = statePath + ".import.tmp";
+            File.Copy(sourcePath, temporary, overwrite: true);
+            File.Move(temporary, statePath, overwrite: true);
+            _stateImported = true;
+            BackupStatusText = "已导入设置；重启 KL 后生效，重启前不会保存新的更改。原设置已自动备份。";
+            OnPropertyChanged(nameof(BackupStatusText));
+            OnPropertyChanged(nameof(HasBackupStatus));
+            return true;
+        }
+        catch (Exception error) when (error is IOException
+            or UnauthorizedAccessException
+            or JsonException
+            or InvalidDataException)
+        {
+            BackupStatusText = $"导入失败：{error.Message}";
             OnPropertyChanged(nameof(BackupStatusText));
             OnPropertyChanged(nameof(HasBackupStatus));
             return false;
@@ -7956,7 +8613,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IReadOnlyList<string> models,
         string provider,
         string activeProvider,
-        bool keyConfigured)
+        bool keyConfigured,
+        IReadOnlyList<CoreProviderProtocols> protocols)
     {
         if (options.Count == 0 && provider.Length > 0)
         {
@@ -7972,39 +8630,156 @@ public sealed partial class MainWindowViewModel : ObservableObject
             .Select(group =>
             {
                 var id = group.Key;
-                var preset = ProviderPresets.FirstOrDefault(candidate =>
-                    string.Equals(candidate.Id, id, StringComparison.OrdinalIgnoreCase));
                 profiles.TryGetValue(id.ToLowerInvariant(), out var profile);
+                var protocolUrls = protocols
+                    .FirstOrDefault(entry =>
+                        string.Equals(entry.Provider, id, StringComparison.OrdinalIgnoreCase))
+                    ?.AsMap();
                 return new ProviderCardRow(
                     id,
-                    PickProviderText(profile?.DisplayName, preset?.Name, ProviderDisplayName(id)),
-                    PickProviderText(profile?.Note, preset?.Note, "已接入的模型提供商"),
-                    PickProviderText(profile?.Website, preset?.Website, string.Empty),
+                    ProviderText(profile?.DisplayName, ProviderDisplayName(id)),
+                    ProviderText(profile?.Note, "已接入的模型提供商"),
+                    ProviderText(profile?.Website, string.Empty),
                     string.Equals(id, activeProvider, StringComparison.OrdinalIgnoreCase),
                     group.Any(option => option.Enabled),
                     group.Any(option => option.KeyConfigured),
-                    group.ToList());
+                    group.ToList(),
+                    protocolUrls);
             })
+            .ToList();
+
+        // A provider can exist with no models yet; keep it visible from its protocol URLs.
+        foreach (var entry in protocols)
+        {
+            if (string.IsNullOrWhiteSpace(entry.Provider)
+                || rows.Any(row => string.Equals(row.Id, entry.Provider, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            profiles.TryGetValue(entry.Provider.ToLowerInvariant(), out var profile);
+            rows.Add(new ProviderCardRow(
+                entry.Provider,
+                ProviderText(profile?.DisplayName, ProviderDisplayName(entry.Provider)),
+                ProviderText(profile?.Note, "已接入的模型提供商"),
+                ProviderText(profile?.Website, string.Empty),
+                isDefault: false,
+                enabled: true,
+                keyConfigured: false,
+                models: [],
+                entry.AsMap()));
+        }
+
+        ApplyProviderRows(rows
             .OrderByDescending(row => row.IsDefault)
             .ThenByDescending(row => row.Enabled)
             .ThenBy(row => row.Name, StringComparer.CurrentCultureIgnoreCase)
-            .ToList();
+            .ToList());
+    }
 
-        ProviderCards.Clear();
+    /// <summary>Applies provider rows in place so the ten-second refresh does not flicker.</summary>
+    private void ApplyProviderRows(IReadOnlyList<ProviderCardRow> rows)
+    {
         foreach (var row in rows)
         {
-            ProviderCards.Add(row);
+            var current = ProviderCards.FirstOrDefault(candidate =>
+                string.Equals(candidate.Id, row.Id, StringComparison.OrdinalIgnoreCase));
+            if (current is null)
+            {
+                ProviderCards.Add(row);
+                continue;
+            }
+
+            current.Name = row.Name;
+            current.Note = row.Note;
+            current.Website = row.Website;
+            current.Enabled = row.Enabled;
+            current.SetKeyConfigured(row.KeyConfigured);
+            current.SetModels(row.Models);
+            current.SetProtocols(row.Protocols);
         }
 
+        foreach (var stale in ProviderCards
+            .Where(card => !rows.Any(row =>
+                string.Equals(row.Id, card.Id, StringComparison.OrdinalIgnoreCase)))
+            .ToList())
+        {
+            ProviderCards.Remove(stale);
+        }
+
+        NotifyProviderCardsChanged();
+    }
+
+    private void NotifyProviderCardsChanged()
+    {
         OnPropertyChanged(nameof(HasProviderCards));
         OnPropertyChanged(nameof(ShowNoProviderCards));
         OnPropertyChanged(nameof(ProviderSummaryText));
     }
 
-    private static string PickProviderText(string? primary, string? fallback, string final) =>
-        !string.IsNullOrWhiteSpace(primary)
-            ? primary.Trim()
-            : !string.IsNullOrWhiteSpace(fallback) ? fallback.Trim() : final;
+    private void HydrateProviderCache()
+    {
+        var cached = _providerCacheStore.Load();
+        if (cached is null || cached.Providers.Count == 0)
+        {
+            return;
+        }
+
+        var profiles = _state.ProviderProfiles ??= [];
+        var rows = new List<ProviderCardRow>();
+        foreach (var entry in cached.Providers)
+        {
+            if (entry is null)
+            {
+                continue;
+            }
+
+            var id = entry.Id?.Trim() ?? string.Empty;
+            if (id.Length == 0)
+            {
+                continue;
+            }
+
+            profiles.TryGetValue(id.ToLowerInvariant(), out var profile);
+            rows.Add(new ProviderCardRow(
+                id,
+                string.IsNullOrWhiteSpace(profile?.DisplayName)
+                    ? entry.Name ?? string.Empty
+                    : profile.DisplayName.Trim(),
+                profile is null ? entry.Note ?? string.Empty : profile.Note,
+                profile is null ? entry.Website ?? string.Empty : profile.Website,
+                entry.IsDefault,
+                entry.Enabled,
+                entry.KeyConfigured,
+                entry.Models ?? [],
+                entry.Protocols));
+        }
+
+        if (rows.Count > 0)
+        {
+            ApplyProviderRows(rows);
+        }
+    }
+
+    /// <summary>Persists the cards the page shows; the file never contains API keys.</summary>
+    private void SaveProviderCache()
+    {
+        _providerCacheStore.Save(ProviderCards.Select(row => new ProviderCacheEntry
+        {
+            Id = row.Id,
+            Name = row.Name,
+            Note = row.Note,
+            Website = row.Website,
+            IsDefault = row.IsDefault,
+            Enabled = row.Enabled,
+            KeyConfigured = row.KeyConfigured,
+            Models = row.Models.ToList(),
+            Protocols = new Dictionary<string, string>(row.Protocols, StringComparer.OrdinalIgnoreCase)
+        }).ToList());
+    }
+
+    private static string ProviderText(string? value, string fallback) =>
+        string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
 
     /// <summary>Adds disabled providers that the live router does not list.</summary>
     private void MergeConfiguredProviders(JsonElement configResult)
@@ -8031,14 +8806,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
             var enabled = provider.Value.ValueKind == JsonValueKind.Object
                 && provider.Value.TryGetProperty("enabled", out var enabledValue)
                 && enabledValue.ValueKind == JsonValueKind.True;
-            var preset = ProviderPresets.FirstOrDefault(candidate =>
-                string.Equals(candidate.Id, id, StringComparison.OrdinalIgnoreCase));
             profiles.TryGetValue(id.ToLowerInvariant(), out var profile);
             ProviderCards.Add(new ProviderCardRow(
                 id,
-                PickProviderText(profile?.DisplayName, preset?.Name, ProviderDisplayName(id)),
-                PickProviderText(profile?.Note, preset?.Note, "已接入的模型提供商"),
-                PickProviderText(profile?.Website, preset?.Website, string.Empty),
+                ProviderText(profile?.DisplayName, ProviderDisplayName(id)),
+                ProviderText(profile?.Note, "已接入的模型提供商"),
+                ProviderText(profile?.Website, string.Empty),
                 isDefault: false,
                 enabled,
                 keyConfigured: false,
@@ -8048,9 +8821,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         if (added)
         {
-            OnPropertyChanged(nameof(HasProviderCards));
-            OnPropertyChanged(nameof(ShowNoProviderCards));
-            OnPropertyChanged(nameof(ProviderSummaryText));
+            NotifyProviderCardsChanged();
         }
     }
 
@@ -8070,6 +8841,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     private void SaveState(bool silent = false)
     {
+        if (_stateImported)
+        {
+            RefreshRecentSessions();
+            return;
+        }
+
         try
         {
             _stateStore.Save(_state);
@@ -8169,15 +8946,53 @@ public sealed record UsageSessionRow(string Title, string Tokens, string Cost);
 /// <summary>One bar in the local usage chart (height in pixels).</summary>
 public sealed record UsageBarRow(double Height);
 
-/// <summary>One quick-start preset in the Usage page's provider form.</summary>
-public sealed record ProviderPreset(
-    string Id,
-    string Name,
-    string Model,
-    string BaseUrl,
-    string Protocol,
-    string Note,
-    string Website);
+/// <summary>One editable keyboard shortcut on the shortcuts settings page.</summary>
+public sealed class ShortcutRowViewModel : ObservableObject
+{
+    private string _gesture;
+    private bool _isVisible = true;
+
+    public ShortcutRowViewModel(
+        string actionId,
+        string title,
+        string description,
+        string defaultGesture,
+        string gesture)
+    {
+        ActionId = actionId;
+        Title = title;
+        Description = description;
+        DefaultGesture = defaultGesture;
+        _gesture = gesture;
+    }
+
+    public string ActionId { get; }
+    public string Title { get; }
+    public string Description { get; }
+    public string DefaultGesture { get; }
+
+    public string Gesture
+    {
+        get => _gesture;
+        set
+        {
+            if (SetProperty(ref _gesture, value))
+            {
+                OnPropertyChanged(nameof(HasGesture));
+                OnPropertyChanged(nameof(GestureLabel));
+            }
+        }
+    }
+
+    public bool HasGesture => Gesture.Length > 0;
+    public string GestureLabel => HasGesture ? Gesture : "未分配";
+
+    public bool IsVisible
+    {
+        get => _isVisible;
+        set => SetProperty(ref _isVisible, value);
+    }
+}
 
 /// <summary>One model row on a provider's detail page.</summary>
 public sealed record ProviderModelRow(
@@ -8220,7 +9035,8 @@ public sealed class ProviderCardRow : ObservableObject
         bool isDefault,
         bool enabled,
         bool keyConfigured,
-        IReadOnlyList<CoreModelOption> models)
+        IReadOnlyList<CoreModelOption> models,
+        IReadOnlyDictionary<string, string>? protocols = null)
     {
         Id = id;
         _name = name;
@@ -8230,14 +9046,18 @@ public sealed class ProviderCardRow : ObservableObject
         _enabled = enabled;
         KeyConfigured = keyConfigured;
         Models = models;
+        Protocols = protocols ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     }
 
     public string Id { get; }
     public bool IsDefault { get; }
     public bool KeyConfigured { get; private set; }
     public IReadOnlyList<CoreModelOption> Models { get; private set; }
+    public IReadOnlyDictionary<string, string> Protocols { get; private set; }
 
     public void SetModels(IReadOnlyList<CoreModelOption> models) => Models = models;
+
+    public void SetProtocols(IReadOnlyDictionary<string, string> protocols) => Protocols = protocols;
 
     public void SetKeyConfigured(bool configured) => KeyConfigured = configured;
 

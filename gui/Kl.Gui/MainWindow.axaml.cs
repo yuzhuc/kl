@@ -27,6 +27,7 @@ public partial class MainWindow : Window
 {
     private readonly MainWindowViewModel _viewModel;
     private readonly DispatcherTimer _automationTimer = new() { Interval = TimeSpan.FromSeconds(30) };
+    private readonly DispatcherTimer _providerRefreshTimer = new() { Interval = TimeSpan.FromSeconds(10) };
     private readonly DispatcherTimer _railHintOpenTimer = new() { Interval = TimeSpan.FromMilliseconds(80) };
     private readonly DispatcherTimer _moreMenuOpenTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
     private readonly DispatcherTimer _moreMenuCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
@@ -79,6 +80,7 @@ public partial class MainWindow : Window
         WireComboBoxMenus();
         SettingsNavScroller.SizeChanged += (_, _) => FitSettingsNavWidth();
         _viewModel.PropertyChanged += OnSettingsPaneChanged;
+        _providerRefreshTimer.Tick += OnProviderRefreshTimerTick;
         // Popup contents live in their own visual tree; give the More menu the
         // view-model explicitly so the pin bindings (Classes.pinned) resolve.
         MoreMenuCard.DataContext = _viewModel;
@@ -2173,9 +2175,6 @@ public partial class MainWindow : Window
     private async void OnSaveProviderClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.SaveProviderAsync();
 
-    private async void OnRefreshProvidersClicked(object? sender, RoutedEventArgs eventArgs) =>
-        await _viewModel.RefreshProvidersAsync();
-
     private void OnEditProviderClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (sender is Control { DataContext: ProviderCardRow provider })
@@ -2190,8 +2189,23 @@ public partial class MainWindow : Window
     private void OnSaveProviderProfileClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.SaveProviderProfile();
 
+    private async void OnSaveProviderConnectionClicked(object? sender, RoutedEventArgs eventArgs) =>
+        await _viewModel.SaveProviderConnectionAsync();
+
+    private void OnDeleteProviderClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.OpenProviderDeleteConfirm();
+
+    private void OnCancelDeleteProviderClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.CancelProviderDeleteConfirm();
+
+    private async void OnConfirmDeleteProviderClicked(object? sender, RoutedEventArgs eventArgs) =>
+        await _viewModel.ConfirmDeleteProviderAsync();
+
     private void OnAddProviderModelClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.OpenAddProviderModel();
+
+    private async void OnFetchProviderModelsClicked(object? sender, RoutedEventArgs eventArgs) =>
+        await _viewModel.FetchProviderModelsAsync();
 
     private void OnEditProviderModelClicked(object? sender, RoutedEventArgs eventArgs)
     {
@@ -2288,6 +2302,26 @@ public partial class MainWindow : Window
 
     private void OnRefreshMcpToolsClicked(object? sender, RoutedEventArgs eventArgs) =>
         _ = _viewModel.RefreshMcpToolsAsync();
+
+    private void OnShortcutEditClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is Control { DataContext: ShortcutRowViewModel row })
+        {
+            _viewModel.BeginShortcutCapture(row);
+            SettingsScroller.Offset = new Vector(0, 0);
+        }
+    }
+
+    private void OnShortcutResetClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is Control { DataContext: ShortcutRowViewModel row })
+        {
+            _viewModel.ResetShortcut(row);
+        }
+    }
+
+    private void OnCancelShortcutCaptureClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.CancelShortcutCapture();
 
     private void OnSettingsNavClicked(object? sender, RoutedEventArgs eventArgs)
     {
@@ -2454,7 +2488,44 @@ public partial class MainWindow : Window
         }
         if (e.PropertyName is null || !e.PropertyName.StartsWith("IsSettings", StringComparison.Ordinal))
             return;
+        if (e.PropertyName is nameof(MainWindowViewModel.IsSettingsProviders)
+            or nameof(MainWindowViewModel.IsSettingsOpen))
+        {
+            UpdateProviderAutoRefresh();
+        }
         Dispatcher.UIThread.Post(ScrollActiveSettingsNavIntoView, DispatcherPriority.Loaded);
+    }
+
+    private void UpdateProviderAutoRefresh()
+    {
+        if (_viewModel.IsSettingsOpen && _viewModel.IsSettingsProviders)
+        {
+            if (!_providerRefreshTimer.IsEnabled)
+            {
+                _providerRefreshTimer.Start();
+            }
+            return;
+        }
+
+        _providerRefreshTimer.Stop();
+        _viewModel.ClearProviderRefreshStatus();
+    }
+
+    private void OnProviderRefreshTimerTick(object? sender, EventArgs eventArgs)
+    {
+        if (!_viewModel.IsSettingsOpen
+            || !_viewModel.IsSettingsProviders
+            || _viewModel.IsProviderDetailOpen
+            || _viewModel.IsProviderFormOpen)
+        {
+            if (!_viewModel.IsSettingsOpen || !_viewModel.IsSettingsProviders)
+            {
+                _providerRefreshTimer.Stop();
+            }
+            return;
+        }
+
+        _ = _viewModel.RefreshProvidersAsync(force: true, announce: false);
     }
 
     // Keep the selected row visible, as Codex does when a pane deep in the list is opened.
@@ -2944,6 +3015,21 @@ public partial class MainWindow : Window
         if (!string.IsNullOrWhiteSpace(path))
         {
             _viewModel.ExportStateBackup(path);
+        }
+    }
+
+    private async void OnImportStateBackupClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "导入设置备份",
+            AllowMultiple = false,
+            FileTypeFilter = [new FilePickerFileType("JSON") { Patterns = ["*.json"] }]
+        });
+        var path = files.Count > 0 ? files[0].TryGetLocalPath() : null;
+        if (!string.IsNullOrWhiteSpace(path))
+        {
+            _viewModel.ImportStateBackup(path);
         }
     }
 
@@ -3491,6 +3577,23 @@ public partial class MainWindow : Window
 
     private void OnWindowKeyDown(object? sender, KeyEventArgs eventArgs)
     {
+        if (_viewModel.IsShortcutCapturing)
+        {
+            eventArgs.Handled = true;
+            if (eventArgs.Key == Key.Escape)
+            {
+                _viewModel.CancelShortcutCapture();
+                return;
+            }
+
+            if (FormatShortcutGesture(eventArgs.Key, eventArgs.KeyModifiers) is { } captured)
+            {
+                _viewModel.ApplyShortcutGesture(captured);
+            }
+
+            return;
+        }
+
         if (_viewModel.NumberShortcuts && TryNumberSlot(eventArgs.Key, out var slot))
         {
             if (eventArgs.KeyModifiers == KeyModifiers.Control && slot < 5)
@@ -3523,13 +3626,21 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (eventArgs.Key == Key.Escape && _viewModel.IsSettingsDetailOpen)
+        if (eventArgs.Key == Key.Escape && _viewModel.IsProviderModelFormOpen)
         {
             eventArgs.Handled = true;
-            _viewModel.CloseSettingsDetail();
+            _viewModel.CloseProviderModelForm();
             return;
         }
 
+        if (eventArgs.Key == Key.Escape && _viewModel.IsProviderFormOpen)
+        {
+            eventArgs.Handled = true;
+            _viewModel.CloseProviderForm();
+            return;
+        }
+
+        // Esc never navigates back or closes settings; it only clears the search.
         if (eventArgs.Key == Key.Escape && _viewModel.IsSettingsOpen)
         {
             eventArgs.Handled = true;
@@ -3537,10 +3648,6 @@ public partial class MainWindow : Window
             {
                 SettingsSearchBox.Text = string.Empty;
                 ApplySettingsSearch();
-            }
-            else
-            {
-                _viewModel.CloseSettings();
             }
 
             return;
@@ -3571,76 +3678,135 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (eventArgs.Key == Key.W
-            && eventArgs.KeyModifiers.HasFlag(KeyModifiers.Control)
-            && eventArgs.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        if (FormatShortcutGesture(eventArgs.Key, eventArgs.KeyModifiers) is { } gesture
+            && _viewModel.FindShortcut(gesture) is { } shortcut)
         {
             eventArgs.Handled = true;
-            _closeRequestedByShortcut = true;
-            Close();
-            return;
-        }
-
-        if (eventArgs.Key == Key.OemComma && eventArgs.KeyModifiers.HasFlag(KeyModifiers.Control))
-        {
-            eventArgs.Handled = true;
-            _viewModel.OpenSettings();
-            return;
-        }
-
-        if (eventArgs.Key == Key.N && eventArgs.KeyModifiers.HasFlag(KeyModifiers.Control))
-        {
-            eventArgs.Handled = true;
-            OnNewSessionClicked(sender, new RoutedEventArgs());
-            return;
-        }
-
-        if (eventArgs.Key == Key.F && eventArgs.KeyModifiers.HasFlag(KeyModifiers.Control))
-        {
-            eventArgs.Handled = true;
-            if (_viewModel.IsSettingsOpen)
-            {
-                SettingsSearchBox.Focus();
-            }
-            else
-            {
-                SearchBox.Focus();
-            }
-
-            return;
-        }
-
-        if (eventArgs.Key == Key.A
-            && eventArgs.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift))
-        {
-            eventArgs.Handled = true;
-            _viewModel.ArchiveActiveSession();
-            return;
-        }
-
-        if (eventArgs.Key == Key.U
-            && eventArgs.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift))
-        {
-            eventArgs.Handled = true;
-            _viewModel.ToggleActiveSessionUnread();
-            return;
-        }
-
-        if (eventArgs.Key == Key.P
-            && eventArgs.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Alt))
-        {
-            eventArgs.Handled = true;
-            _viewModel.ToggleActiveSessionPinned();
-            return;
-        }
-
-        if (eventArgs.Key == Key.OemSemicolon
-            && eventArgs.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift))
-        {
-            eventArgs.Handled = true;
-            _ = CopyLastCodeBlockAsync();
+            ExecuteShortcut(shortcut.ActionId);
         }
     }
+
+    private void ExecuteShortcut(string actionId)
+    {
+        switch (actionId)
+        {
+            case "newChat":
+                OnNewSessionClicked(this, new RoutedEventArgs());
+                break;
+            case "archiveChat":
+                _viewModel.ArchiveActiveSession();
+                break;
+            case "copyLastCodeBlock":
+                _ = CopyLastCodeBlockAsync();
+                break;
+            case "markUnread":
+                _viewModel.ToggleActiveSessionUnread();
+                break;
+            case "togglePin":
+                _viewModel.ToggleActiveSessionPinned();
+                break;
+            case "searchSessions":
+                if (_viewModel.IsSettingsOpen)
+                {
+                    SettingsSearchBox.Focus();
+                }
+                else
+                {
+                    SearchBox.Focus();
+                }
+
+                break;
+            case "openSettings":
+                _viewModel.OpenSettings();
+                break;
+            case "closeWindow":
+                _closeRequestedByShortcut = true;
+                Close();
+                break;
+        }
+    }
+
+    private static string? FormatShortcutGesture(Key key, KeyModifiers modifiers)
+    {
+        if (IsModifierKey(key))
+        {
+            return null;
+        }
+
+        var hasModifier = (modifiers & (KeyModifiers.Control | KeyModifiers.Shift
+            | KeyModifiers.Alt | KeyModifiers.Meta)) != 0;
+        var isFunctionKey = key is >= Key.F1 and <= Key.F12;
+        if (!hasModifier && !isFunctionKey)
+        {
+            return null;
+        }
+
+        var parts = new List<string>();
+        if (modifiers.HasFlag(KeyModifiers.Control))
+        {
+            parts.Add("Ctrl");
+        }
+
+        if (modifiers.HasFlag(KeyModifiers.Shift))
+        {
+            parts.Add("Shift");
+        }
+
+        if (modifiers.HasFlag(KeyModifiers.Alt))
+        {
+            parts.Add("Alt");
+        }
+
+        if (modifiers.HasFlag(KeyModifiers.Meta))
+        {
+            parts.Add("Win");
+        }
+
+        if (FormatShortcutKey(key) is not { } label)
+        {
+            return null;
+        }
+
+        parts.Add(label);
+        return string.Join("+", parts);
+    }
+
+    private static bool IsModifierKey(Key key) =>
+        key is Key.LeftCtrl or Key.RightCtrl
+            or Key.LeftShift or Key.RightShift
+            or Key.LeftAlt or Key.RightAlt
+            or Key.LWin or Key.RWin;
+
+    private static string? FormatShortcutKey(Key key) => key switch
+    {
+        >= Key.D0 and <= Key.D9 => ((char)('0' + (key - Key.D0))).ToString(),
+        >= Key.NumPad0 and <= Key.NumPad9 => ((char)('0' + (key - Key.NumPad0))).ToString(),
+        Key.OemComma => ",",
+        Key.OemPeriod => ".",
+        Key.OemSemicolon => ";",
+        Key.OemQuestion => "/",
+        Key.OemMinus => "-",
+        Key.OemPlus => "=",
+        Key.OemOpenBrackets => "[",
+        Key.OemCloseBrackets => "]",
+        Key.OemPipe => "\\",
+        Key.OemTilde => "`",
+        Key.OemQuotes => "'",
+        Key.Space => "Space",
+        Key.Enter => "Enter",
+        Key.Tab => "Tab",
+        Key.Back => "Backspace",
+        Key.Delete => "Delete",
+        Key.Up => "Up",
+        Key.Down => "Down",
+        Key.Left => "Left",
+        Key.Right => "Right",
+        Key.Home => "Home",
+        Key.End => "End",
+        Key.PageUp => "PageUp",
+        Key.PageDown => "PageDown",
+        _ => key.ToString()
+    };
 
     private async Task CopyLastCodeBlockAsync()
     {
@@ -3680,6 +3846,7 @@ public partial class MainWindow : Window
         }
 
         _automationTimer.Stop();
+        _providerRefreshTimer.Stop();
         if (_viewModel.IsBusy)
         {
             _ = _viewModel.CancelAsync();

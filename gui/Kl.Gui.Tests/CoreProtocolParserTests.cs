@@ -115,6 +115,11 @@ public sealed class CoreProtocolParserTests
                 {"provider":"other","model":"other-model","key_configured":true},
                 {"provider":"deepseek","model":"deepseek-chat","key_configured":true},
                 {"provider":"deepseek","model":"deepseek-reasoner"}
+             ],
+             "providers":[
+                {"provider":"deepseek","protocols":{
+                    "openai-chat":"https://api.deepseek.com/chat/completions",
+                    "anthropic":"https://api.deepseek.com/messages"}}
              ]}
             """);
         var sessions = TestData.Json(
@@ -131,6 +136,11 @@ public sealed class CoreProtocolParserTests
         Assert.Contains("deepseek-reasoner", snapshot.Models);
         Assert.True(snapshot.KeyConfigured);
         Assert.Equal("s1", Assert.Single(snapshot.Sessions).SessionId);
+        var protocols = Assert.Single(snapshot.ProviderProtocols);
+        Assert.Equal("deepseek", protocols.Provider);
+        Assert.Equal("https://api.deepseek.com/chat/completions", protocols.ChatUrl);
+        Assert.Equal("https://api.deepseek.com/messages", protocols.AnthropicUrl);
+        Assert.Empty(protocols.ResponsesUrl);
     }
 
     [Fact]

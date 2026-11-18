@@ -324,10 +324,30 @@ internal sealed class FakeCoreSessionService : ICoreSessionService
     public Task<JsonElement> SetProviderEnabledAsync(string id, bool enabled, CancellationToken cancellationToken) =>
         RequestAsync(Protocol.ProviderSetEnabled, new { id, enabled }, cancellationToken);
 
+    public Task<JsonElement> DeleteProviderAsync(string id, CancellationToken cancellationToken) =>
+        RequestAsync(Protocol.ProviderDelete, new { id }, cancellationToken);
+
+    public Task<JsonElement> FetchProviderModelsAsync(string id, CancellationToken cancellationToken) =>
+        RequestAsync(Protocol.ProviderModels, new { id }, cancellationToken);
+
     public Task<JsonElement> ReadConfigAsync(CancellationToken cancellationToken)
     {
         ConfigCalls++;
         return Task.FromResult(TestData.Json(ConfigJson));
+    }
+
+    public int ProviderCatalogCalls { get; private set; }
+    public bool ProviderListReadResult { get; set; } = true;
+    public bool ConfigReadResult { get; set; } = true;
+
+    public Task<CoreProviderCatalog> LoadProviderCatalogAsync(CancellationToken cancellationToken)
+    {
+        ProviderCatalogCalls++;
+        return Task.FromResult(new CoreProviderCatalog(Snapshot, TestData.Json(ConfigJson))
+        {
+            ProviderListRead = ProviderListReadResult,
+            ConfigRead = ConfigReadResult
+        });
     }
 
     public Task<JsonElement> ListSkillsAsync(string workspace, CancellationToken cancellationToken)

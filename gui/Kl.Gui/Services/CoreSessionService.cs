@@ -111,8 +111,17 @@ public interface ICoreSessionService : IAsyncDisposable
     /// <summary>Enables or disables a provider through a fresh Core connection.</summary>
     Task<JsonElement> SetProviderEnabledAsync(string id, bool enabled, CancellationToken cancellationToken);
 
+    /// <summary>Removes a provider from Core config and its stored credential.</summary>
+    Task<JsonElement> DeleteProviderAsync(string id, CancellationToken cancellationToken);
+
+    /// <summary>Asks Core to read the provider's model list endpoint.</summary>
+    Task<JsonElement> FetchProviderModelsAsync(string id, CancellationToken cancellationToken);
+
     /// <summary>Reads the redacted <c>config.get</c> payload from a fresh connection.</summary>
     Task<JsonElement> ReadConfigAsync(CancellationToken cancellationToken);
+
+    /// <summary>Reads provider.list and config.get over a single Core connection.</summary>
+    Task<CoreProviderCatalog> LoadProviderCatalogAsync(CancellationToken cancellationToken);
 
     /// <summary>Reads <c>skill.list</c> for one workspace from a fresh connection.</summary>
     Task<JsonElement> ListSkillsAsync(string workspace, CancellationToken cancellationToken);
@@ -411,8 +420,80 @@ public sealed class CoreSessionService : ICoreSessionService
             new { id, enabled },
             cancellationToken);
 
+    public Task<JsonElement> DeleteProviderAsync(
+        string id,
+        CancellationToken cancellationToken) =>
+        OneShotRequestAsync(Protocol.ProviderDelete, new { id }, cancellationToken);
+
+    public Task<JsonElement> FetchProviderModelsAsync(
+        string id,
+        CancellationToken cancellationToken) =>
+        OneShotRequestAsync(Protocol.ProviderModels, new { id }, cancellationToken);
+
     public Task<JsonElement> ReadConfigAsync(CancellationToken cancellationToken) =>
         OneShotRequestAsync("config.get", null, cancellationToken);
+
+    public async Task<CoreProviderCatalog> LoadProviderCatalogAsync(
+        CancellationToken cancellationToken)
+    {
+        KlCoreClient? client = null;
+        try
+        {
+            client = await KlCoreClient.ConnectOrStartAsync(_catalogOptions, cancellationToken)
+                .ConfigureAwait(false);
+
+            JsonElement providerList = default;
+            var providerListRead = false;
+            try
+            {
+                providerList = await client.RequestAsync(Protocol.ProviderList, null, cancellationToken)
+                    .ConfigureAwait(false);
+                providerListRead = true;
+            }
+            catch (Exception error) when (error is not OperationCanceledException)
+            {
+                // The config still reveals configured providers when the catalog fails.
+            }
+
+            JsonElement config = default;
+            var configRead = false;
+            try
+            {
+                config = await client.RequestAsync("config.get", null, cancellationToken)
+                    .ConfigureAwait(false);
+                configRead = true;
+            }
+            catch (Exception error) when (error is not OperationCanceledException)
+            {
+                // Provider cards from the live catalog are still useful.
+            }
+
+            return new CoreProviderCatalog(
+                CoreProtocolParser.ParseProviderCatalog(providerList),
+                config)
+            {
+                ProviderListRead = providerListRead,
+                ConfigRead = configRead
+            };
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            return CoreProviderCatalog.Failed(DescribeError(error));
+        }
+        finally
+        {
+            if (client is not null)
+            {
+                try
+                {
+                    await client.DisposeAsync().ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                }
+            }
+        }
+    }
 
     public Task<JsonElement> ListSkillsAsync(string workspace, CancellationToken cancellationToken) =>
         OneShotRequestAsync("skill.list", new { workspace }, cancellationToken);
@@ -598,7 +679,19 @@ public sealed class CoreSessionService : ICoreSessionService
                 // Keep the snapshot usable even when session.list fails.
             }
 
-            return CoreProtocolParser.ParseCatalog(handshake, providerList, sessionList);
+            JsonElement config = default;
+            try
+            {
+                config = await client.RequestAsync("config.get", null, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception error) when (error is not OperationCanceledException)
+            {
+                // Provider cards from the live catalog are still useful.
+            }
+
+            return CoreProtocolParser.ParseCatalog(handshake, providerList, sessionList)
+                with { Config = config };
         }
         catch (Exception error) when (error is not OperationCanceledException)
         {
@@ -782,7 +875,18 @@ public sealed class UnavailableCoreSessionService : ICoreSessionService
     public Task<JsonElement> SetProviderEnabledAsync(string id, bool enabled, CancellationToken cancellationToken) =>
         throw new InvalidOperationException("KL Core 不可用。");
 
+    public Task<JsonElement> DeleteProviderAsync(string id, CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("KL Core 不可用。");
+
     public Task<JsonElement> ReadConfigAsync(CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("KL Core 不可用。");
+
+    public Task<CoreProviderCatalog> LoadProviderCatalogAsync(CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("KL Core 不可用。");
+
+    public Task<JsonElement> FetchProviderModelsAsync(
+        string id,
+        CancellationToken cancellationToken) =>
         throw new InvalidOperationException("KL Core 不可用。");
 
     public Task<JsonElement> ListSkillsAsync(string workspace, CancellationToken cancellationToken) =>

@@ -3355,6 +3355,20 @@
                             </StackPanel>
                             </Border>
                             </StackPanel>
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="备份与恢复" />
+                            <TextBlock Classes="settings-desc" Text="导出 GUI 设置、工作区、聊天记录和本地提示词；导入会先自动备份当前设置" HorizontalAlignment="Left" Margin="0,6,0,0" MaxWidth="620" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center"><TextBlock Classes="settings-title" Text="设置文件" /><TextBlock Classes="settings-desc" Text="备份不包含 API 密钥；导入后重启 KL 生效" /></StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"><Button Classes="secondary settings-button" Click="OnExportStateBackupClicked" Content="导出设置…" /><Button Classes="secondary settings-button" Click="OnImportStateBackupClicked" Content="导入设置…" /></StackPanel>
+                            </Grid>
+                            <Border Classes="settings-divider" IsVisible="{Binding HasBackupStatus}" />
+                            <TextBlock Text="{Binding BackupStatusText}" IsVisible="{Binding HasBackupStatus}" Margin="16,10,16,12" FontSize="11.5" Foreground="{StaticResource TextCaption}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
                             </StackPanel>
 
                             <StackPanel IsVisible="{Binding IsSettingsConfig}" Spacing="50">
@@ -3935,245 +3949,68 @@
                             <Border Classes="search-field" Margin="0,6,0,0">
                             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
                             <Path Width="13" Height="13" Data="{StaticResource SearchIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.35" StrokeLineCap="Round" StrokeJoin="Round" VerticalAlignment="Center" />
-                            <TextBox Grid.Column="1" Classes="search" PlaceholderText="搜索快捷键" />
+                            <TextBox Grid.Column="1" Classes="search" PlaceholderText="搜索快捷键" Text="{Binding ShortcutSearch, Mode=TwoWay}" />
                             </Grid>
                             </Border>
                             <StackPanel Spacing="0">
                             <TextBlock Classes="settings-heading" Text="数字快捷键" />
                             <Border Classes="settings-card" Margin="0,17,0,0">
                             <StackPanel>
-                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11"><StackPanel Spacing="3"><TextBlock Classes="settings-title" Text="数字快捷键" /><TextBlock Classes="settings-desc" Text="使用 Ctrl+1-9 切换页面，使用 Alt+1-9 切换聊天" /></StackPanel><ComboBox Grid.Column="1" Classes="settings-select" SelectedIndex="{Binding NumberShortcutsIndex, Mode=TwoWay}"><ComboBoxItem Content="Ctrl+1-9 切换页面" /><ComboBoxItem Content="关闭" /></ComboBox></Grid>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="数字快捷键" />
+                            <TextBlock Classes="settings-desc" Text="使用 Ctrl+1-9 切换页面，使用 Alt+1-9 切换聊天" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" Classes="settings-select" SelectedIndex="{Binding NumberShortcutsIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="Ctrl+1-9 切换页面" />
+                            <ComboBoxItem Content="关闭" />
+                            </ComboBox>
+                            </Grid>
                             </StackPanel>
                             </Border>
                             </StackPanel>
+                            <Border IsVisible="{Binding IsShortcutCapturing}" Classes="settings-card settings-tab-page" Background="#1B1B1E" BorderBrush="#3A3A40" BorderThickness="1">
+                            <StackPanel Margin="16,12,16,12" Spacing="6">
+                            <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Spacing="3">
+                            <TextBlock Text="{Binding ShortcutCaptureTitle}" Classes="settings-title" />
+                            <TextBlock Text="按下新的组合键；需要包含 Ctrl、Alt、Shift 或 Win。按 Esc 取消。" Classes="settings-desc" HorizontalAlignment="Left" MaxWidth="600" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="subtle" Content="取消" Click="OnCancelShortcutCaptureClicked" VerticalAlignment="Top" />
+                            </Grid>
+                            <TextBlock Text="{Binding ShortcutCaptureStatus}" IsVisible="{Binding HasShortcutCaptureStatus}" FontSize="11.5" Foreground="#E36B6B" TextWrapping="Wrap" />
+                            </StackPanel>
+                            </Border>
                             <StackPanel Spacing="0">
                             <TextBlock Classes="settings-heading" Text="快捷键列表" />
                             <Border Classes="settings-card" Margin="0,17,0,0">
                             <StackPanel>
-                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="16,12,16,11" ColumnSpacing="12">
+                            <ItemsControl ItemsSource="{Binding ShortcutRows}">
+                            <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ShortcutRowViewModel">
+                            <StackPanel IsVisible="{Binding IsVisible}">
+                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="16,12,16,11" ColumnSpacing="10">
                             <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="新聊天" />
-                            <TextBlock Classes="settings-desc" Text="开始新聊天" HorizontalAlignment="Left" MaxWidth="650" />
+                            <TextBlock Classes="settings-title" Text="{Binding Title}" />
+                            <TextBlock Classes="settings-desc" Text="{Binding Description}" HorizontalAlignment="Left" MaxWidth="620" TextWrapping="Wrap" />
                             </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <Border Background="#2A2A2D" CornerRadius="6" Padding="7,2"><TextBlock Text="Ctrl+N" FontSize="11" FontFamily="Cascadia Mono, Consolas" Foreground="{StaticResource TextSecondary}" /></Border>
-                            <Border Background="#2A2A2D" CornerRadius="6" Padding="7,2"><TextBlock Text="Ctrl+Shift+O" FontSize="11" FontFamily="Cascadia Mono, Consolas" Foreground="{StaticResource TextSecondary}" /></Border>
-                            </StackPanel>
-                            <Button Grid.Column="2" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnSettingsPlaceholderClicked">
+                            <Border Grid.Column="1" Background="#2A2A2D" CornerRadius="6" Padding="7,2" VerticalAlignment="Center" IsVisible="{Binding HasGesture}">
+                            <TextBlock Text="{Binding Gesture}" FontSize="11" FontFamily="Cascadia Mono, Consolas" Foreground="{StaticResource TextSecondary}" />
+                            </Border>
+                            <TextBlock Grid.Column="1" Text="未分配" IsVisible="{Binding !HasGesture}" FontSize="11.5" Foreground="{StaticResource TextCaption}" VerticalAlignment="Center" />
+                            <Button Grid.Column="2" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnShortcutEditClicked" ToolTip.Tip="更改快捷键">
                             <Path Width="13" Height="13" Data="{StaticResource EditIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
                             </Button>
-                            <Button Grid.Column="3" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnSettingsPlaceholderClicked">
+                            <Button Grid.Column="3" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnShortcutResetClicked" ToolTip.Tip="恢复默认快捷键">
                             <Path Width="13" Height="13" Data="{StaticResource TrashIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
                             </Button>
                             </Grid>
-                            <Border Classes="settings-divider" />
-                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="16,12,16,11" ColumnSpacing="12">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="新建临时聊天" />
-                            <TextBlock Classes="settings-desc" Text="开始聊天，此聊天不会显示在历史记录中" HorizontalAlignment="Left" MaxWidth="650" />
+                            <Border Classes="settings-divider" Margin="16,0,16,0" />
                             </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <Border Background="#2A2A2D" CornerRadius="6" Padding="7,2"><TextBlock Text="Ctrl+Shift+N" FontSize="11" FontFamily="Cascadia Mono, Consolas" Foreground="{StaticResource TextSecondary}" /></Border>
-                            </StackPanel>
-                            <Button Grid.Column="2" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnSettingsPlaceholderClicked">
-                            <Path Width="13" Height="13" Data="{StaticResource EditIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
-                            </Button>
-                            <Button Grid.Column="3" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnSettingsPlaceholderClicked">
-                            <Path Width="13" Height="13" Data="{StaticResource TrashIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
-                            </Button>
-                            </Grid>
-                            <Border Classes="settings-divider" />
-                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="16,12,16,11" ColumnSpacing="12">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="归档聊天" />
-                            <TextBlock Classes="settings-desc" Text="归档当前聊天" HorizontalAlignment="Left" MaxWidth="650" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <Border Background="#2A2A2D" CornerRadius="6" Padding="7,2"><TextBlock Text="Ctrl+Shift+A" FontSize="11" FontFamily="Cascadia Mono, Consolas" Foreground="{StaticResource TextSecondary}" /></Border>
-                            </StackPanel>
-                            <Button Grid.Column="2" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnSettingsPlaceholderClicked">
-                            <Path Width="13" Height="13" Data="{StaticResource EditIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
-                            </Button>
-                            <Button Grid.Column="3" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnSettingsPlaceholderClicked">
-                            <Path Width="13" Height="13" Data="{StaticResource TrashIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
-                            </Button>
-                            </Grid>
-                            <Border Classes="settings-divider" />
-                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="16,12,16,11" ColumnSpacing="12">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="新建独立聊天" />
-                            <TextBlock Classes="settings-desc" Text="在项目外开始新聊天" HorizontalAlignment="Left" MaxWidth="650" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <Border Background="#2A2A2D" CornerRadius="6" Padding="7,2"><TextBlock Text="Ctrl+Alt+O" FontSize="11" FontFamily="Cascadia Mono, Consolas" Foreground="{StaticResource TextSecondary}" /></Border>
-                            </StackPanel>
-                            <Button Grid.Column="2" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnSettingsPlaceholderClicked">
-                            <Path Width="13" Height="13" Data="{StaticResource EditIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
-                            </Button>
-                            <Button Grid.Column="3" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnSettingsPlaceholderClicked">
-                            <Path Width="13" Height="13" Data="{StaticResource TrashIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
-                            </Button>
-                            </Grid>
-                            <Border Classes="settings-divider" />
-                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="16,12,16,11" ColumnSpacing="12">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="打开侧边聊天" />
-                            <TextBlock Classes="settings-desc" Text="在侧边聊天中打开当前聊天" HorizontalAlignment="Left" MaxWidth="650" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <Border Background="#2A2A2D" CornerRadius="6" Padding="7,2"><TextBlock Text="Ctrl+Alt+S" FontSize="11" FontFamily="Cascadia Mono, Consolas" Foreground="{StaticResource TextSecondary}" /></Border>
-                            </StackPanel>
-                            <Button Grid.Column="2" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnSettingsPlaceholderClicked">
-                            <Path Width="13" Height="13" Data="{StaticResource EditIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
-                            </Button>
-                            <Button Grid.Column="3" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnSettingsPlaceholderClicked">
-                            <Path Width="13" Height="13" Data="{StaticResource TrashIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
-                            </Button>
-                            </Grid>
-                            <Border Classes="settings-divider" />
-                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="16,12,16,11" ColumnSpacing="12">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="复制最后一个代码块" />
-                            <TextBlock Classes="settings-desc" Text="复制当前聊天中助手提供的最后一个代码块" HorizontalAlignment="Left" MaxWidth="650" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <Border Background="#2A2A2D" CornerRadius="6" Padding="7,2"><TextBlock Text="Ctrl+Shift+;" FontSize="11" FontFamily="Cascadia Mono, Consolas" Foreground="{StaticResource TextSecondary}" /></Border>
-                            </StackPanel>
-                            <Button Grid.Column="2" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnSettingsPlaceholderClicked">
-                            <Path Width="13" Height="13" Data="{StaticResource EditIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
-                            </Button>
-                            <Button Grid.Column="3" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnSettingsPlaceholderClicked">
-                            <Path Width="13" Height="13" Data="{StaticResource TrashIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
-                            </Button>
-                            </Grid>
-                            <Border Classes="settings-divider" />
-                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="16,12,16,11" ColumnSpacing="12">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="删除聊天" />
-                            <TextBlock Classes="settings-desc" Text="确认是否要删除当前聊天" HorizontalAlignment="Left" MaxWidth="650" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <Border Background="#2A2A2D" CornerRadius="6" Padding="7,2"><TextBlock Text="未分配" FontSize="11" FontFamily="Cascadia Mono, Consolas" Foreground="{StaticResource TextSecondary}" /></Border>
-                            </StackPanel>
-                            <Button Grid.Column="2" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnSettingsPlaceholderClicked">
-                            <Path Width="13" Height="13" Data="{StaticResource EditIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
-                            </Button>
-                            <Button Grid.Column="3" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnSettingsPlaceholderClicked">
-                            <Path Width="13" Height="13" Data="{StaticResource TrashIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
-                            </Button>
-                            </Grid>
-                            <Border Classes="settings-divider" />
-                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="16,12,16,11" ColumnSpacing="12">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="标记为未读" />
-                            <TextBlock Classes="settings-desc" Text="将当前聊天标记为未读" HorizontalAlignment="Left" MaxWidth="650" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <Border Background="#2A2A2D" CornerRadius="6" Padding="7,2"><TextBlock Text="Ctrl+Shift+U" FontSize="11" FontFamily="Cascadia Mono, Consolas" Foreground="{StaticResource TextSecondary}" /></Border>
-                            </StackPanel>
-                            <Button Grid.Column="2" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnSettingsPlaceholderClicked">
-                            <Path Width="13" Height="13" Data="{StaticResource EditIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
-                            </Button>
-                            <Button Grid.Column="3" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnSettingsPlaceholderClicked">
-                            <Path Width="13" Height="13" Data="{StaticResource TrashIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
-                            </Button>
-                            </Grid>
-                            <Border Classes="settings-divider" />
-                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="16,12,16,11" ColumnSpacing="12">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="在新窗口中打开" />
-                            <TextBlock Classes="settings-desc" Text="在新窗口中打开当前聊天" HorizontalAlignment="Left" MaxWidth="650" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <Border Background="#2A2A2D" CornerRadius="6" Padding="7,2"><TextBlock Text="未分配" FontSize="11" FontFamily="Cascadia Mono, Consolas" Foreground="{StaticResource TextSecondary}" /></Border>
-                            </StackPanel>
-                            <Button Grid.Column="2" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnSettingsPlaceholderClicked">
-                            <Path Width="13" Height="13" Data="{StaticResource EditIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
-                            </Button>
-                            <Button Grid.Column="3" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnSettingsPlaceholderClicked">
-                            <Path Width="13" Height="13" Data="{StaticResource TrashIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
-                            </Button>
-                            </Grid>
-                            <Border Classes="settings-divider" />
-                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="16,12,16,11" ColumnSpacing="12">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="切换置顶状态" />
-                            <TextBlock Classes="settings-desc" Text="置顶或取消置顶当前聊天" HorizontalAlignment="Left" MaxWidth="650" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <Border Background="#2A2A2D" CornerRadius="6" Padding="7,2"><TextBlock Text="Ctrl+Alt+P" FontSize="11" FontFamily="Cascadia Mono, Consolas" Foreground="{StaticResource TextSecondary}" /></Border>
-                            </StackPanel>
-                            <Button Grid.Column="2" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnSettingsPlaceholderClicked">
-                            <Path Width="13" Height="13" Data="{StaticResource EditIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
-                            </Button>
-                            <Button Grid.Column="3" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnSettingsPlaceholderClicked">
-                            <Path Width="13" Height="13" Data="{StaticResource TrashIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
-                            </Button>
-                            </Grid>
-                            <Border Classes="settings-divider" />
-                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="16,12,16,11" ColumnSpacing="12">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="发送消息" />
-                            <TextBlock Classes="settings-desc" Text="把输入框内容发送给 KL" HorizontalAlignment="Left" MaxWidth="650" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <Border Background="#2A2A2D" CornerRadius="6" Padding="7,2"><TextBlock Text="Ctrl+Enter" FontSize="11" FontFamily="Cascadia Mono, Consolas" Foreground="{StaticResource TextSecondary}" /></Border>
-                            </StackPanel>
-                            <Button Grid.Column="2" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnSettingsPlaceholderClicked">
-                            <Path Width="13" Height="13" Data="{StaticResource EditIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
-                            </Button>
-                            <Button Grid.Column="3" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnSettingsPlaceholderClicked">
-                            <Path Width="13" Height="13" Data="{StaticResource TrashIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
-                            </Button>
-                            </Grid>
-                            <Border Classes="settings-divider" />
-                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="16,12,16,11" ColumnSpacing="12">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="搜索会话" />
-                            <TextBlock Classes="settings-desc" Text="在侧边栏中搜索聊天" HorizontalAlignment="Left" MaxWidth="650" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <Border Background="#2A2A2D" CornerRadius="6" Padding="7,2"><TextBlock Text="Ctrl+F" FontSize="11" FontFamily="Cascadia Mono, Consolas" Foreground="{StaticResource TextSecondary}" /></Border>
-                            </StackPanel>
-                            <Button Grid.Column="2" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnSettingsPlaceholderClicked">
-                            <Path Width="13" Height="13" Data="{StaticResource EditIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
-                            </Button>
-                            <Button Grid.Column="3" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnSettingsPlaceholderClicked">
-                            <Path Width="13" Height="13" Data="{StaticResource TrashIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
-                            </Button>
-                            </Grid>
-                            <Border Classes="settings-divider" />
-                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="16,12,16,11" ColumnSpacing="12">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="打开设置" />
-                            <TextBlock Classes="settings-desc" Text="打开或关闭设置页面" HorizontalAlignment="Left" MaxWidth="650" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <Border Background="#2A2A2D" CornerRadius="6" Padding="7,2"><TextBlock Text="Ctrl+," FontSize="11" FontFamily="Cascadia Mono, Consolas" Foreground="{StaticResource TextSecondary}" /></Border>
-                            </StackPanel>
-                            <Button Grid.Column="2" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnSettingsPlaceholderClicked">
-                            <Path Width="13" Height="13" Data="{StaticResource EditIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
-                            </Button>
-                            <Button Grid.Column="3" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnSettingsPlaceholderClicked">
-                            <Path Width="13" Height="13" Data="{StaticResource TrashIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
-                            </Button>
-                            </Grid>
-                            <Border Classes="settings-divider" />
-                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="16,12,16,11" ColumnSpacing="12">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Classes="settings-title" Text="关闭菜单 / 拒绝批准" />
-                            <TextBlock Classes="settings-desc" Text="关闭浮层或拒绝一次工具批准" HorizontalAlignment="Left" MaxWidth="650" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <Border Background="#2A2A2D" CornerRadius="6" Padding="7,2"><TextBlock Text="Esc" FontSize="11" FontFamily="Cascadia Mono, Consolas" Foreground="{StaticResource TextSecondary}" /></Border>
-                            </StackPanel>
-                            <Button Grid.Column="2" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnSettingsPlaceholderClicked">
-                            <Path Width="13" Height="13" Data="{StaticResource EditIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
-                            </Button>
-                            <Button Grid.Column="3" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnSettingsPlaceholderClicked">
-                            <Path Width="13" Height="13" Data="{StaticResource TrashIcon}" Stretch="Uniform" Stroke="{StaticResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
-                            </Button>
-                            </Grid>
+                            </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="没有匹配的快捷键" IsVisible="{Binding ShowNoShortcutMatches}" FontSize="12.5" Foreground="{StaticResource TextCaption}" Margin="16,14,16,16" />
                             </StackPanel>
                             </Border>
                             </StackPanel>
@@ -4191,75 +4028,68 @@
                             <TextBlock Text="{Binding ProviderSummaryText}" Classes="settings-desc" HorizontalAlignment="Left" MaxWidth="620" />
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                            <Button Classes="secondary settings-button" Content="刷新" Click="OnRefreshProvidersClicked" />
                             <Button Classes="secondary settings-button" Content="添加提供商" Click="OnAddProviderClicked" />
                             </StackPanel>
                             </Grid>
                             <Border Classes="settings-divider" />
                             <Border IsVisible="{Binding IsProviderFormOpen}" Background="#1B1B1E" BorderBrush="#34343A" BorderThickness="1" CornerRadius="10" Margin="16,12,16,6" Padding="14">
-                            <StackPanel Spacing="11">
-                            <Grid ColumnDefinitions="*,Auto">
-                            <StackPanel Spacing="2">
-                            <TextBlock Text="接入新的模型提供商" FontSize="13" FontWeight="Medium" Foreground="{StaticResource TextPrimary}" />
-                            <TextBlock Text="选择预设后填写 API Key 与模型；保存写入 Core 配置，重新连接后生效。" FontSize="11.5" Foreground="{StaticResource TextCaption}" TextWrapping="Wrap" MaxWidth="560" HorizontalAlignment="Left" />
-                            </StackPanel>
-                            <Button Grid.Column="1" Classes="subtle" Content="取消" Click="OnCancelProviderClicked" VerticalAlignment="Top" />
-                            </Grid>
-                            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                            <StackPanel Spacing="4">
-                            <TextBlock Text="提供商预设" Classes="settings-desc" />
-                            <ComboBox Classes="settings-select" HorizontalAlignment="Stretch" ItemsSource="{Binding ProviderPresets}" SelectedItem="{Binding SelectedProviderPreset, Mode=TwoWay}">
-                            <ComboBox.ItemTemplate>
-                            <DataTemplate x:DataType="vm:ProviderPreset">
-                            <TextBlock Text="{Binding Name}" />
-                            </DataTemplate>
-                            </ComboBox.ItemTemplate>
-                            </ComboBox>
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Spacing="4">
-                            <TextBlock Text="接口协议" Classes="settings-desc" />
-                            <ComboBox Classes="settings-select" HorizontalAlignment="Stretch" SelectedIndex="{Binding ProviderProtocolIndex, Mode=TwoWay}">
-                            <ComboBoxItem Content="OpenAI Chat" />
-                            <ComboBoxItem Content="Anthropic" />
-                            <ComboBoxItem Content="OpenAI Responses" />
-                            </ComboBox>
-                            </StackPanel>
-                            </Grid>
-                            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                            <StackPanel Spacing="4">
-                            <TextBlock Text="提供商 ID" Classes="settings-desc" />
-                            <TextBox Classes="settings-input" Text="{Binding ProviderDraftId, Mode=TwoWay}" PlaceholderText="deepseek" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Spacing="4">
-                            <TextBlock Text="模型 ID" Classes="settings-desc" />
-                            <TextBox Classes="settings-input" Text="{Binding ProviderDraftModel, Mode=TwoWay}" PlaceholderText="deepseek-chat" />
-                            </StackPanel>
-                            </Grid>
-                            <StackPanel Spacing="4">
-                            <TextBlock Text="Base URL" Classes="settings-desc" />
-                            <TextBox Classes="settings-input" Text="{Binding ProviderDraftBaseUrl, Mode=TwoWay}" PlaceholderText="https://api.deepseek.com" />
-                            </StackPanel>
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                            <StackPanel Spacing="4">
-                            <TextBlock Text="API Key（可选）" Classes="settings-desc" />
-                            <TextBox Classes="settings-input" PasswordChar="•" Text="{Binding ProviderDraftApiKey, Mode=TwoWay}" PlaceholderText="只保存在本机凭据目录" />
-                            </StackPanel>
-                            <Button Grid.Column="1" Classes="primary" Content="接入提供商" Click="OnSaveProviderClicked" VerticalAlignment="Bottom" />
-                            </Grid>
-                            <TextBlock Text="{Binding ProviderFormStatus}" IsVisible="{Binding HasProviderFormStatus}" FontSize="11.5" Foreground="#E36B6B" TextWrapping="Wrap" />
-                            </StackPanel>
-                            </Border>
-                            <TextBlock Text="{Binding ProviderStatusText}" IsVisible="{Binding HasProviderStatus}" FontSize="11.5" Foreground="{StaticResource TextCaption}" Margin="16,0,16,10" TextWrapping="Wrap" />
+<StackPanel Spacing="11">
+<Grid ColumnDefinitions="*,Auto">
+<StackPanel Spacing="2">
+<TextBlock Text="接入新的模型提供商" FontSize="13" FontWeight="Medium" Foreground="{StaticResource TextPrimary}" />
+<TextBlock Text="填写基础请求地址并选择后缀；保存时会为三种协议自动生成完整地址。" FontSize="11.5" Foreground="{StaticResource TextCaption}" TextWrapping="Wrap" MaxWidth="560" HorizontalAlignment="Left" />
+</StackPanel>
+<Button Grid.Column="1" Classes="subtle" Content="取消" Click="OnCancelProviderClicked" VerticalAlignment="Top" />
+</Grid>
+<Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+<StackPanel Spacing="4">
+<TextBlock Text="名称" Classes="settings-desc" />
+<TextBox Classes="settings-input" Text="{Binding ProviderDraftName, Mode=TwoWay}" PlaceholderText="DeepSeek" />
+</StackPanel>
+<StackPanel Grid.Column="1" Spacing="4">
+<TextBlock Text="备注（可选）" Classes="settings-desc" />
+<TextBox Classes="settings-input" Text="{Binding ProviderDraftNote, Mode=TwoWay}" PlaceholderText="例如：团队共享额度" />
+</StackPanel>
+</Grid>
+<StackPanel Spacing="4">
+<TextBlock Text="官网链接（可选）" Classes="settings-desc" />
+<TextBox Classes="settings-input" Text="{Binding ProviderDraftWebsite, Mode=TwoWay}" PlaceholderText="https://www.deepseek.com" />
+</StackPanel>
+<StackPanel Spacing="6">
+<TextBlock Text="请求地址" Classes="settings-desc" />
+<Grid ColumnDefinitions="*,140" ColumnSpacing="8">
+<TextBox Classes="settings-input" Text="{Binding ProviderDraftChatUrl, Mode=TwoWay}" PlaceholderText="https://api.deepseek.com" />
+<ComboBox Grid.Column="1" Classes="settings-select" Height="32" Padding="8,2" HorizontalAlignment="Stretch" SelectedIndex="{Binding ProviderChatSuffixIndex, Mode=TwoWay}">
+<ComboBoxItem Content="null" />
+<ComboBoxItem Content="/xxx" />
+<ComboBoxItem Content="/v1/xxx" />
+</ComboBox>
+</Grid>
+<TextBlock Text="null 原样保存；/xxx 和 /v1/xxx 会按协议自动补全三种地址。" FontSize="11" Foreground="{StaticResource TextCaption}" />
+</StackPanel>
+<Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+<StackPanel Spacing="4">
+<TextBlock Text="API Key（可选）" Classes="settings-desc" />
+<TextBox Classes="settings-input" PasswordChar="•" Text="{Binding ProviderDraftApiKey, Mode=TwoWay}" PlaceholderText="只保存在本机凭据目录" />
+</StackPanel>
+<Button Grid.Column="1" Classes="primary" Content="接入提供商" Click="OnSaveProviderClicked" VerticalAlignment="Bottom" />
+</Grid>
+<TextBlock Text="{Binding ProviderFormStatus}" IsVisible="{Binding HasProviderFormStatus}" FontSize="11.5" Foreground="#E36B6B" TextWrapping="Wrap" />
+</StackPanel>
+</Border>
+<TextBlock Text="{Binding ProviderStatusText}" IsVisible="{Binding HasProviderStatus}" FontSize="11.5" Foreground="{StaticResource TextCaption}" Margin="16,0,16,10" TextWrapping="Wrap" />
                             <ItemsControl ItemsSource="{Binding ProviderCards}" IsVisible="{Binding HasProviderCards}">
                             <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:ProviderCardRow">
                             <StackPanel>
                             <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="18" Margin="16,11,16,11">
-                            <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="Medium" Foreground="{StaticResource TextPrimary}" />
-                            <TextBlock Text="{Binding Note}" IsVisible="{Binding HasNote}" FontSize="11.5" Foreground="{StaticResource TextCaption}" TextTrimming="CharacterEllipsis" MaxWidth="520" HorizontalAlignment="Left" />
+                            <StackPanel Spacing="4" VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="Medium" Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding Note}" IsVisible="{Binding HasNote}" FontSize="13.5" Foreground="#A3A5AB" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320" />
+                            </StackPanel>
                             <Button Classes="link" IsVisible="{Binding HasWebsite}" Tag="{Binding Website}" Click="OnOpenProviderWebsiteClicked" HorizontalAlignment="Left" Padding="0">
-                            <TextBlock Text="{Binding Website}" FontSize="11.5" Foreground="#7EA7E8" TextDecorations="Underline" TextTrimming="CharacterEllipsis" MaxWidth="520" />
+                            <TextBlock Text="{Binding Website}" FontSize="11.5" Foreground="#79A6DB" TextDecorations="Underline" TextTrimming="CharacterEllipsis" MaxWidth="520" />
                             </Button>
                             </StackPanel>
                             <Button Grid.Column="1" Classes="secondary settings-button" Content="编辑" Click="OnEditProviderClicked" VerticalAlignment="Center" />
@@ -4272,18 +4102,8 @@
                             </ItemsControl>
                             <StackPanel IsVisible="{Binding ShowNoProviderCards}" Margin="16,6,16,14" Spacing="7">
                             <TextBlock Text="尚未接入模型提供商" FontSize="13" FontWeight="Medium" Foreground="{StaticResource TextPrimary}" />
-                            <TextBlock Text="先配置 DeepSeek、OpenCode 或任意 OpenAI 兼容网关，保存后会自动出现在这里。" FontSize="11.5" Foreground="{StaticResource TextCaption}" TextWrapping="Wrap" MaxWidth="620" HorizontalAlignment="Left" />
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                            <Border Background="#232326" CornerRadius="6" Padding="8,3"><TextBlock Text="DeepSeek" FontSize="11" Foreground="{StaticResource TextSecondary}" /></Border>
-                            <Border Background="#232326" CornerRadius="6" Padding="8,3"><TextBlock Text="OpenCode" FontSize="11" Foreground="{StaticResource TextSecondary}" /></Border>
-                            <Border Background="#232326" CornerRadius="6" Padding="8,3"><TextBlock Text="OpenAI" FontSize="11" Foreground="{StaticResource TextSecondary}" /></Border>
-                            <Border Background="#232326" CornerRadius="6" Padding="8,3"><TextBlock Text="Anthropic" FontSize="11" Foreground="{StaticResource TextSecondary}" /></Border>
+                            <TextBlock Text="添加任意兼容的模型提供商，保存后会自动出现在这里。" FontSize="11.5" Foreground="{StaticResource TextCaption}" TextWrapping="Wrap" MaxWidth="620" HorizontalAlignment="Left" />
                             </StackPanel>
-                            </StackPanel>
-                            <Grid ColumnDefinitions="*,Auto" Margin="16,4,16,12">
-                            <TextBlock Text="提供商与密钥由 KL Core 管理，密钥不会显示在这里。" FontSize="11.5" Foreground="{StaticResource TextCaption}" VerticalAlignment="Center" />
-                            <Button Grid.Column="1" Classes="subtle" Content="打开 config.toml" Click="OnOpenCoreConfigClicked" />
-                            </Grid>
                             </StackPanel>
                             </Border>
                             </StackPanel>
@@ -4298,8 +4118,23 @@
                             <TextBlock Text="{Binding ProviderDetailWebsite}" FontSize="11.5" Foreground="#7EA7E8" TextDecorations="Underline" />
                             </Button>
                             </StackPanel>
-                            <Button Grid.Column="1" Classes="secondary settings-button" Content="返回列表" Click="OnCloseProviderDetailClicked" VerticalAlignment="Top" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Top">
+                            <Button Classes="danger" Content="删除提供商" Click="OnDeleteProviderClicked" IsVisible="{Binding !IsProviderDeleteConfirmOpen}" />
+                            <Button Classes="secondary settings-button" Content="返回列表" Click="OnCloseProviderDetailClicked" />
+                            </StackPanel>
                             </Grid>
+
+                            <Border IsVisible="{Binding IsProviderDeleteConfirmOpen}" Background="#2A1C1F" BorderBrush="#4A2A2E" BorderThickness="1" CornerRadius="12" Padding="14,12" Margin="0,0,0,18">
+                            <StackPanel Spacing="10">
+                            <TextBlock Text="删除后无法恢复。确定要删除此提供商吗？" FontSize="12.5" Foreground="#E5837C" TextWrapping="Wrap" />
+                            <TextBlock Text="会从 KL Core 配置中移除该提供商，并删除本机保存的 API Key。" FontSize="11.5" Foreground="{StaticResource TextCaption}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding ProviderDetailStatus}" IsVisible="{Binding HasProviderDetailStatus}" FontSize="11.5" Foreground="#E36B6B" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                            <Button Classes="subtle" Content="取消" Click="OnCancelDeleteProviderClicked" />
+                            <Button Classes="danger" Content="确认删除" Click="OnConfirmDeleteProviderClicked" />
+                            </StackPanel>
+                            </StackPanel>
+                            </Border>
 
                             <TextBlock Classes="settings-heading" Text="提供商信息" />
                             <Border Classes="settings-card" Margin="0,17,0,0">
@@ -4323,6 +4158,35 @@
                             <Button Grid.Column="1" Classes="primary" Content="保存信息" Click="OnSaveProviderProfileClicked" />
                             </Grid>
                             <TextBlock Text="{Binding ProviderEditStatus}" IsVisible="{Binding HasProviderEditStatus}" FontSize="11.5" Foreground="#E36B6B" TextWrapping="Wrap" />
+                            </StackPanel>
+                            </Border>
+
+                            <TextBlock Classes="settings-heading" Text="连接配置" Margin="0,30,0,0" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel Margin="16,12,16,12" Spacing="11">
+                            <TextBlock Text="为每种协议填写完整请求地址，打开右侧开关后启用；保存只更新协议地址，已有模型保持不变。" FontSize="11.5" Foreground="{StaticResource TextCaption}" TextWrapping="Wrap" />
+                            <StackPanel Spacing="6">
+                            <Grid ColumnDefinitions="110,*,Auto" ColumnSpacing="8">
+                            <TextBlock Text="OpenAI Chat" FontSize="12" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="1" Classes="settings-input" Text="{Binding ProviderDraftChatUrl, Mode=TwoWay}" PlaceholderText="https://api.deepseek.com/chat/completions" />
+                            <ToggleSwitch Grid.Column="2" Classes="setting" IsChecked="{Binding ProviderChatProtocolEnabled, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            <Grid ColumnDefinitions="110,*,Auto" ColumnSpacing="8">
+                            <TextBlock Text="Anthropic" FontSize="12" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="1" Classes="settings-input" Text="{Binding ProviderDraftAnthropicUrl, Mode=TwoWay}" PlaceholderText="https://api.deepseek.com/messages" />
+                            <ToggleSwitch Grid.Column="2" Classes="setting" IsChecked="{Binding ProviderAnthropicProtocolEnabled, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            <Grid ColumnDefinitions="110,*,Auto" ColumnSpacing="8">
+                            <TextBlock Text="OpenAI Responses" FontSize="12" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="1" Classes="settings-input" Text="{Binding ProviderDraftResponsesUrl, Mode=TwoWay}" PlaceholderText="https://api.deepseek.com/responses" />
+                            <ToggleSwitch Grid.Column="2" Classes="setting" IsChecked="{Binding ProviderResponsesProtocolEnabled, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            </StackPanel>
+                            <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="地址原样写入；打开右侧开关后启用对应协议。" FontSize="11.5" Foreground="{StaticResource TextCaption}" VerticalAlignment="Center" />
+                            <Button Grid.Column="1" Classes="primary" Content="保存连接" Click="OnSaveProviderConnectionClicked" />
+                            </Grid>
+                            <TextBlock Text="{Binding ProviderConnectionStatus}" IsVisible="{Binding HasProviderConnectionStatus}" FontSize="11.5" Foreground="{StaticResource TextCaption}" TextWrapping="Wrap" />
                             </StackPanel>
                             </Border>
 
@@ -4376,6 +4240,15 @@
                             </ComboBox>
                             </StackPanel>
                             </Grid>
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                            <TextBlock Text="从提供商支持的 /models 地址读取可用模型（失败时会尝试 /modul）。" FontSize="11.5" Foreground="{StaticResource TextCaption}" VerticalAlignment="Center" TextWrapping="Wrap" />
+                            <Button Grid.Column="1" Classes="secondary settings-button" Content="从 /models 获取" Click="OnFetchProviderModelsClicked" IsEnabled="{Binding CanFetchProviderModels}" />
+                            </Grid>
+                            <StackPanel Spacing="4" IsVisible="{Binding HasProviderFetchedModels}">
+                            <TextBlock Text="获取到的模型" Classes="settings-desc" />
+                            <ComboBox Classes="settings-select" HorizontalAlignment="Stretch" ItemsSource="{Binding ProviderFetchedModels}" SelectedItem="{Binding SelectedProviderFetchedModel, Mode=TwoWay}" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding ProviderModelFetchStatus}" IsVisible="{Binding HasProviderModelFetchStatus}" FontSize="11.5" Foreground="{StaticResource TextCaption}" TextWrapping="Wrap" />
                             <StackPanel Spacing="4">
                             <TextBlock Text="模型 URL" Classes="settings-desc" />
                             <TextBox Classes="settings-input" Text="{Binding ProviderModelDraftUrl, Mode=TwoWay}" PlaceholderText="https://api.deepseek.com/chat/completions" />

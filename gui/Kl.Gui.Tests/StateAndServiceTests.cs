@@ -66,6 +66,69 @@ public sealed class StateAndServiceTests
     }
 
     [Fact]
+    public void ProviderCacheRoundTripsCardsAndModelsWithoutCredentials()
+    {
+        using var temp = new TempDirectory();
+        var path = Path.Combine(temp.Path, "providers-cache.json");
+        var store = new ProviderCacheStore(path);
+        store.Save(
+        [
+            new ProviderCacheEntry
+            {
+                Id = "deepseek",
+                Name = "DeepSeek",
+                Note = "团队额度",
+                Website = "https://www.deepseek.com",
+                IsDefault = true,
+                Enabled = true,
+                KeyConfigured = true,
+                Models =
+                [
+                    new CoreModelOption("deepseek", "deepseek-chat", true, true)
+                    {
+                        Protocol = "openai-chat",
+                        Url = "https://api.deepseek.com/chat/completions",
+                        ContextWindow = 128000,
+                        CompactThreshold = 0.8,
+                        MaxOutputTokens = 8192,
+                        Detail = "默认模型"
+                    }
+                ]
+            }
+        ]);
+
+        var loaded = store.Load();
+
+        var entry = Assert.Single(Assert.IsType<ProviderCacheFile>(loaded).Providers);
+        Assert.Equal("deepseek", entry.Id);
+        Assert.Equal("团队额度", entry.Note);
+        Assert.True(entry.IsDefault);
+        var model = Assert.Single(entry.Models);
+        Assert.Equal("openai-chat", model.Protocol);
+        Assert.Equal(128000, model.ContextWindow);
+        Assert.Equal(0.8, model.CompactThreshold);
+        Assert.Equal(8192, model.MaxOutputTokens);
+        Assert.Equal("默认模型", model.Detail);
+        var text = File.ReadAllText(path);
+        Assert.DoesNotContain("ApiKey", text);
+        Assert.DoesNotContain("secret", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ProviderCacheIgnoresCorruptOrUnknownVersions()
+    {
+        using var temp = new TempDirectory();
+        var path = Path.Combine(temp.Path, "providers-cache.json");
+        var store = new ProviderCacheStore(path);
+
+        File.WriteAllText(path, "not json");
+        Assert.Null(store.Load());
+
+        File.WriteAllText(path, "{\"Version\":999,\"Providers\":[]}");
+        Assert.Null(store.Load());
+    }
+
+    [Fact]
     public void StateStoreKeepsApiKeyOutsideStateJson()
     {
         using var temp = new TempDirectory();

@@ -1,8 +1,8 @@
 use kl_policy::{PolicyConfig, ToolAccess};
 use kl_protocol::{
-    ApprovalMode, DefaultModelResult, ProviderEnabledResult, ProviderKeyResult,
-    ProviderSetApiKeyParams, ProviderSetEnabledParams, ProviderUpsertParams, ProviderUpsertResult,
-    ReasoningEffort, SetDefaultModelParams,
+    ApprovalMode, DefaultModelResult, ProviderDeleteResult, ProviderEnabledResult,
+    ProviderKeyResult, ProviderProtocolUrls, ProviderSetApiKeyParams, ProviderSetEnabledParams,
+    ProviderUpsertParams, ProviderUpsertResult, ReasoningEffort, SetDefaultModelParams,
 };
 use kl_provider::{ModelMetadata, Protocol};
 use kl_sandbox::SandboxConfig;
@@ -246,6 +246,7 @@ pub struct LoadedProvider {
     pub path: PathBuf,
     pub api_key: Option<String>,
     pub api_key_env: Option<String>,
+    pub protocols: ProviderProtocolUrls,
     pub models: Vec<ModelMetadata>,
 }
 
@@ -253,6 +254,15 @@ pub struct LoadedProvider {
 pub struct ProviderCatalog {
     pub providers: Vec<LoadedProvider>,
     pub disabled: HashSet<String>,
+}
+
+/// One configured protocol plus the `/models` candidates for that endpoint.
+#[derive(Debug, Clone)]
+pub struct ProviderModelEndpoint {
+    pub protocol: Protocol,
+    pub chat_url: String,
+    pub models_urls: Vec<String>,
+    pub api_key: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -283,6 +293,8 @@ pub enum ConfigError {
     InvalidCredentials(String),
     #[error("unknown provider `{0}`")]
     UnknownProvider(String),
+    #[error("provider `{0}` has no usable protocol URL")]
+    NoProviderUrl(String),
     #[error("provider `{0}` is disabled")]
     ProviderDisabled(String),
     #[error("provider `{provider}` has no model `{model}`")]
@@ -293,8 +305,6 @@ pub enum ConfigError {
     EmptyApiKey,
     #[error("cannot serialize TOML: {0}")]
     SerializeToml(String),
-    #[error("provider `{0}` has no models")]
-    NoModels(String),
     #[error("provider `{provider}` has duplicate model id `{model}`")]
     DuplicateModel { provider: String, model: String },
     #[error("provider `{provider}` model `{model}` uses unsupported protocol `{protocol}`")]
@@ -503,6 +513,11 @@ impl ProviderCatalog {
                 path,
                 api_key,
                 api_key_env: file.api_key_env,
+                protocols: ProviderProtocolUrls {
+                    openai_chat: file.protocols.openai_chat.clone(),
+                    anthropic: file.protocols.anthropic.clone(),
+                    openai_responses: file.protocols.openai_responses.clone(),
+                },
                 models,
             });
         }
@@ -524,6 +539,102 @@ impl ProviderCatalog {
     }
 }
 
+/// Resolves protocol endpoints for model discovery, even when the provider is disabled.
+pub fn provider_model_endpoints(
+    config_path: &Path,
+    home: &Path,
+    id: &str,
+) -> Result<Vec<ProviderModelEndpoint>, ConfigError> {
+    if !is_valid_provider_id(id) {
+        return Err(ConfigError::InvalidProviderId(id.to_owned()));
+    }
+    let config = Config::load(config_path)?;
+    let entry = config
+        .providers
+        .get(id)
+        .ok_or_else(|| ConfigError::UnknownProvider(id.to_owned()))?;
+    let config_dir = Config::config_dir(config_path);
+    let stored_path = if entry.path.trim().is_empty() {
+        format!("providers/{id}.toml")
+    } else {
+        entry.path.clone()
+    };
+    let path = resolve_path(&config_dir, &stored_path);
+    if !path.exists() {
+        return Err(ConfigError::ProviderFileMissing {
+            provider: id.to_owned(),
+            path: path.display().to_string(),
+        });
+    }
+
+    let text = std::fs::read_to_string(&path).map_err(|error| ConfigError::ProviderFileIo {
+        provider: id.to_owned(),
+        path: path.display().to_string(),
+        message: error.to_string(),
+    })?;
+    let file: ProviderFile =
+        toml::from_str(&text).map_err(|error| ConfigError::ProviderFileParse {
+            provider: id.to_owned(),
+            path: path.display().to_string(),
+            message: redact_api_key(&error.to_string()),
+        })?;
+
+    let env_key = file
+        .api_key_env
+        .as_ref()
+        .and_then(|name| std::env::var(name).ok())
+        .filter(|key| !key.trim().is_empty());
+    let api_key = env_key
+        .or_else(|| read_provider_key(home, id))
+        .or_else(|| file.api_key.clone().filter(|key| !key.trim().is_empty()));
+
+    let mut endpoints = Vec::new();
+    for (protocol, url) in [
+        (Protocol::OpenAiChat, file.protocols.openai_chat.as_deref()),
+        (Protocol::Anthropic, file.protocols.anthropic.as_deref()),
+        (
+            Protocol::OpenAiResponses,
+            file.protocols.openai_responses.as_deref(),
+        ),
+    ] {
+        let Some(url) = url.map(str::trim).filter(|url| !url.is_empty()) else {
+            continue;
+        };
+        if !is_complete_url(url) {
+            continue;
+        }
+        let base = model_list_base(url);
+        if base.is_empty() {
+            continue;
+        }
+        endpoints.push(ProviderModelEndpoint {
+            protocol,
+            chat_url: url.to_owned(),
+            models_urls: vec![format!("{base}/models"), format!("{base}/modul")],
+            api_key: api_key.clone(),
+        });
+    }
+
+    if endpoints.is_empty() {
+        return Err(ConfigError::NoProviderUrl(id.to_owned()));
+    }
+    Ok(endpoints)
+}
+
+fn model_list_base(endpoint: &str) -> String {
+    let url = endpoint
+        .split(['?', '#'])
+        .next()
+        .unwrap_or(endpoint)
+        .trim_end_matches('/');
+    for suffix in ["/chat/completions", "/messages", "/responses"] {
+        if let Some(base) = url.strip_suffix(suffix) {
+            return base.trim_end_matches('/').to_owned();
+        }
+    }
+    url.to_owned()
+}
+
 fn validate_provider_file(id: &str, path: &Path, file: &ProviderFile) -> Result<(), ConfigError> {
     let has_inline = file
         .api_key
@@ -535,9 +646,6 @@ fn validate_provider_file(id: &str, path: &Path, file: &ProviderFile) -> Result<
         .is_some_and(|value| !value.trim().is_empty());
     if has_inline && has_env {
         return Err(ConfigError::InvalidCredentials(id.to_owned()));
-    }
-    if file.models.is_empty() {
-        return Err(ConfigError::NoModels(id.to_owned()));
     }
     let mut seen = HashSet::new();
     for model in &file.models {
@@ -955,6 +1063,32 @@ pub fn provider_set_api_key(
     })
 }
 
+pub fn provider_delete(
+    config_path: &Path,
+    home: &Path,
+    id: &str,
+) -> Result<ProviderDeleteResult, ConfigError> {
+    if !is_valid_provider_id(id) {
+        return Err(ConfigError::InvalidProviderId(id.to_owned()));
+    }
+
+    let mut config_value = read_toml_value(config_path)?;
+    {
+        let providers = ensure_table(&mut config_value, "providers")?;
+        if providers.remove(id).is_none() {
+            return Err(ConfigError::UnknownProvider(id.to_owned()));
+        }
+    }
+    write_toml_atomic(config_path, &config_value)?;
+
+    // The config entry is gone; drop the secret so re-adding starts clean.
+    let _ = std::fs::remove_file(home.join("credentials").join(format!("{id}.key")));
+    Ok(ProviderDeleteResult {
+        provider: id.to_owned(),
+        deleted: true,
+    })
+}
+
 pub fn provider_set_enabled(
     config_path: &Path,
     params: &ProviderSetEnabledParams,
@@ -1342,6 +1476,34 @@ max_output_tokens = 100
     }
 
     #[test]
+    fn provider_delete_removes_the_config_entry_and_credential() {
+        let temp = tempfile::tempdir().unwrap();
+        let config_path = temp.path().join("config.toml");
+        std::fs::write(
+            &config_path,
+            r#"
+[providers.deepseek]
+enabled = true
+path = "providers/deepseek.toml"
+"#,
+        )
+        .unwrap();
+        std::fs::create_dir_all(temp.path().join("credentials")).unwrap();
+        std::fs::write(temp.path().join("credentials/deepseek.key"), "sk-test").unwrap();
+
+        let result = provider_delete(&config_path, temp.path(), "deepseek").unwrap();
+
+        assert!(result.deleted);
+        let config = Config::load(&config_path).unwrap();
+        assert!(!config.providers.contains_key("deepseek"));
+        assert!(!temp.path().join("credentials/deepseek.key").exists());
+        assert!(matches!(
+            provider_delete(&config_path, temp.path(), "deepseek"),
+            Err(ConfigError::UnknownProvider(_))
+        ));
+    }
+
+    #[test]
     fn redacted_provider_catalog_does_not_leak_inline_key() {
         let temp = tempfile::tempdir().unwrap();
         let global = r#"
@@ -1436,6 +1598,63 @@ note = "keep-model"
                 assert!(!name.contains(".tmp"), "temporary file left behind: {name}");
             }
         }
+    }
+
+    #[test]
+    fn provider_model_endpoints_cover_models_and_modul() {
+        let temp = tempfile::tempdir().unwrap();
+        let config_path = temp.path().join("config.toml");
+        std::fs::create_dir_all(temp.path().join("providers")).unwrap();
+        std::fs::create_dir_all(temp.path().join("credentials")).unwrap();
+        std::fs::write(
+            &config_path,
+            r#"
+[providers.deepseek]
+enabled = false
+path = "providers/deepseek.toml"
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            temp.path().join("providers/deepseek.toml"),
+            r#"
+[protocols]
+openai-chat = "https://api.deepseek.com/v1/chat/completions"
+anthropic = "https://api.deepseek.com/v1/messages"
+"#,
+        )
+        .unwrap();
+        std::fs::write(temp.path().join("credentials/deepseek.key"), "sk-test").unwrap();
+
+        let endpoints = provider_model_endpoints(&config_path, temp.path(), "deepseek").unwrap();
+
+        assert_eq!(endpoints.len(), 2);
+        assert_eq!(endpoints[0].protocol, Protocol::OpenAiChat);
+        assert_eq!(
+            endpoints[0].models_urls,
+            vec![
+                "https://api.deepseek.com/v1/models".to_owned(),
+                "https://api.deepseek.com/v1/modul".to_owned()
+            ]
+        );
+        assert_eq!(endpoints[0].api_key.as_deref(), Some("sk-test"));
+        assert_eq!(endpoints[1].protocol, Protocol::Anthropic);
+    }
+
+    #[test]
+    fn provider_upsert_allows_a_provider_without_models() {
+        let temp = tempfile::tempdir().unwrap();
+        let config_path = temp.path().join("config.toml");
+        let mut params = upsert_params("empty", true);
+        params.models.clear();
+
+        let result = provider_upsert(&config_path, &params).unwrap();
+        assert_eq!(result.models, 0);
+
+        let config = Config::load(&config_path).unwrap();
+        let catalog = ProviderCatalog::load(&config, temp.path(), temp.path()).unwrap();
+        assert_eq!(catalog.providers.len(), 1);
+        assert!(catalog.providers[0].models.is_empty());
     }
 
     #[test]

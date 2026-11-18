@@ -30,6 +30,31 @@ public sealed record CoreHistoryMessage(
     string? ToolDiff);
 
 /// <summary>One provider/model pair from <c>provider.list</c>.</summary>
+public sealed record CoreProviderProtocols(
+    string Provider,
+    string ChatUrl,
+    string AnthropicUrl,
+    string ResponsesUrl)
+{
+    public IReadOnlyDictionary<string, string> AsMap()
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(ChatUrl))
+        {
+            map["openai-chat"] = ChatUrl;
+        }
+        if (!string.IsNullOrWhiteSpace(AnthropicUrl))
+        {
+            map["anthropic"] = AnthropicUrl;
+        }
+        if (!string.IsNullOrWhiteSpace(ResponsesUrl))
+        {
+            map["openai-responses"] = ResponsesUrl;
+        }
+        return map;
+    }
+}
+
 public sealed record CoreModelOption(string Provider, string Model, bool Enabled, bool KeyConfigured)
 {
     public string Protocol { get; init; } = string.Empty;
@@ -54,6 +79,13 @@ public sealed record CoreCatalogSnapshot(
 {
     public IReadOnlyList<CoreModelOption> ModelOptions { get; init; } = Array.Empty<CoreModelOption>();
 
+    /// <summary>Per-provider protocol URLs, independent of whether the provider has models.</summary>
+    public IReadOnlyList<CoreProviderProtocols> ProviderProtocols { get; init; } =
+        Array.Empty<CoreProviderProtocols>();
+
+    /// <summary>Raw config.get result captured on the same probe, when available.</summary>
+    public JsonElement Config { get; init; }
+
     public static CoreCatalogSnapshot Failed(string error) => new(
         false,
         error,
@@ -64,6 +96,16 @@ public sealed record CoreCatalogSnapshot(
         Array.Empty<string>(),
         false,
         Array.Empty<CoreSessionSummary>());
+}
+
+/// <summary>Provider catalog and full config read over one throwaway Core connection.</summary>
+public sealed record CoreProviderCatalog(CoreCatalogSnapshot Snapshot, JsonElement Config)
+{
+    public bool ProviderListRead { get; init; }
+    public bool ConfigRead { get; init; }
+
+    public static CoreProviderCatalog Failed(string error) =>
+        new(CoreCatalogSnapshot.Failed(error), default);
 }
 
 public static class CoreProtocolParser
@@ -147,13 +189,44 @@ public static class CoreProtocolParser
     public static CoreCatalogSnapshot ParseCatalog(
         HandshakeInfo handshake,
         JsonElement providerList,
-        JsonElement sessionList)
+        JsonElement sessionList) =>
+        ParseProviderCatalog(providerList) with
+        {
+            CoreVersion = handshake.ServerVersion,
+            ProtocolVersion = handshake.ProtocolVersion,
+            Sessions = ParseSessions(sessionList)
+        };
+
+    public static CoreCatalogSnapshot ParseProviderCatalog(JsonElement providerList)
     {
         var activeProvider = GetString(providerList, "active_provider");
         var activeModel = GetString(providerList, "active_model");
         var models = new List<string>();
         var options = new List<CoreModelOption>();
+        var providerProtocols = new List<CoreProviderProtocols>();
         var keyConfigured = false;
+        if (providerList.ValueKind == JsonValueKind.Object
+            && providerList.TryGetProperty("providers", out var protocolArray)
+            && protocolArray.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var entry in protocolArray.EnumerateArray())
+            {
+                var provider = GetString(entry, "provider");
+                if (provider.Length == 0
+                    || !entry.TryGetProperty("protocols", out var protocols)
+                    || protocols.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                providerProtocols.Add(new CoreProviderProtocols(
+                    provider,
+                    GetString(protocols, "openai-chat"),
+                    GetString(protocols, "anthropic"),
+                    GetString(protocols, "openai-responses")));
+            }
+        }
+
         if (providerList.ValueKind == JsonValueKind.Object
             && providerList.TryGetProperty("models", out var modelArray)
             && modelArray.ValueKind == JsonValueKind.Array)
@@ -198,15 +271,16 @@ public static class CoreProtocolParser
         return new CoreCatalogSnapshot(
             true,
             string.Empty,
-            handshake.ServerVersion,
-            handshake.ProtocolVersion,
+            string.Empty,
+            0,
             activeProvider,
             activeModel,
             models,
             keyConfigured,
-            ParseSessions(sessionList))
+            Array.Empty<CoreSessionSummary>())
         {
-            ModelOptions = options
+            ModelOptions = options,
+            ProviderProtocols = providerProtocols
         };
     }
 

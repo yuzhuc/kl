@@ -613,7 +613,10 @@ public sealed partial class MainWindowViewModel
             snapshot.Models,
             snapshot.Provider,
             snapshot.Provider,
-            snapshot.KeyConfigured);
+            snapshot.KeyConfigured,
+            snapshot.ProviderProtocols);
+        MergeConfiguredProviders(snapshot.Config);
+        _providersRefreshedAt = DateTimeOffset.Now;
         CorePathText = ResolveCorePathText();
         CoreHomeText = ResolveCoreHomeText();
         OnPropertyChanged(nameof(ShowCoreBanner));

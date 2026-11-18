@@ -37,6 +37,8 @@ public sealed class AppState
     /// <summary>Show the active session's token usage in the chat header.</summary>
     public bool ShowContextUsage { get; set; } = true;
     public bool NumberShortcuts { get; set; } = true;
+    /// <summary>Action id → gesture; missing entries use the built-in default.</summary>
+    public Dictionary<string, string> ShortcutBindings { get; set; } = [];
     /// <summary>Hex accent used for focus rings, carets and slider tracks.</summary>
     public string AccentColor { get; set; } = "#4D9FFF";
     public bool UsePointerCursor { get; set; }

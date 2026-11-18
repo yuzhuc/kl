@@ -700,6 +700,79 @@ pub fn read_sse<R: BufRead>(
     Ok(())
 }
 
+/// Fetches an OpenAI-compatible model list from `url`.
+pub fn fetch_model_ids(
+    url: &str,
+    api_key: Option<&str>,
+    protocol: Protocol,
+) -> Result<Vec<String>, ProviderError> {
+    let agent = ureq::AgentBuilder::new()
+        .timeout_connect(Duration::from_secs(10))
+        .timeout_read(Duration::from_secs(10))
+        .timeout_write(Duration::from_secs(10))
+        .build();
+    let mut request = agent.get(url).set("accept", "application/json");
+    if let Some(key) = api_key.filter(|key| !key.trim().is_empty()) {
+        request = if protocol == Protocol::Anthropic {
+            request
+                .set("x-api-key", key)
+                .set("anthropic-version", "2023-06-01")
+        } else {
+            request.set("authorization", &format!("Bearer {key}"))
+        };
+    }
+
+    let response = match request.call() {
+        Ok(response) => response,
+        Err(ureq::Error::Status(status, response)) => {
+            let text = response.into_string().unwrap_or_default();
+            return Err(normalize_http_error(status, &text));
+        }
+        Err(ureq::Error::Transport(error)) => {
+            let message = error.to_string();
+            let kind = if message.to_ascii_lowercase().contains("timed out") {
+                ProviderErrorKind::Timeout
+            } else {
+                ProviderErrorKind::Transport
+            };
+            return Err(ProviderError::new(kind, message));
+        }
+    };
+
+    let value: Value = serde_json::from_reader(response.into_reader())
+        .map_err(|error| ProviderError::invalid(format!("bad model list JSON: {error}")))?;
+    Ok(parse_model_ids(&value))
+}
+
+/// Reads IDs from OpenAI (`data`) and common gateway (`models`) response shapes.
+pub fn parse_model_ids(value: &Value) -> Vec<String> {
+    let array = value
+        .get("data")
+        .and_then(Value::as_array)
+        .or_else(|| value.get("models").and_then(Value::as_array))
+        .or_else(|| value.as_array());
+    let Some(array) = array else {
+        return Vec::new();
+    };
+
+    let mut models = Vec::new();
+    for item in array {
+        let id = item
+            .as_str()
+            .or_else(|| item.get("id").and_then(Value::as_str))
+            .or_else(|| item.get("name").and_then(Value::as_str))
+            .unwrap_or_default()
+            .trim();
+        if !id.is_empty() {
+            models.push(id.to_owned());
+        }
+    }
+
+    let mut seen = HashSet::new();
+    models.retain(|id| seen.insert(id.to_ascii_lowercase()));
+    models
+}
+
 pub(crate) fn http_post_stream(
     url: &str,
     headers: &[(&str, String)],
@@ -762,6 +835,23 @@ fn normalize_http_error(status: u16, body: &str) -> ProviderError {
 mod tests {
     use super::*;
     use std::io::Cursor;
+
+    #[test]
+    fn parses_model_ids_from_common_gateway_shapes() {
+        let openai = serde_json::json!({
+            "data": [{"id": "gpt-5"}, {"id": "gpt-5"}, {"id": " "}]
+        });
+        assert_eq!(parse_model_ids(&openai), vec!["gpt-5"]);
+
+        let gateway = serde_json::json!({
+            "models": ["deepseek-chat", {"id": "deepseek-reasoner"}, {"name": "other"}]
+        });
+        assert_eq!(
+            parse_model_ids(&gateway),
+            vec!["deepseek-chat", "deepseek-reasoner", "other"]
+        );
+        assert!(parse_model_ids(&serde_json::json!({"object": "list"})).is_empty());
+    }
 
     struct TestAdapter(Protocol);
 

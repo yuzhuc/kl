@@ -35,6 +35,8 @@ public static class Protocol
     public const string ProviderUpsert = "provider.upsert";
     public const string ProviderSetApiKey = "provider.set_api_key";
     public const string ProviderSetEnabled = "provider.set_enabled";
+    public const string ProviderModels = "provider.models";
+    public const string ProviderDelete = "provider.delete";
     public const string ConfigSetDefaultModel = "config.set_default_model";
     public const string AuditTail = "audit.tail";
     public const string ReviewRun = "review.run";

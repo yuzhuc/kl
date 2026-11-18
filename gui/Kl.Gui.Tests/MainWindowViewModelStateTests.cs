@@ -937,6 +937,57 @@ public sealed class MainWindowViewModelStateTests
     }
 
     [Fact]
+    public void KeyboardShortcutsCanBeReboundPersistedAndReset()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var vm = TestData.CreateViewModel(temp, store, new FakeCoreSessionService());
+        var row = vm.ShortcutRows.Single(item => item.ActionId == "newChat");
+        Assert.Equal("Ctrl+N", row.Gesture);
+
+        vm.BeginShortcutCapture(row);
+        Assert.True(vm.IsShortcutCapturing);
+        Assert.True(vm.ApplyShortcutGesture("Ctrl+K"));
+
+        Assert.False(vm.IsShortcutCapturing);
+        Assert.Equal("Ctrl+K", row.Gesture);
+        Assert.Equal("Ctrl+K", store.Load().ShortcutBindings["newChat"]);
+        Assert.Equal(row, vm.FindShortcut("Ctrl+K"));
+
+        var reloaded = TestData.CreateViewModel(temp, store, new FakeCoreSessionService());
+        var reloadedRow = reloaded.ShortcutRows.Single(item => item.ActionId == "newChat");
+        Assert.Equal("Ctrl+K", reloadedRow.Gesture);
+        reloaded.ResetShortcut(reloadedRow);
+        Assert.Equal("Ctrl+N", reloadedRow.Gesture);
+        Assert.False(store.Load().ShortcutBindings.ContainsKey("newChat"));
+    }
+
+    [Fact]
+    public void KeyboardShortcutRejectsDuplicateAndFiltersRows()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var vm = TestData.CreateViewModel(temp, store, new FakeCoreSessionService());
+        var row = vm.ShortcutRows.Single(item => item.ActionId == "newChat");
+
+        vm.BeginShortcutCapture(row);
+        Assert.False(vm.ApplyShortcutGesture("Ctrl+Shift+A"));
+        Assert.True(vm.IsShortcutCapturing);
+        Assert.Contains("归档聊天", vm.ShortcutCaptureStatus);
+        Assert.Equal("Ctrl+N", row.Gesture);
+
+        vm.ShortcutSearch = "归档";
+        Assert.False(row.IsVisible);
+        Assert.True(vm.ShortcutRows.Single(item => item.ActionId == "archiveChat").IsVisible);
+        Assert.False(vm.ShowNoShortcutMatches);
+
+        vm.ShortcutSearch = "不存在";
+        Assert.True(vm.ShowNoShortcutMatches);
+    }
+
+    [Fact]
     public void RealSettingsPersistAndRestore()
     {
         using var temp = new TempDirectory();
@@ -1371,6 +1422,43 @@ public sealed class MainWindowViewModelStateTests
         Assert.Equal(20, vm.UsageRows.Count);
         Assert.Equal(12, vm.UsageBars.Count);
         Assert.True(vm.HasUsageBars);
+    }
+
+    [Fact]
+    public void ImportingABackupReplacesStateAndKeepsThePreviousCopy()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var vm = TestData.CreateViewModel(temp, store, new FakeCoreSessionService());
+        var importPath = Path.Combine(temp.Path, "import.json");
+        File.WriteAllText(importPath,
+            "{\"Workspaces\":[{\"Name\":\"导入的项目\",\"Path\":\"D:/work\",\"Sessions\":[]}]}");
+
+        Assert.True(vm.ImportStateBackup(importPath), vm.BackupStatusText);
+        Assert.Contains("重启", vm.BackupStatusText);
+        var importedState = File.ReadAllText(store.Path);
+        vm.SetSidebarWidth(300);
+        Assert.Equal(importedState, File.ReadAllText(store.Path));
+        Assert.Equal("导入的项目", Assert.Single(store.Load().Workspaces).Name);
+        Assert.Single(Directory.GetFiles(temp.Path, "state.json.before-import-*"));
+    }
+
+    [Fact]
+    public void ImportingAnUnrelatedJsonFileLeavesStateUntouched()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var vm = TestData.CreateViewModel(temp, store, new FakeCoreSessionService());
+        var original = File.ReadAllText(store.Path);
+        var importPath = Path.Combine(temp.Path, "other.json");
+        File.WriteAllText(importPath, "{\"hello\":\"world\"}");
+
+        Assert.False(vm.ImportStateBackup(importPath));
+        Assert.StartsWith("导入失败", vm.BackupStatusText);
+        Assert.Equal(original, File.ReadAllText(store.Path));
+        Assert.Empty(Directory.GetFiles(temp.Path, "state.json.before-import-*"));
     }
 
     [Fact]
