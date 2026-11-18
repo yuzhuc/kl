@@ -10,7 +10,8 @@
         "client_name": { "type": "string" },
         "client_version": { "type": "string" },
         "protocol_versions": { "type": "array", "items": { "type": "integer" } },
-        "features": { "type": "array", "items": { "type": "string" } }
+        "features": { "type": "array", "items": { "type": "string" } },
+        "token": { "type": "string" }
       },
       "additionalProperties": false
     },
@@ -318,6 +319,23 @@
       },
       "additionalProperties": false
     },
+    "sessionArchiveParams": {
+      "type": "object",
+      "required": ["session_id", "archived"],
+      "properties": {
+        "session_id": { "type": "string" },
+        "archived": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "sessionArchiveResult": {
+      "type": "object",
+      "required": ["archived"],
+      "properties": {
+        "archived": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
     "sessionInfo": {
       "type": "object",
       "required": [
@@ -342,7 +360,8 @@
         "status": { "type": "string" },
         "task": { "type": "string" },
         "prompt": { "type": "string" },
-        "last_message": { "type": "string" }
+        "last_message": { "type": "string" },
+        "archived": { "type": "boolean" }
       },
       "additionalProperties": false
     },

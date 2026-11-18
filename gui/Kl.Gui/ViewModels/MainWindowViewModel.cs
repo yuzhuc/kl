@@ -1,7 +1,10 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
 using System.Text.Json;
 using System.Runtime.CompilerServices;
+using Avalonia;
+using Avalonia.Controls;
 using Kl.Client;
 using Kl.Gui.Models;
 using Kl.Gui.Services;
@@ -36,6 +39,7 @@ public enum SettingsPane
     Personalization,
     Mini,
     Shortcuts,
+    Providers,
     Usage,
     DataManagement,
     Plugins,
@@ -53,6 +57,13 @@ public enum SettingsPane
     Models,
     Integration,
     Data
+}
+
+public enum AttentionKind
+{
+    TurnCompleted,
+    Approval,
+    Question
 }
 
 public enum AutomationFilter
@@ -139,11 +150,32 @@ public sealed class ChatItemViewModel : ObservableObject
             if (SetProperty(ref _timestampLabel, value))
             {
                 OnPropertyChanged(nameof(HasTimestamp));
+                OnPropertyChanged(nameof(TurnLabel));
+                OnPropertyChanged(nameof(HasTurnLabel));
             }
         }
     }
 
     public bool HasTimestamp => !string.IsNullOrWhiteSpace(TimestampLabel);
+
+    /// <summary>Centred turn divider above user messages, e.g. "10月19日周一 0:36".</summary>
+    public string TurnLabel
+    {
+        get
+        {
+            if (!IsUser)
+            {
+                return string.Empty;
+            }
+            var culture = CultureInfo.GetCultureInfo("zh-CN");
+            return DateTime.TryParseExact(_timestampLabel, "M月d日 H:mm", culture,
+                DateTimeStyles.None, out var value)
+                ? value.ToString("M月d日ddd H:mm", culture)
+                : string.Empty;
+        }
+    }
+
+    public bool HasTurnLabel => !string.IsNullOrEmpty(TurnLabel);
 
     public string Header
     {
@@ -155,6 +187,7 @@ public sealed class ChatItemViewModel : ObservableObject
                 OnPropertyChanged(nameof(ActivityPrefix));
                 OnPropertyChanged(nameof(ActivityCommand));
                 OnPropertyChanged(nameof(HasActivityCommand));
+                OnPropertyChanged(nameof(ActivityChildLabel));
                 OnPropertyChanged(nameof(IsImageTool));
                 OnPropertyChanged(nameof(IsPlainTool));
             }
@@ -217,6 +250,9 @@ public sealed class ChatItemViewModel : ObservableObject
     public string ActivityCommand => SplitActivity(Header).command;
 
     public bool HasActivityCommand => ActivityCommand.Length > 0;
+
+    /// <summary>Codex's expanded tool groups show the bare command, indented under the group.</summary>
+    public string ActivityChildLabel => HasActivityCommand ? ActivityCommand : ActivityPrefix;
 
     public bool IsImageTool => (IsTool || IsToolGroup) && Header.Contains("图像");
 
@@ -303,14 +339,8 @@ public sealed class ChatItemViewModel : ObservableObject
 
     public static string FormatTimestamp(DateTimeOffset timestamp)
     {
-        var local = timestamp.ToLocalTime();
-        if (local.Date == DateTimeOffset.Now.Date)
-        {
-            return local.ToString("HH:mm");
-        }
-
-        string[] weekdays = ["日", "一", "二", "三", "四", "五", "六"];
-        return $"星期{weekdays[(int)local.DayOfWeek]} {local:HH:mm}";
+        // Codex labels message times as "10月19日 0:36" (no leading zero hour).
+        return timestamp.ToLocalTime().ToString("M月d日 H:mm");
     }
 
     /// <summary>Short Codex-style label shown above an expanded tool panel (Shell/Read/Search/...).</summary>
@@ -468,13 +498,13 @@ public sealed class ChatItemViewModel : ObservableObject
             detail: apiText ?? string.Empty,
             timestampLabel: timestamp is null
                 ? string.Empty
-                : timestamp.Value.ToLocalTime().ToString("HH:mm"));
+                : FormatTimestamp(timestamp.Value));
 
     public static ChatItemViewModel Assistant(string text) =>
         new(ChatItemKind.Assistant, "kl", text);
 
     public static ChatItemViewModel Reasoning(string text = "") =>
-        new(ChatItemKind.Reasoning, "思考", text);
+        new(ChatItemKind.Reasoning, "思考中", text);
 
     public static ChatItemViewModel Tool(
         string header,
@@ -533,8 +563,18 @@ public sealed class ChatItemViewModel : ObservableObject
     public static ChatItemViewModel Error(string text) =>
         new(ChatItemKind.Error, "请求失败", text, status: "错误");
 
-    public static ChatItemViewModel FromStored(StoredMessage message)
+    public static ChatItemViewModel FromStored(StoredMessage message, DateTimeOffset? fallbackDate = null)
     {
+        // Older GUI states stored only "H:mm"; date it from the session's last update
+        // so the turn divider can still format "M月d日ddd H:mm".
+        var timestamp = message.Timestamp;
+        if (fallbackDate is not null
+            && DateTime.TryParseExact(timestamp, "H:mm", CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out var timeOfDay))
+        {
+            var dated = fallbackDate.Value.ToLocalTime().Date.Add(timeOfDay.TimeOfDay);
+            timestamp = dated.ToString("M月d日 H:mm", CultureInfo.InvariantCulture);
+        }
         var kind = message.Kind.ToLowerInvariant() switch
         {
             "user" => ChatItemKind.User,
@@ -583,7 +623,7 @@ public sealed class ChatItemViewModel : ObservableObject
             detail,
             summary,
             message.Status,
-            message.Timestamp,
+            timestamp,
             toolLabel);
     }
 
@@ -763,6 +803,21 @@ public sealed class SessionItemViewModel : ObservableObject
             State.IsArchived = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(IsListVisible));
+        }
+    }
+
+    public bool IsUnread
+    {
+        get => State.IsUnread;
+        set
+        {
+            if (State.IsUnread == value)
+            {
+                return;
+            }
+
+            State.IsUnread = value;
+            OnPropertyChanged();
         }
     }
 
@@ -984,20 +1039,62 @@ public sealed class WorkspaceItemViewModel : ObservableObject
     }
 }
 
-public sealed class PluginItemViewModel
+public sealed class PluginItemViewModel : ObservableObject
 {
+    private bool _enabled;
+    private string _statusText = "本地文件";
+
     public PluginItemViewModel(LocalPluginInfo plugin)
     {
+        Id = plugin.Name;
         Name = plugin.Name;
         Version = plugin.Version;
         Description = plugin.Description;
         ManifestPath = plugin.ManifestPath;
     }
 
+    public PluginItemViewModel(
+        string id,
+        string name,
+        string version,
+        string description,
+        string manifestPath,
+        string kindLabel,
+        bool enabled,
+        bool healthy,
+        string statusText)
+    {
+        Id = id;
+        Name = name;
+        Version = version;
+        Description = description;
+        ManifestPath = manifestPath;
+        KindLabel = kindLabel;
+        _enabled = enabled;
+        _statusText = statusText;
+        Healthy = healthy;
+    }
+
+    public string Id { get; set; }
     public string Name { get; }
     public string Version { get; }
     public string Description { get; }
     public string ManifestPath { get; }
+    public string KindLabel { get; } = "插件";
+    public bool Healthy { get; } = true;
+    public bool CanToggle => Id.Length > 0;
+
+    public bool Enabled
+    {
+        get => _enabled;
+        set => SetProperty(ref _enabled, value);
+    }
+
+    public string StatusText
+    {
+        get => _statusText;
+        set => SetProperty(ref _statusText, value);
+    }
 }
 
 /// <summary>One row in the composer's reasoning-effort picker.</summary>
@@ -1022,6 +1119,35 @@ public sealed class ReasoningEffortOption : ObservableObject
 }
 
 /// <summary>One file group in the palette (name matches, or content matches).</summary>
+/// <summary>One home subdirectory row in the 存储空间 settings pane.</summary>
+public sealed class StorageFolderViewModel
+{
+    public StorageFolderViewModel(string name, string path, long bytes)
+    {
+        Name = name;
+        Path = path;
+        Bytes = bytes;
+    }
+
+    public string Name { get; }
+    public string Path { get; }
+    public long Bytes { get; }
+    public string SizeLabel => FormatBytes(Bytes);
+
+    public static string FormatBytes(long bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB", "TB"];
+        double value = bytes;
+        var unit = 0;
+        while (value >= 1024 && unit < units.Length - 1)
+        {
+            value /= 1024;
+            unit++;
+        }
+        return unit == 0 ? $"{bytes} B" : $"{value:0.#} {units[unit]}";
+    }
+}
+
 public sealed class PaletteFileGroupViewModel
 {
     public PaletteFileGroupViewModel(
@@ -1106,6 +1232,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     };
     private const int MaxAttachmentCount = 8;
     private const int MaxAttachmentCharacters = 100_000;
+    private readonly string _homeDirectory;
+    private string _agentsPath;
     private readonly StateStore _stateStore;
     private readonly IPluginCatalogService _pluginCatalogService;
     private AppState _state;
@@ -1169,8 +1297,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
         StateStore? stateStore = null,
         IPluginCatalogService? pluginCatalogService = null,
         ICoreSessionService? coreSessionService = null,
-        Action<Action>? dispatcher = null)
+        Action<Action>? dispatcher = null,
+        string? homeDirectory = null)
     {
+        _homeDirectory = homeDirectory ?? KlDataPaths.Default.HomeDirectory;
+        _agentsPath = Path.Combine(_homeDirectory, "AGENTS.md");
         _stateStore = stateStore ?? new StateStore();
         _pluginCatalogService = pluginCatalogService ?? new LocalPluginCatalogService();
         _core = coreSessionService ?? new UnavailableCoreSessionService();
@@ -1178,6 +1309,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _core.EventReceived += OnCoreEventReceived;
         _state = _stateStore.Load();
         NormalizeState();
+        LoadRemoteCoreSettings();
         RefreshPinnedRailItems();
         BuildWorkspaceItems();
         _activeWorkspace = Workspaces.First(workspace => workspace.Id == _state.ActiveWorkspaceId);
@@ -1202,6 +1334,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             LibraryItems.Add(new LibraryItemViewModel(item));
         }
+        RefreshHomeSuggestions();
 
         SaveState(silent: true);
 
@@ -1211,6 +1344,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
             OnPropertyChanged(nameof(HasConversation));
             OnPropertyChanged(nameof(IsConversationEmpty));
             OnPropertyChanged(nameof(ShowConversationHeader));
+            OnPropertyChanged(nameof(ShowWorkspaceStrip));
+            OnPropertyChanged(nameof(ShowChatComposerChips));
+            OnPropertyChanged(nameof(ComposerMargin));
+            OnPropertyChanged(nameof(ComposerMaxWidth));
             OnPropertyChanged(nameof(ComposerPlaceholder));
         };
 
@@ -1227,6 +1364,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public ObservableCollection<PinnedRailItemViewModel> PinnedRailItems { get; } = [];
     public ObservableCollection<AutomationItemViewModel> Automations { get; } = [];
     public ObservableCollection<LibraryItemViewModel> LibraryItems { get; } = [];
+    public ObservableCollection<LibraryItemViewModel> HomeSuggestions { get; } = [];
+    public bool HasHomeSuggestions => HomeSuggestions.Count > 0;
     public IReadOnlyList<AutomationIntervalOption> AutomationIntervals { get; } =
     [
         new(15, "每 15 分钟"),
@@ -1277,6 +1416,37 @@ public sealed partial class MainWindowViewModel : ObservableObject
         !string.Equals(_reasoningEffortPreview ?? _reasoningEffort, "default", StringComparison.Ordinal);
 
     /// <summary>Shows the dragged tier immediately, before Core is written.</summary>
+    /// <summary>Settings ComboBox index: 默认/低/中/高, mapping 0-3.</summary>
+    public int ReasoningEffortIndex
+    {
+        get
+        {
+            var index = 0;
+            for (var i = 0; i < ReasoningEffortOptions.Count; i++)
+            {
+                if (ReasoningEffortOptions[i].Id == _reasoningEffort)
+                {
+                    index = i;
+                    break;
+                }
+            }
+            return index;
+        }
+        set
+        {
+            if (value < 0 || value >= ReasoningEffortOptions.Count)
+            {
+                return;
+            }
+            var id = ReasoningEffortOptions[value].Id;
+            if (id == _reasoningEffort)
+            {
+                return;
+            }
+            _ = SetReasoningEffortAsync(id);
+        }
+    }
+
     public void PreviewReasoningEffort(string effort)
     {
         if (string.Equals(_reasoningEffortPreview, effort, StringComparison.Ordinal))
@@ -1321,6 +1491,23 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public bool IsPermissionAsk =>
         string.Equals(_state.PermissionMode, "请求批准", StringComparison.Ordinal);
+
+    private bool _showFullAccessWarning;
+
+    /// <summary>Warning card shown right after switching into 完全访问.</summary>
+    public bool ShowFullAccessWarning =>
+        _showFullAccessWarning && IsPermissionFull && !_state.FullAccessWarningDismissed;
+
+    public void DismissFullAccessWarning(bool forever)
+    {
+        _showFullAccessWarning = false;
+        if (forever)
+        {
+            _state.FullAccessWarningDismissed = true;
+            SaveState();
+        }
+        OnPropertyChanged(nameof(ShowFullAccessWarning));
+    }
     public IReadOnlyList<int> ContentFontSizes { get; } = [13, 14, 15, 16];
     public string VersionLabel => "0.3.0-gui.1";
     public AppState State => _state;
@@ -1519,9 +1706,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public string AccountPlanLabel => "Local";
 
-    public string ComposerPlaceholder => HasConversation
-        ? IsChatMode ? "和 kl 一起聊天" : "和 kl 一起工作"
-        : "随心输入";
+    public string ComposerPlaceholder => HasQueuedTurns
+        ? $"已排队 {QueuedTurnCount} 条；回复完成后自动发送"
+        : HasConversation
+            ? IsChatMode ? "和 kl 一起聊天" : "和 kl 一起工作"
+            : IsChatMode ? "使用 Chat" : "随心输入";
 
     /// <summary>Codex-style empty-state headline that follows the selected mode.</summary>
     public string EmptyStateTitle => IsChatMode ? "我们要做什么?" : $"我们应该在{WorkspaceName}中做些什么?";
@@ -1537,6 +1726,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public bool IsSettingsMemory => _settingsPane == SettingsPane.Memory;
     public bool IsSettingsArchived => _settingsPane == SettingsPane.Archived;
     public bool IsSettingsShortcuts => _settingsPane == SettingsPane.Shortcuts;
+    public bool IsSettingsProviders => _settingsPane == SettingsPane.Providers;
     public bool IsSettingsModels => _settingsPane == SettingsPane.Models;
     public bool IsSettingsUsage => _settingsPane == SettingsPane.Usage;
     public bool IsSettingsIntegration => _settingsPane == SettingsPane.Integration;
@@ -1583,6 +1773,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         SettingsPane.Personalization => "个性化",
         SettingsPane.Mini => "迷你界面和智能伙伴",
         SettingsPane.Shortcuts => "键盘快捷键",
+        SettingsPane.Providers => "模型提供商",
         SettingsPane.Usage => "使用情况和计费",
         SettingsPane.DataManagement => "数据管理",
         SettingsPane.Plugins => "插件",
@@ -1613,6 +1804,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
         SettingsPane.CloudPc => "管理云端浏览设置和已保存的网站 Cookie",
         SettingsPane.Hooks => "通过配置和已启用的插件管理生命周期钩子。",
         SettingsPane.Environments => "本地环境用于指导 KL 如何为项目设置工作树。",
+        SettingsPane.Memory => "用户记忆对所有项目生效；工作区记忆只属于当前项目。",
+        SettingsPane.Providers => "接入 DeepSeek、OpenCode、OpenAI 等多个模型提供商；密钥与用量由 KL Core 管理。",
+        SettingsPane.Models => "KL Core 执行所有模型调用；这里只保存默认选择和凭据。",
         _ => string.Empty
     };
 
@@ -1635,6 +1829,17 @@ public sealed partial class MainWindowViewModel : ObservableObject
         get => _isDeleteDialogOpen;
         private set => SetProperty(ref _isDeleteDialogOpen, value);
     }
+
+    private bool _isCloseConfirmOpen;
+    public bool IsCloseConfirmOpen
+    {
+        get => _isCloseConfirmOpen;
+        private set => SetProperty(ref _isCloseConfirmOpen, value);
+    }
+
+    public void OpenCloseConfirm() => IsCloseConfirmOpen = true;
+
+    public void CloseCloseConfirm() => IsCloseConfirmOpen = false;
 
     private bool _isSettingsDetailOpen;
     private string _settingsDetailTitle = string.Empty;
@@ -1667,6 +1872,250 @@ public sealed partial class MainWindowViewModel : ObservableObject
     }
 
     public void CloseSettingsDetail() => IsSettingsDetailOpen = false;
+
+    private const int MaxAgentsFileCharacters = 64 * 1024;
+    private bool _isAgentsEditorOpen;
+    private string _agentsDraft = string.Empty;
+    private string _agentsStatus = string.Empty;
+
+    public bool IsAgentsEditorOpen
+    {
+        get => _isAgentsEditorOpen;
+        private set => SetProperty(ref _isAgentsEditorOpen, value);
+    }
+
+    public string AgentsDraft
+    {
+        get => _agentsDraft;
+        set
+        {
+            if (SetProperty(ref _agentsDraft, value))
+            {
+                SetAgentsStatus(string.Empty);
+            }
+        }
+    }
+
+    public string AgentsStatus => _agentsStatus;
+    public bool HasAgentsStatus => _agentsStatus.Length > 0;
+    public string AgentsPathText => _agentsPath;
+
+    private string _agentsEditorHint = string.Empty;
+    public string AgentsEditorHint
+    {
+        get => _agentsEditorHint;
+        private set => SetProperty(ref _agentsEditorHint, value);
+    }
+
+    /// <summary>Opens the editor with the global instructions file, if present.</summary>
+    public void OpenAgentsEditor() => OpenAgentsEditorAt(
+        Path.Combine(_homeDirectory, "AGENTS.md"),
+        "全局指令会附加到每次请求的系统提示中，保存后下一个回合生效。");
+
+    /// <summary>Edits the selected project's AGENTS.md; Core reads it for turns in that workspace.</summary>
+    public void OpenProjectAgentsEditor(WorkspaceItemViewModel workspace) => OpenAgentsEditorAt(
+        Path.Combine(workspace.Path, "AGENTS.md"),
+        $"项目指令会附加到 {workspace.Name} 的每次请求中，保存后下一个回合生效。");
+
+    private void OpenAgentsEditorAt(string path, string hint)
+    {
+        _agentsPath = path;
+        AgentsEditorHint = hint;
+        OnPropertyChanged(nameof(AgentsPathText));
+        try
+        {
+            SetProperty(ref _agentsDraft, File.Exists(_agentsPath) ? File.ReadAllText(_agentsPath) : string.Empty,
+                nameof(AgentsDraft));
+            SetAgentsStatus(string.Empty);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            SetProperty(ref _agentsDraft, string.Empty, nameof(AgentsDraft));
+            SetAgentsStatus($"无法读取 AGENTS.md：{error.Message}");
+        }
+
+        IsAgentsEditorOpen = true;
+    }
+
+    public void CloseAgentsEditor() => IsAgentsEditorOpen = false;
+
+    private string _remoteCoreEndpointDraft = string.Empty;
+    private string _remoteCoreTokenDraft = string.Empty;
+    private string _remoteCoreStatus = string.Empty;
+
+    private string RemoteTokenPath => Path.Combine(_homeDirectory, "credentials", "core.token");
+
+    public string RemoteCoreEndpointDraft
+    {
+        get => _remoteCoreEndpointDraft;
+        set
+        {
+            if (SetProperty(ref _remoteCoreEndpointDraft, value))
+            {
+                SetRemoteCoreStatus(string.Empty);
+            }
+        }
+    }
+
+    public string RemoteCoreTokenDraft
+    {
+        get => _remoteCoreTokenDraft;
+        set
+        {
+            if (SetProperty(ref _remoteCoreTokenDraft, value))
+            {
+                SetRemoteCoreStatus(string.Empty);
+            }
+        }
+    }
+
+    public string RemoteCoreStatus => _remoteCoreStatus;
+    public bool HasRemoteCoreStatus => _remoteCoreStatus.Length > 0;
+
+    private void LoadRemoteCoreSettings()
+    {
+        _remoteCoreEndpointDraft = _state.RemoteCoreEndpoint ?? string.Empty;
+        try
+        {
+            _remoteCoreTokenDraft = File.Exists(RemoteTokenPath)
+                ? File.ReadAllText(RemoteTokenPath).Trim()
+                : string.Empty;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            _remoteCoreTokenDraft = string.Empty;
+        }
+    }
+
+    /// <summary>Saves the remote endpoint; CoreSessionService picks it up on restart.</summary>
+    public void SaveRemoteCoreSettings()
+    {
+        var endpoint = _remoteCoreEndpointDraft.Trim();
+        if (endpoint.Length > 0 && !LocalSocketConnection.TryParseTcp(endpoint, out _, out _))
+        {
+            SetRemoteCoreStatus("地址格式应为 tcp://主机:端口。");
+            return;
+        }
+
+        var token = _remoteCoreTokenDraft.Trim();
+        if (endpoint.Length > 0 && token.Length == 0 && !IsLoopbackEndpoint(endpoint))
+        {
+            SetRemoteCoreStatus("连接非本机地址需要访问令牌。");
+            return;
+        }
+
+        try
+        {
+            var directory = Path.GetDirectoryName(RemoteTokenPath);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+            if (token.Length == 0)
+            {
+                if (File.Exists(RemoteTokenPath))
+                {
+                    File.Delete(RemoteTokenPath);
+                }
+            }
+            else
+            {
+                File.WriteAllText(RemoteTokenPath, token);
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            SetRemoteCoreStatus($"保存令牌失败：{error.Message}");
+            return;
+        }
+
+        _state.RemoteCoreEndpoint = endpoint.Length == 0 ? null : endpoint;
+        SaveState();
+        OnPropertyChanged(nameof(RemoteCoreConnectionLabel));
+        RefreshCredentials();
+        SetRemoteCoreStatus("已保存。重启 KL 后生效。");
+    }
+
+    public void ClearRemoteCoreSettings()
+    {
+        _remoteCoreEndpointDraft = string.Empty;
+        _remoteCoreTokenDraft = string.Empty;
+        OnPropertyChanged(nameof(RemoteCoreEndpointDraft));
+        OnPropertyChanged(nameof(RemoteCoreTokenDraft));
+        _state.RemoteCoreEndpoint = null;
+        try
+        {
+            if (File.Exists(RemoteTokenPath))
+            {
+                File.Delete(RemoteTokenPath);
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+        }
+        SaveState();
+        OnPropertyChanged(nameof(RemoteCoreConnectionLabel));
+        RefreshCredentials();
+        SetRemoteCoreStatus("已清除。重启 KL 后使用本地 Core。");
+    }
+
+    private static bool IsLoopbackEndpoint(string endpoint)
+    {
+        if (!LocalSocketConnection.TryParseTcp(endpoint, out var host, out _))
+        {
+            return false;
+        }
+        return host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+            || (System.Net.IPAddress.TryParse(host, out var address)
+                && System.Net.IPAddress.IsLoopback(address));
+    }
+
+    private void SetRemoteCoreStatus(string status)
+    {
+        if (_remoteCoreStatus == status)
+        {
+            return;
+        }
+        _remoteCoreStatus = status;
+        OnPropertyChanged(nameof(RemoteCoreStatus));
+        OnPropertyChanged(nameof(HasRemoteCoreStatus));
+    }
+
+    /// <summary>Writes the draft to the home AGENTS.md; Core reads it on the next turn.</summary>
+    public void SaveAgents()
+    {
+        if (_agentsDraft.Length > MaxAgentsFileCharacters)
+        {
+            SetAgentsStatus($"AGENTS.md 不能超过 {MaxAgentsFileCharacters / 1024} KiB。");
+            return;
+        }
+
+        try
+        {
+            var directory = Path.GetDirectoryName(_agentsPath);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+            File.WriteAllText(_agentsPath, _agentsDraft);
+            SetAgentsStatus("已保存。下一个回合生效。");
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            SetAgentsStatus($"保存失败：{error.Message}");
+        }
+    }
+
+    private void SetAgentsStatus(string status)
+    {
+        if (_agentsStatus == status)
+        {
+            return;
+        }
+        _agentsStatus = status;
+        OnPropertyChanged(nameof(AgentsStatus));
+        OnPropertyChanged(nameof(HasAgentsStatus));
+    }
 
     private bool _isCreateProjectDialogOpen;
     private string _projectNameDraft = string.Empty;
@@ -1746,7 +2195,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             Name = name,
             Path = path,
-            IsExpanded = true
+            IsExpanded = IsWorkMode
         };
         _state.Workspaces.Add(state);
         var item = new WorkspaceItemViewModel(state);
@@ -1891,6 +2340,20 @@ public sealed partial class MainWindowViewModel : ObservableObject
     }
     public bool IsWorkMode => _state.InteractionMode != "chat";
     public bool IsChatMode => !IsWorkMode;
+
+    /// <summary>Codex's ChatGPT home composer is narrower than in a conversation.</summary>
+    public double ComposerMaxWidth => IsChatMode && IsEmpty ? 640 : 734;
+
+    /// <summary>Codex's ChatGPT home floats the composer under the headline instead of pinning it to the bottom.</summary>
+    public Thickness ComposerMargin => IsChatMode && IsEmpty
+        ? new Thickness(1, 0, 0, 326)
+        : new Thickness(1, 0, 0, 20);
+
+    /// <summary>Codex Work keeps the workspace strip above the composer.</summary>
+    public bool ShowWorkspaceStrip => IsEmpty && IsWorkMode;
+
+    /// <summary>Codex's ChatGPT mode puts project/plugins chips below the composer instead.</summary>
+    public bool ShowChatComposerChips => IsEmpty && IsChatMode;
     public bool CanSwitchSession => !IsBusy;
     public bool HasSessions => Workspaces.Any(workspace => workspace.Sessions.Count > 0);
     public bool ShowNoSessions => !HasSessions && string.IsNullOrWhiteSpace(SearchText);
@@ -1970,6 +2433,680 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public string PermissionMode => _state.PermissionMode;
     public int ContentFontSize => _state.ContentFontSize;
 
+    /// <summary>Raised for a finished turn or a pending approval; the window decides about focus.</summary>
+    public event Action<AttentionKind, bool>? AttentionRequested;
+
+    internal void RequestAttention(AttentionKind kind) =>
+        AttentionRequested?.Invoke(kind, _state.NotificationSound);
+
+    public bool SettingsFullAccess
+    {
+        get => IsPermissionFull;
+        set
+        {
+            if (value == IsPermissionFull)
+            {
+                return;
+            }
+
+            SetPermissionMode(value ? "完全访问" : "帮我批准");
+            OnPropertyChanged();
+        }
+    }
+
+    public int SendShortcutIndex
+    {
+        get => _state.SendShortcut == "ctrlEnter" ? 1 : 0;
+        set
+        {
+            var mode = value == 1 ? "ctrlEnter" : "enter";
+            if (_state.SendShortcut == mode)
+            {
+                return;
+            }
+
+            _state.SendShortcut = mode;
+            SaveState();
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(SendsOnEnter));
+        }
+    }
+
+    public bool SendsOnEnter => _state.SendShortcut != "ctrlEnter";
+
+    public bool NumberShortcuts => _state.NumberShortcuts;
+
+    public int NumberShortcutsIndex
+    {
+        get => _state.NumberShortcuts ? 0 : 1;
+        set
+        {
+            var enabled = value == 0;
+            if (_state.NumberShortcuts == enabled)
+            {
+                return;
+            }
+
+            _state.NumberShortcuts = enabled;
+            SaveState();
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(NumberShortcuts));
+        }
+    }
+
+    /// <summary>Opens the nth visible session in the active workspace.</summary>
+    public async Task OpenSessionShortcutAsync(int slot)
+    {
+        var session = _activeWorkspace.Sessions
+            .Where(candidate => candidate.IsVisible)
+            .Skip(slot)
+            .FirstOrDefault();
+        if (session is null)
+        {
+            return;
+        }
+
+        CloseSettings();
+        Navigate(AppSection.Chat);
+        await OpenSessionAsync(session).ConfigureAwait(true);
+    }
+
+    public string CloseWindowAction => _state.CloseWindowAction;
+
+    public int CloseWindowActionIndex
+    {
+        get => _state.CloseWindowAction switch
+        {
+            "always" => 1,
+            "never" => 2,
+            _ => 0
+        };
+        set
+        {
+            var mode = value switch
+            {
+                1 => "always",
+                2 => "never",
+                _ => "shortcut"
+            };
+            if (_state.CloseWindowAction == mode)
+            {
+                return;
+            }
+
+            _state.CloseWindowAction = mode;
+            SaveState();
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(CloseWindowAction));
+        }
+    }
+
+    public int AutoArchiveIndex
+    {
+        get => _state.AutoArchiveDays switch
+        {
+            > 0 and <= 7 => 1,
+            > 7 => 2,
+            _ => 0
+        };
+        set
+        {
+            var days = value switch
+            {
+                1 => 7,
+                2 => 30,
+                _ => 0
+            };
+            if (_state.AutoArchiveDays == days)
+            {
+                return;
+            }
+
+            _state.AutoArchiveDays = days;
+            SaveState();
+            OnPropertyChanged();
+        }
+    }
+
+    private string _launchAtLoginStatus = string.Empty;
+    public bool LaunchAtLogin
+    {
+        get => _state.LaunchAtLogin;
+        set
+        {
+            if (_state.LaunchAtLogin == value)
+            {
+                return;
+            }
+
+            try
+            {
+                StartupRegistration.SetEnabled(value);
+                _state.LaunchAtLogin = value;
+                LaunchAtLoginStatus = value ? "已加入开机启动。" : "已取消开机启动。";
+                SaveState();
+            }
+            catch (Exception error) when (error is InvalidOperationException
+                or PlatformNotSupportedException
+                or System.ComponentModel.Win32Exception)
+            {
+                LaunchAtLoginStatus = $"无法更新开机启动：{error.Message}";
+            }
+
+            OnPropertyChanged();
+        }
+    }
+
+    public string LaunchAtLoginStatus
+    {
+        get => _launchAtLoginStatus;
+        private set
+        {
+            if (SetProperty(ref _launchAtLoginStatus, value))
+            {
+                OnPropertyChanged(nameof(HasLaunchAtLoginStatus));
+            }
+        }
+    }
+
+    public bool HasLaunchAtLoginStatus => _launchAtLoginStatus.Length > 0;
+
+    public string RemoteCoreConnectionLabel => string.IsNullOrWhiteSpace(_state.RemoteCoreEndpoint)
+        ? "本机 Core（未配置远程）"
+        : _state.RemoteCoreEndpoint.Trim();
+
+    public string CredentialsDirectory => Path.Combine(_homeDirectory, "credentials");
+    public string HooksFilePath => Path.Combine(_homeDirectory, "hooks.toml");
+
+    private string _gitBranchText = "—";
+    private string _gitStatusText = "打开此页时读取当前项目的 Git 状态。";
+    public string GitBranchText
+    {
+        get => _gitBranchText;
+        private set => SetProperty(ref _gitBranchText, value);
+    }
+
+    public string GitStatusText
+    {
+        get => _gitStatusText;
+        private set => SetProperty(ref _gitStatusText, value);
+    }
+
+    /// <summary>Reads the active workspace's branch and dirty count with the git CLI.</summary>
+    public async Task RefreshGitAsync()
+    {
+        var workspace = WorkspacePath;
+        if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace))
+        {
+            GitBranchText = "—";
+            GitStatusText = "当前项目路径不可用。";
+            return;
+        }
+
+        var (isRepo, branch, status, log) = await Task.Run(() =>
+        {
+            var branch = RunGit(workspace, "symbolic-ref --short HEAD")
+                ?? RunGit(workspace, "rev-parse --short HEAD");
+            if (branch is null)
+            {
+                return (false, string.Empty, "当前项目不是 Git 仓库。", string.Empty);
+            }
+
+            var changes = RunGit(workspace, "status --porcelain");
+            var count = string.IsNullOrWhiteSpace(changes)
+                ? 0
+                : changes.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length;
+            var log = RunGit(workspace, "log -1 --pretty=%h %s") ?? string.Empty;
+            return (true, branch.Trim(), count == 0 ? "工作区干净" : $"{count} 个未提交更改", log.Trim());
+        }).ConfigureAwait(true);
+
+        GitBranchText = isRepo ? branch : "—";
+        GitStatusText = isRepo
+            ? $"{status}" + (log.Length > 0 ? $" · {log}" : string.Empty)
+            : status;
+    }
+
+    public ObservableCollection<WorktreeRow> Worktrees { get; } = [];
+    public bool HasWorktrees => Worktrees.Count > 0;
+    public string WorktreesStatusText { get; private set; } = "打开此页时读取当前项目的 worktree。";
+
+    /// <summary>Lists real git worktrees for the active project.</summary>
+    public async Task RefreshWorktreesAsync()
+    {
+        var workspace = WorkspacePath;
+        if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace))
+        {
+            Worktrees.Clear();
+            WorktreesStatusText = "当前项目路径不可用。";
+            NotifyWorktrees();
+            return;
+        }
+
+        var output = await Task.Run(() => RunGit(workspace, "worktree list --porcelain")).ConfigureAwait(true);
+        Worktrees.Clear();
+        if (output is null)
+        {
+            WorktreesStatusText = "当前项目不是 Git 仓库。";
+        }
+        else
+        {
+            foreach (var row in ParseWorktrees(output, workspace))
+            {
+                Worktrees.Add(row);
+            }
+            WorktreesStatusText = Worktrees.Count == 0 ? "Git 没有报告 worktree。" : $"共 {Worktrees.Count} 个工作树";
+        }
+        NotifyWorktrees();
+    }
+
+    private void NotifyWorktrees()
+    {
+        OnPropertyChanged(nameof(HasWorktrees));
+        OnPropertyChanged(nameof(WorktreesStatusText));
+    }
+
+    private static IEnumerable<WorktreeRow> ParseWorktrees(string output, string currentWorkspace)
+    {
+        var path = string.Empty;
+        var branch = string.Empty;
+        foreach (var raw in output.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.Length == 0)
+            {
+                if (path.Length > 0)
+                {
+                    yield return BuildWorktreeRow(path, branch, currentWorkspace);
+                }
+                path = string.Empty;
+                branch = string.Empty;
+                continue;
+            }
+
+            if (line.StartsWith("worktree ", StringComparison.Ordinal))
+            {
+                path = line["worktree ".Length..];
+            }
+            else if (line.StartsWith("branch refs/heads/", StringComparison.Ordinal))
+            {
+                branch = line["branch refs/heads/".Length..];
+            }
+            else if (line == "detached")
+            {
+                branch = "detached";
+            }
+        }
+
+        if (path.Length > 0)
+        {
+            yield return BuildWorktreeRow(path, branch, currentWorkspace);
+        }
+    }
+
+    private static WorktreeRow BuildWorktreeRow(string path, string branch, string currentWorkspace) =>
+        new(path,
+            branch.Length == 0 ? "—" : branch,
+            string.Equals(
+                Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar),
+                Path.GetFullPath(currentWorkspace).TrimEnd(Path.DirectorySeparatorChar),
+                StringComparison.OrdinalIgnoreCase)
+                ? "当前"
+                : string.Empty);
+
+    private static string? RunGit(string workspace, string arguments)
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = $"-C \"{workspace}\" {arguments}",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            });
+            if (process is null)
+            {
+                return null;
+            }
+
+            var output = process.StandardOutput.ReadToEnd();
+            process.WaitForExit(5000);
+            return process.ExitCode == 0 ? output : null;
+        }
+        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    private string _hooksStatusText = "打开此页时读取 hooks.toml。";
+    public string HooksStatusText
+    {
+        get => _hooksStatusText;
+        private set => SetProperty(ref _hooksStatusText, value);
+    }
+
+    /// <summary>Reports the local hooks config that Core loads at startup.</summary>
+    public void RefreshHooks()
+    {
+        try
+        {
+            if (!File.Exists(HooksFilePath))
+            {
+                HooksStatusText = $"未找到 hooks.toml（{HooksFilePath}）";
+                return;
+            }
+
+            var lines = File.ReadLines(HooksFilePath).Count(line => !string.IsNullOrWhiteSpace(line));
+            HooksStatusText = $"已配置 {lines} 行钩子；修改后重启 KL Core 生效。";
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            HooksStatusText = $"无法读取 hooks.toml：{error.Message}";
+        }
+    }
+    public string RemoteTokenStatusText { get; private set; } = "未保存";
+
+    /// <summary>Re-reads which credential files exist for the 密码 pane.</summary>
+    public void RefreshCredentials()
+    {
+        RemoteTokenStatusText = File.Exists(RemoteTokenPath) ? "已保存" : "未保存";
+        OnPropertyChanged(nameof(RemoteTokenStatusText));
+    }
+
+    public string TurnNotificationMode => _state.TurnNotifications;
+
+    public int TurnNotificationIndex
+    {
+        get => _state.TurnNotifications switch
+        {
+            "always" => 1,
+            "never" => 2,
+            _ => 0
+        };
+        set
+        {
+            var mode = value switch
+            {
+                1 => "always",
+                2 => "never",
+                _ => "unfocused"
+            };
+            if (_state.TurnNotifications == mode)
+            {
+                return;
+            }
+
+            _state.TurnNotifications = mode;
+            SaveState();
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(TurnNotificationMode));
+        }
+    }
+
+    private static readonly string[] AccentColors =
+    [
+        "#4D9FFF", "#3566F0", "#179E8A", "#FFCC38", "#FA70AB", "#FF8066", "#A25BFF", "#FFFFFF"
+    ];
+
+    public string AccentColorHex => _state.AccentColor;
+
+    public Avalonia.Media.IBrush AccentColorBrush =>
+        new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse(_state.AccentColor));
+
+    public int AccentColorIndex
+    {
+        get
+        {
+            var index = Array.FindIndex(AccentColors,
+                color => string.Equals(color, _state.AccentColor, StringComparison.OrdinalIgnoreCase));
+            return index < 0 ? 0 : index;
+        }
+        set
+        {
+            if (value < 0 || value >= AccentColors.Length)
+            {
+                return;
+            }
+
+            var color = AccentColors[value];
+            if (string.Equals(_state.AccentColor, color, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            _state.AccentColor = color;
+            SaveState();
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(AccentColorHex));
+            OnPropertyChanged(nameof(AccentColorBrush));
+        }
+    }
+
+    public string ReduceMotionMode => _state.ReduceMotion;
+
+    public bool IsReduceMotionSystem => _state.ReduceMotion == "system";
+    public bool IsReduceMotionOn => _state.ReduceMotion == "on";
+    public bool IsReduceMotionOff => _state.ReduceMotion == "off";
+
+    public bool ReduceMotion => _state.ReduceMotion == "on"
+        || (_state.ReduceMotion == "system" && SystemAccessibility.AnimationsDisabled());
+
+    public void SetReduceMotionMode(string mode)
+    {
+        var value = mode is "on" or "off" ? mode : "system";
+        if (_state.ReduceMotion == value)
+        {
+            return;
+        }
+
+        _state.ReduceMotion = value;
+        SaveState();
+        OnPropertyChanged(nameof(ReduceMotionMode));
+        OnPropertyChanged(nameof(IsReduceMotionSystem));
+        OnPropertyChanged(nameof(IsReduceMotionOn));
+        OnPropertyChanged(nameof(IsReduceMotionOff));
+        OnPropertyChanged(nameof(ReduceMotion));
+    }
+
+    public bool IsFollowUpQueue => _state.FollowUpMode != "steer";
+    public bool IsFollowUpSteer => _state.FollowUpMode == "steer";
+
+    public void SetFollowUpMode(string mode)
+    {
+        var value = mode == "steer" ? "steer" : "queue";
+        if (_state.FollowUpMode == value)
+        {
+            return;
+        }
+
+        _state.FollowUpMode = value;
+        SaveState();
+        OnPropertyChanged(nameof(IsFollowUpQueue));
+        OnPropertyChanged(nameof(IsFollowUpSteer));
+        OnPropertyChanged(nameof(CanSend));
+        OnPropertyChanged(nameof(CanQueueSend));
+    }
+
+    private readonly Queue<QueuedTurn> _queuedTurns = new();
+    private bool _sendingQueuedTurn;
+
+    public int QueuedTurnCount => _queuedTurns.Count;
+    public bool HasQueuedTurns => _queuedTurns.Count > 0;
+
+    private void NotifyQueueChanged()
+    {
+        OnPropertyChanged(nameof(QueuedTurnCount));
+        OnPropertyChanged(nameof(HasQueuedTurns));
+        OnPropertyChanged(nameof(ComposerPlaceholder));
+        OnPropertyChanged(nameof(CanSend));
+    }
+
+    private void QueueTurn(string prompt, IReadOnlyList<AttachmentItemViewModel> attachments)
+    {
+        _queuedTurns.Enqueue(new QueuedTurn(prompt, attachments.ToList()));
+        Composer = string.Empty;
+        ClearAttachments();
+        NotifyQueueChanged();
+    }
+
+    /// <summary>
+    /// Sends queued prompts one by one. The nested SendAsync call returns here
+    /// because this loop already owns the drain; that is what keeps messages
+    /// queued during a later turn from being stranded.
+    /// </summary>
+    private async Task DrainQueuedTurnsAsync()
+    {
+        if (_sendingQueuedTurn)
+        {
+            return;
+        }
+
+        _sendingQueuedTurn = true;
+        try
+        {
+            while (!IsBusy && _queuedTurns.Count > 0)
+            {
+                var next = _queuedTurns.Dequeue();
+                NotifyQueueChanged();
+                Composer = next.Prompt;
+                foreach (var attachment in next.Attachments)
+                {
+                    if (!PendingAttachments.Contains(attachment))
+                    {
+                        PendingAttachments.Add(attachment);
+                    }
+                }
+                OnPropertyChanged(nameof(HasPendingAttachments));
+                await SendAsync().ConfigureAwait(true);
+            }
+        }
+        finally
+        {
+            _sendingQueuedTurn = false;
+            NotifyQueueChanged();
+        }
+    }
+
+    private void ClearQueuedTurns()
+    {
+        if (_queuedTurns.Count == 0)
+        {
+            return;
+        }
+
+        _queuedTurns.Clear();
+        NotifyQueueChanged();
+    }
+
+    public int CodeFontSize
+    {
+        get => _state.ContentCodeFontSize;
+        set
+        {
+            var clamped = Math.Clamp(value, 9, 20);
+            if (_state.ContentCodeFontSize == clamped)
+            {
+                return;
+            }
+
+            _state.ContentCodeFontSize = clamped;
+            SaveState();
+            OnPropertyChanged();
+        }
+    }
+
+    public bool UsePointerCursor
+    {
+        get => _state.UsePointerCursor;
+        set
+        {
+            if (_state.UsePointerCursor == value)
+            {
+                return;
+            }
+
+            _state.UsePointerCursor = value;
+            SaveState();
+            OnPropertyChanged();
+        }
+    }
+
+    public bool ShowContextUsage
+    {
+        get => _state.ShowContextUsage;
+        set
+        {
+            if (_state.ShowContextUsage == value)
+            {
+                return;
+            }
+
+            _state.ShowContextUsage = value;
+            SaveState();
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HasUsageText));
+        }
+    }
+
+    public bool QuestionNotifications
+    {
+        get => _state.QuestionNotifications;
+        set
+        {
+            if (_state.QuestionNotifications == value)
+            {
+                return;
+            }
+
+            _state.QuestionNotifications = value;
+            SaveState();
+            OnPropertyChanged();
+        }
+    }
+
+    public bool ApprovalNotifications
+    {
+        get => _state.ApprovalNotifications;
+        set
+        {
+            if (_state.ApprovalNotifications == value)
+            {
+                return;
+            }
+
+            _state.ApprovalNotifications = value;
+            SaveState();
+            OnPropertyChanged();
+        }
+    }
+
+    public bool NotificationSound
+    {
+        get => _state.NotificationSound;
+        set
+        {
+            if (_state.NotificationSound == value)
+            {
+                return;
+            }
+
+            _state.NotificationSound = value;
+            SaveState();
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(NotificationSoundIndex));
+        }
+    }
+
+    /// <summary>0 = 默认 sound, 1 = 关闭; matches the settings ComboBox order.</summary>
+    public int NotificationSoundIndex
+    {
+        get => NotificationSound ? 0 : 1;
+        set => NotificationSound = value == 0;
+    }
+
     public string Composer
     {
         get => _composer;
@@ -1978,6 +3115,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             if (SetProperty(ref _composer, value))
             {
                 OnPropertyChanged(nameof(CanSend));
+                OnPropertyChanged(nameof(CanQueueSend));
             }
         }
     }
@@ -2005,13 +3143,19 @@ public sealed partial class MainWindowViewModel : ObservableObject
             if (SetProperty(ref _isBusy, value))
             {
                 OnPropertyChanged(nameof(CanSend));
+                OnPropertyChanged(nameof(CanQueueSend));
                 OnPropertyChanged(nameof(CanSwitchSession));
                 OnPropertyChanged(nameof(CanCancel));
             }
         }
     }
 
-    public bool CanSend => !IsBusy
+    public bool CanSend => (!IsBusy || IsFollowUpQueue)
+        && !IsCoreReadOnly
+        && !IsCoreRetrying
+        && (!string.IsNullOrWhiteSpace(Composer) || HasPendingAttachments);
+    public bool CanQueueSend => IsBusy
+        && IsFollowUpQueue
         && !IsCoreReadOnly
         && !IsCoreRetrying
         && (!string.IsNullOrWhiteSpace(Composer) || HasPendingAttachments);
@@ -2151,6 +3295,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 OnPropertyChanged(nameof(SectionTitle));
             }
             RefreshPlugins();
+            _ = RefreshPluginsAsync();
         }
         if (section == AppSection.Automation)
         {
@@ -2318,6 +3463,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IsNotificationsVisible = false;
         SearchText = string.Empty;
         SetPaletteFilter("all");
+        _historyPromptsLoaded = false;
         RefreshPaletteSessions();
         IsSearchPaletteOpen = true;
     }
@@ -2487,16 +3633,79 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public void RefreshPaletteSessions()
     {
         var query = SearchText.Trim();
+        HashSet<string>? historyMatches = null;
+        if (query.Length > 0)
+        {
+            LoadHistoryPrompts();
+            historyMatches = _historyPrompts
+                .Where(entry => entry.Text.Contains(query, StringComparison.CurrentCultureIgnoreCase))
+                .Select(entry => entry.SessionId)
+                .ToHashSet(StringComparer.Ordinal);
+        }
+
         var list = Workspaces
             .SelectMany(workspace => workspace.Sessions)
             .Where(session => !session.IsArchived)
-            .Where(session => query.Length == 0 || session.Matches(query))
+            .Where(session => query.Length == 0
+                || session.Matches(query)
+                || (historyMatches?.Contains(session.Id) ?? false))
             .OrderByDescending(session => session.State.UpdatedAt)
             .Take(8)
             .ToList();
         SyncList(PaletteSessions, list);
         OnPropertyChanged(nameof(ShowPaletteEmpty));
         OnPropertyChanged(nameof(PaletteEmptyText));
+    }
+
+    private readonly List<(string SessionId, string Text)> _historyPrompts = [];
+    private bool _historyPromptsLoaded;
+
+    /// <summary>Reads home/history.jsonl so the palette can match past prompts.</summary>
+    private void LoadHistoryPrompts()
+    {
+        if (_historyPromptsLoaded)
+        {
+            return;
+        }
+
+        _historyPromptsLoaded = true;
+        _historyPrompts.Clear();
+        var path = Path.Combine(_homeDirectory, "history.jsonl");
+        try
+        {
+            if (!File.Exists(path))
+            {
+                return;
+            }
+
+            foreach (var line in File.ReadLines(path))
+            {
+                try
+                {
+                    using var document = JsonDocument.Parse(line);
+                    var root = document.RootElement;
+                    if (root.TryGetProperty("session_id", out var id)
+                        && root.TryGetProperty("text", out var text)
+                        && id.GetString() is { Length: > 0 } sessionId
+                        && text.GetString() is { Length: > 0 } prompt)
+                    {
+                        // Keep the index bounded; the palette only needs recent prompts.
+                        _historyPrompts.Add((sessionId, prompt));
+                        if (_historyPrompts.Count > 5000)
+                        {
+                            _historyPrompts.RemoveAt(0);
+                        }
+                    }
+                }
+                catch (JsonException)
+                {
+                    // A crash can leave a partial final line.
+                }
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+        }
     }
 
     public void ToggleRecent() => IsRecentExpanded = !IsRecentExpanded;
@@ -2687,16 +3896,114 @@ public sealed partial class MainWindowViewModel : ObservableObject
         SaveState();
     }
 
+    /// <summary>Archives the chat currently on screen (Ctrl+Shift+A).</summary>
+    public void ArchiveActiveSession()
+    {
+        if (_activeSessionItem is { } session)
+        {
+            ArchiveSession(session);
+        }
+    }
+
+    /// <summary>Pins or unpins the chat currently on screen (Ctrl+Alt+P).</summary>
+    public void ToggleActiveSessionPinned()
+    {
+        if (_activeSessionItem is { } session)
+        {
+            ToggleSessionPinned(session);
+        }
+    }
+
+    public void MarkSessionUnread(SessionItemViewModel session)
+    {
+        session.IsUnread = true;
+        SaveState();
+    }
+
+    /// <summary>Marks the chat currently on screen unread (Ctrl+Shift+U).</summary>
+    public void ToggleActiveSessionUnread()
+    {
+        if (_activeSessionItem is { } session)
+        {
+            session.IsUnread = !session.IsUnread;
+            SaveState();
+        }
+    }
+
+    /// <summary>Last fenced code block in the newest assistant reply.</summary>
+    public string? LastAssistantCodeBlock()
+    {
+        for (var index = Messages.Count - 1; index >= 0; index--)
+        {
+            if (Messages[index].IsAssistant
+                && ExtractLastCodeBlock(Messages[index].Text) is { } code)
+            {
+                return code;
+            }
+        }
+
+        return null;
+    }
+
+    public static string? ExtractLastCodeBlock(string markdown)
+    {
+        var blocks = new List<string>();
+        var current = new System.Text.StringBuilder();
+        var inside = false;
+        foreach (var line in markdown.Replace("\r\n", "\n").Split('\n'))
+        {
+            if (line.TrimStart().StartsWith("```", StringComparison.Ordinal))
+            {
+                if (inside)
+                {
+                    blocks.Add(current.ToString().TrimEnd().Replace(Environment.NewLine, "\n"));
+                    current.Clear();
+                }
+
+                inside = !inside;
+                continue;
+            }
+
+            if (inside)
+            {
+                current.AppendLine(line);
+            }
+        }
+
+        return blocks.Count == 0 ? null : blocks[^1];
+    }
+
     public void ArchiveSession(SessionItemViewModel session)
     {
         session.IsArchived = true;
         SaveState();
+        _ = PushArchivedAsync(session, archived: true);
     }
 
     public void UnarchiveSession(SessionItemViewModel session)
     {
         session.IsArchived = false;
         SaveState();
+        _ = PushArchivedAsync(session, archived: false);
+    }
+
+    /// <summary>Mirrors the local archive flag into the session store.</summary>
+    private async Task PushArchivedAsync(SessionItemViewModel session, bool archived)
+    {
+        try
+        {
+            await _core.ArchiveAsync(session.Id, archived, CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is JsonRpcException or IOException or InvalidOperationException)
+        {
+            _dispatch(() =>
+            {
+                session.IsArchived = !archived;
+                SaveState();
+                SetCoreStatus($"{(archived ? "归档" : "取消归档")}失败：{error.Message}");
+            });
+        }
     }
 
     public void ToggleCodeReviewPinned()
@@ -2753,6 +4060,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(IsSettingsMemory));
         OnPropertyChanged(nameof(IsSettingsArchived));
         OnPropertyChanged(nameof(IsSettingsShortcuts));
+        OnPropertyChanged(nameof(IsSettingsProviders));
         OnPropertyChanged(nameof(IsSettingsModels));
         OnPropertyChanged(nameof(IsSettingsUsage));
         OnPropertyChanged(nameof(IsSettingsIntegration));
@@ -2790,6 +4098,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         else if (pane == SettingsPane.Plugins)
         {
             _ = RefreshMcpToolsAsync();
+            _ = RefreshPluginsAsync();
         }
         else if (pane == SettingsPane.Memory)
         {
@@ -2803,6 +4112,26 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             RefreshUsage();
         }
+        else if (pane == SettingsPane.Providers)
+        {
+            _ = RefreshProvidersAsync();
+        }
+        else if (pane == SettingsPane.Passwords)
+        {
+            RefreshCredentials();
+        }
+        else if (pane == SettingsPane.Hooks)
+        {
+            RefreshHooks();
+        }
+        else if (pane == SettingsPane.Git)
+        {
+            _ = RefreshGitAsync();
+        }
+        else if (pane == SettingsPane.Worktrees)
+        {
+            _ = RefreshWorktreesAsync();
+        }
         else if (pane == SettingsPane.Integration)
         {
             _ = RefreshMcpToolsAsync();
@@ -2810,6 +4139,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
         else if (pane == SettingsPane.Config)
         {
             _ = RefreshConfigAsync();
+        }
+        else if (pane == SettingsPane.Storage)
+        {
+            _ = RefreshStorageAsync();
         }
     }
 
@@ -2824,22 +4157,37 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// <summary>Aggregates the per-session usage persisted on completed turns.</summary>
     public void RefreshUsage()
     {
-        var sessions = _state.Workspaces
+        var metered = _state.Workspaces
             .SelectMany(workspace => workspace.Sessions)
             .Where(session => session.InputTokens > 0 || session.OutputTokens > 0 || session.CostUsd > 0)
-            .OrderByDescending(session => session.InputTokens + session.OutputTokens)
-            .Take(20)
             .ToList();
-        UsageTotalInputTokens = sessions.Sum(session => session.InputTokens);
-        UsageTotalOutputTokens = sessions.Sum(session => session.OutputTokens);
-        UsageTotalCostUsd = sessions.Sum(session => session.CostUsd);
+        UsageTotalInputTokens = metered.Sum(session => session.InputTokens);
+        UsageTotalOutputTokens = metered.Sum(session => session.OutputTokens);
+        UsageTotalCostUsd = metered.Sum(session => session.CostUsd);
         UsageRows.Clear();
-        foreach (var session in sessions)
+        foreach (var session in metered
+                     .OrderByDescending(session => session.InputTokens + session.OutputTokens)
+                     .Take(20))
         {
             UsageRows.Add(new UsageSessionRow(
                 session.Title,
                 $"{session.InputTokens:N0} / {session.OutputTokens:N0}",
                 session.CostUsd > 0 ? $"${session.CostUsd:0.0000}" : "—"));
+        }
+
+        // The analysis tab charts the 12 most recently touched metered chats.
+        var recent = metered
+            .OrderBy(session => session.UpdatedAt)
+            .TakeLast(12)
+            .ToList();
+        var peak = recent.Count == 0
+            ? 0d
+            : recent.Max(session => (double)(session.InputTokens + session.OutputTokens));
+        UsageBars.Clear();
+        foreach (var session in recent)
+        {
+            var tokens = (double)(session.InputTokens + session.OutputTokens);
+            UsageBars.Add(new UsageBarRow(peak > 0 ? Math.Max(4, Math.Round(110 * tokens / peak)) : 4));
         }
 
         OnPropertyChanged(nameof(UsageTotalInputTokens));
@@ -2848,7 +4196,863 @@ public sealed partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(UsageTokensText));
         OnPropertyChanged(nameof(UsageCostText));
         OnPropertyChanged(nameof(ShowUsageRows));
+        OnPropertyChanged(nameof(HasUsageBars));
     }
+
+    public ObservableCollection<UsageBarRow> UsageBars { get; } = [];
+
+    public ObservableCollection<ProviderCardRow> ProviderCards { get; } = [];
+
+    public bool HasProviderCards => ProviderCards.Count > 0;
+
+    public bool ShowNoProviderCards => !HasProviderCards;
+
+    public string ProviderSummaryText => ProviderCards.Count == 0
+        ? "尚未接入模型提供商。"
+        : $"已接入 {ProviderCards.Count} 个提供商 · 支持同时启用多个模型提供商";
+
+    private string _providerStatusText = string.Empty;
+    public string ProviderStatusText
+    {
+        get => _providerStatusText;
+        private set
+        {
+            if (SetProperty(ref _providerStatusText, value))
+            {
+                OnPropertyChanged(nameof(HasProviderStatus));
+            }
+        }
+    }
+
+    public bool HasProviderStatus => ProviderStatusText.Length > 0;
+
+    public IReadOnlyList<ProviderPreset> ProviderPresets { get; } =
+    [
+        new("deepseek", "DeepSeek", "deepseek-chat", "https://api.deepseek.com", "openai-chat",
+            "DeepSeek 官方 API", "https://www.deepseek.com"),
+        new("opencode", "OpenCode", "gpt-5-chat", "https://opencode.ai/zen/go/v1", "openai-chat",
+            "OpenAI 兼容网关", "https://opencode.ai"),
+        new("openai", "OpenAI", "gpt-5-chat", "https://api.openai.com/v1", "openai-chat",
+            "OpenAI 官方 API", "https://openai.com"),
+        new("anthropic", "Anthropic", "claude-sonnet-4-5", "https://api.anthropic.com/v1", "anthropic",
+            "Anthropic 官方 API", "https://www.anthropic.com"),
+        new("openrouter", "OpenRouter", "openai/gpt-5", "https://openrouter.ai/api/v1", "openai-chat",
+            "多模型聚合网关", "https://openrouter.ai"),
+        new(string.Empty, "自定义提供商", string.Empty, string.Empty, "openai-chat",
+            "自定义 OpenAI 兼容端点", string.Empty)
+    ];
+
+    private bool _isProviderFormOpen;
+    public bool IsProviderFormOpen
+    {
+        get => _isProviderFormOpen;
+        private set => SetProperty(ref _isProviderFormOpen, value);
+    }
+
+    private ProviderPreset? _selectedProviderPreset;
+    public ProviderPreset? SelectedProviderPreset
+    {
+        get => _selectedProviderPreset;
+        set
+        {
+            if (ReferenceEquals(_selectedProviderPreset, value))
+            {
+                return;
+            }
+
+            _selectedProviderPreset = value;
+            OnPropertyChanged();
+            if (value is not null)
+            {
+                FillProviderDraft(value);
+            }
+        }
+    }
+
+    private string _providerDraftId = string.Empty;
+    public string ProviderDraftId
+    {
+        get => _providerDraftId;
+        set => SetProperty(ref _providerDraftId, value);
+    }
+
+    private string _providerDraftModel = string.Empty;
+    public string ProviderDraftModel
+    {
+        get => _providerDraftModel;
+        set => SetProperty(ref _providerDraftModel, value);
+    }
+
+    private string _providerDraftBaseUrl = string.Empty;
+    public string ProviderDraftBaseUrl
+    {
+        get => _providerDraftBaseUrl;
+        set => SetProperty(ref _providerDraftBaseUrl, value);
+    }
+
+    private string _providerDraftApiKey = string.Empty;
+    public string ProviderDraftApiKey
+    {
+        get => _providerDraftApiKey;
+        set => SetProperty(ref _providerDraftApiKey, value);
+    }
+
+    private int _providerProtocolIndex;
+    public int ProviderProtocolIndex
+    {
+        get => _providerProtocolIndex;
+        set => SetProperty(ref _providerProtocolIndex, value);
+    }
+
+    private string _providerFormStatus = string.Empty;
+    public string ProviderFormStatus
+    {
+        get => _providerFormStatus;
+        private set
+        {
+            if (SetProperty(ref _providerFormStatus, value))
+            {
+                OnPropertyChanged(nameof(HasProviderFormStatus));
+            }
+        }
+    }
+
+    public bool HasProviderFormStatus => ProviderFormStatus.Length > 0;
+
+    private bool _isProviderDetailOpen;
+    public bool IsProviderDetailOpen
+    {
+        get => _isProviderDetailOpen;
+        private set
+        {
+            if (SetProperty(ref _isProviderDetailOpen, value))
+            {
+                OnPropertyChanged(nameof(IsProviderListOpen));
+            }
+        }
+    }
+
+    public bool IsProviderListOpen => !IsProviderDetailOpen;
+
+    private ProviderCardRow? _detailProvider;
+    public string ProviderDetailName => _detailProvider?.Name ?? string.Empty;
+    public string ProviderDetailId => _detailProvider?.Id ?? string.Empty;
+    public string ProviderDetailNote => _detailProvider?.Note ?? string.Empty;
+    public string ProviderDetailWebsite => _detailProvider?.Website ?? string.Empty;
+    public bool HasProviderDetailWebsite => ProviderDetailWebsite.Length > 0;
+    public string ProviderDetailKeyStatus =>
+        _detailProvider?.KeyConfigured == true ? "API Key 已配置" : "API Key 未配置";
+
+    private string _providerDetailStatus = string.Empty;
+    public string ProviderDetailStatus
+    {
+        get => _providerDetailStatus;
+        private set
+        {
+            if (SetProperty(ref _providerDetailStatus, value))
+            {
+                OnPropertyChanged(nameof(HasProviderDetailStatus));
+            }
+        }
+    }
+
+    public bool HasProviderDetailStatus => ProviderDetailStatus.Length > 0;
+
+    public ObservableCollection<ProviderModelRow> ProviderModels { get; } = [];
+    public bool HasProviderModels => ProviderModels.Count > 0;
+    public bool ShowNoProviderModels => !HasProviderModels;
+
+    private string _editingProviderId = string.Empty;
+
+    private string _providerEditName = string.Empty;
+    public string ProviderEditName
+    {
+        get => _providerEditName;
+        set => SetProperty(ref _providerEditName, value);
+    }
+
+    private string _providerEditNote = string.Empty;
+    public string ProviderEditNote
+    {
+        get => _providerEditNote;
+        set => SetProperty(ref _providerEditNote, value);
+    }
+
+    private string _providerEditWebsite = string.Empty;
+    public string ProviderEditWebsite
+    {
+        get => _providerEditWebsite;
+        set => SetProperty(ref _providerEditWebsite, value);
+    }
+
+    private string _providerEditStatus = string.Empty;
+    public string ProviderEditStatus
+    {
+        get => _providerEditStatus;
+        private set
+        {
+            if (SetProperty(ref _providerEditStatus, value))
+            {
+                OnPropertyChanged(nameof(HasProviderEditStatus));
+            }
+        }
+    }
+
+    public bool HasProviderEditStatus => ProviderEditStatus.Length > 0;
+
+    public void OpenProviderDetail(ProviderCardRow provider)
+    {
+        _detailProvider = provider;
+        _editingProviderId = provider.Id.ToLowerInvariant();
+        ProviderEditName = provider.Name;
+        ProviderEditNote = provider.Note;
+        ProviderEditWebsite = provider.Website;
+        ProviderEditStatus = string.Empty;
+        ProviderDetailStatus = string.Empty;
+        ProviderDetailApiKey = string.Empty;
+        ProviderModels.Clear();
+        foreach (var model in provider.Models)
+        {
+            ProviderModels.Add(new ProviderModelRow(
+                model.Model,
+                NormalizeModelProtocol(model.Protocol),
+                model.Url,
+                model.ContextWindow,
+                model.CompactThreshold,
+                model.MaxOutputTokens));
+        }
+
+        CloseProviderModelForm();
+        IsProviderFormOpen = false;
+        NotifyProviderModelsChanged();
+        NotifyProviderDetailChanged();
+        IsProviderDetailOpen = true;
+    }
+
+    public void CloseProviderDetail()
+    {
+        IsProviderDetailOpen = false;
+        _detailProvider = null;
+        _editingProviderId = string.Empty;
+        ProviderEditStatus = string.Empty;
+        ProviderDetailStatus = string.Empty;
+        ProviderDetailApiKey = string.Empty;
+        ProviderModels.Clear();
+        CloseProviderModelForm();
+        NotifyProviderModelsChanged();
+        NotifyProviderDetailChanged();
+    }
+
+    private void NotifyProviderDetailChanged()
+    {
+        OnPropertyChanged(nameof(ProviderDetailName));
+        OnPropertyChanged(nameof(ProviderDetailId));
+        OnPropertyChanged(nameof(ProviderDetailNote));
+        OnPropertyChanged(nameof(ProviderDetailWebsite));
+        OnPropertyChanged(nameof(HasProviderDetailWebsite));
+        OnPropertyChanged(nameof(ProviderDetailKeyStatus));
+    }
+
+    private void NotifyProviderModelsChanged()
+    {
+        OnPropertyChanged(nameof(HasProviderModels));
+        OnPropertyChanged(nameof(ShowNoProviderModels));
+    }
+
+    public bool SaveProviderProfile()
+    {
+        var name = ProviderEditName.Trim();
+        if (name.Length == 0)
+        {
+            ProviderEditStatus = "请填写供应商名称。";
+            return false;
+        }
+
+        var website = ProviderEditWebsite.Trim();
+        if (website.Length > 0
+            && (!Uri.TryCreate(website, UriKind.Absolute, out var uri)
+                || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)))
+        {
+            ProviderEditStatus = "官网链接必须是完整的 http:// 或 https:// 地址。";
+            return false;
+        }
+
+        var note = ProviderEditNote.Trim();
+        var profiles = _state.ProviderProfiles ??= [];
+        profiles[_editingProviderId] = new ProviderProfileState
+        {
+            DisplayName = name,
+            Note = note,
+            Website = website
+        };
+        SaveState();
+
+        if (ProviderCards.FirstOrDefault(row =>
+                string.Equals(row.Id, _editingProviderId, StringComparison.OrdinalIgnoreCase)) is { } row)
+        {
+            row.Name = name;
+            row.Note = note;
+            row.Website = website;
+        }
+
+        if (_detailProvider is not null)
+        {
+            _detailProvider.Name = name;
+            _detailProvider.Note = note;
+            _detailProvider.Website = website;
+        }
+
+        ProviderEditStatus = string.Empty;
+        ProviderDetailStatus = $"已保存 {name} 的显示信息。";
+        NotifyProviderDetailChanged();
+        return true;
+    }
+
+    // ----- Provider model management -----
+
+    private ProviderModelRow? _editingProviderModel;
+    private bool _isProviderModelFormOpen;
+    public bool IsProviderModelFormOpen
+    {
+        get => _isProviderModelFormOpen;
+        private set => SetProperty(ref _isProviderModelFormOpen, value);
+    }
+
+    public string ProviderModelFormTitle =>
+        _editingProviderModel is null ? "添加模型" : "编辑模型";
+
+    private string _providerModelDraftId = string.Empty;
+    public string ProviderModelDraftId
+    {
+        get => _providerModelDraftId;
+        set => SetProperty(ref _providerModelDraftId, value);
+    }
+
+    private int _providerModelProtocolIndex;
+    public int ProviderModelProtocolIndex
+    {
+        get => _providerModelProtocolIndex;
+        set => SetProperty(ref _providerModelProtocolIndex, value);
+    }
+
+    private string _providerModelDraftUrl = string.Empty;
+    public string ProviderModelDraftUrl
+    {
+        get => _providerModelDraftUrl;
+        set => SetProperty(ref _providerModelDraftUrl, value);
+    }
+
+    private string _providerModelDraftContextWindow = "128000";
+    public string ProviderModelDraftContextWindow
+    {
+        get => _providerModelDraftContextWindow;
+        set => SetProperty(ref _providerModelDraftContextWindow, value);
+    }
+
+    private string _providerModelDraftCompactThreshold = "0.8";
+    public string ProviderModelDraftCompactThreshold
+    {
+        get => _providerModelDraftCompactThreshold;
+        set => SetProperty(ref _providerModelDraftCompactThreshold, value);
+    }
+
+    private string _providerModelDraftMaxOutput = "8192";
+    public string ProviderModelDraftMaxOutput
+    {
+        get => _providerModelDraftMaxOutput;
+        set => SetProperty(ref _providerModelDraftMaxOutput, value);
+    }
+
+    private string _providerModelFormStatus = string.Empty;
+    public string ProviderModelFormStatus
+    {
+        get => _providerModelFormStatus;
+        private set
+        {
+            if (SetProperty(ref _providerModelFormStatus, value))
+            {
+                OnPropertyChanged(nameof(HasProviderModelFormStatus));
+            }
+        }
+    }
+
+    public bool HasProviderModelFormStatus => ProviderModelFormStatus.Length > 0;
+
+    public void OpenAddProviderModel()
+    {
+        _editingProviderModel = null;
+        ProviderModelDraftId = string.Empty;
+        ProviderModelDraftUrl = string.Empty;
+        ProviderModelDraftContextWindow = "128000";
+        ProviderModelDraftCompactThreshold = "0.8";
+        ProviderModelDraftMaxOutput = "8192";
+        ProviderModelProtocolIndex = 0;
+        ProviderModelFormStatus = string.Empty;
+        OnPropertyChanged(nameof(ProviderModelFormTitle));
+        IsProviderModelFormOpen = true;
+    }
+
+    public void OpenEditProviderModel(ProviderModelRow model)
+    {
+        _editingProviderModel = model;
+        ProviderModelDraftId = model.Id;
+        ProviderModelDraftUrl = model.Url;
+        ProviderModelDraftContextWindow = model.ContextWindow.ToString(CultureInfo.InvariantCulture);
+        ProviderModelDraftCompactThreshold =
+            model.CompactThreshold.ToString("0.##", CultureInfo.InvariantCulture);
+        ProviderModelDraftMaxOutput = model.MaxOutputTokens.ToString(CultureInfo.InvariantCulture);
+        ProviderModelProtocolIndex = model.Protocol switch
+        {
+            "anthropic" => 1,
+            "openai-responses" => 2,
+            _ => 0
+        };
+        ProviderModelFormStatus = string.Empty;
+        OnPropertyChanged(nameof(ProviderModelFormTitle));
+        IsProviderModelFormOpen = true;
+    }
+
+    public void CloseProviderModelForm()
+    {
+        IsProviderModelFormOpen = false;
+        _editingProviderModel = null;
+        ProviderModelFormStatus = string.Empty;
+    }
+
+    public async Task SaveProviderModelAsync()
+    {
+        var id = ProviderModelDraftId.Trim();
+        if (id.Length == 0)
+        {
+            ProviderModelFormStatus = "请填写模型 ID。";
+            return;
+        }
+
+        var url = ProviderModelDraftUrl.Trim();
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            ProviderModelFormStatus = "模型 URL 必须是完整的 http:// 或 https:// 地址。";
+            return;
+        }
+
+        if (!int.TryParse(
+                ProviderModelDraftContextWindow.Trim(),
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var contextWindow)
+            || contextWindow <= 0)
+        {
+            ProviderModelFormStatus = "上下文窗口必须是正整数。";
+            return;
+        }
+
+        if (!double.TryParse(
+                ProviderModelDraftCompactThreshold.Trim(),
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out var compactThreshold)
+            || compactThreshold <= 0
+            || compactThreshold > 1)
+        {
+            ProviderModelFormStatus = "压缩阈值必须在 0 到 1 之间。";
+            return;
+        }
+
+        if (!int.TryParse(
+                ProviderModelDraftMaxOutput.Trim(),
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var maxOutput)
+            || maxOutput <= 0)
+        {
+            ProviderModelFormStatus = "最大输出 tokens 必须是正整数。";
+            return;
+        }
+
+        var duplicate = ProviderModels.Any(model =>
+            !ReferenceEquals(model, _editingProviderModel)
+            && string.Equals(model.Id, id, StringComparison.OrdinalIgnoreCase));
+        if (duplicate)
+        {
+            ProviderModelFormStatus = "这个提供商下已经有同名模型。";
+            return;
+        }
+
+        var row = new ProviderModelRow(
+            id,
+            ProviderProtocol(ProviderModelProtocolIndex),
+            url,
+            contextWindow,
+            compactThreshold,
+            maxOutput);
+        if (_editingProviderModel is { } current && ProviderModels.IndexOf(current) is var index
+            && index >= 0)
+        {
+            ProviderModels[index] = row;
+        }
+        else
+        {
+            ProviderModels.Add(row);
+        }
+
+        NotifyProviderModelsChanged();
+        if (await SaveProviderModelsAsync().ConfigureAwait(true))
+        {
+            CloseProviderModelForm();
+        }
+        else
+        {
+            ProviderModelFormStatus = ProviderDetailStatus;
+        }
+    }
+
+    public async Task DeleteProviderModelAsync(ProviderModelRow model)
+    {
+        if (ProviderModels.Count <= 1)
+        {
+            ProviderDetailStatus = "至少保留一个模型。";
+            return;
+        }
+
+        var index = ProviderModels.IndexOf(model);
+        if (index < 0)
+        {
+            return;
+        }
+
+        ProviderModels.RemoveAt(index);
+        NotifyProviderModelsChanged();
+        if (!await SaveProviderModelsAsync().ConfigureAwait(true))
+        {
+            ProviderModels.Insert(index, model);
+            NotifyProviderModelsChanged();
+        }
+    }
+
+    private async Task<bool> SaveProviderModelsAsync()
+    {
+        if (_detailProvider is null)
+        {
+            ProviderDetailStatus = "请先打开一个提供商。";
+            return false;
+        }
+
+        if (ProviderModels.Count == 0)
+        {
+            ProviderDetailStatus = "提供商至少需要一个模型。";
+            return false;
+        }
+
+        var protocols = ProviderModels
+            .GroupBy(model => model.Protocol, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Select(model => model.Url)
+                    .FirstOrDefault(url => !string.IsNullOrWhiteSpace(url)));
+        var parameters = new Dictionary<string, object?>
+        {
+            ["id"] = _detailProvider.Id,
+            ["enabled"] = _detailProvider.Enabled,
+            ["protocols"] = protocols,
+            ["models"] = ProviderModels.Select(model => new Dictionary<string, object?>
+            {
+                ["id"] = model.Id,
+                ["protocol"] = model.Protocol,
+                ["context_window"] = model.ContextWindow,
+                ["compact_threshold"] = model.CompactThreshold,
+                ["max_output_tokens"] = model.MaxOutputTokens,
+                ["url"] = model.Url
+            }).ToArray()
+        };
+
+        try
+        {
+            await _core.UpsertProviderAsync(parameters, CancellationToken.None).ConfigureAwait(true);
+            _detailProvider.SetModels(ProviderModels
+                .Select(model => new CoreModelOption(
+                    _detailProvider.Id,
+                    model.Id,
+                    _detailProvider.Enabled,
+                    _detailProvider.KeyConfigured)
+                {
+                    Protocol = model.Protocol,
+                    Url = model.Url,
+                    ContextWindow = model.ContextWindow,
+                    CompactThreshold = model.CompactThreshold,
+                    MaxOutputTokens = model.MaxOutputTokens
+                })
+                .ToList());
+            ProviderDetailStatus = "模型配置已写入 KL Core；重新连接后应用到聊天。";
+            return true;
+        }
+        catch (Exception error) when (error is JsonRpcException
+            or IOException
+            or InvalidOperationException
+            or NotSupportedException)
+        {
+            ProviderDetailStatus = $"保存模型配置失败：{error.Message}";
+            return false;
+        }
+    }
+
+    private string _providerDetailApiKey = string.Empty;
+    public string ProviderDetailApiKey
+    {
+        get => _providerDetailApiKey;
+        set => SetProperty(ref _providerDetailApiKey, value);
+    }
+
+    public async Task SaveProviderDetailApiKeyAsync()
+    {
+        if (_detailProvider is null)
+        {
+            return;
+        }
+
+        var key = ProviderDetailApiKey.Trim();
+        if (key.Length == 0)
+        {
+            ProviderDetailStatus = "请先输入 API Key。";
+            return;
+        }
+
+        try
+        {
+            await _core.SetProviderApiKeyAsync(_detailProvider.Id, key, CancellationToken.None)
+                .ConfigureAwait(true);
+            _detailProvider.SetKeyConfigured(true);
+            ProviderDetailApiKey = string.Empty;
+            ProviderDetailStatus = "API Key 已保存到本机凭据目录。";
+            OnPropertyChanged(nameof(ProviderDetailKeyStatus));
+        }
+        catch (Exception error) when (error is JsonRpcException
+            or IOException
+            or InvalidOperationException
+            or NotSupportedException)
+        {
+            ProviderDetailStatus = $"保存 API Key 失败：{error.Message}";
+        }
+    }
+
+    private static string NormalizeModelProtocol(string protocol) => protocol.ToLowerInvariant() switch
+    {
+        "anthropic" => "anthropic",
+        "openai-responses" => "openai-responses",
+        _ => "openai-chat"
+    };
+
+    private readonly HashSet<string> _providerTogglesInFlight = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Persists a provider's enabled flag through Core.</summary>
+    public async Task SetProviderEnabledAsync(ProviderCardRow provider, bool enabled)
+    {
+        if (!_providerTogglesInFlight.Add(provider.Id))
+        {
+            return;
+        }
+
+        try
+        {
+            await _core.SetProviderEnabledAsync(provider.Id, enabled, CancellationToken.None)
+                .ConfigureAwait(true);
+            provider.Enabled = enabled;
+            ProviderStatusText =
+                $"已{(enabled ? "启用" : "停用")} {provider.Name}；重新连接 KL Core 后应用到聊天。";
+        }
+        catch (Exception error) when (error is JsonRpcException
+            or IOException
+            or InvalidOperationException
+            or NotSupportedException)
+        {
+            provider.Enabled = !enabled;
+            ProviderStatusText = $"无法更新 {provider.Name}：{error.Message}";
+        }
+        finally
+        {
+            _providerTogglesInFlight.Remove(provider.Id);
+        }
+    }
+
+    public void OpenProviderForm()
+    {
+        ProviderFormStatus = string.Empty;
+        ProviderStatusText = string.Empty;
+        CloseProviderDetail();
+        _selectedProviderPreset = ProviderPresets[0];
+        OnPropertyChanged(nameof(SelectedProviderPreset));
+        FillProviderDraft(_selectedProviderPreset);
+        IsProviderFormOpen = true;
+    }
+
+    public void CloseProviderForm()
+    {
+        IsProviderFormOpen = false;
+        ProviderDraftApiKey = string.Empty;
+        ProviderFormStatus = string.Empty;
+    }
+
+    private void FillProviderDraft(ProviderPreset preset)
+    {
+        ProviderDraftId = preset.Id;
+        ProviderDraftModel = preset.Model;
+        ProviderDraftBaseUrl = preset.BaseUrl;
+        ProviderDraftApiKey = string.Empty;
+        ProviderProtocolIndex = preset.Protocol switch
+        {
+            "anthropic" => 1,
+            "openai-responses" => 2,
+            _ => 0
+        };
+        ProviderFormStatus = string.Empty;
+    }
+
+    /// <summary>Re-reads Core's provider catalog for the Usage card.</summary>
+    public async Task RefreshProvidersAsync()
+    {
+        ProviderStatusText = "正在刷新提供商…";
+        try
+        {
+            var snapshot = await _core.LoadSnapshotAsync(CancellationToken.None).ConfigureAwait(true);
+            if (!snapshot.Success)
+            {
+                ProviderStatusText = $"无法读取提供商：{snapshot.Error}";
+                return;
+            }
+
+            ApplyCatalogSnapshot(snapshot);
+            try
+            {
+                var config = await _core.ReadConfigAsync(CancellationToken.None).ConfigureAwait(true);
+                MergeConfiguredProviders(config);
+            }
+            catch (Exception error) when (error is JsonRpcException
+                or IOException
+                or InvalidOperationException
+                or NotSupportedException)
+            {
+                // Provider cards from the live catalog are still useful.
+            }
+
+            ProviderStatusText = $"已刷新提供商目录（{DateTimeOffset.Now:HH:mm}）。";
+        }
+        catch (Exception error) when (error is JsonRpcException
+            or IOException
+            or InvalidOperationException
+            or NotSupportedException)
+        {
+            ProviderStatusText = $"无法刷新提供商：{error.Message}";
+        }
+    }
+
+    /// <summary>Writes a provider (and optional key) into Core config.</summary>
+    public async Task SaveProviderAsync()
+    {
+        var id = NormalizeProviderId(ProviderDraftId);
+        var model = ProviderDraftModel.Trim();
+        var baseUrl = ProviderDraftBaseUrl.Trim().TrimEnd('/');
+        if (id.Length == 0)
+        {
+            ProviderFormStatus = "请填写提供商 ID。";
+            return;
+        }
+
+        if (model.Length == 0)
+        {
+            ProviderFormStatus = "请填写模型 ID。";
+            return;
+        }
+
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            ProviderFormStatus = "Base URL 必须是完整的 http:// 或 https:// 地址。";
+            return;
+        }
+
+        var protocol = ProviderProtocol(ProviderProtocolIndex);
+        var (contextWindow, maxOutput) = ProviderLimits(protocol);
+        var parameters = new Dictionary<string, object?>
+        {
+            ["id"] = id,
+            ["enabled"] = true,
+            ["protocols"] = new Dictionary<string, string?>
+            {
+                ["openai-chat"] = EndpointFor(baseUrl, "chat/completions"),
+                ["anthropic"] = EndpointFor(baseUrl, "messages"),
+                ["openai-responses"] = EndpointFor(baseUrl, "responses")
+            },
+            ["models"] = new[]
+            {
+                new Dictionary<string, object?>
+                {
+                    ["id"] = model,
+                    ["protocol"] = protocol,
+                    ["context_window"] = contextWindow,
+                    ["compact_threshold"] = 0.8,
+                    ["max_output_tokens"] = maxOutput
+                }
+            }
+        };
+
+        ProviderFormStatus = "正在写入提供商…";
+        try
+        {
+            await _core.UpsertProviderAsync(parameters, CancellationToken.None).ConfigureAwait(true);
+            var key = ProviderDraftApiKey.Trim();
+            if (key.Length > 0)
+            {
+                await _core.SetProviderApiKeyAsync(id, key, CancellationToken.None).ConfigureAwait(true);
+            }
+
+            await RefreshCatalogQuietlyAsync().ConfigureAwait(true);
+            IsProviderFormOpen = false;
+            ProviderDraftApiKey = string.Empty;
+            ProviderFormStatus = string.Empty;
+            ProviderStatusText = $"已写入 {id}；重新连接 KL Core 后应用到聊天。";
+        }
+        catch (Exception error) when (error is JsonRpcException
+            or IOException
+            or InvalidOperationException
+            or NotSupportedException)
+        {
+            ProviderFormStatus = $"保存提供商失败：{error.Message}";
+        }
+    }
+
+    private static string NormalizeProviderId(string value)
+    {
+        var normalized = string.Concat(value
+            .Trim()
+            .ToLowerInvariant()
+            .Select(character => char.IsAsciiLetterOrDigit(character)
+                || character is '-' or '_' or '.'
+                    ? character
+                    : '-'))
+            .Trim('-', '_', '.');
+        return normalized;
+    }
+
+    private static string ProviderProtocol(int index) => index switch
+    {
+        1 => "anthropic",
+        2 => "openai-responses",
+        _ => "openai-chat"
+    };
+
+    private static (int ContextWindow, int MaxOutputTokens) ProviderLimits(string protocol) =>
+        protocol switch
+        {
+            "anthropic" => (200_000, 8_192),
+            "openai-responses" => (256_000, 16_384),
+            _ => (128_000, 8_192)
+        };
+
+    private static string EndpointFor(string baseUrl, string suffix) =>
+        baseUrl.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
+            ? baseUrl
+            : $"{baseUrl.TrimEnd('/')}/{suffix}";
+    public bool HasUsageBars => UsageBars.Count > 0;
 
     public ObservableCollection<McpToolRow> McpTools { get; } = [];
     public string McpStatusText { get; private set; } = "打开此页时从 KL Core 读取。";
@@ -2921,6 +5125,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public ObservableCollection<ConfigValueRow> ConfigRows { get; } = [];
     public string ConfigPathText { get; private set; } = "—";
+    public string CoreSandboxText { get; private set; } = "—";
     public string ConfigStatusText { get; private set; } = "打开此页时从 KL Core 读取。";
     public bool ShowConfigRows => ConfigRows.Count > 0;
     public string KlHomeDirectory => ResolveCoreHomeText();
@@ -2949,12 +5154,25 @@ public sealed partial class MainWindowViewModel : ObservableObject
         List<ConfigValueRow> rows;
         string path;
         string status;
+        var sandbox = "—";
         try
         {
             var result = await _core.ReadConfigAsync(CancellationToken.None);
             path = result.TryGetProperty("path", out var pathValue)
                 ? pathValue.GetString() ?? "—"
                 : "—";
+            if (result.TryGetProperty("config", out var config)
+                && config.TryGetProperty("sandbox", out var sandboxConfig)
+                && sandboxConfig.TryGetProperty("mode", out var mode)
+                && mode.GetString() is { } modeValue)
+            {
+                sandbox = modeValue switch
+                {
+                    "strict" => "严格隔离",
+                    "off" => "无限制",
+                    _ => "工作空间写入"
+                };
+            }
             rows = ParseConfig(result);
             status = rows.Count == 0 ? "Core 未返回配置内容。" : string.Empty;
         }
@@ -2968,6 +5186,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _dispatch(() =>
         {
             ConfigPathText = path;
+            CoreSandboxText = sandbox;
+            OnPropertyChanged(nameof(CoreSandboxText));
             ConfigRows.Clear();
             foreach (var row in rows)
             {
@@ -3046,6 +5266,123 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public string BackupStatusText { get; private set; } = string.Empty;
     public bool HasBackupStatus => BackupStatusText.Length > 0;
     public string DataDirectoryPath => StateDirectory;
+
+    public ObservableCollection<StorageFolderViewModel> StorageFolders { get; } = [];
+    public string StorageTotalLabel { get; private set; } = "KL 占用 —";
+    public string StorageStatusText { get; private set; } = "打开此页时计算。";
+    public string StorageChatSizeLabel { get; private set; } = "—";
+    public string StorageAttachmentSizeLabel { get; private set; } = "—";
+    public string StoragePluginSizeLabel { get; private set; } = "—";
+    public string StorageOtherSizeLabel { get; private set; } = "—";
+    public ColumnDefinitions StorageBarColumns { get; private set; } = new("1*,1*,1*,1*");
+    public bool HasStorageUsage { get; private set; }
+
+    private sealed record StorageMeasurement(
+        IReadOnlyList<StorageFolderViewModel> Folders,
+        long TotalBytes,
+        long ChatBytes,
+        long AttachmentBytes,
+        long PluginBytes,
+        long OtherBytes);
+
+    /// <summary>Measures the real home directory so 存储空间 is not a mock-up.</summary>
+    public async Task RefreshStorageAsync()
+    {
+        StorageStatusText = "正在计算…";
+        OnPropertyChanged(nameof(StorageStatusText));
+        var home = _homeDirectory;
+        var measurement = await Task.Run(() => MeasureStorage(home)).ConfigureAwait(true);
+
+        StorageFolders.Clear();
+        foreach (var folder in measurement.Folders)
+        {
+            StorageFolders.Add(folder);
+        }
+
+        StorageTotalLabel = $"KL 占用 {StorageFolderViewModel.FormatBytes(measurement.TotalBytes)}";
+        StorageChatSizeLabel = StorageFolderViewModel.FormatBytes(measurement.ChatBytes);
+        StorageAttachmentSizeLabel = StorageFolderViewModel.FormatBytes(measurement.AttachmentBytes);
+        StoragePluginSizeLabel = StorageFolderViewModel.FormatBytes(measurement.PluginBytes);
+        StorageOtherSizeLabel = StorageFolderViewModel.FormatBytes(measurement.OtherBytes);
+        StorageBarColumns = BuildStorageBarColumns(
+            measurement.ChatBytes,
+            measurement.AttachmentBytes,
+            measurement.PluginBytes,
+            measurement.OtherBytes);
+        HasStorageUsage = measurement.TotalBytes > 0;
+        StorageStatusText = "容量按文件当前大小统计。";
+
+        OnPropertyChanged(nameof(StorageTotalLabel));
+        OnPropertyChanged(nameof(StorageStatusText));
+        OnPropertyChanged(nameof(StorageChatSizeLabel));
+        OnPropertyChanged(nameof(StorageAttachmentSizeLabel));
+        OnPropertyChanged(nameof(StoragePluginSizeLabel));
+        OnPropertyChanged(nameof(StorageOtherSizeLabel));
+        OnPropertyChanged(nameof(StorageBarColumns));
+        OnPropertyChanged(nameof(HasStorageUsage));
+    }
+
+    private static StorageMeasurement MeasureStorage(string home)
+    {
+        var folders = new List<StorageFolderViewModel>();
+
+        long AddFolder(string directory, string label)
+        {
+            var path = Path.Combine(home, directory);
+            var bytes = DirectorySize(path);
+            folders.Add(new StorageFolderViewModel(label, path, bytes));
+            return bytes;
+        }
+
+        var chat = AddFolder("sessions", "聊天（进行中）") + AddFolder("archived_sessions", "已归档聊天");
+        var attachments = AddFolder("attachments", "附件");
+        var plugins = AddFolder("plugins", "插件");
+        AddFolder("cache", "缓存");
+        AddFolder("audit", "审计日志");
+        AddFolder("gui", "界面状态");
+        AddFolder("memories", "记忆");
+        AddFolder("log", "日志");
+        var total = DirectorySize(home);
+        var other = Math.Max(0, total - chat - attachments - plugins);
+        return new StorageMeasurement(folders, total, chat, attachments, plugins, other);
+    }
+
+    private static long DirectorySize(string path)
+    {
+        if (!Directory.Exists(path))
+        {
+            return 0;
+        }
+
+        long total = 0;
+        try
+        {
+            foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+            {
+                try
+                {
+                    total += new FileInfo(file).Length;
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    // A file that disappears or is locked simply does not count.
+                }
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+        }
+        return total;
+    }
+
+    private static ColumnDefinitions BuildStorageBarColumns(long chat, long attachments, long plugins, long other)
+    {
+        var total = chat + attachments + plugins + other;
+        static int Weight(long value, long total) =>
+            value <= 0 || total <= 0 ? 0 : Math.Max(1, (int)Math.Round(value * 1000.0 / total));
+        return new ColumnDefinitions(
+            $"{Weight(chat, total)}*,{Weight(attachments, total)}*,{Weight(plugins, total)}*,{Weight(other, total)}*");
+    }
 
     /// <summary>Copies the GUI state file to a user-chosen backup location.</summary>
     public bool ExportStateBackup(string targetPath)
@@ -3349,6 +5686,39 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    /// <summary>Deletes every entry in the given scope; used by 个性化 → 删除 KL 记忆.</summary>
+    public async Task DeleteAllMemoriesAsync(string scope = "user")
+    {
+        if (!TryMemorySession(out var sessionId))
+        {
+            SetMemoryStatus("先打开一个聊天会话，然后重试。");
+            return;
+        }
+
+        try
+        {
+            var result = await _core.RequestAsync(
+                "memory.list",
+                new { session_id = sessionId, scope },
+                CancellationToken.None);
+            var entries = ParseMemoryEntries(result);
+            foreach (var entry in entries)
+            {
+                await _core.RequestAsync(
+                    "memory.delete",
+                    new { session_id = sessionId, name = entry.Name, scope },
+                    CancellationToken.None);
+            }
+
+            SetMemoryStatus($"已删除 {entries.Count} 条记忆");
+            await RefreshMemoryAsync();
+        }
+        catch (Exception error)
+        {
+            SetMemoryStatus($"无法删除记忆：{error.Message}");
+        }
+    }
+
     public void StartNewMemory()
     {
         MemoryName = string.Empty;
@@ -3413,10 +5783,20 @@ public sealed partial class MainWindowViewModel : ObservableObject
             return;
         }
         _state.InteractionMode = value;
+        // ChatGPT Work lists its projects flat; the Codex product expands their chats.
+        foreach (var workspace in Workspaces)
+        {
+            workspace.IsExpanded = workMode;
+        }
         OnPropertyChanged(nameof(IsWorkMode));
         OnPropertyChanged(nameof(IsChatMode));
         OnPropertyChanged(nameof(ActiveModeLabel));
         OnPropertyChanged(nameof(EmptyStateTitle));
+        OnPropertyChanged(nameof(ComposerPlaceholder));
+        OnPropertyChanged(nameof(ComposerMaxWidth));
+        OnPropertyChanged(nameof(ComposerMargin));
+        OnPropertyChanged(nameof(ShowWorkspaceStrip));
+        OnPropertyChanged(nameof(ShowChatComposerChips));
         SaveState();
     }
 
@@ -3432,7 +5812,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _activeWorkspace.IsSelected = false;
         _activeWorkspace = workspace;
         _activeWorkspace.IsSelected = true;
-        _activeWorkspace.IsExpanded = true;
+        _activeWorkspace.IsExpanded = IsWorkMode;
         _state.ActiveWorkspaceId = workspace.Id;
         OnPropertyChanged(nameof(WorkspaceName));
         OnPropertyChanged(nameof(EmptyStateTitle));
@@ -3511,7 +5891,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             {
                 _activeWorkspace = next;
                 _activeWorkspace.IsSelected = true;
-                _activeWorkspace.IsExpanded = true;
+                _activeWorkspace.IsExpanded = IsWorkMode;
                 _state.ActiveWorkspaceId = next.Id;
                 OnPropertyChanged(nameof(WorkspaceName));
                 OnPropertyChanged(nameof(EmptyStateTitle));
@@ -3570,7 +5950,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             Name = name,
             Path = fullPath,
-            IsExpanded = true
+            IsExpanded = IsWorkMode
         };
         _state.Workspaces.Add(state);
         var workspaceVm = new WorkspaceItemViewModel(state);
@@ -3642,6 +6022,27 @@ public sealed partial class MainWindowViewModel : ObservableObject
         await OpenSessionAsync(item).ConfigureAwait(true);
     }
 
+    /// <summary>Copies sent attachments into the home store for later recovery.</summary>
+    private void PersistAttachments(string sessionId, IReadOnlyList<AttachmentItemViewModel> attachments)
+    {
+        if (attachments.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            AttachmentStore.Save(
+                _homeDirectory,
+                sessionId,
+                attachments.Select(attachment => (attachment.Name, attachment.Content)));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            // The turn already carries the attachment inline; a failed copy is not fatal.
+        }
+    }
+
     /// <summary>Asks Core to compact the open session and reloads the transcript.</summary>
     public async Task CompactActiveSessionAsync()
     {
@@ -3705,6 +6106,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
 
         _turnCancellation?.Cancel();
+        ClearQueuedTurns();
         try
         {
             await _core.CancelAsync(CancellationToken.None).ConfigureAwait(true);
@@ -3717,6 +6119,15 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public async Task SendAsync()
     {
+        if (IsBusy)
+        {
+            if (IsFollowUpQueue && CanSend)
+            {
+                QueueTurn(Composer.Trim(), PendingAttachments.ToList());
+            }
+            return;
+        }
+
         if (!CanSend)
         {
             return;
@@ -3753,6 +6164,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
             ErrorMessage = "当前没有可用会话。";
             return;
         }
+
+        PersistAttachments(session.Id, attachments);
 
         var isFirstMessage = session.Messages.Count == 0;
         if (isFirstMessage)
@@ -3800,6 +6213,26 @@ public sealed partial class MainWindowViewModel : ObservableObject
             }
             _turnCancellation?.Dispose();
             _turnCancellation = null;
+        }
+
+        await DrainQueuedTurnsAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>Markdown transcript of the active session, or an empty string when there is none.</summary>
+    public string BuildSessionMarkdown() => _activeSession is null
+        ? string.Empty
+        : SessionMarkdown.Build(_activeSession.Title, WorkspacePath, _activeSession.Messages);
+
+    public string SessionExportFileName
+    {
+        get
+        {
+            var title = string.IsNullOrWhiteSpace(_activeSession?.Title) ? "KL 会话" : _activeSession.Title.Trim();
+            foreach (var invalid in Path.GetInvalidFileNameChars())
+            {
+                title = title.Replace(invalid, '-');
+            }
+            return title + ".md";
         }
     }
 
@@ -3896,8 +6329,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
 
         var target = _dialogTarget;
+        var sessionId = target.Id;
         target.Workspace.State.Sessions.Remove(target.State);
         target.Workspace.Sessions.Remove(target);
+        CleanupSessions.Remove(target);
         if (_activeSession?.Id == target.Id)
         {
             _activeSession = null;
@@ -3917,7 +6352,64 @@ public sealed partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowNoSessions));
         OnPropertyChanged(nameof(SavedSessionCount));
         SaveState();
+        if (!string.IsNullOrWhiteSpace(sessionId))
+        {
+            _ = PushDeleteAsync(target, sessionId);
+        }
     }
+
+    /// <summary>Deletes the rollout in Core and restores the row if that fails.</summary>
+    private async Task PushDeleteAsync(SessionItemViewModel session, string sessionId)
+    {
+        try
+        {
+            await _core.DeleteSessionAsync(sessionId, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is JsonRpcException or IOException or InvalidOperationException)
+        {
+            _dispatch(() =>
+            {
+                if (!session.Workspace.State.Sessions.Contains(session.State))
+                {
+                    session.Workspace.State.Sessions.Insert(0, session.State);
+                    session.Workspace.Sessions.Insert(0, session);
+                    SaveState();
+                }
+                SetCoreStatus($"删除失败：{error.Message}");
+            });
+        }
+    }
+
+    private bool _isCleanupDialogOpen;
+
+    public bool IsCleanupDialogOpen
+    {
+        get => _isCleanupDialogOpen;
+        private set => SetProperty(ref _isCleanupDialogOpen, value);
+    }
+
+    public ObservableCollection<SessionItemViewModel> CleanupSessions { get; } = [];
+    public bool HasCleanupSessions => CleanupSessions.Count > 0;
+
+    /// <summary>Lists chats that have seen no activity for 30 days.</summary>
+    public void OpenCleanupDialog()
+    {
+        var cutoff = DateTimeOffset.Now.AddDays(-30);
+        CleanupSessions.Clear();
+        foreach (var session in Workspaces
+                     .SelectMany(workspace => workspace.Sessions)
+                     .Where(item => !item.IsArchived
+                         && item.State.UpdatedAt < cutoff
+                         && item.Id != _activeSession?.Id)
+                     .OrderBy(item => item.State.UpdatedAt))
+        {
+            CleanupSessions.Add(session);
+        }
+        OnPropertyChanged(nameof(HasCleanupSessions));
+        IsCleanupDialogOpen = true;
+    }
+
+    public void CloseCleanupDialog() => IsCleanupDialogOpen = false;
 
     public void CloseDialogs()
     {
@@ -3926,6 +6418,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IsRenameDialogOpen = false;
         IsDeleteDialogOpen = false;
         IsCreateProjectDialogOpen = false;
+        IsCleanupDialogOpen = false;
+        IsCloseConfirmOpen = false;
         IsSettingsDetailOpen = false;
         DeletePrompt = string.Empty;
         CloseAutomationDialogs();
@@ -3984,6 +6478,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
                     content = content[..MaxAttachmentCharacters] + "\n\n[文件内容已截断]";
                 }
                 PendingAttachments.Add(new AttachmentItemViewModel(fullPath, info.Name, content));
+                OnPropertyChanged(nameof(CanQueueSend));
                 added++;
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -4020,6 +6515,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         PendingAttachments.Clear();
         OnPropertyChanged(nameof(HasPendingAttachments));
         OnPropertyChanged(nameof(CanSend));
+        OnPropertyChanged(nameof(CanQueueSend));
     }
 
     private static string BuildModelPrompt(string prompt, IReadOnlyList<AttachmentItemViewModel> attachments)
@@ -4064,12 +6560,19 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
 
         _state.PermissionMode = SettingsPermissionMode;
+        if (SettingsPermissionMode == "完全访问" && !_state.FullAccessWarningDismissed)
+        {
+            _showFullAccessWarning = true;
+        }
+        SettingsContentFontSize = Math.Clamp(SettingsContentFontSize, 12, 20);
         _state.ContentFontSize = SettingsContentFontSize;
+        CodeFontSize = Math.Clamp(CodeFontSize, 9, 20);
         OnPropertyChanged(nameof(ContentFontSize));
         OnPropertyChanged(nameof(PermissionMode));
         OnPropertyChanged(nameof(IsPermissionFull));
         OnPropertyChanged(nameof(IsPermissionAuto));
         OnPropertyChanged(nameof(IsPermissionAsk));
+        OnPropertyChanged(nameof(ShowFullAccessWarning));
         SaveState();
         await ApplyPermissionModeAsync(CancellationToken.None).ConfigureAwait(true);
         SetSettingsStatus("设置已保存。审批模式由 KL Core 执行。", isError: false);
@@ -4184,6 +6687,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             option.IsSelected = string.Equals(option.Id, _reasoningEffort, StringComparison.Ordinal);
         }
+        OnPropertyChanged(nameof(ReasoningEffortIndex));
     }
 
     /// <summary>Quick permission switch from the composer chip.</summary>
@@ -4196,17 +6700,50 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         _state.PermissionMode = mode;
         SettingsPermissionMode = mode;
+        if (mode == "完全访问" && !_state.FullAccessWarningDismissed)
+        {
+            _showFullAccessWarning = true;
+        }
         SaveState();
         RaisePermissionModeChanged();
         _ = ApplyPermissionModeAsync(CancellationToken.None);
     }
 
+    /// <summary>Config pane index: 请求批准 / 帮我批准 / 完全访问.</summary>
+    public int ApprovalModeIndex
+    {
+        get => _state.PermissionMode switch
+        {
+            "完全访问" => 2,
+            "帮我批准" => 1,
+            _ => 0
+        };
+        set
+        {
+            var mode = value switch
+            {
+                2 => "完全访问",
+                1 => "帮我批准",
+                _ => "请求批准"
+            };
+            if (mode == _state.PermissionMode)
+            {
+                return;
+            }
+
+            SetPermissionMode(mode);
+            OnPropertyChanged();
+        }
+    }
+
     private void RaisePermissionModeChanged()
     {
         OnPropertyChanged(nameof(PermissionMode));
+        OnPropertyChanged(nameof(ApprovalModeIndex));
         OnPropertyChanged(nameof(IsPermissionFull));
         OnPropertyChanged(nameof(IsPermissionAuto));
         OnPropertyChanged(nameof(IsPermissionAsk));
+        OnPropertyChanged(nameof(ShowFullAccessWarning));
     }
 
     /// <summary>Writes the API key into Core config; the draft is cleared afterwards.</summary>
@@ -4233,10 +6770,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         try
         {
-            await _core.RequestAsync(
-                Protocol.ProviderSetApiKey,
-                new { id = provider, key },
-                CancellationToken.None).ConfigureAwait(true);
+            await _core.SetProviderApiKeyAsync(provider, key, CancellationToken.None).ConfigureAwait(true);
             SettingsApiKeyDraft = string.Empty;
             await RefreshCatalogQuietlyAsync().ConfigureAwait(true);
             SetSettingsStatus($"已把 {provider} 的 API Key 写入 KL Core。", isError: false);
@@ -4296,6 +6830,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
             {
                 DoctorSummary += $" Core {version}";
             }
+            OnPropertyChanged(nameof(HasDoctorSummary));
+            OnPropertyChanged(nameof(HasDoctorChecks));
         }
         catch (Exception error) when (error is JsonRpcException
             or IOException
@@ -4303,6 +6839,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
             or FileNotFoundException)
         {
             DoctorSummary = $"诊断失败：{error.Message}";
+            OnPropertyChanged(nameof(HasDoctorSummary));
+            OnPropertyChanged(nameof(HasDoctorChecks));
         }
         finally
         {
@@ -4343,8 +6881,17 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public string DoctorSummary
     {
         get => _doctorSummary;
-        private set => SetProperty(ref _doctorSummary, value);
+        private set
+        {
+            if (SetProperty(ref _doctorSummary, value))
+            {
+                OnPropertyChanged(nameof(HasDoctorSummary));
+            }
+        }
     }
+
+    public bool HasDoctorSummary => _doctorSummary.Length > 0;
+    public bool HasDoctorChecks => DoctorChecks.Count > 0;
 
     public bool IsDoctorRunning
     {
@@ -4374,6 +6921,17 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public bool HasLibraryItems => LibraryItems.Count > 0;
 
+    /// <summary>The first four saved prompts, offered as chips on the empty home screen.</summary>
+    private void RefreshHomeSuggestions()
+    {
+        HomeSuggestions.Clear();
+        foreach (var item in LibraryItems.Take(4))
+        {
+            HomeSuggestions.Add(item);
+        }
+        OnPropertyChanged(nameof(HasHomeSuggestions));
+    }
+
     public string LibraryEmptyText =>
         "资料库还没有条目。保存常用提示词或规范，之后可一键插入输入框。";
 
@@ -4396,6 +6954,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         LibraryDraftTitle = string.Empty;
         LibraryDraftContent = string.Empty;
         OnPropertyChanged(nameof(HasLibraryItems));
+        RefreshHomeSuggestions();
         SaveState();
     }
 
@@ -4404,6 +6963,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _state.LibraryItems.Remove(item.State);
         LibraryItems.Remove(item);
         OnPropertyChanged(nameof(HasLibraryItems));
+        RefreshHomeSuggestions();
         SaveState();
     }
 
@@ -4642,6 +7202,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public bool ImportPlugin(string sourceDirectory)
     {
+        LastImportedPluginPath = null;
         try
         {
             var source = Path.GetFullPath(sourceDirectory)
@@ -4677,6 +7238,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             var temporary = target + ".tmp-" + Guid.NewGuid().ToString("N");
             CopyDirectory(source, temporary);
             Directory.Move(temporary, target);
+            LastImportedPluginPath = target;
             RefreshPlugins();
             return true;
         }
@@ -4684,6 +7246,26 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             ErrorMessage = $"导入插件失败：{error.Message}";
             return false;
+        }
+    }
+
+    public string? LastImportedPluginPath { get; private set; }
+
+    /// <summary>Registers a copied plugin directory with the running Core.</summary>
+    public async Task InstallPluginAsync(string path)
+    {
+        try
+        {
+            await _core.InstallPluginAsync(path, CancellationToken.None).ConfigureAwait(true);
+            await RefreshPluginsAsync().ConfigureAwait(true);
+            PluginStatus = "插件已载入 KL Core。";
+        }
+        catch (Exception error) when (error is JsonRpcException
+            or IOException
+            or InvalidOperationException
+            or NotSupportedException)
+        {
+            PluginStatus = $"插件文件已复制，但 KL Core 未能载入：{error.Message}";
         }
     }
 
@@ -4704,14 +7286,42 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    private IReadOnlyList<CorePluginRow>? _corePlugins;
+
     public void RefreshPlugins()
     {
-        _allPlugins = [];
+        _corePlugins = null;
+        ApplyPluginRows();
+    }
+
+    /// <summary>Merges the local manifests with Core's installed/enabled plugin list.</summary>
+    public async Task RefreshPluginsAsync()
+    {
         try
         {
-            _allPlugins = _pluginCatalogService.Load()
-                .Select(plugin => new PluginItemViewModel(plugin))
-                .ToList();
+            var result = await _core.ListPluginsAsync(CancellationToken.None).ConfigureAwait(false);
+            var rows = ParseCorePlugins(result);
+            _dispatch(() =>
+            {
+                _corePlugins = rows;
+                ApplyPluginRows();
+            });
+        }
+        catch (Exception error) when (error is JsonRpcException
+            or IOException
+            or InvalidOperationException
+            or NotSupportedException)
+        {
+            _dispatch(() => PluginStatus = $"无法从 KL Core 读取插件：{error.Message}");
+        }
+    }
+
+    private void ApplyPluginRows()
+    {
+        IReadOnlyList<LocalPluginInfo> local;
+        try
+        {
+            local = _pluginCatalogService.Load();
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -4720,8 +7330,130 @@ public sealed partial class MainWindowViewModel : ObservableObject
             ApplyPluginFilter(keepStatus: true);
             return;
         }
+
+        var rows = new List<PluginItemViewModel>();
+        if (_corePlugins is { Count: > 0 } core)
+        {
+            var matched = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var plugin in core)
+            {
+                var manifest = local.FirstOrDefault(candidate =>
+                    string.Equals(candidate.Name, plugin.Id, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(
+                        Path.GetFileName(Path.GetDirectoryName(candidate.ManifestPath)),
+                        plugin.Id,
+                        StringComparison.OrdinalIgnoreCase));
+                if (manifest is not null)
+                {
+                    matched.Add(manifest.ManifestPath);
+                }
+
+                rows.Add(new PluginItemViewModel(
+                    plugin.Id,
+                    manifest?.Name ?? plugin.Id,
+                    manifest?.Version ?? plugin.Version,
+                    manifest?.Description ?? plugin.Detail ?? plugin.KindLabel,
+                    manifest?.ManifestPath ?? string.Empty,
+                    plugin.KindLabel,
+                    plugin.Enabled,
+                    plugin.Healthy,
+                    plugin.Enabled
+                        ? plugin.Healthy ? "已启用" : "运行异常"
+                        : "已停用"));
+            }
+
+            foreach (var manifest in local.Where(item => !matched.Contains(item.ManifestPath)))
+            {
+                rows.Add(new PluginItemViewModel(manifest)
+                {
+                    StatusText = "Core 未加载"
+                });
+            }
+        }
+        else
+        {
+            rows.AddRange(local.Select(manifest => new PluginItemViewModel(manifest)));
+        }
+
+        _allPlugins = rows;
         ApplyPluginFilter();
     }
+
+    private static IReadOnlyList<CorePluginRow> ParseCorePlugins(JsonElement result)
+    {
+        var rows = new List<CorePluginRow>();
+        if (result.ValueKind != JsonValueKind.Object
+            || !result.TryGetProperty("plugins", out var plugins)
+            || plugins.ValueKind != JsonValueKind.Array)
+        {
+            return rows;
+        }
+
+        foreach (var plugin in plugins.EnumerateArray())
+        {
+            if (!plugin.TryGetProperty("id", out var id) || id.GetString() is not { Length: > 0 } value)
+            {
+                continue;
+            }
+
+            var kind = plugin.TryGetProperty("kind", out var kindValue)
+                ? kindValue.GetString() ?? "plugin"
+                : "plugin";
+            var version = plugin.TryGetProperty("version", out var versionValue)
+                ? versionValue.GetString() ?? string.Empty
+                : string.Empty;
+            var enabled = !plugin.TryGetProperty("enabled", out var enabledValue)
+                || enabledValue.ValueKind == JsonValueKind.True;
+            var healthy = !plugin.TryGetProperty("healthy", out var healthyValue)
+                || healthyValue.ValueKind == JsonValueKind.True;
+            var detail = plugin.TryGetProperty("detail", out var detailValue)
+                ? detailValue.GetString()
+                : null;
+            rows.Add(new CorePluginRow(
+                value,
+                string.Equals(kind, "provider", StringComparison.OrdinalIgnoreCase) ? "Provider" : "工具",
+                version,
+                enabled,
+                healthy,
+                detail));
+        }
+
+        return rows;
+    }
+
+    /// <summary>Enables or disables a plugin through Core and updates the row.</summary>
+    public async Task SetPluginEnabledAsync(PluginItemViewModel plugin, bool enabled)
+    {
+        if (!plugin.CanToggle || plugin.Enabled == enabled)
+        {
+            return;
+        }
+
+        try
+        {
+            await _core.SetPluginEnabledAsync(plugin.Id, enabled, CancellationToken.None)
+                .ConfigureAwait(true);
+            plugin.Enabled = enabled;
+            plugin.StatusText = enabled ? "已启用" : "已停用";
+            PluginStatus = $"已{(enabled ? "启用" : "停用")} {plugin.Name}。";
+        }
+        catch (Exception error) when (error is JsonRpcException
+            or IOException
+            or InvalidOperationException
+            or NotSupportedException)
+        {
+            plugin.Enabled = !enabled;
+            PluginStatus = $"无法更新 {plugin.Name}：{error.Message}";
+        }
+    }
+
+    private sealed record CorePluginRow(
+        string Id,
+        string KindLabel,
+        string Version,
+        bool Enabled,
+        bool Healthy,
+        string? Detail);
 
     private void ApplyPluginFilter(bool keepStatus = false)
     {
@@ -4776,6 +7508,18 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _state.PermissionMode = SupportedPermissionModes.Contains(_state.PermissionMode)
             ? _state.PermissionMode
             : "完全访问";
+        _state.SendShortcut = _state.SendShortcut == "ctrlEnter" ? "ctrlEnter" : "enter";
+        _state.CloseWindowAction = _state.CloseWindowAction is "always" or "never" ? _state.CloseWindowAction : "shortcut";
+        _state.TurnNotifications = _state.TurnNotifications is "always" or "never" ? _state.TurnNotifications : "unfocused";
+        _state.AccentColor = AccentColors.Contains(_state.AccentColor, StringComparer.OrdinalIgnoreCase)
+            ? _state.AccentColor
+            : AccentColors[0];
+        _state.ContentCodeFontSize = Math.Clamp(_state.ContentCodeFontSize, 9, 20);
+        _state.ReduceMotion = _state.ReduceMotion is "on" or "off" ? _state.ReduceMotion : "system";
+        _state.FollowUpMode = _state.FollowUpMode == "steer" ? "steer" : "queue";
+        _state.AutoArchiveDays = _state.AutoArchiveDays > 0 ? Math.Clamp(_state.AutoArchiveDays, 7, 3650) : 0;
+        // Codex renders conversation text at 14px; 15 came from an earlier calibration.
+        _state.ContentFontSize = _state.ContentFontSize is 13 or 14 or 15 ? 14 : _state.ContentFontSize;
         _state.ContentFontSize = _state.ContentFontSize is >= 13 and <= 16 ? _state.ContentFontSize : 14;
         _state.InteractionMode = string.Equals(_state.InteractionMode, "chat", StringComparison.OrdinalIgnoreCase)
             ? "chat"
@@ -4877,7 +7621,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Workspaces.Clear();
         foreach (var workspaceState in _state.Workspaces)
         {
-            Workspaces.Add(new WorkspaceItemViewModel(workspaceState));
+            Workspaces.Add(new WorkspaceItemViewModel(workspaceState) { IsExpanded = IsWorkMode });
         }
 
         RefreshWorkspacePathLabels();
@@ -4934,10 +7678,15 @@ public sealed partial class MainWindowViewModel : ObservableObject
             _activeWorkspace = workspace;
             _activeWorkspace.IsSelected = true;
         }
-        _activeWorkspace.IsExpanded = true;
+        _activeWorkspace.IsExpanded = IsWorkMode;
         _activeSession = session;
         _activeSessionItem = workspace.Sessions.First(item => item.Id == session.Id);
         _activeSessionItem.IsSelected = true;
+        if (_activeSessionItem.IsUnread)
+        {
+            _activeSessionItem.IsUnread = false;
+            SaveState(silent: true);
+        }
         _state.ActiveWorkspaceId = workspace.Id;
         _state.ActiveSessionId = session.Id;
         SessionTitle = session.Title;
@@ -4950,6 +7699,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(HeaderTitle));
         OnPropertyChanged(nameof(HasSessions));
         OnPropertyChanged(nameof(ShowNoSessions));
+        OnPropertyChanged(nameof(UsageText));
+        OnPropertyChanged(nameof(HasUsageText));
     }
 
     private void StartDraftSession()
@@ -4977,6 +7728,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(EmptyStateTitle));
         OnPropertyChanged(nameof(WorkspacePath));
         OnPropertyChanged(nameof(HeaderTitle));
+        OnPropertyChanged(nameof(UsageText));
+        OnPropertyChanged(nameof(HasUsageText));
     }
 
     private void EnsureSessionPersisted()
@@ -5006,7 +7759,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Messages.Clear();
         foreach (var message in session.Messages)
         {
-            Messages.Add(ChatItemViewModel.FromStored(message));
+            Messages.Add(ChatItemViewModel.FromStored(message, session.UpdatedAt));
         }
 
         GroupToolMessages();
@@ -5139,7 +7892,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             return _activeReasoning;
         }
         _activeReasoning = ChatItemViewModel.Reasoning();
-        _activeReasoning.Start();
+        _activeReasoning.Start(string.Empty);
         Messages.Add(_activeReasoning);
         return _activeReasoning;
     }
@@ -5196,6 +7949,124 @@ public sealed partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowNoSessions));
         OnPropertyChanged(nameof(ShowNoSearchResults));
     }
+
+    /// <summary>Groups the Core provider catalog into the Usage → provider card.</summary>
+    private void ApplyProviderCards(
+        IReadOnlyList<CoreModelOption> options,
+        IReadOnlyList<string> models,
+        string provider,
+        string activeProvider,
+        bool keyConfigured)
+    {
+        if (options.Count == 0 && provider.Length > 0)
+        {
+            options = models
+                .Select(model => new CoreModelOption(provider, model, true, keyConfigured))
+                .ToList();
+        }
+
+        var profiles = _state.ProviderProfiles ??= [];
+        var rows = options
+            .Where(option => !string.IsNullOrWhiteSpace(option.Provider))
+            .GroupBy(option => option.Provider, StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var id = group.Key;
+                var preset = ProviderPresets.FirstOrDefault(candidate =>
+                    string.Equals(candidate.Id, id, StringComparison.OrdinalIgnoreCase));
+                profiles.TryGetValue(id.ToLowerInvariant(), out var profile);
+                return new ProviderCardRow(
+                    id,
+                    PickProviderText(profile?.DisplayName, preset?.Name, ProviderDisplayName(id)),
+                    PickProviderText(profile?.Note, preset?.Note, "已接入的模型提供商"),
+                    PickProviderText(profile?.Website, preset?.Website, string.Empty),
+                    string.Equals(id, activeProvider, StringComparison.OrdinalIgnoreCase),
+                    group.Any(option => option.Enabled),
+                    group.Any(option => option.KeyConfigured),
+                    group.ToList());
+            })
+            .OrderByDescending(row => row.IsDefault)
+            .ThenByDescending(row => row.Enabled)
+            .ThenBy(row => row.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+
+        ProviderCards.Clear();
+        foreach (var row in rows)
+        {
+            ProviderCards.Add(row);
+        }
+
+        OnPropertyChanged(nameof(HasProviderCards));
+        OnPropertyChanged(nameof(ShowNoProviderCards));
+        OnPropertyChanged(nameof(ProviderSummaryText));
+    }
+
+    private static string PickProviderText(string? primary, string? fallback, string final) =>
+        !string.IsNullOrWhiteSpace(primary)
+            ? primary.Trim()
+            : !string.IsNullOrWhiteSpace(fallback) ? fallback.Trim() : final;
+
+    /// <summary>Adds disabled providers that the live router does not list.</summary>
+    private void MergeConfiguredProviders(JsonElement configResult)
+    {
+        if (configResult.ValueKind != JsonValueKind.Object
+            || !configResult.TryGetProperty("config", out var config)
+            || !config.TryGetProperty("providers", out var providers)
+            || providers.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+
+        var profiles = _state.ProviderProfiles ??= [];
+        var added = false;
+        foreach (var provider in providers.EnumerateObject())
+        {
+            var id = provider.Name;
+            if (id.Length == 0
+                || ProviderCards.Any(row => string.Equals(row.Id, id, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            var enabled = provider.Value.ValueKind == JsonValueKind.Object
+                && provider.Value.TryGetProperty("enabled", out var enabledValue)
+                && enabledValue.ValueKind == JsonValueKind.True;
+            var preset = ProviderPresets.FirstOrDefault(candidate =>
+                string.Equals(candidate.Id, id, StringComparison.OrdinalIgnoreCase));
+            profiles.TryGetValue(id.ToLowerInvariant(), out var profile);
+            ProviderCards.Add(new ProviderCardRow(
+                id,
+                PickProviderText(profile?.DisplayName, preset?.Name, ProviderDisplayName(id)),
+                PickProviderText(profile?.Note, preset?.Note, "已接入的模型提供商"),
+                PickProviderText(profile?.Website, preset?.Website, string.Empty),
+                isDefault: false,
+                enabled,
+                keyConfigured: false,
+                models: []));
+            added = true;
+        }
+
+        if (added)
+        {
+            OnPropertyChanged(nameof(HasProviderCards));
+            OnPropertyChanged(nameof(ShowNoProviderCards));
+            OnPropertyChanged(nameof(ProviderSummaryText));
+        }
+    }
+
+    private static string ProviderDisplayName(string id) => id.ToLowerInvariant() switch
+    {
+        "openai" => "OpenAI",
+        "anthropic" => "Anthropic",
+        "deepseek" => "DeepSeek",
+        "opencode" => "OpenCode",
+        "openrouter" => "OpenRouter",
+        "google" or "gemini" => "Google Gemini",
+        "xai" => "xAI",
+        "ollama" => "Ollama",
+        "fake" => "Scripted / Fake",
+        _ => id
+    };
 
     private void SaveState(bool silent = false)
     {
@@ -5283,8 +8154,139 @@ public sealed class NotificationItemViewModel
     public string Preview => Session.State.Messages.LastOrDefault()?.Text ?? string.Empty;
 }
 
+/// <summary>One row in the Worktrees settings page.</summary>
+public sealed record WorktreeRow(string Path, string Branch, string CurrentLabel)
+{
+    public bool IsCurrent => CurrentLabel.Length > 0;
+}
+
+/// <summary>A follow-up prompt waiting for the current turn to finish.</summary>
+public sealed record QueuedTurn(string Prompt, IReadOnlyList<AttachmentItemViewModel> Attachments);
+
 /// <summary>One session row on the usage settings page.</summary>
 public sealed record UsageSessionRow(string Title, string Tokens, string Cost);
+
+/// <summary>One bar in the local usage chart (height in pixels).</summary>
+public sealed record UsageBarRow(double Height);
+
+/// <summary>One quick-start preset in the Usage page's provider form.</summary>
+public sealed record ProviderPreset(
+    string Id,
+    string Name,
+    string Model,
+    string BaseUrl,
+    string Protocol,
+    string Note,
+    string Website);
+
+/// <summary>One model row on a provider's detail page.</summary>
+public sealed record ProviderModelRow(
+    string Id,
+    string Protocol,
+    string Url,
+    int ContextWindow,
+    double CompactThreshold,
+    int MaxOutputTokens)
+{
+    public string ProtocolLabel => Protocol switch
+    {
+        "anthropic" => "Anthropic",
+        "openai-responses" => "OpenAI Responses",
+        _ => "OpenAI Chat"
+    };
+
+    public string Summary =>
+        $"{ProtocolLabel} · {FormatTokens(ContextWindow)} 上下文 · {FormatTokens(MaxOutputTokens)} 输出";
+
+    private static string FormatTokens(int value) =>
+        value >= 1000
+            ? $"{value / 1000.0:0.#}k"
+            : value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+}
+
+/// <summary>One provider row on the model-provider settings page.</summary>
+public sealed class ProviderCardRow : ObservableObject
+{
+    private string _name;
+    private string _note;
+    private string _website;
+    private bool _enabled;
+
+    public ProviderCardRow(
+        string id,
+        string name,
+        string note,
+        string website,
+        bool isDefault,
+        bool enabled,
+        bool keyConfigured,
+        IReadOnlyList<CoreModelOption> models)
+    {
+        Id = id;
+        _name = name;
+        _note = note;
+        _website = website;
+        IsDefault = isDefault;
+        _enabled = enabled;
+        KeyConfigured = keyConfigured;
+        Models = models;
+    }
+
+    public string Id { get; }
+    public bool IsDefault { get; }
+    public bool KeyConfigured { get; private set; }
+    public IReadOnlyList<CoreModelOption> Models { get; private set; }
+
+    public void SetModels(IReadOnlyList<CoreModelOption> models) => Models = models;
+
+    public void SetKeyConfigured(bool configured) => KeyConfigured = configured;
+
+    public string Name
+    {
+        get => _name;
+        set
+        {
+            if (SetProperty(ref _name, value))
+            {
+                OnPropertyChanged(nameof(HasName));
+            }
+        }
+    }
+
+    public string Note
+    {
+        get => _note;
+        set
+        {
+            if (SetProperty(ref _note, value))
+            {
+                OnPropertyChanged(nameof(HasNote));
+            }
+        }
+    }
+
+    public string Website
+    {
+        get => _website;
+        set
+        {
+            if (SetProperty(ref _website, value))
+            {
+                OnPropertyChanged(nameof(HasWebsite));
+            }
+        }
+    }
+
+    public bool HasName => Name.Length > 0;
+    public bool HasNote => Note.Length > 0;
+    public bool HasWebsite => Website.Length > 0;
+
+    public bool Enabled
+    {
+        get => _enabled;
+        set => SetProperty(ref _enabled, value);
+    }
+}
 
 /// <summary>One MCP tool row on the integration settings page.</summary>
 public sealed record McpToolRow(string Name, string Description);

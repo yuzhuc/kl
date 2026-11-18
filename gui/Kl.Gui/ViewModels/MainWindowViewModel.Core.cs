@@ -227,6 +227,8 @@ public sealed partial class MainWindowViewModel
         _ => string.Empty
     };
 
+    public bool HasUsageText => ShowContextUsage && UsageText.Length > 0;
+
     private void OnCoreEventReceived(SessionEvent sessionEvent) =>
         _dispatch(() => ApplyCoreEvent(sessionEvent));
 
@@ -237,6 +239,8 @@ public sealed partial class MainWindowViewModel
             var snapshot = await _core.LoadSnapshotAsync(CancellationToken.None).ConfigureAwait(false);
             _dispatch(() => ApplyCatalogSnapshot(snapshot));
             await LoadReasoningEffortAsync().ConfigureAwait(false);
+            await ApplyAutoArchiveAsync().ConfigureAwait(false);
+            await RefreshPluginsAsync().ConfigureAwait(false);
         }
         catch (Exception error)
         {
@@ -249,20 +253,136 @@ public sealed partial class MainWindowViewModel
         _ = RunEndToEndHookAsync();
     }
 
+    private bool _autoArchiveApplied;
+
+    /// <summary>Archives chats untouched for the number of days set in Settings → 常规.</summary>
+    private async Task ApplyAutoArchiveAsync()
+    {
+        if (_autoArchiveApplied)
+        {
+            return;
+        }
+
+        _autoArchiveApplied = true;
+        var days = _state.AutoArchiveDays;
+        if (days <= 0)
+        {
+            return;
+        }
+
+        var cutoff = DateTimeOffset.Now.AddDays(-days);
+        var activeId = _activeSession?.Id;
+        var stale = Workspaces
+            .SelectMany(workspace => workspace.Sessions)
+            .Where(item => !item.IsArchived)
+            .Where(item => !string.Equals(item.Id, activeId, StringComparison.Ordinal))
+            .Where(item => item.State.UpdatedAt < cutoff)
+            .ToList();
+        var archived = new List<SessionState>();
+        foreach (var item in stale)
+        {
+            try
+            {
+                await _core.ArchiveAsync(item.Id, true, CancellationToken.None).ConfigureAwait(false);
+                archived.Add(item.State);
+            }
+            catch (Exception error) when (error is JsonRpcException
+                or IOException
+                or InvalidOperationException
+                or TimeoutException)
+            {
+                // A chat that moved or was deleted in Core stays where it is.
+            }
+        }
+
+        if (archived.Count == 0)
+        {
+            return;
+        }
+
+        _dispatch(() =>
+        {
+            foreach (var session in archived)
+            {
+                session.IsArchived = true;
+            }
+
+            RefreshRecentSessions();
+            SaveState(silent: true);
+        });
+    }
+
     private async Task RunEndToEndHookAsync()
     {
         var openLast = Environment.GetEnvironmentVariable("KL_GUI_E2E_OPEN_LAST");
         if (string.Equals(openLast, "1", StringComparison.Ordinal))
         {
             await Task.Delay(400).ConfigureAwait(false);
-            var latest = Workspaces
-                .SelectMany(workspace => workspace.Sessions)
-                .OrderByDescending(item => item.State.UpdatedAt)
-                .FirstOrDefault();
-            if (latest is not null)
+            await RunOnUiThreadAsync(async () =>
             {
-                await RunOnUiThreadAsync(() => OpenSessionAsync(latest)).ConfigureAwait(false);
-            }
+                var latest = Workspaces
+                    .SelectMany(workspace => workspace.Sessions)
+                    .OrderByDescending(item => item.State.UpdatedAt)
+                    .FirstOrDefault();
+                if (latest is not null)
+                {
+                    await OpenSessionAsync(latest);
+                }
+            }).ConfigureAwait(false);
+        }
+
+        var paletteQuery = Environment.GetEnvironmentVariable("KL_GUI_E2E_PALETTE");
+        if (!string.IsNullOrWhiteSpace(paletteQuery))
+        {
+            await Task.Delay(400).ConfigureAwait(false);
+            await RunOnUiThreadAsync(() =>
+            {
+                OpenSearchPalette();
+                SearchText = paletteQuery;
+                return Task.CompletedTask;
+            }).ConfigureAwait(false);
+        }
+
+        if (string.Equals(Environment.GetEnvironmentVariable("KL_GUI_E2E_CONNECTIONS"), "1", StringComparison.Ordinal))
+        {
+            await Task.Delay(400).ConfigureAwait(false);
+            await RunOnUiThreadAsync(() =>
+            {
+                OpenSettings(SettingsPane.Connections);
+                return Task.CompletedTask;
+            }).ConfigureAwait(false);
+        }
+
+        if (string.Equals(Environment.GetEnvironmentVariable("KL_GUI_E2E_CLEANUP"), "1", StringComparison.Ordinal))
+        {
+            await Task.Delay(400).ConfigureAwait(false);
+            await RunOnUiThreadAsync(() =>
+            {
+                OpenSettings(SettingsPane.Storage);
+                OpenCleanupDialog();
+                return Task.CompletedTask;
+            }).ConfigureAwait(false);
+        }
+
+        if (string.Equals(Environment.GetEnvironmentVariable("KL_GUI_E2E_STORAGE"), "1", StringComparison.Ordinal))
+        {
+            await Task.Delay(400).ConfigureAwait(false);
+            await RunOnUiThreadAsync(() =>
+            {
+                OpenSettings(SettingsPane.Storage);
+                return Task.CompletedTask;
+            }).ConfigureAwait(false);
+        }
+
+        if (string.Equals(Environment.GetEnvironmentVariable("KL_GUI_E2E_AGENTS"), "1", StringComparison.Ordinal))
+        {
+            await Task.Delay(400).ConfigureAwait(false);
+            await RunOnUiThreadAsync(() =>
+            {
+                OpenSettings(SettingsPane.Personalization);
+                OpenAgentsEditor();
+                return Task.CompletedTask;
+            }).ConfigureAwait(false);
         }
 
         var prompt = Environment.GetEnvironmentVariable("KL_GUI_E2E_PROMPT");
@@ -488,6 +608,12 @@ public sealed partial class MainWindowViewModel
                 choice => choice == $"{snapshot.Provider} / {snapshot.Model}" || choice == snapshot.Model)
             ?? SettingsModelChoices.FirstOrDefault()
             ?? string.Empty;
+        ApplyProviderCards(
+            snapshot.ModelOptions,
+            snapshot.Models,
+            snapshot.Provider,
+            snapshot.Provider,
+            snapshot.KeyConfigured);
         CorePathText = ResolveCorePathText();
         CoreHomeText = ResolveCoreHomeText();
         OnPropertyChanged(nameof(ShowCoreBanner));
@@ -522,13 +648,15 @@ public sealed partial class MainWindowViewModel
                     Id = session.SessionId,
                     Title = CoreProtocolParser.DeriveTitle(session),
                     CreatedAt = updatedAt,
-                    UpdatedAt = updatedAt
+                    UpdatedAt = updatedAt,
+                    IsArchived = session.Archived
                 });
             }
             else
             {
                 existing.Title = CoreProtocolParser.DeriveTitle(session);
                 existing.UpdatedAt = updatedAt;
+                existing.IsArchived = session.Archived;
             }
         }
 
@@ -580,7 +708,7 @@ public sealed partial class MainWindowViewModel
         {
             Name = name,
             Path = normalized,
-            IsExpanded = true
+            IsExpanded = IsWorkMode
         };
         _state.Workspaces.Add(state);
         Workspaces.Add(new WorkspaceItemViewModel(state));
@@ -792,7 +920,7 @@ public sealed partial class MainWindowViewModel
             {
                 case "user":
                     Messages.Add(ChatItemViewModel.User(
-                        message.Text,
+                        AttachmentPromptText.Collapse(message.Text),
                         timestamp: DateTimeOffset.TryParse(message.Timestamp, out var userTime)
                             ? userTime
                             : null));
@@ -916,6 +1044,10 @@ public sealed partial class MainWindowViewModel
                 ApprovalArgs = sessionEvent.Args ?? string.Empty;
                 IsApprovalOpen = true;
                 ScheduleEndToEndApproval();
+                RequestAttention(
+                    string.Equals(sessionEvent.Name, "ask_user", StringComparison.OrdinalIgnoreCase)
+                        ? AttentionKind.Question
+                        : AttentionKind.Approval);
                 break;
             case SessionEventKind.ApprovalResolved:
                 IsApprovalOpen = false;
@@ -944,12 +1076,18 @@ public sealed partial class MainWindowViewModel
                     usageSession.OutputTokens += sessionEvent.OutputTokens;
                     usageSession.CostUsd += sessionEvent.CostUsd ?? 0;
                     OnPropertyChanged(nameof(UsageText));
+                    OnPropertyChanged(nameof(HasUsageText));
                 }
                 FinishTurn(sessionEvent.Status == "cancelled" ? "已停止" : "完成");
+                if (sessionEvent.Status != "cancelled")
+                {
+                    RequestAttention(AttentionKind.TurnCompleted);
+                }
                 break;
             case SessionEventKind.TurnFailed:
                 AddError(string.IsNullOrWhiteSpace(sessionEvent.Text) ? "本次回合失败。" : sessionEvent.Text);
                 FinishTurn("失败");
+                RequestAttention(AttentionKind.TurnCompleted);
                 break;
             case SessionEventKind.Error:
                 AddError(sessionEvent.Text);

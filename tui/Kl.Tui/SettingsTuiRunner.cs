@@ -12,7 +12,7 @@ public static class SettingsTuiRunner
         TuiOptions options,
         CancellationToken cancellationToken = default)
     {
-        await using var client = KlCoreClient.Start(options.ToClientOptions());
+        await using var client = await KlCoreClient.ConnectOrStartAsync(options.ToClientOptions());
         await client.HandshakeAsync(cancellationToken).ConfigureAwait(false);
         var providers = await client.ListProvidersAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -86,7 +86,7 @@ public static class SettingsTuiRunner
         ProviderDraft draft,
         CancellationToken cancellationToken = default)
     {
-        await using var client = KlCoreClient.Start(options.ToClientOptions());
+        await using var client = await KlCoreClient.ConnectOrStartAsync(options.ToClientOptions());
         await client.HandshakeAsync(cancellationToken).ConfigureAwait(false);
         await client.UpsertProviderAsync(
                 draft.ToUpsert(),
@@ -204,7 +204,7 @@ public static class SettingsTuiRunner
         bool enabled,
         CancellationToken cancellationToken = default)
     {
-        await using var client = KlCoreClient.Start(options.ToClientOptions());
+        await using var client = await KlCoreClient.ConnectOrStartAsync(options.ToClientOptions());
         await client.HandshakeAsync(cancellationToken).ConfigureAwait(false);
         await client.SetProviderEnabledAsync(provider, enabled, cancellationToken)
             .ConfigureAwait(false);
@@ -216,7 +216,7 @@ public static class SettingsTuiRunner
         string model,
         CancellationToken cancellationToken = default)
     {
-        await using var client = KlCoreClient.Start(options.ToClientOptions());
+        await using var client = await KlCoreClient.ConnectOrStartAsync(options.ToClientOptions());
         await client.HandshakeAsync(cancellationToken).ConfigureAwait(false);
         if (provider == SettingsAgentRoutes.Permissions)
         {
@@ -260,7 +260,7 @@ public static class SettingsTuiRunner
         bool enabled,
         CancellationToken cancellationToken = default)
     {
-        await using var client = KlCoreClient.Start(options.ToClientOptions());
+        await using var client = await KlCoreClient.ConnectOrStartAsync(options.ToClientOptions());
         await client.HandshakeAsync(cancellationToken).ConfigureAwait(false);
         if (enabled)
         {
@@ -279,7 +279,7 @@ public static class SettingsTuiRunner
         string plugin,
         CancellationToken cancellationToken = default)
     {
-        await using var client = KlCoreClient.Start(options.ToClientOptions());
+        await using var client = await KlCoreClient.ConnectOrStartAsync(options.ToClientOptions());
         await client.HandshakeAsync(cancellationToken).ConfigureAwait(false);
         await client.PluginReloadAsync(plugin, cancellationToken)
             .ConfigureAwait(false);

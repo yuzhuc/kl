@@ -13,7 +13,8 @@ public sealed record CoreSessionSummary(
     int MessageCount,
     string? Task,
     string? Prompt,
-    string? LastMessage);
+    string? LastMessage,
+    bool Archived);
 
 /// <summary>One transcript entry returned by <c>session.history</c>.</summary>
 public sealed record CoreHistoryMessage(
@@ -29,7 +30,15 @@ public sealed record CoreHistoryMessage(
     string? ToolDiff);
 
 /// <summary>One provider/model pair from <c>provider.list</c>.</summary>
-public sealed record CoreModelOption(string Provider, string Model, bool Enabled, bool KeyConfigured);
+public sealed record CoreModelOption(string Provider, string Model, bool Enabled, bool KeyConfigured)
+{
+    public string Protocol { get; init; } = string.Empty;
+    public string Url { get; init; } = string.Empty;
+    public int ContextWindow { get; init; }
+    public double CompactThreshold { get; init; }
+    public int MaxOutputTokens { get; init; }
+    public string? Detail { get; init; }
+}
 
 /// <summary>Core handshake + provider catalog + session list gathered from one stdio probe.</summary>
 public sealed record CoreCatalogSnapshot(
@@ -80,7 +89,9 @@ public static class CoreProtocolParser
                 GetInt(value, "message_count"),
                 GetOptionalString(value, "task"),
                 GetOptionalString(value, "prompt"),
-                GetOptionalString(value, "last_message")));
+                GetOptionalString(value, "last_message"),
+                value.TryGetProperty("archived", out var archived)
+                    && archived.ValueKind is JsonValueKind.True));
         }
 
         return sessions;
@@ -160,7 +171,18 @@ public static class CoreProtocolParser
                         !model.TryGetProperty("enabled", out var enabled)
                             || enabled.ValueKind == JsonValueKind.True,
                         model.TryGetProperty("key_configured", out var key)
-                            && key.ValueKind == JsonValueKind.True));
+                            && key.ValueKind == JsonValueKind.True)
+                    {
+                        Protocol = GetString(model, "protocol"),
+                        Url = GetString(model, "url"),
+                        ContextWindow = GetInt(model, "context_window"),
+                        CompactThreshold = model.TryGetProperty("compact_threshold", out var threshold)
+                            && threshold.TryGetDouble(out var parsedThreshold)
+                                ? parsedThreshold
+                                : 0.8,
+                        MaxOutputTokens = GetInt(model, "max_output_tokens"),
+                        Detail = GetOptionalString(model, "detail")
+                    });
                 }
 
                 if (!keyConfigured

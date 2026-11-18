@@ -177,5 +177,5 @@ public sealed class CoreProtocolParserTests
     }
 
     private static CoreSessionSummary Summary(string? task, string? prompt, string? lastMessage) =>
-        new("s", "w", "p", "m", "2026-11-03T10:00:00+08:00", 0, task, prompt, lastMessage);
+        new("s", "w", "p", "m", "2026-11-03T10:00:00+08:00", 0, task, prompt, lastMessage, false);
 }

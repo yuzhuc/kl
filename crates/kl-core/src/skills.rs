@@ -19,8 +19,50 @@ pub struct SkillSummary {
 pub fn discover(home: &Path, workspace: &Path) -> Vec<SkillSummary> {
     let mut skills = BTreeMap::new();
     collect_skills(&home.join("skills"), &mut skills);
+    // Codex keeps built-in skills in `skills/.system/<name>`.
+    collect_skills(&home.join("skills").join(".system"), &mut skills);
     collect_skills(&workspace.join(".kl").join("skills"), &mut skills);
     skills.into_values().collect()
+}
+
+const SKILL_CREATOR: &str = "---
+name: skill-creator
+description: Create or revise a KL skill as a reusable instruction file.
+---
+
+# Skill Creator
+
+A skill is a directory with a `SKILL.md` file. KL discovers skills in
+`~/.kl/skills/<name>/` and `<workspace>/.kl/skills/<name>/` and lists each
+one's name and description; the body is only read when the skill is used.
+
+## Steps
+
+1. Choose a short lowercase name made of ASCII letters, digits and hyphens.
+2. Create `~/.kl/skills/<name>/SKILL.md` for a personal skill, or
+   `<workspace>/.kl/skills/<name>/SKILL.md` to share it with the repository.
+3. Start the file with frontmatter holding `name` and `description` (one
+   line, no quotes needed), then explain when to use the skill and the exact
+   steps to follow.
+4. Keep the body short and concrete. Put long references in separate files
+   next to `SKILL.md`.
+5. List skills and read the new one back to verify it.
+";
+
+/// Installs the built-in skills once; user edits are never overwritten.
+pub fn install_system_skills(home: &Path) {
+    let path = home
+        .join("skills")
+        .join(".system")
+        .join("skill-creator")
+        .join(SKILL_FILE);
+    if path.exists() {
+        return;
+    }
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let _ = fs::write(&path, SKILL_CREATOR);
 }
 
 pub fn summary_prompt(skills: &[SkillSummary]) -> String {
@@ -326,6 +368,34 @@ mod tests {
         let skills = discover(home.path(), workspace.path());
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].name, "from-directory");
+    }
+
+    #[test]
+    fn installs_the_builtin_skill_once() {
+        let home = tempfile::tempdir().unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        install_system_skills(home.path());
+
+        let skills = discover(home.path(), workspace.path());
+        let skill = skills
+            .iter()
+            .find(|skill| skill.name == "skill-creator")
+            .expect("built-in skill");
+        assert!(skill.description.contains("instruction file"));
+
+        let path = home.path().join("skills/.system/skill-creator/SKILL.md");
+        std::fs::write(
+            &path,
+            "---
+name: skill-creator
+description: edited
+---
+EDITED
+",
+        )
+        .unwrap();
+        install_system_skills(home.path());
+        assert!(std::fs::read_to_string(&path).unwrap().contains("EDITED"));
     }
 
     #[test]

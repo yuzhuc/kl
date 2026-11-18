@@ -1621,7 +1621,7 @@ public static class ChatTuiRunner
         state.ModelPicker.Close();
         try
         {
-            await using var client = KlCoreClient.Start(options.ToClientOptions());
+            await using var client = await KlCoreClient.ConnectOrStartAsync(options.ToClientOptions());
             await client.HandshakeAsync(cancellationToken).ConfigureAwait(false);
             await client.SetDefaultModelAsync(
                     selected.Provider,
@@ -2507,7 +2507,7 @@ public static class ChatTuiRunner
         object? parameters,
         CancellationToken cancellationToken)
     {
-        await using var client = KlCoreClient.Start(options.ToClientOptions());
+        await using var client = await KlCoreClient.ConnectOrStartAsync(options.ToClientOptions());
         await client.HandshakeAsync(cancellationToken).ConfigureAwait(false);
         return await client.RequestAsync(method, parameters, cancellationToken)
             .ConfigureAwait(false);

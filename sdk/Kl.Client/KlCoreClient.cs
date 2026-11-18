@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
@@ -15,11 +16,13 @@ public sealed class KlCoreClient : IAsyncDisposable
 {
     private readonly Process? _process;
     private readonly JsonRpcConnection _rpc;
+    private readonly string? _token;
 
-    private KlCoreClient(Process? process, JsonRpcConnection rpc)
+    private KlCoreClient(Process? process, JsonRpcConnection rpc, string? token)
     {
         _process = process;
         _rpc = rpc;
+        _token = token;
     }
 
     public event Action<JsonElement>? NotificationReceived
@@ -60,7 +63,18 @@ public sealed class KlCoreClient : IAsyncDisposable
 
         var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException($"failed to start {corePath}");
-        return new KlCoreClient(process, new JsonRpcConnection(process));
+        return new KlCoreClient(process, new JsonRpcConnection(process), ResolveToken(options));
+    }
+
+    /// <summary>Reads the shared secret from the options, then <c>KL_CORE_TOKEN</c>.</summary>
+    public static string? ResolveToken(KlClientOptions options)
+    {
+        if (!string.IsNullOrWhiteSpace(options.Token))
+        {
+            return options.Token.Trim();
+        }
+        var fromEnvironment = Environment.GetEnvironmentVariable("KL_CORE_TOKEN");
+        return string.IsNullOrWhiteSpace(fromEnvironment) ? null : fromEnvironment.Trim();
     }
 
     /// <summary>
@@ -72,6 +86,12 @@ public sealed class KlCoreClient : IAsyncDisposable
         if (!string.IsNullOrWhiteSpace(options.Endpoint))
         {
             return options.Endpoint.Trim();
+        }
+
+        var fromEnvironment = Environment.GetEnvironmentVariable("KL_CORE_ENDPOINT");
+        if (!string.IsNullOrWhiteSpace(fromEnvironment))
+        {
+            return fromEnvironment.Trim();
         }
 
         var home = options.HomePath;
@@ -127,9 +147,12 @@ public sealed class KlCoreClient : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         var endpoint = ResolveEndpoint(options)
-            ?? throw new InvalidOperationException("no local server endpoint available");
+            ?? throw new InvalidOperationException("no core endpoint available");
         var stream = LocalSocketConnection.Connect(endpoint);
-        var client = new KlCoreClient(null, new JsonRpcConnection(stream, stream));
+        var client = new KlCoreClient(
+            null,
+            new JsonRpcConnection(stream, stream),
+            ResolveToken(options));
         try
         {
             await client.HandshakeAsync(cancellationToken).ConfigureAwait(false);
@@ -141,6 +164,58 @@ public sealed class KlCoreClient : IAsyncDisposable
         }
 
         return client;
+    }
+
+    /// <summary>
+    /// Connects to an explicit or discovered core endpoint; falls back to a
+    /// private stdio child when only a stale local server file is present.
+    /// </summary>
+    public static async Task<KlCoreClient> ConnectOrStartAsync(
+        KlClientOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        var explicitEndpoint = ResolveExplicitEndpoint(options);
+        if (explicitEndpoint is not null)
+        {
+            return await ConnectAsync(options, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (ResolveEndpoint(options) is not null)
+        {
+            try
+            {
+                return await ConnectAsync(options, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception error) when (error is IOException
+                or SocketException
+                or TimeoutException
+                or InvalidOperationException)
+            {
+                // A stale local server must not take the CLI down; use stdio.
+            }
+        }
+
+        var client = Start(options);
+        try
+        {
+            await client.HandshakeAsync(cancellationToken).ConfigureAwait(false);
+            return client;
+        }
+        catch
+        {
+            await client.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    private static string? ResolveExplicitEndpoint(KlClientOptions options)
+    {
+        if (!string.IsNullOrWhiteSpace(options.Endpoint))
+        {
+            return options.Endpoint.Trim();
+        }
+        var fromEnvironment = Environment.GetEnvironmentVariable("KL_CORE_ENDPOINT");
+        return string.IsNullOrWhiteSpace(fromEnvironment) ? null : fromEnvironment.Trim();
     }
 
     private static bool IsProcessAlive(int processId)
@@ -164,16 +239,20 @@ public sealed class KlCoreClient : IAsyncDisposable
 
     public async Task<HandshakeInfo> HandshakeAsync(CancellationToken cancellationToken = default)
     {
-        var result = await RequestAsync(
-            Protocol.Handshake,
-            new Dictionary<string, object?>
-            {
-                ["client_name"] = Protocol.ClientName,
-                ["client_version"] = Protocol.ClientVersion,
-                ["protocol_versions"] = new[] { Protocol.Version },
-                ["features"] = new[] { "events" }
-            },
-            cancellationToken).ConfigureAwait(false);
+        var parameters = new Dictionary<string, object?>
+        {
+            ["client_name"] = Protocol.ClientName,
+            ["client_version"] = Protocol.ClientVersion,
+            ["protocol_versions"] = new[] { Protocol.Version },
+            ["features"] = new[] { "events" }
+        };
+        if (!string.IsNullOrWhiteSpace(_token))
+        {
+            parameters["token"] = _token;
+        }
+
+        var result = await RequestAsync(Protocol.Handshake, parameters, cancellationToken)
+            .ConfigureAwait(false);
 
         var version = result.GetProperty("protocol_version").GetInt32();
         var minimum = result.GetProperty("min_protocol_version").GetInt32();

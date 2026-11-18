@@ -38,14 +38,15 @@ use kl_protocol::{
     PluginInstallParams, PluginListResult, ProviderEnabledResult, ProviderKeyResult,
     ProviderListResult, ProviderModelSummary, ProviderSetApiKeyParams, ProviderSetEnabledParams,
     ProviderUpsertParams, ProviderUpsertResult, RequestId, ReviewFinding, ReviewResult,
-    ReviewRunParams, RpcError, SandboxCapabilitiesSummary, SandboxSummary, SessionCompactParams,
-    SessionCompactResult, SessionCreateParams, SessionDeleteParams, SessionDeleteResult,
-    SessionHistoryEntry, SessionHistoryParams, SessionHistoryResult, SessionHistoryToolSummary,
-    SessionInfo, SessionListResult, SessionRenameParams, SessionResumeParams, SessionStatusParams,
-    SessionStatusResult, SetDefaultModelParams, SkillGetParams, SkillGetResult, SkillInfo,
-    SkillListParams, SkillListResult, TurnCancelParams, TurnCancelResult, TurnStartParams,
-    TurnStartResult, WorkspaceInitParams, WorkspaceInitResult, error_codes, failure,
-    failure_with_data, methods, negotiate, success, validate_envelope,
+    ReviewRunParams, RpcError, SandboxCapabilitiesSummary, SandboxSummary, SessionArchiveParams,
+    SessionArchiveResult, SessionCompactParams, SessionCompactResult, SessionCreateParams,
+    SessionDeleteParams, SessionDeleteResult, SessionHistoryEntry, SessionHistoryParams,
+    SessionHistoryResult, SessionHistoryToolSummary, SessionInfo, SessionListResult,
+    SessionRenameParams, SessionResumeParams, SessionStatusParams, SessionStatusResult,
+    SetDefaultModelParams, SkillGetParams, SkillGetResult, SkillInfo, SkillListParams,
+    SkillListResult, TurnCancelParams, TurnCancelResult, TurnStartParams, TurnStartResult,
+    WorkspaceInitParams, WorkspaceInitResult, error_codes, failure, failure_with_data, methods,
+    negotiate, success, validate_envelope,
 };
 use kl_provider::{
     AnthropicAdapter, BoundProvider, CancellationToken, ChatEvent, ChatMessage, ChatOutcome,
@@ -58,7 +59,7 @@ use kl_review::{
 };
 use kl_sandbox::{SandboxManager, SandboxPolicy};
 use kl_store::{
-    SessionData, SessionMeta, SessionStore, StoreError, TURN_STATE_IDLE,
+    EVENT_SCHEMA_VERSION, SessionData, SessionMeta, SessionStore, StoreError, TURN_STATE_IDLE,
     TURN_STATE_WAITING_APPROVAL, TURN_STATE_WORKING,
 };
 use kl_tools::{MemoryScope, MemoryStore, ToolError, ToolRegistry, ToolSource};
@@ -77,7 +78,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 mod server;
 
-pub use server::run_server;
+pub use server::{run_server, run_tcp_server};
 
 pub const FEATURES: &[&str] = &[
     "events",
@@ -975,6 +976,8 @@ struct Core {
 impl Core {
     fn new(context: ServerContext, emitter: Emitter) -> Result<Self, CoreError> {
         std::fs::create_dir_all(&context.home)?;
+        write_install_metadata(&context.home);
+        skills::install_system_skills(&context.home);
         let config = Config::load(&context.config_path)?;
         let agent_profiles = agents::load(&context.home);
         let hook_config =
@@ -995,7 +998,7 @@ impl Core {
         for disabled in &catalog.disabled {
             router.mark_disabled(disabled);
         }
-        let store = Arc::new(SessionStore::new(context.home.join("sessions"))?);
+        let store = Arc::new(SessionStore::new(&context.home)?);
         let audit = Arc::new(AuditLog::open(
             context.home.join("audit"),
             config.audit.rotate_bytes,
@@ -1121,6 +1124,7 @@ impl Core {
             methods::SESSION_LIST => self.session_list(),
             methods::SESSION_RENAME => self.session_rename(params),
             methods::SESSION_DELETE => self.session_delete(params),
+            methods::SESSION_ARCHIVE => self.session_archive(params),
             methods::SESSION_STATUS => self.session_status(params),
             methods::SESSION_COMPACT => self.session_compact(params),
             methods::SESSION_FORK => self.session_fork(params),
@@ -1502,14 +1506,17 @@ impl Core {
     fn session_history(&self, params: Value) -> Result<Value, RpcError> {
         let params: SessionHistoryParams = parse_params(params, "session.history")?;
         let data = self.store.load(&params.session_id).map_err(store_error)?;
-        let events = read_session_events(
-            &self
-                .store
-                .root()
-                .join(&params.session_id)
-                .join("events.jsonl"),
-        )
-        .map_err(store_error)?;
+        let events = self
+            .store
+            .read_events(&params.session_id)
+            .map_err(store_error)?
+            .into_iter()
+            .map(|stored| StoredSessionEvent {
+                seq: stored.seq,
+                at: stored.at,
+                event: stored.event,
+            })
+            .collect::<Vec<_>>();
         let history = build_session_history(&data.messages, &events);
         let start = history.len().saturating_sub(params.limit);
         to_value(SessionHistoryResult {
@@ -1520,13 +1527,17 @@ impl Core {
 
     fn session_list(&self) -> Result<Value, RpcError> {
         let sessions = self.store.list().map_err(store_error)?;
+        let archived = self.store.list_archived().map_err(store_error)?;
         let reasoning = self.config.agent.reasoning_effort.as_str();
-        to_value(SessionListResult {
-            sessions: sessions
-                .iter()
-                .map(|meta| session_info(meta, meta.message_count, reasoning))
-                .collect(),
-        })
+        let mut infos: Vec<SessionInfo> = sessions
+            .iter()
+            .map(|meta| session_info(meta, meta.message_count, reasoning))
+            .collect();
+        infos.extend(archived.iter().map(|meta| SessionInfo {
+            archived: true,
+            ..session_info(meta, meta.message_count, reasoning)
+        }));
+        to_value(SessionListResult { sessions: infos })
     }
 
     fn session_delete(&mut self, params: Value) -> Result<Value, RpcError> {
@@ -1543,6 +1554,16 @@ impl Core {
             .unwrap_or_else(|error| error.into_inner())
             .remove(&params.session_id);
         to_value(SessionDeleteResult { deleted: true })
+    }
+
+    fn session_archive(&mut self, params: Value) -> Result<Value, RpcError> {
+        let params: SessionArchiveParams = parse_params(params, methods::SESSION_ARCHIVE)?;
+        self.store
+            .set_archived(&params.session_id, params.archived)
+            .map_err(store_error)?;
+        to_value(SessionArchiveResult {
+            archived: params.archived,
+        })
     }
 
     fn session_rename(&mut self, params: Value) -> Result<Value, RpcError> {
@@ -1917,11 +1938,23 @@ impl Core {
         };
         let is_deep = profile.id == agents::DEEP_ID;
         let prompt_prefix = profile.prompt_prefix.clone();
-        let memory_block = self.memory_injection(&workspace);
+        let mut memory_block = self.memory_injection(&workspace);
+        if Path::new(&workspace) != self.context.home {
+            if let Some(instructions) = kl_agent::home_instructions(&self.context.home) {
+                if !memory_block.is_empty() {
+                    memory_block.push_str("\n\n");
+                }
+                memory_block.push_str("Global instructions from AGENTS.md:\n");
+                memory_block.push_str(&instructions);
+            }
+        }
+        // Skills and memory are instructions, not user text: keeping them in the
+        // system prompt leaves session titles derived from the raw prompt.
+        let system_extras = format!("{skills_summary}{memory_block}");
         let system_prompt = match profile.system.clone() {
-            Some(system) if memory_block.is_empty() => system,
-            Some(system) => format!("{memory_block}\n\n{system}"),
-            None => memory_block.clone(),
+            Some(system) if system_extras.is_empty() => system,
+            Some(system) => format!("{system_extras}\n\n{system}"),
+            None => system_extras.clone(),
         };
 
         let thread_session = session_id.clone();
@@ -1962,9 +1995,9 @@ impl Core {
                     base_turn_id: thread_turn.clone(),
                     default_provider: thread_metadata.provider.clone(),
                     default_model: thread_metadata.model.clone(),
-                    task: format!("{skills_summary}{prompt_prefix}{prompt}"),
+                    task: format!("{prompt_prefix}{prompt}"),
                     workspace: PathBuf::from(&workspace),
-                    memory_prompt: memory_block.clone(),
+                    memory_prompt: system_extras.clone(),
                     tool_access,
                 }
                 .run(&mut history)
@@ -1979,7 +2012,7 @@ impl Core {
                     agent_config,
                 )
                 .with_system_prompt(&system_prompt);
-                let prompt = format!("{skills_summary}{prompt_prefix}{prompt}");
+                let prompt = format!("{prompt_prefix}{prompt}");
                 let prompt = if quality == QualityMode::Fast {
                     format!("Work quickly and keep the response concise.\n{prompt}")
                 } else {
@@ -2955,6 +2988,7 @@ fn session_info(meta: &SessionMeta, message_count: usize, fallback_reasoning: &s
         task: meta.task.clone(),
         prompt: meta.prompt.clone(),
         last_message: meta.last_message.clone(),
+        archived: false,
     }
 }
 
@@ -2963,18 +2997,6 @@ struct StoredSessionEvent {
     seq: u64,
     at: String,
     event: CoreEvent,
-}
-
-fn read_session_events(path: &Path) -> Result<Vec<StoredSessionEvent>, StoreError> {
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-    let text = std::fs::read_to_string(path)?;
-    // A crash can leave a partial final line; keep the earlier valid records.
-    Ok(text
-        .lines()
-        .filter_map(|line| serde_json::from_str::<StoredSessionEvent>(line).ok())
-        .collect())
 }
 
 fn build_session_history(
@@ -3387,6 +3409,21 @@ fn policy_summary(mode: ApprovalMode) -> &'static str {
             "Reads are allowed; edits, shell commands, plugin actions, and git writes are denied."
         }
     }
+}
+
+/// Writes the install metadata that sits beside the sessions: a stable
+/// installation id plus the running version.
+fn write_install_metadata(home: &Path) {
+    let id_path = home.join("installation_id");
+    if !id_path.exists() {
+        let _ = write_file_atomic(&id_path, uuid::Uuid::new_v4().to_string().as_bytes());
+    }
+    let payload = json!({
+        "version": CORE_VERSION,
+        "protocol": PROTOCOL_VERSION,
+        "event_schema": EVENT_SCHEMA_VERSION,
+    });
+    let _ = write_file_atomic(&home.join("version.json"), payload.to_string().as_bytes());
 }
 
 fn write_file_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
@@ -4379,6 +4416,28 @@ auto_approve_plugins = true
     }
 
     #[test]
+    fn install_metadata_keeps_a_stable_installation_id() {
+        let temp = tempfile::tempdir().unwrap();
+        write_install_metadata(temp.path());
+        let first = std::fs::read_to_string(temp.path().join("installation_id")).unwrap();
+        assert_eq!(first.len(), 36);
+
+        let version: Value = serde_json::from_str(
+            &std::fs::read_to_string(temp.path().join("version.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(version["version"], CORE_VERSION);
+        assert_eq!(version["protocol"], PROTOCOL_VERSION);
+        assert_eq!(version["event_schema"], EVENT_SCHEMA_VERSION);
+
+        write_install_metadata(temp.path());
+        assert_eq!(
+            std::fs::read_to_string(temp.path().join("installation_id")).unwrap(),
+            first
+        );
+    }
+
+    #[test]
     fn workspace_init_creates_without_overwriting_and_rejects_escape() {
         let temp = tempfile::tempdir().unwrap();
         let workspace = temp.path().join("workspace");
@@ -4954,7 +5013,7 @@ auto_approve_plugins = true
             let sessions = core.sessions.lock().unwrap();
             sessions[&session_id].messages[0].text()
         };
-        assert!(first.starts_with(AgentPreset::Plan.prompt_prefix()));
+        assert!(first.contains(AgentPreset::Plan.prompt_prefix()));
         assert!(first.ends_with("hello"));
         let history = core
             .session_history(json!({"session_id": session_id}))
@@ -4963,7 +5022,7 @@ auto_approve_plugins = true
     }
 
     #[test]
-    fn turn_start_prepends_discovered_skill_summaries() {
+    fn turn_start_keeps_skill_summaries_out_of_the_user_message() {
         let temp = tempfile::tempdir().unwrap();
         let workspace = temp.path().join("workspace");
         std::fs::create_dir_all(&workspace).unwrap();
@@ -4992,9 +5051,7 @@ auto_approve_plugins = true
             let sessions = core.sessions.lock().unwrap();
             sessions[&session_id].messages[0].text()
         };
-        assert!(first.starts_with("alpha: Alpha description\n"));
-        assert!(first.ends_with("hello"));
-        assert_eq!(first.matches("Alpha description").count(), 1);
+        assert_eq!(first, "hello");
         assert!(!first.contains("SECRET BODY"));
         let history = core
             .session_history(json!({"session_id": session_id}))

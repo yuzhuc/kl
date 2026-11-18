@@ -11,6 +11,12 @@ public sealed class KlClientOptions
     /// nothing is found the client falls back to a stdio child process.
     /// </summary>
     public string? Endpoint { get; init; }
+
+    /// <summary>
+    /// Shared secret for a TCP core started with <c>--token</c>. Falls back to
+    /// the <c>KL_CORE_TOKEN</c> environment variable.
+    /// </summary>
+    public string? Token { get; init; }
 }
 
 public sealed class KlSessionOptions

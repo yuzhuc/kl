@@ -19,6 +19,7 @@ use kl_protocol::{
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::io::{self, BufRead, BufReader, Write};
+use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::sync::{
     Arc, Mutex,
@@ -187,6 +188,69 @@ pub fn run_server(
         .unwrap_or_else(|| DEFAULT_ENDPOINT.to_owned());
     let (listener, transport, advertised_endpoint) =
         create_listener(&context.home, &endpoint_name)?;
+    let state = start_server(context, transport, advertised_endpoint, None)?;
+    for connection in listener.incoming() {
+        let stream = match connection {
+            Ok(stream) => stream,
+            Err(error) => {
+                eprintln!("kl-core server accept failed: {error}");
+                continue;
+            }
+        };
+        let (reader, writer) = stream.split();
+        spawn_connection(&state, BufReader::new(reader), writer);
+    }
+    Ok(())
+}
+
+/// Serves the protocol over TCP for remote clients, e.g.
+/// `kl-core --serve --listen 0.0.0.0:8787 --token <secret>`.
+pub fn run_tcp_server(
+    config_path: Option<PathBuf>,
+    home: Option<PathBuf>,
+    address: &str,
+    token: Option<String>,
+) -> Result<(), CoreError> {
+    let context = ServerContext::resolve(config_path, home);
+    std::fs::create_dir_all(&context.home)?;
+    let listener = TcpListener::bind(address)?;
+    let bound = listener.local_addr()?.to_string();
+    let endpoint = format!("tcp://{bound}");
+    let state = start_server(context, "tcp".to_owned(), endpoint, token)?;
+    for connection in listener.incoming() {
+        let stream = match connection {
+            Ok(stream) => stream,
+            Err(error) => {
+                eprintln!("kl-core server accept failed: {error}");
+                continue;
+            }
+        };
+        let writer = match stream.try_clone() {
+            Ok(writer) => writer,
+            Err(error) => {
+                eprintln!("kl-core server connection failed: {error}");
+                continue;
+            }
+        };
+        spawn_connection(&state, BufReader::new(stream), writer);
+    }
+    Ok(())
+}
+
+struct ServerState {
+    core: Arc<Mutex<Core>>,
+    broadcaster: Broadcaster,
+    leases: Arc<Mutex<LeaseTable>>,
+    server_info: ServerInfoResult,
+    token: Option<String>,
+}
+
+fn start_server(
+    context: ServerContext,
+    transport: String,
+    endpoint: String,
+    token: Option<String>,
+) -> Result<ServerState, CoreError> {
     let broadcaster = Broadcaster::new();
     let core = Arc::new(Mutex::new(Core::new(
         context.clone(),
@@ -198,7 +262,7 @@ pub fn run_server(
         server_version: CORE_VERSION.to_owned(),
         protocol_version: PROTOCOL_VERSION,
         transport,
-        endpoint: advertised_endpoint.clone(),
+        endpoint: endpoint.clone(),
         pid: std::process::id(),
         started_at_unix_ms: unix_ms(),
     };
@@ -214,64 +278,82 @@ pub fn run_server(
 
     eprintln!(
         "kl-core server listening on {} ({})",
-        advertised_endpoint,
+        endpoint,
         server_file.display()
     );
 
-    for connection in listener.incoming() {
-        let stream = match connection {
-            Ok(stream) => stream,
-            Err(error) => {
-                eprintln!("kl-core server accept failed: {error}");
-                continue;
-            }
-        };
-        let (client_id, response_tx, receiver) = broadcaster.subscribe();
-        let (reader, writer) = stream.split();
-        let subscriptions = Arc::new(Mutex::new(HashSet::new()));
-        let writer_subscriptions = Arc::clone(&subscriptions);
-        let writer_task = thread::spawn(move || {
-            let mut writer = writer;
-            for line in receiver {
-                if !should_forward(&line, &writer_subscriptions) {
-                    continue;
-                }
-                if writer.write_all(line.as_bytes()).is_err() {
-                    break;
-                }
-            }
-        });
-        let core = Arc::clone(&core);
-        let broadcaster = broadcaster.clone();
-        let client_leases = Arc::clone(&leases);
-        let client_info = server_info.clone();
-        thread::spawn(move || {
-            handle_client(
-                reader,
-                response_tx,
-                core,
-                client_leases,
-                client_info,
-                client_id,
-                subscriptions,
-            );
-            broadcaster.unsubscribe(client_id);
-            let _ = writer_task.join();
-        });
-    }
-    Ok(())
+    Ok(ServerState {
+        core,
+        broadcaster,
+        leases,
+        server_info,
+        token,
+    })
 }
 
-fn handle_client(
-    receiver: interprocess::local_socket::RecvHalf,
+fn spawn_connection<R: BufRead + Send + 'static, W: Write + Send + 'static>(
+    state: &ServerState,
+    reader: R,
+    writer: W,
+) {
+    let (client_id, response_tx, receiver) = state.broadcaster.subscribe();
+    let subscriptions = Arc::new(Mutex::new(HashSet::new()));
+    let writer_subscriptions = Arc::clone(&subscriptions);
+    let writer_task = thread::spawn(move || {
+        let mut writer = writer;
+        for line in receiver {
+            if !should_forward(&line, &writer_subscriptions) {
+                continue;
+            }
+            if writer.write_all(line.as_bytes()).is_err() {
+                break;
+            }
+        }
+    });
+    let core = Arc::clone(&state.core);
+    let broadcaster = state.broadcaster.clone();
+    let client_leases = Arc::clone(&state.leases);
+    let client_info = state.server_info.clone();
+    let token = state.token.clone();
+    thread::spawn(move || {
+        handle_client(
+            reader,
+            ClientConnection {
+                response_tx,
+                core,
+                leases: client_leases,
+                server_info: client_info,
+                client_id,
+                attached: subscriptions,
+                token,
+            },
+        );
+        broadcaster.unsubscribe(client_id);
+        let _ = writer_task.join();
+    });
+}
+
+struct ClientConnection {
     response_tx: mpsc::Sender<String>,
     core: Arc<Mutex<Core>>,
     leases: Arc<Mutex<LeaseTable>>,
     server_info: ServerInfoResult,
     client_id: u64,
     attached: Arc<Mutex<HashSet<String>>>,
-) {
-    let mut reader = BufReader::new(receiver);
+    token: Option<String>,
+}
+
+fn handle_client<R: BufRead>(receiver: R, connection: ClientConnection) {
+    let ClientConnection {
+        response_tx,
+        core,
+        leases,
+        server_info,
+        client_id,
+        attached,
+        token,
+    } = connection;
+    let mut reader = receiver;
     let mut line = String::new();
     let mut handshaken = false;
     let mut current_session: Option<String> = None;
@@ -315,6 +397,22 @@ fn handle_client(
             continue;
         };
         let method = message.method.clone().unwrap_or_default();
+
+        if !handshaken && method == methods::HANDSHAKE {
+            if let Some(required) = token.as_deref() {
+                if message.params.get("token").and_then(Value::as_str) != Some(required) {
+                    let _ = send_response(
+                        &response_tx,
+                        failure(
+                            Some(id),
+                            error_codes::UNAUTHORIZED,
+                            "invalid or missing access token",
+                        ),
+                    );
+                    continue;
+                }
+            }
+        }
 
         let public_method = matches!(
             method.as_str(),

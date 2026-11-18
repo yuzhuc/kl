@@ -20,6 +20,7 @@ public static class Protocol
     public const string SessionStatus = "session.status";
     public const string SessionRename = "session.rename";
     public const string SessionDelete = "session.delete";
+    public const string SessionArchive = "session.archive";
     public const string SessionCompact = "session.compact";
     public const string SessionFork = "session.fork";
     public const string SessionAttach = "session.attach";

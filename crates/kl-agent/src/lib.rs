@@ -1241,6 +1241,29 @@ fn jitter(cap: Duration) -> Duration {
 
 const AGENTS_MD_LIMIT: usize = 16 * 1024;
 
+fn read_agents_md(path: &std::path::Path) -> Option<String> {
+    let metadata = std::fs::symlink_metadata(path).ok()?;
+    if !metadata.file_type().is_file() {
+        return None;
+    }
+    let mut content = std::fs::read_to_string(path).ok()?;
+    if content.len() > AGENTS_MD_LIMIT {
+        let mut end = AGENTS_MD_LIMIT;
+        while !content.is_char_boundary(end) {
+            end -= 1;
+        }
+        content.truncate(end);
+        content.push_str("\n[AGENTS.md truncated]");
+    }
+    Some(content)
+}
+
+/// Global instructions from `<home>/AGENTS.md`. Core reads them on every turn,
+/// so an edit applies to the next message.
+pub fn home_instructions(home: &std::path::Path) -> Option<String> {
+    read_agents_md(&home.join("AGENTS.md"))
+}
+
 fn system_prompt(workspace: &std::path::Path) -> String {
     let mut prompt = format!(
         "You are KL, a terminal coding agent. Work only inside the workspace at {}.\n\
@@ -1250,24 +1273,9 @@ fn system_prompt(workspace: &std::path::Path) -> String {
          tests when practical. Never claim success without evidence.",
         workspace.display()
     );
-    let agents_path = workspace.join("AGENTS.md");
-    let Ok(metadata) = std::fs::symlink_metadata(&agents_path) else {
+    let Some(content) = read_agents_md(&workspace.join("AGENTS.md")) else {
         return prompt;
     };
-    if !metadata.file_type().is_file() {
-        return prompt;
-    }
-    let Ok(mut content) = std::fs::read_to_string(&agents_path) else {
-        return prompt;
-    };
-    if content.len() > AGENTS_MD_LIMIT {
-        let mut end = AGENTS_MD_LIMIT;
-        while !content.is_char_boundary(end) {
-            end -= 1;
-        }
-        content.truncate(end);
-        content.push_str("\n[AGENTS.md truncated]");
-    }
     prompt.push_str("\n\nProject instructions from AGENTS.md:\n");
     prompt.push_str(&content);
     prompt.push('\n');
@@ -1673,6 +1681,17 @@ mod tests {
             compact_threshold,
             max_output_tokens,
         )
+    }
+
+    #[test]
+    fn home_instructions_read_the_home_agents_file() {
+        let temp = tempfile::tempdir().unwrap();
+        assert_eq!(home_instructions(temp.path()), None);
+        std::fs::write(temp.path().join("AGENTS.md"), "Always answer in Chinese.\n").unwrap();
+        assert_eq!(
+            home_instructions(temp.path()).as_deref(),
+            Some("Always answer in Chinese.\n")
+        );
     }
 
     #[test]

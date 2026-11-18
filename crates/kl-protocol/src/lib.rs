@@ -32,6 +32,7 @@ pub mod methods {
     pub const SESSION_LIST: &str = "session.list";
     pub const SESSION_RENAME: &str = "session.rename";
     pub const SESSION_DELETE: &str = "session.delete";
+    pub const SESSION_ARCHIVE: &str = "session.archive";
     pub const SESSION_STATUS: &str = "session.status";
     pub const SESSION_COMPACT: &str = "session.compact";
     pub const SESSION_FORK: &str = "session.fork";
@@ -89,6 +90,7 @@ pub mod error_codes {
     pub const PLUGIN_ERROR: i64 = -32010;
     pub const PLUGIN_NOT_FOUND: i64 = -32011;
     pub const PLUGIN_PERMISSION: i64 = -32012;
+    pub const UNAUTHORIZED: i64 = -32013;
 }
 
 /// JSON-RPC request identifier. Both integer and string ids are legal.
@@ -231,6 +233,9 @@ pub struct HandshakeParams {
     pub protocol_versions: Vec<u32>,
     #[serde(default)]
     pub features: Vec<String>,
+    /// Shared secret required by a TCP server started with `--token`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -543,6 +548,8 @@ pub struct SessionInfo {
     pub last_message: Option<String>,
     #[serde(default)]
     pub reasoning_effort: String,
+    #[serde(default)]
+    pub archived: bool,
 }
 
 fn default_session_turn_state() -> String {
@@ -552,6 +559,17 @@ fn default_session_turn_state() -> String {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SessionResumeParams {
     pub session_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SessionArchiveParams {
+    pub session_id: String,
+    pub archived: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SessionArchiveResult {
+    pub archived: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

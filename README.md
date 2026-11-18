@@ -136,6 +136,9 @@ to the executable.
 - Persistent sessions with event projection, resume, fork and approval rules.
 - Optional local server with attach/replay, sequence de-duplication, reconnect,
   one-writer session leases and read-only observer clients.
+- Remote Core over TCP (`kl-core --serve --listen host:port --token ...`);
+  GUI, TUI and CLI clients connect with `KL_CORE_ENDPOINT` / `KL_CORE_TOKEN`
+  (see `docs/remote-core.md`).
 - Avalonia desktop GUI over `Kl.Client`: session list and rich history,
   streaming assistant/reasoning events, tool cards with diffs, `allow` /
   `allow_session` / `deny` approvals, cancel, Core status with retry, and
@@ -224,6 +227,7 @@ and the release matrix in
 - [`docs/README.md`](docs/README.md)
 - [`docs/architecture/overview.md`](docs/architecture/overview.md)
 - [`docs/project-structure.md`](docs/project-structure.md)
+- [`docs/remote-core.md`](docs/remote-core.md)
 - [`docs/security/policy.md`](docs/security/policy.md)
 - [`docs/plugin-api/README.md`](docs/plugin-api/README.md)
 - [`docs/gui/mvp-spec.md`](docs/gui/mvp-spec.md)

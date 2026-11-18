@@ -59,7 +59,7 @@ pub struct MemoryInjection {
 /// Validated access to the Markdown memory store.
 ///
 /// The workspace store lives in `<workspace>/.kl/memory`, the user store in
-/// `<home>/memory`. Every path is resolved through `resolve_under`, so a
+/// `<home>/memories`. Every path is resolved through `resolve_under`, so a
 /// symlinked directory cannot redirect the store outside its base, and entry
 /// names are restricted to a safe subset.
 pub struct MemoryStore {
@@ -81,7 +81,16 @@ impl MemoryStore {
     pub fn resolve(workspace: &Path, home: Option<&Path>) -> Result<Self, ToolError> {
         let workspace_root = resolve_under(workspace, MEMORY_DIR)?;
         let user_root = match home {
-            Some(home) => Some(resolve_under(home, "memory")?),
+            Some(home) => {
+                // Earlier builds used `<home>/memory`; move it once, then use the
+                // Codex-style `memories/` directory.
+                let legacy = home.join("memory");
+                let current = home.join("memories");
+                if !current.exists() && legacy.is_dir() {
+                    let _ = fs::rename(&legacy, &current);
+                }
+                Some(resolve_under(home, "memories")?)
+            }
             None => None,
         };
         Ok(Self::new(workspace_root, user_root))
@@ -718,9 +727,9 @@ mod tests {
         let home = tempfile::tempdir().unwrap();
         let workspace = temp.path().join("workspace");
         std::fs::create_dir_all(workspace.join(".kl/memory")).unwrap();
-        std::fs::create_dir_all(home.path().join("memory")).unwrap();
+        std::fs::create_dir_all(home.path().join("memories")).unwrap();
         std::fs::write(workspace.join(".kl/memory/a.md"), "workspace").unwrap();
-        std::fs::write(home.path().join("memory/b.md"), "user").unwrap();
+        std::fs::write(home.path().join("memories/b.md"), "user").unwrap();
 
         let store = store_for(&workspace, Some(home.path()));
         let entries = store.list(None);
@@ -745,9 +754,9 @@ mod tests {
         let home = tempfile::tempdir().unwrap();
         let workspace = temp.path().join("workspace");
         std::fs::create_dir_all(workspace.join(".kl/memory")).unwrap();
-        std::fs::create_dir_all(home.path().join("memory")).unwrap();
+        std::fs::create_dir_all(home.path().join("memories")).unwrap();
         std::fs::write(workspace.join(".kl/memory/dup.md"), "from workspace").unwrap();
-        std::fs::write(home.path().join("memory/dup.md"), "from user").unwrap();
+        std::fs::write(home.path().join("memories/dup.md"), "from user").unwrap();
 
         let store = store_for(&workspace, Some(home.path()));
         let injection = store.injection();
@@ -762,7 +771,7 @@ mod tests {
         let home = tempfile::tempdir().unwrap();
         let workspace = temp.path().join("workspace");
         std::fs::create_dir_all(workspace.join(".kl/memory")).unwrap();
-        std::fs::create_dir_all(home.path().join("memory")).unwrap();
+        std::fs::create_dir_all(home.path().join("memories")).unwrap();
         for index in 0..40 {
             std::fs::write(
                 workspace.join(format!(".kl/memory/note{index}.md")),
@@ -790,7 +799,7 @@ mod tests {
         store
             .write(MemoryScope::User, "user.md", "user content")
             .unwrap();
-        assert!(home.path().join("memory/user.md").is_file());
+        assert!(home.path().join("memories/user.md").is_file());
         assert!(!workspace.join(".kl/memory/user.md").exists());
 
         let error = store
@@ -799,6 +808,26 @@ mod tests {
         assert!(matches!(error, ToolError::InvalidArgs(_)), "{error}");
 
         store.delete(MemoryScope::User, "user.md").unwrap();
-        assert!(!home.path().join("memory/user.md").exists());
+        assert!(!home.path().join("memories/user.md").exists());
+    }
+
+    #[test]
+    fn legacy_user_memory_directory_is_migrated() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let workspace = temp.path().join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        std::fs::create_dir_all(home.path().join("memory")).unwrap();
+        std::fs::write(home.path().join("memory/old.md"), "old note").unwrap();
+
+        let store = store_for(&workspace, Some(home.path()));
+        assert!(home.path().join("memories/old.md").is_file());
+        assert!(!home.path().join("memory").exists());
+        assert!(
+            store
+                .list(Some(MemoryScope::User))
+                .iter()
+                .any(|entry| entry.name == "old.md")
+        );
     }
 }

@@ -1,13 +1,17 @@
-//! Session persistence: `session.json` metadata, `state.json` message
-//! projection and an append-only `events.jsonl` log.
+//! Session persistence in a Codex-style home layout:
+//! `sessions/YYYY/MM/DD/rollout-<stamp>-<id>.jsonl` files (meta line, event
+//! lines, optional state line), plus `session_index.jsonl` and `history.jsonl`
+//! at the home root.
 
 use chrono::{SecondsFormat, Utc};
 use kl_protocol::CoreEvent;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 pub const EVENT_SCHEMA_VERSION: u32 = 1;
 pub const TURN_STATE_IDLE: &str = "idle";
@@ -71,17 +75,59 @@ pub enum StoreError {
 #[derive(Debug, Clone)]
 pub struct SessionStore {
     root: PathBuf,
+    paths: std::sync::Arc<Mutex<HashMap<String, PathBuf>>>,
+}
+
+#[derive(Debug, Default)]
+struct RolloutContent {
+    meta: Option<SessionMeta>,
+    events: Vec<StoredEvent>,
+    state: Option<RolloutState>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct RolloutState {
+    /// Highest event seq the persisted projection covers.
+    #[serde(default)]
+    through_seq: u64,
+    #[serde(default)]
+    messages: Vec<Value>,
+    #[serde(default)]
+    approval_rules: Vec<String>,
 }
 
 impl SessionStore {
     pub fn new(root: impl AsRef<Path>) -> Result<Self, StoreError> {
         let root = root.as_ref().to_path_buf();
         fs::create_dir_all(&root)?;
-        Ok(Self { root })
+        let store = Self {
+            root,
+            paths: std::sync::Arc::new(Mutex::new(HashMap::new())),
+        };
+        fs::create_dir_all(store.sessions_root())?;
+        fs::create_dir_all(store.archived_root())?;
+        store.migrate_legacy()?;
+        Ok(store)
     }
 
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    fn sessions_root(&self) -> PathBuf {
+        self.root.join("sessions")
+    }
+
+    fn archived_root(&self) -> PathBuf {
+        self.root.join("archived_sessions")
+    }
+
+    fn index_path(&self) -> PathBuf {
+        self.root.join("session_index.jsonl")
+    }
+
+    fn history_path(&self) -> PathBuf {
+        self.root.join("history.jsonl")
     }
 
     pub fn create(
@@ -112,29 +158,55 @@ impl SessionStore {
             messages: Vec::new(),
             approval_rules: Vec::new(),
         };
-        let directory = self.session_dir(&data.meta.id);
-        fs::create_dir_all(&directory)?;
-        fs::write(directory.join("events.jsonl"), b"")?;
-        self.save(&data)?;
+        let path = self.rollout_path(&data.meta);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let mut bytes = serde_json::to_vec(&serde_json::json!({
+            "type": "meta",
+            "meta": &data.meta,
+        }))?;
+        bytes.push(b'\n');
+        fs::write(&path, bytes)?;
+        self.paths
+            .lock()
+            .unwrap()
+            .insert(data.meta.id.clone(), path);
+        self.append_index(&data.meta)?;
         Ok(data)
     }
 
     pub fn load(&self, id: &str) -> Result<SessionData, StoreError> {
-        let directory = self.session_dir(id);
-        let meta_path = directory.join("session.json");
-        if !meta_path.exists() {
-            return Err(StoreError::NotFound(id.to_owned()));
-        }
-        let meta: SessionMeta = serde_json::from_slice(&fs::read(&meta_path)?)?;
-        let state_path = directory.join("state.json");
-        let (mut messages, approval_rules) = if state_path.exists() {
-            let state: StateFile = serde_json::from_slice(&fs::read(&state_path)?)?;
-            (state.messages, state.approval_rules)
-        } else {
-            (Vec::new(), Vec::new())
+        let path = self
+            .resolve_path(id)
+            .ok_or_else(|| StoreError::NotFound(id.to_owned()))?;
+        let content = read_rollout(&path)?;
+        let meta = content
+            .meta
+            .ok_or_else(|| StoreError::NotFound(id.to_owned()))?;
+        // The snapshot is authoritative; only replay the events it does not cover.
+        let (mut messages, approval_rules) = match content.state {
+            Some(state) => {
+                let newer: Vec<StoredEvent> = content
+                    .events
+                    .iter()
+                    .filter(|event| event.seq > state.through_seq)
+                    .cloned()
+                    .collect();
+                let mut messages = state.messages;
+                // Compaction saves its state before emitting the event, so the
+                // summary may already be in the snapshot.
+                for message in project_messages(&newer) {
+                    if !messages.contains(&message) {
+                        messages.push(message);
+                    }
+                }
+                (messages, state.approval_rules)
+            }
+            None => (project_messages(&content.events), Vec::new()),
         };
         if messages.is_empty() {
-            messages = project_messages(&self.read_events(id)?);
+            messages = project_messages(&content.events);
         }
         Ok(SessionData {
             meta,
@@ -145,35 +217,21 @@ impl SessionStore {
 
     pub fn list(&self) -> Result<Vec<SessionMeta>, StoreError> {
         let mut sessions = Vec::new();
-        if !self.root.exists() {
-            return Ok(sessions);
-        }
-        for entry in fs::read_dir(&self.root)? {
-            let entry = entry?;
-            if !entry.file_type()?.is_dir() {
-                continue;
-            }
-            let meta_path = entry.path().join("session.json");
-            if !meta_path.exists() {
-                continue;
-            }
-            if let Ok(bytes) = fs::read(&meta_path) {
-                if let Ok(meta) = serde_json::from_slice::<SessionMeta>(&bytes) {
-                    sessions.push(meta);
-                }
-            }
-        }
+        collect_meta(&self.sessions_root(), &mut sessions)?;
         sessions.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
         Ok(sessions)
     }
 
     pub fn delete(&self, id: &str) -> Result<(), StoreError> {
         let id = uuid::Uuid::parse_str(id).map_err(|_| StoreError::NotFound(id.to_owned()))?;
-        let directory = self.root.join(id.to_string());
-        if !directory.join("session.json").exists() {
-            return Err(StoreError::NotFound(id.to_string()));
-        }
-        fs::remove_dir_all(directory)?;
+        let id = id.to_string();
+        let path = self
+            .resolve_path(&id)
+            .ok_or_else(|| StoreError::NotFound(id.clone()))?;
+        fs::remove_file(path)?;
+        self.paths.lock().unwrap().remove(&id);
+        // Attachments belong to their session, so they go with it.
+        let _ = fs::remove_dir_all(self.root.join("attachments").join(&id));
         Ok(())
     }
 
@@ -188,9 +246,48 @@ impl SessionStore {
         Ok(self.load(id)?.meta)
     }
 
+    /// Moves a session between `sessions/` and `archived_sessions/`.
+    pub fn set_archived(&self, id: &str, archived: bool) -> Result<(), StoreError> {
+        let path = self
+            .resolve_path(id)
+            .ok_or_else(|| StoreError::NotFound(id.to_owned()))?;
+        let target = if archived {
+            self.archived_root()
+                .join(path.file_name().unwrap_or_default())
+        } else {
+            let meta =
+                read_rollout_meta(&path).ok_or_else(|| StoreError::NotFound(id.to_owned()))?;
+            self.rollout_path(&meta)
+        };
+        if path != target {
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::rename(&path, &target)?;
+            self.paths.lock().unwrap().insert(id.to_owned(), target);
+        }
+        Ok(())
+    }
+
+    pub fn list_archived(&self) -> Result<Vec<SessionMeta>, StoreError> {
+        let mut sessions = Vec::new();
+        collect_meta(&self.archived_root(), &mut sessions)?;
+        sessions.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
+        Ok(sessions)
+    }
+
     pub fn save(&self, data: &SessionData) -> Result<(), StoreError> {
-        let directory = self.session_dir(&data.meta.id);
-        fs::create_dir_all(&directory)?;
+        let path = self
+            .resolve_path(&data.meta.id)
+            .unwrap_or_else(|| self.rollout_path(&data.meta));
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let events = if path.exists() {
+            read_rollout(&path)?.events
+        } else {
+            Vec::new()
+        };
         let mut meta = data.meta.clone();
         meta.message_count = data.messages.len();
         meta.updated_at = now();
@@ -198,17 +295,29 @@ impl SessionStore {
         meta.task = meta.name.clone().or(task);
         meta.prompt = prompt;
         meta.last_message = last_message;
-        write_atomic(
-            &directory.join("session.json"),
-            &serde_json::to_vec_pretty(&meta)?,
-        )?;
-        write_atomic(
-            &directory.join("state.json"),
-            &serde_json::to_vec_pretty(&StateFile {
-                messages: data.messages.clone(),
-                approval_rules: data.approval_rules.clone(),
-            })?,
-        )?;
+        let through_seq = events.iter().map(|event| event.seq).max().unwrap_or(0);
+        let mut bytes = serde_json::to_vec(&serde_json::json!({
+            "type": "meta",
+            "meta": &meta,
+        }))?;
+        bytes.push(b'\n');
+        for event in &events {
+            bytes.extend(serde_json::to_vec(event)?);
+            bytes.push(b'\n');
+        }
+        bytes.extend(serde_json::to_vec(&serde_json::json!({
+            "type": "state",
+            "through_seq": through_seq,
+            "messages": &data.messages,
+            "approval_rules": &data.approval_rules,
+        }))?);
+        bytes.push(b'\n');
+        write_atomic(&path, &bytes)?;
+        self.paths
+            .lock()
+            .unwrap()
+            .insert(data.meta.id.clone(), path);
+        self.append_index(&meta)?;
         Ok(())
     }
 
@@ -217,16 +326,10 @@ impl SessionStore {
         session_id: &str,
         turn_state: &str,
     ) -> Result<SessionMeta, StoreError> {
-        let directory = self.session_dir(session_id);
-        let meta_path = directory.join("session.json");
-        if !meta_path.exists() {
-            return Err(StoreError::NotFound(session_id.to_owned()));
-        }
-        let mut meta: SessionMeta = serde_json::from_slice(&fs::read(&meta_path)?)?;
-        meta.turn_state = turn_state.to_owned();
-        meta.updated_at = now();
-        write_atomic(&meta_path, &serde_json::to_vec_pretty(&meta)?)?;
-        Ok(meta)
+        let mut data = self.load(session_id)?;
+        data.meta.turn_state = turn_state.to_owned();
+        self.save(&data)?;
+        Ok(self.load(session_id)?.meta)
     }
 
     pub fn append_event(
@@ -235,8 +338,9 @@ impl SessionStore {
         seq: u64,
         event: &CoreEvent,
     ) -> Result<(), StoreError> {
-        let directory = self.session_dir(session_id);
-        fs::create_dir_all(&directory)?;
+        let path = self
+            .resolve_path(session_id)
+            .ok_or_else(|| StoreError::NotFound(session_id.to_owned()))?;
         let record = EventRecord {
             seq,
             at: now(),
@@ -245,30 +349,20 @@ impl SessionStore {
         };
         let mut line = serde_json::to_vec(&record)?;
         line.push(b'\n');
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(directory.join("events.jsonl"))?;
+        let mut file = OpenOptions::new().create(true).append(true).open(path)?;
         file.write_all(&line)?;
         file.flush()?;
+        if let CoreEvent::UserMessage { text, .. } = event {
+            self.append_history(session_id, text)?;
+        }
         Ok(())
     }
 
     pub fn read_events(&self, session_id: &str) -> Result<Vec<StoredEvent>, StoreError> {
-        let path = self.session_dir(session_id).join("events.jsonl");
-        if !path.exists() {
-            return Ok(Vec::new());
+        match self.resolve_path(session_id) {
+            Some(path) => Ok(read_rollout(&path)?.events),
+            None => Ok(Vec::new()),
         }
-        let file = fs::File::open(path)?;
-        let mut events = Vec::new();
-        for line in BufReader::new(file).lines() {
-            let line = line?;
-            if line.trim().is_empty() {
-                continue;
-            }
-            events.push(serde_json::from_str(&line)?);
-        }
-        Ok(events)
     }
 
     pub fn project_messages(&self, session_id: &str) -> Result<Vec<Value>, StoreError> {
@@ -277,17 +371,233 @@ impl SessionStore {
     }
 
     pub fn event_count(&self, session_id: &str) -> Result<u64, StoreError> {
-        let path = self.session_dir(session_id).join("events.jsonl");
-        if !path.exists() {
-            return Ok(0);
+        match self.resolve_path(session_id) {
+            Some(path) => Ok(read_rollout(&path)?.events.len() as u64),
+            None => Ok(0),
         }
-        let file = fs::File::open(path)?;
-        Ok(BufReader::new(file).lines().count() as u64)
     }
 
-    fn session_dir(&self, id: &str) -> PathBuf {
-        self.root.join(id)
+    fn rollout_path(&self, meta: &SessionMeta) -> PathBuf {
+        let created = meta.created_at.as_str();
+        let date = created.get(0..10).unwrap_or("1970-01-01");
+        let stamp = created
+            .get(0..19)
+            .unwrap_or("1970-01-01T00-00-00")
+            .replace(':', "-");
+        let mut directory = self.sessions_root();
+        for part in date.split('-') {
+            directory = directory.join(part);
+        }
+        directory.join(format!("rollout-{stamp}-{}.jsonl", meta.id))
     }
+
+    fn resolve_path(&self, id: &str) -> Option<PathBuf> {
+        if let Some(path) = self.paths.lock().unwrap().get(id) {
+            if path.exists() {
+                return Some(path.clone());
+            }
+        }
+        let found = find_rollout(&self.sessions_root(), id)
+            .or_else(|| find_rollout(&self.archived_root(), id))?;
+        self.paths
+            .lock()
+            .unwrap()
+            .insert(id.to_owned(), found.clone());
+        Some(found)
+    }
+
+    fn append_index(&self, meta: &SessionMeta) -> Result<(), StoreError> {
+        let line = serde_json::json!({
+            "id": meta.id,
+            "thread_name": meta.name.clone().or_else(|| meta.task.clone()).unwrap_or_default(),
+            "updated_at": meta.updated_at,
+        });
+        append_line(&self.index_path(), &line)
+    }
+
+    fn append_history(&self, session_id: &str, text: &str) -> Result<(), StoreError> {
+        let line = serde_json::json!({
+            "session_id": session_id,
+            "ts": Utc::now().timestamp(),
+            "text": text,
+        });
+        append_line(&self.history_path(), &line)
+    }
+
+    /// Moves sessions written by the earlier `<id>/{session,state}.json` layout
+    /// into the dated rollout layout.
+    fn migrate_legacy(&self) -> Result<(), StoreError> {
+        for base in [self.root.clone(), self.sessions_root()] {
+            let Ok(entries) = fs::read_dir(&base) else {
+                continue;
+            };
+            let mut legacy: Vec<PathBuf> = Vec::new();
+            for entry in entries.flatten() {
+                let directory = entry.path();
+                if directory.is_dir() && directory.join("session.json").exists() {
+                    legacy.push(directory);
+                }
+            }
+            for directory in legacy {
+                let Ok(bytes) = fs::read(directory.join("session.json")) else {
+                    continue;
+                };
+                let Ok(meta) = serde_json::from_slice::<SessionMeta>(&bytes) else {
+                    continue;
+                };
+                let events = read_legacy_events(&directory.join("events.jsonl"));
+                let state = fs::read(directory.join("state.json"))
+                    .ok()
+                    .and_then(|bytes| serde_json::from_slice::<StateFile>(&bytes).ok());
+                let path = self.rollout_path(&meta);
+                if path.exists() {
+                    continue;
+                }
+                if let Some(parent) = path.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                let through_seq = events.iter().map(|event| event.seq).max().unwrap_or(0);
+                let mut bytes = serde_json::to_vec(&serde_json::json!({
+                    "type": "meta",
+                    "meta": &meta,
+                }))?;
+                bytes.push(b'\n');
+                for event in &events {
+                    bytes.extend(serde_json::to_vec(event)?);
+                    bytes.push(b'\n');
+                }
+                let (messages, approval_rules) = match &state {
+                    Some(state) if !state.messages.is_empty() => {
+                        (state.messages.clone(), state.approval_rules.clone())
+                    }
+                    _ => (project_messages(&events), Vec::new()),
+                };
+                bytes.extend(serde_json::to_vec(&serde_json::json!({
+                    "type": "state",
+                    "through_seq": through_seq,
+                    "messages": messages,
+                    "approval_rules": approval_rules,
+                }))?);
+                bytes.push(b'\n');
+                write_atomic(&path, &bytes)?;
+                self.paths.lock().unwrap().insert(meta.id.clone(), path);
+                self.append_index(&meta)?;
+                let _ = fs::remove_dir_all(&directory);
+            }
+        }
+        Ok(())
+    }
+}
+
+fn is_rollout(path: &Path) -> bool {
+    path.extension().and_then(|value| value.to_str()) == Some("jsonl")
+        && path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .is_some_and(|name| name.starts_with("rollout-"))
+}
+
+fn find_rollout(root: &Path, id: &str) -> Option<PathBuf> {
+    let suffix = format!("-{id}.jsonl");
+    let entries = fs::read_dir(root).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if let Some(found) = find_rollout(&path, id) {
+                return Some(found);
+            }
+        } else if is_rollout(&path)
+            && path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .is_some_and(|name| name.ends_with(&suffix))
+        {
+            return Some(path);
+        }
+    }
+    None
+}
+
+fn collect_meta(root: &Path, sessions: &mut Vec<SessionMeta>) -> Result<(), StoreError> {
+    if !root.exists() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(root)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_meta(&path, sessions)?;
+        } else if is_rollout(&path) {
+            if let Some(meta) = read_rollout_meta(&path) {
+                sessions.push(meta);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn read_rollout(path: &Path) -> Result<RolloutContent, StoreError> {
+    let file = fs::File::open(path)?;
+    let mut content = RolloutContent::default();
+    for line in BufReader::new(file).lines() {
+        let line = line?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let value: Value = serde_json::from_str(&line)?;
+        match value.get("type").and_then(Value::as_str) {
+            Some("meta") => {
+                if let Some(meta) = value.get("meta") {
+                    content.meta = Some(serde_json::from_value(meta.clone())?);
+                }
+            }
+            Some("state") => content.state = Some(serde_json::from_value(value)?),
+            _ => content.events.push(serde_json::from_value(value)?),
+        }
+    }
+    Ok(content)
+}
+
+fn read_rollout_meta(path: &Path) -> Option<SessionMeta> {
+    let file = fs::File::open(path).ok()?;
+    for line in BufReader::new(file).lines() {
+        let line = line.ok()?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let value: Value = serde_json::from_str(&line).ok()?;
+        if value.get("type").and_then(Value::as_str) == Some("meta") {
+            return value
+                .get("meta")
+                .and_then(|meta| serde_json::from_value(meta.clone()).ok());
+        }
+        return None;
+    }
+    None
+}
+
+fn read_legacy_events(path: &Path) -> Vec<StoredEvent> {
+    let Ok(file) = fs::File::open(path) else {
+        return Vec::new();
+    };
+    BufReader::new(file)
+        .lines()
+        .map_while(Result::ok)
+        .filter(|line| !line.trim().is_empty())
+        .filter_map(|line| serde_json::from_str::<StoredEvent>(&line).ok())
+        .collect()
+}
+
+fn append_line(path: &Path, line: &Value) -> Result<(), StoreError> {
+    let mut bytes = serde_json::to_vec(line)?;
+    bytes.push(b'\n');
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+    file.write_all(&bytes)?;
+    file.flush()?;
+    Ok(())
 }
 
 pub fn project_messages(events: &[StoredEvent]) -> Vec<Value> {
@@ -589,10 +899,11 @@ mod tests {
         let data = store
             .create("D:\\work", "openai", "gpt-test", "high")
             .unwrap();
-        let path = temp.path().join(&data.meta.id).join("session.json");
-        let mut value: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-        value.as_object_mut().unwrap().remove("turn_state");
-        std::fs::write(&path, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+        let path = store.resolve_path(&data.meta.id).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        let mut value: Value = serde_json::from_str(text.lines().next().unwrap()).unwrap();
+        value["meta"].as_object_mut().unwrap().remove("turn_state");
+        std::fs::write(&path, format!("{value}\n")).unwrap();
 
         assert_eq!(
             store.load(&data.meta.id).unwrap().meta.turn_state,
@@ -652,13 +963,15 @@ mod tests {
         let data = store
             .create("D:\\work", "openai", "gpt-test", "high")
             .unwrap();
-        let path = temp.path().join(&data.meta.id).join("events.jsonl");
+        let path = store.resolve_path(&data.meta.id).unwrap();
         let line = serde_json::json!({
             "seq": 7,
             "at": "2026-10-19T00:00:00.000Z",
             "event": { "type": "turn.started", "data": { "turn_id": "old" } }
         });
-        std::fs::write(path, format!("{line}\n")).unwrap();
+        let mut bytes = std::fs::read(&path).unwrap();
+        bytes.extend_from_slice(format!("{line}\n").as_bytes());
+        std::fs::write(&path, bytes).unwrap();
 
         let events = store.read_events(&data.meta.id).unwrap();
         assert_eq!(events.len(), 1);
@@ -915,9 +1228,13 @@ mod tests {
         ] {
             store.append_event(&data.meta.id, seq, &event).unwrap();
         }
-        let state_path = temp.path().join(&data.meta.id).join("state.json");
-
-        std::fs::remove_file(&state_path).unwrap();
+        let path = store.resolve_path(&data.meta.id).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        let kept: Vec<&str> = text
+            .lines()
+            .filter(|line| !line.contains("\"type\":\"state\""))
+            .collect();
+        std::fs::write(&path, format!("{}\n", kept.join("\n"))).unwrap();
         let messages = store.load(&data.meta.id).unwrap().messages;
         let roles: Vec<_> = messages
             .iter()
@@ -936,7 +1253,9 @@ mod tests {
             "[KL conversation summary]\nEarlier work summary"
         );
 
-        std::fs::write(&state_path, r#"{"messages":[]}"#).unwrap();
+        let mut bytes = std::fs::read(&path).unwrap();
+        bytes.extend_from_slice(b"{\"type\":\"state\",\"through_seq\":5,\"messages\":[]}\n");
+        std::fs::write(&path, bytes).unwrap();
         assert_eq!(store.load(&data.meta.id).unwrap().messages, messages);
     }
 
@@ -1001,5 +1320,143 @@ mod tests {
             store.load(&data.meta.id).unwrap().meta.task.as_deref(),
             Some("Renamed task")
         );
+    }
+
+    #[test]
+    fn legacy_session_directories_migrate_to_rollouts() {
+        let temp = tempfile::tempdir().unwrap();
+        let id = "11111111-1111-4111-8111-111111111111";
+        let legacy = temp.path().join("sessions").join(id);
+        std::fs::create_dir_all(&legacy).unwrap();
+        let meta = serde_json::json!({
+            "id": id,
+            "workspace": "D:\\work",
+            "provider": "openai",
+            "model": "gpt-test",
+            "created_at": "2026-01-02T03:04:05Z",
+            "updated_at": "2026-01-02T03:05:00Z",
+            "message_count": 1,
+            "status": "completed"
+        });
+        std::fs::write(legacy.join("session.json"), meta.to_string()).unwrap();
+        std::fs::write(
+            legacy.join("state.json"),
+            serde_json::json!({
+                "messages": [{
+                    "role": "user",
+                    "content": [{"type": "text", "data": "legacy prompt"}]
+                }],
+                "approval_rules": []
+            })
+            .to_string(),
+        )
+        .unwrap();
+        std::fs::write(
+            legacy.join("events.jsonl"),
+            format!(
+                "{}
+",
+                serde_json::json!({
+                    "seq": 1,
+                    "at": "2026-01-02T03:04:06Z",
+                    "schema_version": 1,
+                    "event": {"type": "user.message", "turn_id": "turn-1", "text": "legacy prompt"}
+                })
+            ),
+        )
+        .unwrap();
+
+        let store = SessionStore::new(temp.path()).unwrap();
+        assert!(!legacy.exists());
+        let rollout = temp
+            .path()
+            .join("sessions/2026/01/02")
+            .join(format!("rollout-2026-01-02T03-04-05-{id}.jsonl"));
+        assert!(rollout.exists());
+        let loaded = store.load(id).unwrap();
+        assert_eq!(loaded.messages.len(), 1);
+        assert_eq!(loaded.meta.workspace, "D:\\work");
+        assert_eq!(store.list().unwrap().len(), 1);
+        let index = std::fs::read_to_string(temp.path().join("session_index.jsonl")).unwrap();
+        assert!(index.contains(id));
+    }
+
+    #[test]
+    fn archived_sessions_move_between_roots() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(temp.path()).unwrap();
+        let data = store
+            .create("D:/work", "openai", "gpt-test", "high")
+            .unwrap();
+        store.save(&data).unwrap();
+
+        store.set_archived(&data.meta.id, true).unwrap();
+        assert!(store.list().unwrap().is_empty());
+        assert_eq!(store.list_archived().unwrap().len(), 1);
+        assert_eq!(store.load(&data.meta.id).unwrap().meta.id, data.meta.id);
+        assert!(
+            temp.path()
+                .join("archived_sessions")
+                .read_dir()
+                .unwrap()
+                .any(|entry| entry.unwrap().path().is_file())
+        );
+
+        store.set_archived(&data.meta.id, false).unwrap();
+        assert_eq!(store.list().unwrap().len(), 1);
+        assert!(store.list_archived().unwrap().is_empty());
+    }
+
+    #[test]
+    fn load_does_not_duplicate_a_summary_already_in_state() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(temp.path()).unwrap();
+        let mut data = store
+            .create("D:/work", "openai", "gpt-test", "high")
+            .unwrap();
+        let summary = "[KL conversation summary]
+old rounds";
+        data.messages.push(serde_json::json!({
+            "role": "user",
+            "content": [{"type": "text", "data": "hi"}]
+        }));
+        data.messages.push(serde_json::json!({
+            "role": "system",
+            "content": [{"type": "text", "data": summary}]
+        }));
+        store.save(&data).unwrap();
+        store
+            .append_event(
+                &data.meta.id,
+                1,
+                &CoreEvent::ContextCompacted {
+                    trigger: "session.compact".to_owned(),
+                    omitted_messages: 2,
+                    estimated_tokens: 10,
+                    summary_used: true,
+                    summary: Some("old rounds".to_owned()),
+                },
+            )
+            .unwrap();
+
+        let loaded = store.load(&data.meta.id).unwrap();
+        assert_eq!(loaded.messages.len(), 2);
+    }
+
+    #[test]
+    fn delete_removes_the_session_attachments() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(temp.path()).unwrap();
+        let data = store
+            .create("D:/work", "openai", "gpt-test", "high")
+            .unwrap();
+        store.save(&data).unwrap();
+        let attachments = temp.path().join("attachments").join(&data.meta.id);
+        std::fs::create_dir_all(&attachments).unwrap();
+        std::fs::write(attachments.join("1-notes.txt"), "text").unwrap();
+
+        store.delete(&data.meta.id).unwrap();
+        assert!(!attachments.exists());
+        assert!(store.load(&data.meta.id).is_err());
     }
 }

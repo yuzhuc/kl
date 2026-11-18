@@ -35,9 +35,10 @@ internal sealed class TempDirectory : IDisposable
                 Directory.Delete(Path, recursive: true);
             }
         }
-        catch (IOException)
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            // A lingering handle must not fail the test run; the OS temp dir is disposable.
+            // A lingering handle or read-only git file must not fail the test run;
+            // the OS temp dir is disposable.
         }
     }
 }
@@ -89,13 +90,13 @@ internal static class TestData
         string? title,
         int messageCount = 2,
         string updatedAt = "2026-11-03T10:00:00+08:00") =>
-        new(sessionId, workspace, "fake", "fake-model", updatedAt, messageCount, title, null, null);
+        new(sessionId, workspace, "fake", "fake-model", updatedAt, messageCount, title, null, null, false);
 
     public static MainWindowViewModel CreateViewModel(
         TempDirectory temp,
         StateStore store,
         FakeCoreSessionService core) =>
-        new(store, temp.CreatePluginCatalog(), core, action => action());
+        new(store, temp.CreatePluginCatalog(), core, action => action(), temp.Path);
 }
 
 /// <summary>
@@ -149,6 +150,8 @@ internal sealed class FakeCoreSessionService : ICoreSessionService
         "{\"ok\":true,\"core_version\":\"test-core\",\"checks\":"
         + "[{\"name\":\"core\",\"ok\":true,\"detail\":\"ready\"}]}";
     public List<(string Method, object? Parameters)> Requests { get; } = [];
+    public List<(string SessionId, bool Archived)> ArchiveCalls { get; } = [];
+    public List<string> DeleteCalls { get; } = [];
     public List<(string ApprovalId, string Decision)> ApprovalDecisions { get; } = [];
     public List<(string Workspace, string Prompt)> EphemeralRequests { get; } = [];
     public int SnapshotCalls { get; private set; }
@@ -190,6 +193,18 @@ internal sealed class FakeCoreSessionService : ICoreSessionService
     {
         CloseCalls++;
         IsSessionOpen = false;
+        return Task.CompletedTask;
+    }
+
+    public Task ArchiveAsync(string sessionId, bool archived, CancellationToken cancellationToken)
+    {
+        ArchiveCalls.Add((sessionId, archived));
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteSessionAsync(string sessionId, CancellationToken cancellationToken)
+    {
+        DeleteCalls.Add(sessionId);
         return Task.CompletedTask;
     }
 
@@ -272,12 +287,42 @@ internal sealed class FakeCoreSessionService : ICoreSessionService
     public int ConfigCalls { get; private set; }
     public string SkillsJson { get; set; } = "{}";
     public List<string> SkillWorkspaces { get; } = [];
+    public string PluginListJson { get; set; } = "{}";
+    public List<(string Id, bool Enabled)> PluginEnabledCalls { get; } = [];
+    public List<string> InstalledPlugins { get; } = [];
 
     public Task<JsonElement> ListMcpToolsAsync(CancellationToken cancellationToken)
     {
         McpListCalls++;
         return Task.FromResult(TestData.Json(McpToolsJson));
     }
+
+    public Task<JsonElement> ListPluginsAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(TestData.Json(PluginListJson));
+
+    public Task<JsonElement> SetPluginEnabledAsync(
+        string pluginId,
+        bool enabled,
+        CancellationToken cancellationToken)
+    {
+        PluginEnabledCalls.Add((pluginId, enabled));
+        return Task.FromResult(TestData.Json("{}"));
+    }
+
+    public Task<JsonElement> InstallPluginAsync(string path, CancellationToken cancellationToken)
+    {
+        InstalledPlugins.Add(path);
+        return Task.FromResult(TestData.Json("{}"));
+    }
+
+    public Task<JsonElement> UpsertProviderAsync(object parameters, CancellationToken cancellationToken) =>
+        RequestAsync(Protocol.ProviderUpsert, parameters, cancellationToken);
+
+    public Task<JsonElement> SetProviderApiKeyAsync(string id, string key, CancellationToken cancellationToken) =>
+        RequestAsync(Protocol.ProviderSetApiKey, new { id, key }, cancellationToken);
+
+    public Task<JsonElement> SetProviderEnabledAsync(string id, bool enabled, CancellationToken cancellationToken) =>
+        RequestAsync(Protocol.ProviderSetEnabled, new { id, enabled }, cancellationToken);
 
     public Task<JsonElement> ReadConfigAsync(CancellationToken cancellationToken)
     {

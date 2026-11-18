@@ -17,6 +17,7 @@ using Avalonia.Media.Transformation;
 using Avalonia.Platform.Storage;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Kl.Client;
 using Kl.Gui.Services;
 using Kl.Gui.ViewModels;
 
@@ -47,17 +48,33 @@ public partial class MainWindow : Window
     private long _lastRailPointerNavigation;
     private bool _moreMenuPinned;
     private bool _moreMenuHovered;
+    private bool _windowActive = true;
+    private bool _forceClose;
+    private bool _closeRequestedByShortcut;
 
     public MainWindow()
     {
+        var stateStore = new StateStore();
+        var state = stateStore.Load();
+        var remoteEndpoint = string.IsNullOrWhiteSpace(state.RemoteCoreEndpoint)
+            ? null
+            : state.RemoteCoreEndpoint.Trim();
         _viewModel = new MainWindowViewModel(
-            coreSessionService: new CoreSessionService(),
+            stateStore,
+            coreSessionService: new CoreSessionService(new KlClientOptions
+            {
+                Endpoint = remoteEndpoint,
+                Token = ReadRemoteToken(KlDataPaths.Default.RemoteTokenFilePath)
+            }),
             dispatcher: action => Dispatcher.UIThread.Post(action));
         InitializeComponent();
+        ApplyStartupWindowSize();
         // Grayscale antialiasing matches the flat Codex look; subpixel AA fringes
         // badly on near-black surfaces.
         TextOptions.SetTextRenderingMode(this, TextRenderingMode.Antialias);
         DataContext = _viewModel;
+        _viewModel.AttentionRequested += OnAttentionRequested;
+        Activated += OnWindowActivated;
         Opened += (_, _) => WireSettingsChevrons();
         WireComboBoxMenus();
         SettingsNavScroller.SizeChanged += (_, _) => FitSettingsNavWidth();
@@ -70,6 +87,8 @@ public partial class MainWindow : Window
         PinnedSectionMenuCard.DataContext = _viewModel;
         NotificationMenuPopup.DataContext = _viewModel;
         ApplyContentFontResources();
+        ApplyAccentResources();
+        ApplyPointerCursor();
         UpdatePinGlyphs();
         SidebarPanelBorder.Width = _viewModel.IsSidebarVisible
             ? Math.Clamp(_viewModel.SidebarWidth, SidebarMinWidth, SidebarMaxWidth)
@@ -169,6 +188,22 @@ public partial class MainWindow : Window
                 RefreshComposerSuggestions(box);
             }, TimeSpan.FromMilliseconds(900));
         }
+    }
+
+    /// <summary>
+    /// Same rule as the Codex desktop window: 85% × 80% of the work area,
+    /// capped at 1280 × 820, and never below this layout's minimum.
+    /// </summary>
+    private void ApplyStartupWindowSize()
+    {
+        if (Screens.Primary is not { } screen)
+        {
+            return;
+        }
+
+        var scale = screen.Scaling <= 0 ? 1 : screen.Scaling;
+        Width = Math.Max(MinWidth, Math.Min(1280, Math.Round(0.85 * screen.WorkingArea.Width / scale)));
+        Height = Math.Max(MinHeight, Math.Min(820, Math.Round(0.8 * screen.WorkingArea.Height / scale)));
     }
 
     private void OnJumpToBottomClicked(object? sender, RoutedEventArgs eventArgs) =>
@@ -469,9 +504,7 @@ public partial class MainWindow : Window
             1 => 20,
             2 => 14,
             3 => 10,
-            _ => tickIndex == _selectedRulerTickIndex || tickIndex == _currentRulerTickIndex
-                ? 8
-                : (int)RulerTickBaseWidth
+            _ => tickIndex == _selectedRulerTickIndex ? 8 : (int)RulerTickBaseWidth
         };
     }
 
@@ -1086,6 +1119,15 @@ public partial class MainWindow : Window
             RenameBox.Focus();
             RenameBox.SelectAll();
         }, DispatcherPriority.Background);
+    }
+
+    private void OnWorkspaceAgentsClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        WorkspaceMenuPopup.IsOpen = false;
+        if (WorkspaceMenuPopup.DataContext is WorkspaceItemViewModel workspace)
+        {
+            _viewModel.OpenProjectAgentsEditor(workspace);
+        }
     }
 
     private void OnArchiveWorkspaceChatsClicked(object? sender, RoutedEventArgs eventArgs)
@@ -1728,6 +1770,15 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnMarkSessionUnreadClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        eventArgs.Handled = true;
+        if (GetSession(sender) is { } session)
+        {
+            _viewModel.MarkSessionUnread(session);
+        }
+    }
+
     private void OnPinSessionClicked(object? sender, RoutedEventArgs eventArgs)
     {
         eventArgs.Handled = true;
@@ -1761,6 +1812,36 @@ public partial class MainWindow : Window
 
     private void OnToggleArchivedClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.ToggleArchived();
+
+    /// <summary>Codex's header share action: copy the conversation as plain text.</summary>
+    private void OnShareConversationClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        var builder = new System.Text.StringBuilder();
+        foreach (var message in _viewModel.Messages)
+        {
+            if (string.IsNullOrWhiteSpace(message.Text))
+            {
+                continue;
+            }
+            builder.AppendLine(message.IsUser ? "用户：" : "KL：");
+            builder.AppendLine(message.Text);
+            builder.AppendLine();
+        }
+        if (builder.Length == 0 || TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard)
+        {
+            return;
+        }
+
+        _ = clipboard.SetTextAsync(builder.ToString());
+        var originalData = ShareHeaderIcon.Data;
+        ShareHeaderIcon.Data = (Geometry)Application.Current!.FindResource("CheckIcon")!;
+        ShareHeaderIcon.Stroke = new SolidColorBrush(Color.Parse("#7FBF8F"));
+        DispatcherTimer.RunOnce(() =>
+        {
+            ShareHeaderIcon.Data = originalData;
+            ShareHeaderIcon.ClearValue(Avalonia.Controls.Shapes.Shape.StrokeProperty);
+        }, TimeSpan.FromMilliseconds(1200));
+    }
 
     private void OnRenameActiveSessionClicked(object? sender, RoutedEventArgs eventArgs)
     {
@@ -1971,10 +2052,22 @@ public partial class MainWindow : Window
 
     private void OnWorkspacePickerClicked(object? sender, RoutedEventArgs eventArgs)
     {
-        if (sender is not Button button)
+        if (sender is Control anchor)
         {
-            return;
+            ShowWorkspacePicker(anchor);
         }
+    }
+
+    private void OnHomeWorkspaceClicked(object? sender, PointerPressedEventArgs eventArgs)
+    {
+        if (sender is Control anchor)
+        {
+            ShowWorkspacePicker(anchor);
+        }
+    }
+
+    private void ShowWorkspacePicker(Control anchor)
+    {
         var flyout = new MenuFlyout();
         foreach (var workspace in _viewModel.Workspaces)
         {
@@ -1990,7 +2083,7 @@ public partial class MainWindow : Window
         var add = new MenuItem { Header = "添加工作区…" };
         add.Click += async (_, _) => await PickWorkspaceAsync();
         flyout.Items.Add(add);
-        flyout.ShowAt(button);
+        flyout.ShowAt(anchor);
     }
 
     private void OnMemoryScopeWorkspaceClicked(object? sender, RoutedEventArgs eventArgs) =>
@@ -2018,6 +2111,180 @@ public partial class MainWindow : Window
             await _viewModel.LoadMemoryAsync(name);
         }
     }
+
+    private void OnRefreshConfigClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _ = _viewModel.RefreshConfigAsync();
+
+    private void OnRefreshHooksClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.RefreshHooks();
+
+    private async void OnRefreshGitClicked(object? sender, RoutedEventArgs eventArgs) =>
+        await _viewModel.RefreshGitAsync();
+
+    private async void OnRefreshWorktreesClicked(object? sender, RoutedEventArgs eventArgs) =>
+        await _viewModel.RefreshWorktreesAsync();
+
+    private void OnOpenWorktreeClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is Control { DataContext: WorktreeRow row } && Directory.Exists(row.Path))
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"\"{row.Path}\"",
+                UseShellExecute = true
+            });
+        }
+    }
+
+    private void OnOpenHooksClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        var path = _viewModel.HooksFilePath;
+        if (File.Exists(path))
+        {
+            Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true });
+            return;
+        }
+
+        Directory.CreateDirectory(_viewModel.KlHomeDirectory);
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = "explorer.exe",
+            Arguments = $"\"{_viewModel.KlHomeDirectory}\"",
+            UseShellExecute = true
+        });
+    }
+
+    private void OnOpenMemorySettingsClicked(object? sender, RoutedEventArgs eventArgs) =>
+        SwitchSettingsPane(SettingsPane.Memory);
+
+    private void OnOpenWorktreesSettingsClicked(object? sender, RoutedEventArgs eventArgs) =>
+        SwitchSettingsPane(SettingsPane.Worktrees);
+
+    private void OnOpenModelsSettingsClicked(object? sender, RoutedEventArgs eventArgs) =>
+        SwitchSettingsPane(SettingsPane.Models);
+
+    private void OnAddProviderClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.OpenProviderForm();
+
+    private void OnCancelProviderClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.CloseProviderForm();
+
+    private async void OnSaveProviderClicked(object? sender, RoutedEventArgs eventArgs) =>
+        await _viewModel.SaveProviderAsync();
+
+    private async void OnRefreshProvidersClicked(object? sender, RoutedEventArgs eventArgs) =>
+        await _viewModel.RefreshProvidersAsync();
+
+    private void OnEditProviderClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is Control { DataContext: ProviderCardRow provider })
+        {
+            _viewModel.OpenProviderDetail(provider);
+        }
+    }
+
+    private void OnCloseProviderDetailClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.CloseProviderDetail();
+
+    private void OnSaveProviderProfileClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.SaveProviderProfile();
+
+    private void OnAddProviderModelClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.OpenAddProviderModel();
+
+    private void OnEditProviderModelClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is Control { DataContext: ProviderModelRow model })
+        {
+            _viewModel.OpenEditProviderModel(model);
+        }
+    }
+
+    private async void OnDeleteProviderModelClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is Control { DataContext: ProviderModelRow model })
+        {
+            await _viewModel.DeleteProviderModelAsync(model);
+        }
+    }
+
+    private void OnCancelProviderModelClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.CloseProviderModelForm();
+
+    private async void OnSaveProviderModelClicked(object? sender, RoutedEventArgs eventArgs) =>
+        await _viewModel.SaveProviderModelAsync();
+
+    private async void OnSaveProviderApiKeyClicked(object? sender, RoutedEventArgs eventArgs) =>
+        await _viewModel.SaveProviderDetailApiKeyAsync();
+
+    private async void OnProviderEnabledChanged(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is ToggleSwitch { DataContext: ProviderCardRow provider } toggle)
+        {
+            await _viewModel.SetProviderEnabledAsync(provider, toggle.IsChecked == true);
+        }
+    }
+
+    private void OnOpenProviderWebsiteClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is Control { Tag: string url }
+            && Uri.TryCreate(url, UriKind.Absolute, out var uri)
+            && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo { FileName = uri.AbsoluteUri, UseShellExecute = true });
+            }
+            catch (Exception error)
+            {
+                _viewModel.ReportError($"无法打开官网链接：{error.Message}");
+            }
+        }
+    }
+
+    private void OnFollowUpModeClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is Control { Tag: string mode })
+        {
+            _viewModel.SetFollowUpMode(mode);
+        }
+    }
+
+    private void OnMotionModeClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is Control { Tag: string mode })
+        {
+            _viewModel.SetReduceMotionMode(mode);
+        }
+    }
+
+    private void OnRefreshCredentialsClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.RefreshCredentials();
+
+    private void OnOpenCredentialsClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        var directory = _viewModel.CredentialsDirectory;
+        Directory.CreateDirectory(directory);
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = "explorer.exe",
+            Arguments = $"\"{directory}\"",
+            UseShellExecute = true
+        });
+    }
+
+    private void OnOpenRemoteCoreSettingsClicked(object? sender, RoutedEventArgs eventArgs) =>
+        SwitchSettingsPane(SettingsPane.Connections);
+
+    private void OnOpenAutomationFromSettingsClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        _viewModel.CloseSettings();
+        _viewModel.Navigate(AppSection.Automation);
+    }
+
+    private async void OnDeleteAllMemoriesClicked(object? sender, RoutedEventArgs eventArgs) =>
+        await _viewModel.DeleteAllMemoriesAsync();
 
     private void OnRefreshMcpToolsClicked(object? sender, RoutedEventArgs eventArgs) =>
         _ = _viewModel.RefreshMcpToolsAsync();
@@ -2053,7 +2320,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (button.Classes.Contains("filter") && button.Parent is Panel panel)
+        if ((button.Classes.Contains("filter") || button.Classes.Contains("segment"))
+            && button.Parent is Panel panel)
         {
             foreach (var sibling in panel.Children.OfType<Button>())
             {
@@ -2142,6 +2410,15 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnEditAgentsClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.OpenAgentsEditor();
+
+    private void OnCloseAgentsEditorClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.CloseAgentsEditor();
+
+    private void OnSaveAgentsClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.SaveAgents();
+
     private void OnCloseSettingsDetailClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.CloseSettingsDetail();
 
@@ -2170,6 +2447,11 @@ public partial class MainWindow : Window
     /// <summary>Chevron rows without a destination become clickable and open the detail sheet.</summary>
     private void OnSettingsPaneChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(MainWindowViewModel.StorageBarColumns))
+        {
+            StorageBar.ColumnDefinitions = _viewModel.StorageBarColumns;
+            return;
+        }
         if (e.PropertyName is null || !e.PropertyName.StartsWith("IsSettings", StringComparison.Ordinal))
             return;
         Dispatcher.UIThread.Post(ScrollActiveSettingsNavIntoView, DispatcherPriority.Loaded);
@@ -2407,6 +2689,12 @@ public partial class MainWindow : Window
         _viewModel.SetPermissionMode("请求批准");
     }
 
+    private void OnDismissFullAccessWarningClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.DismissFullAccessWarning(forever: false);
+
+    private void OnHideFullAccessWarningClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.DismissFullAccessWarning(forever: true);
+
     private void OnPermissionLearnMoreClicked(object? sender, RoutedEventArgs eventArgs)
     {
         HideOwnerFlyout(sender);
@@ -2556,6 +2844,41 @@ public partial class MainWindow : Window
     private async void OnSaveApiKeyClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.SaveApiKeyAsync();
 
+    private async void OnExportConversationClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        var markdown = _viewModel.BuildSessionMarkdown();
+        if (markdown.Length == 0)
+        {
+            return;
+        }
+
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "导出会话",
+            SuggestedFileName = _viewModel.SessionExportFileName,
+            DefaultExtension = "md",
+            FileTypeChoices =
+            [
+                new FilePickerFileType("Markdown") { Patterns = ["*.md"] }
+            ]
+        });
+        if (file is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await using var stream = await file.OpenWriteAsync();
+            await using var writer = new StreamWriter(stream, System.Text.Encoding.UTF8);
+            await writer.WriteAsync(markdown);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            _viewModel.ReportError($"导出会话失败：{error.Message}");
+        }
+    }
+
     private async void OnForkSessionClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.ForkActiveSessionAsync();
 
@@ -2587,6 +2910,9 @@ public partial class MainWindow : Window
 
     private void OnResetSettingsClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.ResetSettingsDefaults();
+
+    private void OnRefreshStorageClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _ = _viewModel.RefreshStorageAsync();
 
     private void OnOpenStateDirectoryClicked(object? sender, RoutedEventArgs eventArgs) =>
         OpenDirectory(_viewModel.StateDirectory, "数据目录");
@@ -2624,8 +2950,19 @@ public partial class MainWindow : Window
     private void OnOpenPluginDirectoryClicked(object? sender, RoutedEventArgs eventArgs) =>
         OpenDirectory(_viewModel.PluginDirectoryPath, "插件目录");
 
-    private void OnRefreshPluginsClicked(object? sender, RoutedEventArgs eventArgs) =>
+    private async void OnRefreshPluginsClicked(object? sender, RoutedEventArgs eventArgs)
+    {
         _viewModel.RefreshPlugins();
+        await _viewModel.RefreshPluginsAsync();
+    }
+
+    private async void OnPluginToggled(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is ToggleSwitch { DataContext: PluginItemViewModel plugin } toggle)
+        {
+            await _viewModel.SetPluginEnabledAsync(plugin, toggle.IsChecked == true);
+        }
+    }
 
     private async void OnImportPluginClicked(object? sender, RoutedEventArgs eventArgs)
     {
@@ -2635,9 +2972,14 @@ public partial class MainWindow : Window
             AllowMultiple = false
         });
         var path = folders.FirstOrDefault()?.TryGetLocalPath();
-        if (!string.IsNullOrWhiteSpace(path))
+        if (string.IsNullOrWhiteSpace(path))
         {
-            _viewModel.ImportPlugin(path);
+            return;
+        }
+
+        if (_viewModel.ImportPlugin(path) && _viewModel.LastImportedPluginPath is { } target)
+        {
+            await _viewModel.InstallPluginAsync(target);
         }
     }
 
@@ -2705,6 +3047,38 @@ public partial class MainWindow : Window
     private void OnDismissErrorClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.DismissError();
 
+    private static string? ReadRemoteToken(string path)
+    {
+        try
+        {
+            return File.Exists(path) ? File.ReadAllText(path).Trim() : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private void OnSaveRemoteCoreClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.SaveRemoteCoreSettings();
+
+    private void OnClearRemoteCoreClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.ClearRemoteCoreSettings();
+
+    private void OnOpenCleanupClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.OpenCleanupDialog();
+
+    private void OnCloseCleanupDialogClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.CloseCleanupDialog();
+
+    private void OnCleanupDeleteClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is Control { Tag: SessionItemViewModel session })
+        {
+            _viewModel.BeginDelete(session);
+        }
+    }
+
     private void OnCloseDialogClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.CloseDialogs();
 
@@ -2733,10 +3107,36 @@ public partial class MainWindow : Window
 
     private void OnActivityClicked(object? sender, RoutedEventArgs eventArgs)
     {
-        if (sender is Button { DataContext: ChatItemViewModel item })
+        if (sender is not Button { DataContext: ChatItemViewModel item } button)
         {
-            item.Toggle();
+            return;
         }
+
+        item.Toggle();
+        if (!item.ShowExpanded)
+        {
+            return;
+        }
+
+        // The panel is laid out after this event; scroll it into view once it exists.
+        var panel = (button.Parent as Panel)?.Children
+            .OfType<Control>()
+            .LastOrDefault(child => child.IsVisible && !ReferenceEquals(child, button));
+        if (panel is not null)
+        {
+            Dispatcher.UIThread.Post(() => panel.BringIntoView(), DispatcherPriority.Background);
+        }
+    }
+
+    private static bool TryNumberSlot(Key key, out int slot)
+    {
+        slot = key switch
+        {
+            >= Key.D1 and <= Key.D9 => key - Key.D1,
+            >= Key.NumPad1 and <= Key.NumPad9 => key - Key.NumPad1,
+            _ => -1
+        };
+        return slot >= 0;
     }
 
     private async void OnRenameKeyDown(object? sender, KeyEventArgs eventArgs)
@@ -3037,8 +3437,17 @@ public partial class MainWindow : Window
             }
         }
 
-        if (eventArgs.Key != Key.Enter
-            || !eventArgs.KeyModifiers.HasFlag(KeyModifiers.Control))
+        if (eventArgs.Key != Key.Enter)
+        {
+            return;
+        }
+
+        var modifiers = eventArgs.KeyModifiers;
+        var send = modifiers.HasFlag(KeyModifiers.Control)
+            || (_viewModel.SendsOnEnter
+                && !modifiers.HasFlag(KeyModifiers.Shift)
+                && !modifiers.HasFlag(KeyModifiers.Alt));
+        if (!send)
         {
             return;
         }
@@ -3070,8 +3479,11 @@ public partial class MainWindow : Window
         CloseMoreMenu();
     }
 
+    private void OnWindowActivated(object? sender, EventArgs eventArgs) => _windowActive = true;
+
     private void OnWindowDeactivated(object? sender, EventArgs eventArgs)
     {
+        _windowActive = false;
         HideDropIndicator();
         HideRailHintAndMoreMenu();
         CloseComposerSuggestions();
@@ -3079,6 +3491,31 @@ public partial class MainWindow : Window
 
     private void OnWindowKeyDown(object? sender, KeyEventArgs eventArgs)
     {
+        if (_viewModel.NumberShortcuts && TryNumberSlot(eventArgs.Key, out var slot))
+        {
+            if (eventArgs.KeyModifiers == KeyModifiers.Control && slot < 5)
+            {
+                eventArgs.Handled = true;
+                _viewModel.CloseSettings();
+                _viewModel.Navigate(slot switch
+                {
+                    0 => AppSection.Chat,
+                    1 => AppSection.Library,
+                    2 => AppSection.Projects,
+                    3 => AppSection.Plugins,
+                    _ => AppSection.Automation
+                });
+                return;
+            }
+
+            if (eventArgs.KeyModifiers == KeyModifiers.Alt)
+            {
+                eventArgs.Handled = true;
+                _ = _viewModel.OpenSessionShortcutAsync(slot);
+                return;
+            }
+        }
+
         if (eventArgs.Key == Key.Escape && _viewModel.IsApprovalOpen)
         {
             eventArgs.Handled = true;
@@ -3116,6 +3553,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (eventArgs.Key == Key.Escape && _viewModel.IsCloseConfirmOpen)
+        {
+            eventArgs.Handled = true;
+            _viewModel.CloseCloseConfirm();
+            return;
+        }
+
         if (eventArgs.Key == Key.Escape
             && (_viewModel.IsRenameDialogOpen
                 || _viewModel.IsDeleteDialogOpen
@@ -3124,6 +3568,16 @@ public partial class MainWindow : Window
         {
             eventArgs.Handled = true;
             _viewModel.CloseDialogs();
+            return;
+        }
+
+        if (eventArgs.Key == Key.W
+            && eventArgs.KeyModifiers.HasFlag(KeyModifiers.Control)
+            && eventArgs.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        {
+            eventArgs.Handled = true;
+            _closeRequestedByShortcut = true;
+            Close();
             return;
         }
 
@@ -3152,11 +3606,79 @@ public partial class MainWindow : Window
             {
                 SearchBox.Focus();
             }
+
+            return;
+        }
+
+        if (eventArgs.Key == Key.A
+            && eventArgs.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift))
+        {
+            eventArgs.Handled = true;
+            _viewModel.ArchiveActiveSession();
+            return;
+        }
+
+        if (eventArgs.Key == Key.U
+            && eventArgs.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift))
+        {
+            eventArgs.Handled = true;
+            _viewModel.ToggleActiveSessionUnread();
+            return;
+        }
+
+        if (eventArgs.Key == Key.P
+            && eventArgs.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Alt))
+        {
+            eventArgs.Handled = true;
+            _viewModel.ToggleActiveSessionPinned();
+            return;
+        }
+
+        if (eventArgs.Key == Key.OemSemicolon
+            && eventArgs.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift))
+        {
+            eventArgs.Handled = true;
+            _ = CopyLastCodeBlockAsync();
+        }
+    }
+
+    private async Task CopyLastCodeBlockAsync()
+    {
+        if (_viewModel.LastAssistantCodeBlock() is not { } code)
+        {
+            _viewModel.ReportError("当前聊天没有可复制的代码块。");
+            return;
+        }
+
+        var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+        if (clipboard is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await clipboard.SetTextAsync(code);
+        }
+        catch (Exception error)
+        {
+            _viewModel.ReportError($"无法复制代码块：{error.Message}");
         }
     }
 
     private void OnWindowClosing(object? sender, WindowClosingEventArgs eventArgs)
     {
+        var action = _viewModel.CloseWindowAction;
+        var confirm = action == "always"
+            || (action == "shortcut" && _closeRequestedByShortcut);
+        if (!_forceClose && confirm)
+        {
+            eventArgs.Cancel = true;
+            _closeRequestedByShortcut = false;
+            _viewModel.OpenCloseConfirm();
+            return;
+        }
+
         _automationTimer.Stop();
         if (_viewModel.IsBusy)
         {
@@ -3196,6 +3718,8 @@ public partial class MainWindow : Window
         if (eventArgs.PropertyName == nameof(MainWindowViewModel.HasConversation))
         {
             UpdateJumpButton();
+            // The scroll extent is only known after the transcript layout pass.
+            Dispatcher.UIThread.Post(() => UpdateJumpButton(), DispatcherPriority.Background);
             return;
         }
 
@@ -3216,6 +3740,19 @@ public partial class MainWindow : Window
             or nameof(MainWindowViewModel.IsCodeReviewPinned))
         {
             UpdatePinGlyphs();
+            return;
+        }
+
+        if (eventArgs.PropertyName is nameof(MainWindowViewModel.AccentColorHex)
+            or nameof(MainWindowViewModel.AccentColorBrush))
+        {
+            ApplyAccentResources();
+            return;
+        }
+
+        if (eventArgs.PropertyName == nameof(MainWindowViewModel.UsePointerCursor))
+        {
+            ApplyPointerCursor();
             return;
         }
 
@@ -3266,7 +3803,7 @@ public partial class MainWindow : Window
     private static readonly IBrush RulerTickBrush = new SolidColorBrush(Color.Parse("#373739"));
     private static readonly IBrush RulerTickActiveBrush = new SolidColorBrush(Color.Parse("#E2E3E5"));
     private static readonly IBrush RulerTickSelectedBrush = new SolidColorBrush(Color.Parse("#737375"));
-    private static readonly IBrush RulerTickCurrentBrush = new SolidColorBrush(Color.Parse("#55565A"));
+    private static readonly IBrush RulerTickCurrentBrush = new SolidColorBrush(Color.Parse("#8E8F91"));
     private static readonly IBrush RulerSelectionMarkerBrush = new SolidColorBrush(Color.Parse("#5E5E61"));
     private static readonly IBrush RulerSelectionMarkerHoverBrush = new SolidColorBrush(Color.Parse("#B6B7B9"));
     private readonly Dictionary<Control, CancellationTokenSource> _sectionAnimations = new();
@@ -3280,6 +3817,13 @@ public partial class MainWindow : Window
         var expandedWidth = double.IsNaN(_viewModel.SidebarWidth)
             ? SidebarMinWidth
             : Math.Clamp(_viewModel.SidebarWidth, SidebarMinWidth, SidebarMaxWidth);
+        if (_viewModel.ReduceMotion)
+        {
+            CancelSidebarAnimation();
+            SidebarPanelBorder.Width = visible ? expandedWidth : 0;
+            return;
+        }
+
         AnimateSidebarTo(visible ? expandedWidth : 0, visible);
     }
 
@@ -3683,6 +4227,49 @@ public partial class MainWindow : Window
             showJump ? "translate(0px,0px)" : "translate(0px,6px)");
     }
 
+    private async void OnAppearanceFontSizeCommitted(object? sender, RoutedEventArgs eventArgs) =>
+        await CommitAppearanceFontSizeAsync();
+
+    private async void OnAppearanceFontSizeKeyDown(object? sender, KeyEventArgs eventArgs)
+    {
+        if (eventArgs.Key != Key.Enter)
+        {
+            return;
+        }
+
+        eventArgs.Handled = true;
+        await CommitAppearanceFontSizeAsync();
+    }
+
+    private async Task CommitAppearanceFontSizeAsync()
+    {
+        await _viewModel.SaveSettingsAsync();
+        ApplyContentFontResources();
+    }
+
+    private void ApplyPointerCursor() =>
+        Classes.Set("pointer-cursor", _viewModel.UsePointerCursor);
+
+    /// <summary>Re-colours the few accent-keyed resources the app reads at runtime.</summary>
+    private void ApplyAccentResources()
+    {
+        if (Application.Current is not { } application)
+        {
+            return;
+        }
+
+        var color = Color.Parse(_viewModel.AccentColorHex);
+        var accent = new SolidColorBrush(color);
+        application.Resources["AccentBlue"] = accent;
+        application.Resources["SliderTrackFill"] = accent;
+        application.Resources["SliderTrackFillPointerOver"] = accent;
+        application.Resources["SliderTrackFillPressed"] = accent;
+        var dim = new SolidColorBrush(Color.FromArgb(150, color.R, color.G, color.B));
+        application.Resources["SliderTrackValueFill"] = dim;
+        application.Resources["SliderTrackValueFillPointerOver"] = dim;
+        application.Resources["SliderTrackValueFillPressed"] = dim;
+    }
+
     private void ApplyContentFontResources()
     {
         if (Application.Current is not { } application)
@@ -3691,7 +4278,9 @@ public partial class MainWindow : Window
         }
         var size = (double)_viewModel.ContentFontSize;
         application.Resources["ChatContentFontSize"] = size;
-        application.Resources["ChatContentLineHeight"] = size + 10;
+        application.Resources["ChatCodeFontSize"] = (double)_viewModel.CodeFontSize;
+        // Codex keeps the conversation at 14/23; the line-height divisor is fixed.
+        application.Resources["ChatContentLineHeight"] = size + 9;
         application.Resources["ChatSecondaryFontSize"] = size - 1;
         application.Resources["ChatSecondaryLineHeight"] = size + 6;
     }
@@ -3739,6 +4328,49 @@ public partial class MainWindow : Window
         ToggleWindowState();
         eventArgs.Handled = true;
     }
+
+    private void OnAttentionRequested(AttentionKind kind, bool sound)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (kind == AttentionKind.Approval)
+            {
+                if (!_viewModel.ApprovalNotifications || _windowActive)
+                {
+                    return;
+                }
+            }
+            else if (kind == AttentionKind.Question)
+            {
+                if (!_viewModel.QuestionNotifications || _windowActive)
+                {
+                    return;
+                }
+            }
+            else
+            {
+                var mode = _viewModel.TurnNotificationMode;
+                if (mode == "never" || (mode == "unfocused" && _windowActive))
+                {
+                    return;
+                }
+            }
+
+            NotificationEffects.Attention(
+                TryGetPlatformHandle()?.Handle ?? 0,
+                sound && _viewModel.NotificationSound);
+        });
+    }
+
+    private void OnConfirmCloseClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        _forceClose = true;
+        _viewModel.CloseCloseConfirm();
+        Close();
+    }
+
+    private void OnCancelCloseClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.CloseCloseConfirm();
 
     private void OnMinimizeClicked(object? sender, RoutedEventArgs eventArgs) =>
         WindowState = WindowState.Minimized;
@@ -3812,7 +4444,7 @@ public partial class MainWindow : Window
     /// </summary>
     private async void AnimateSection(Control? list, bool expanded, Action toggle)
     {
-        if (list is null)
+        if (list is null || _viewModel.ReduceMotion)
         {
             toggle();
             return;
