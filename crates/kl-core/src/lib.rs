@@ -223,9 +223,9 @@ impl EventHub {
         *entry = (*entry).max(seq);
     }
 
-    // shortcut: the sequence lock also serializes append and stdout notify, so a
-    // concurrent SessionStore::save that rewrites the rollout can still reorder
-    // events; merging those write paths is deferred.
+    // The sequence lock keeps seq order and store appends in one order; the
+    // store's own lock serializes them against SessionStore::save. A blocked
+    // stdout still stalls every emit, which stdio mode cannot avoid.
     fn emit(&self, session_id: &str, event: CoreEvent) -> Result<u64, String> {
         let mut sequences = self
             .sequences
@@ -1555,12 +1555,26 @@ impl Core {
         to_value(SessionListResult { sessions: infos })
     }
 
+    fn session_busy(&self, session_id: &str) -> bool {
+        self.sessions
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .get(session_id)
+            .is_some_and(|state| state.active_turn.is_some())
+    }
+
     fn session_delete(&mut self, params: Value) -> Result<Value, RpcError> {
         let params: SessionDeleteParams = parse_params(params, methods::SESSION_DELETE)?;
         if self.current_session.as_deref() == Some(params.session_id.as_str()) {
             return Err(rpc_error(
                 error_codes::INTERNAL_ERROR,
                 "cannot delete the active session",
+            ));
+        }
+        if self.session_busy(&params.session_id) {
+            return Err(rpc_error(
+                error_codes::TURN_IN_PROGRESS,
+                "cannot delete a running session",
             ));
         }
         self.store.delete(&params.session_id).map_err(store_error)?;
@@ -1573,6 +1587,12 @@ impl Core {
 
     fn session_archive(&mut self, params: Value) -> Result<Value, RpcError> {
         let params: SessionArchiveParams = parse_params(params, methods::SESSION_ARCHIVE)?;
+        if self.session_busy(&params.session_id) {
+            return Err(rpc_error(
+                error_codes::TURN_IN_PROGRESS,
+                "cannot archive a running session",
+            ));
+        }
         self.store
             .set_archived(&params.session_id, params.archived)
             .map_err(store_error)?;
@@ -1583,13 +1603,7 @@ impl Core {
 
     fn session_rename(&mut self, params: Value) -> Result<Value, RpcError> {
         let params: SessionRenameParams = parse_params(params, methods::SESSION_RENAME)?;
-        let busy = self
-            .sessions
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .get(&params.session_id)
-            .is_some_and(|state| state.active_turn.is_some());
-        if busy {
+        if self.session_busy(&params.session_id) {
             return Err(rpc_error(
                 error_codes::TURN_IN_PROGRESS,
                 "cannot rename a running session",
@@ -1735,17 +1749,16 @@ impl Core {
                     format!("turn already running: {active}"),
                 ));
             }
-            state.messages = history;
             let data = SessionData {
                 meta: state.meta.clone(),
-                messages: state
-                    .messages
+                messages: history
                     .iter()
                     .map(|message| serde_json::to_value(message).unwrap_or(Value::Null))
                     .collect(),
                 approval_rules: state.approval_rules.clone(),
             };
             self.store.save(&data).map_err(store_error)?;
+            state.messages = history;
         }
         let _ = self.hub.emit(
             &session_id,
@@ -1894,7 +1907,7 @@ impl Core {
             None => None,
         };
 
-        let (metadata, workspace, history, provider, rewound_messages, before_rewind) = {
+        let (metadata, workspace, history, provider, rewound_messages, before_rewind, policy) = {
             let mut sessions = self
                 .sessions
                 .lock()
@@ -1927,6 +1940,12 @@ impl Core {
                 .map_err(provider_error)?;
             check_provider_available(provider.as_ref())?;
             let workspace = state.meta.workspace.clone();
+            // Build the policy before claiming the turn so a bad workspace
+            // cannot leave active_turn set.
+            let policy = Arc::new(
+                PolicyEngine::new(PathBuf::from(&workspace), self.effective_policy_config())
+                    .map_err(|error| rpc_error(error_codes::INVALID_PARAMS, error.to_string()))?,
+            );
             let before_rewind = rewind
                 .as_ref()
                 .map(|_| (state.messages.clone(), state.meta.clone()));
@@ -1948,6 +1967,7 @@ impl Core {
                 provider,
                 rewound_messages,
                 before_rewind,
+                policy,
             )
         };
 
@@ -2066,10 +2086,6 @@ impl Core {
 
         let skills_summary =
             skills::summary_prompt(&skills::discover(&self.context.home, Path::new(&workspace)));
-        let policy = Arc::new(
-            PolicyEngine::new(PathBuf::from(&workspace), self.effective_policy_config())
-                .map_err(|error| rpc_error(error_codes::INVALID_PARAMS, error.to_string()))?,
-        );
         if let Err(error) = set_turn_state(
             &self.sessions,
             &self.store,
@@ -3446,14 +3462,15 @@ struct RewindPlan {
 impl RewindPlan {
     /// Drops the target user message and everything after it; leading system
     /// messages (compaction summary) stay.
-    // shortcut: assumes retained user messages came from user.message events;
-    // imported messages without events are not rewind targets.
     fn truncate(&self, messages: &[ChatMessage]) -> Result<(Vec<ChatMessage>, usize), RpcError> {
         let user_count = messages
             .iter()
             .filter(|message| message.role == Role::User)
             .count();
-        let retained_start = self.user_events.len().saturating_sub(user_count);
+        // Live user events align to the trailing user rows: compaction drops
+        // leading rows, imports (fork) add rows without events.
+        let dropped = self.user_events.len().saturating_sub(user_count);
+        let imported = user_count.saturating_sub(self.user_events.len());
         let target = self
             .user_events
             .iter()
@@ -3464,13 +3481,13 @@ impl RewindPlan {
                     "rewind_from_seq must be a live user.message event",
                 )
             })?;
-        if target < retained_start {
+        if target < dropped {
             return Err(rpc_error(
                 error_codes::INVALID_PARAMS,
                 "rewind target was removed by compaction and cannot be restored",
             ));
         }
-        let mut remaining = target - retained_start;
+        let mut remaining = imported + target - dropped;
         let mut cut = None;
         for (index, message) in messages.iter().enumerate() {
             if message.role == Role::User {
@@ -3538,10 +3555,11 @@ fn build_session_history(
         .filter(|message| message.get("role").and_then(Value::as_str) == Some("user"))
         .count();
     let first_user_event = user_event_indices.len().saturating_sub(user_message_count);
+    let event_offset = user_event_indices.len() as isize - user_message_count as isize;
     let mut cursor = user_event_indices
         .get(first_user_event)
         .copied()
-        .unwrap_or(0);
+        .unwrap_or(events.len());
     let mut user_index = 0;
     for message in messages {
         let role = message
@@ -3550,17 +3568,20 @@ fn build_session_history(
             .unwrap_or_default();
         match role {
             "user" => {
-                let event = if user_event_indices.len() >= user_message_count {
-                    let event = user_event_indices
-                        .get(first_user_event + user_index)
-                        .and_then(|index| events.get(*index));
-                    user_index += 1;
-                    event
+                // Only the trailing rows have events; a negative slot is an
+                // imported row (fork/merge) and must keep seq None.
+                let slot = user_index as isize + event_offset;
+                user_index += 1;
+                let event = if slot >= 0 {
+                    user_event_indices
+                        .get(slot as usize)
+                        .and_then(|index| events.get(*index))
                 } else {
-                    next_history_event(events, &mut cursor, |event| {
-                        matches!(event, CoreEvent::UserMessage { .. })
-                    })
+                    None
                 };
+                if event.is_none() {
+                    turn_id = None;
+                }
                 let text = event
                     .and_then(|event| match &event.event {
                         CoreEvent::UserMessage { turn_id, text } => {
@@ -3583,13 +3604,26 @@ fn build_session_history(
                 if text.trim().is_empty() {
                     continue;
                 }
-                let event = next_assistant_event(events, &mut cursor);
-                let reasoning = turn_id
-                    .as_deref()
-                    .and_then(|id| history_reasoning(events, id));
+                let imported = turn_id.is_none();
+                let event = if imported {
+                    None
+                } else {
+                    next_assistant_event(events, &mut cursor)
+                };
+                let reasoning = if imported {
+                    None
+                } else {
+                    turn_id
+                        .as_deref()
+                        .and_then(|id| history_reasoning(events, id))
+                };
                 entries.push(history_entry("assistant", text, event, None, reasoning));
             }
             "tool" => {
+                if turn_id.is_none() {
+                    // Imported rows carry no events, so there is no tool summary.
+                    continue;
+                }
                 let event = next_history_event(events, &mut cursor, |event| {
                     matches!(event, CoreEvent::ToolCompleted { .. })
                 });
@@ -6766,5 +6800,272 @@ auto_approve_plugins = true
         let events = core.store.read_events(&session_id).unwrap();
         let seqs: Vec<u64> = events.iter().map(|event| event.seq).collect();
         assert_eq!(seqs, (1..=before + 400).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn rewind_truncate_keeps_imported_leading_messages() {
+        let plan = RewindPlan {
+            from_seq: 7,
+            user_events: vec![7],
+        };
+        let messages = vec![
+            ChatMessage::user("old question"),
+            ChatMessage::assistant("old answer", Vec::new()),
+            ChatMessage::user("new question"),
+            ChatMessage::assistant("new answer", Vec::new()),
+        ];
+
+        let (kept, cut) = plan.truncate(&messages).unwrap();
+
+        assert_eq!(cut, 2);
+        assert_eq!(kept.len(), 2);
+        assert_eq!(kept[0].text(), "old question");
+        assert_eq!(kept[1].text(), "old answer");
+    }
+
+    #[test]
+    fn rewind_truncate_still_rejects_compacted_targets() {
+        let messages = vec![ChatMessage::user("kept question")];
+        let plan = RewindPlan {
+            from_seq: 1,
+            user_events: vec![1, 3],
+        };
+        assert!(plan.truncate(&messages).is_err());
+
+        let plan = RewindPlan {
+            from_seq: 3,
+            user_events: vec![1, 3],
+        };
+        let (kept, cut) = plan.truncate(&messages).unwrap();
+        assert_eq!(cut, 0);
+        assert!(kept.is_empty());
+    }
+
+    #[test]
+    fn history_pairs_imported_rows_without_consuming_events() {
+        let messages = vec![
+            json!({"role":"user","content":[{"type":"text","data":"imported question"}]}),
+            json!({"role":"assistant","content":[{"type":"text","data":"imported answer"}]}),
+            json!({"role":"user","content":[{"type":"text","data":"live question"}]}),
+            json!({"role":"assistant","content":[{"type":"text","data":"live answer"}]}),
+        ];
+        let event = |seq, event| StoredSessionEvent {
+            seq,
+            at: format!("2026-10-26T00:00:{seq:02}.000Z"),
+            event,
+        };
+        let events = vec![
+            event(
+                1,
+                CoreEvent::UserMessage {
+                    turn_id: "live".to_owned(),
+                    text: "live question".to_owned(),
+                },
+            ),
+            event(
+                2,
+                CoreEvent::TurnDelta {
+                    turn_id: "live".to_owned(),
+                    text: "live answer".to_owned(),
+                },
+            ),
+        ];
+
+        let history = build_session_history(&messages, &events);
+
+        assert_eq!(history.len(), 4);
+        assert_eq!(history[0].text, "imported question");
+        assert_eq!(history[0].seq, None);
+        assert_eq!(history[1].text, "imported answer");
+        assert_eq!(history[1].seq, None);
+        assert_eq!(history[2].seq, Some(1));
+        assert_eq!(history[3].seq, Some(2));
+        assert_eq!(history[3].text, "live answer");
+    }
+
+    #[test]
+    fn fork_then_rewind_keeps_inherited_messages() {
+        let temp = tempfile::tempdir().unwrap();
+        let config = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let (mut core, _) = new_test_core(config, home.path());
+        core.handshaken = true;
+        let created = core
+            .session_create(json!({"workspace": temp.path().to_string_lossy()}))
+            .unwrap();
+        let source = created["session_id"].as_str().unwrap().to_owned();
+        core.turn_start(json!({"session_id": source, "prompt": "first"}))
+            .unwrap();
+        wait_for_threads(&mut core);
+
+        let fork = core.session_fork(json!({"session_id": source})).unwrap()["session_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        core.turn_start(json!({"session_id": fork, "prompt": "again"}))
+            .unwrap();
+        wait_for_threads(&mut core);
+        let fork_turn_seq = core
+            .store
+            .read_events(&fork)
+            .unwrap()
+            .iter()
+            .find_map(|stored| match &stored.event {
+                CoreEvent::UserMessage { text, .. } if text == "again" => Some(stored.seq),
+                _ => None,
+            })
+            .expect("fork user event");
+
+        core.turn_start(json!({
+            "session_id": fork,
+            "prompt": "rewrite",
+            "rewind_from_seq": fork_turn_seq,
+        }))
+        .unwrap();
+        wait_for_threads(&mut core);
+
+        let texts: Vec<String> = core
+            .store
+            .load(&fork)
+            .unwrap()
+            .messages
+            .iter()
+            .map(history_message_text)
+            .collect();
+        assert!(texts.iter().any(|text| text == "first"), "{texts:?}");
+        assert!(texts.iter().any(|text| text == "rewrite"), "{texts:?}");
+        assert!(!texts.iter().any(|text| text == "again"), "{texts:?}");
+
+        let history = core.session_history(json!({"session_id": fork})).unwrap();
+        let entries = history["messages"].as_array().unwrap();
+        assert_eq!(entries[0]["text"], "first");
+        assert_eq!(entries[0]["seq"], Value::Null);
+    }
+
+    #[test]
+    fn imported_messages_survive_rewind() {
+        let temp = tempfile::tempdir().unwrap();
+        let config = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let (mut core, _) = new_test_core(config, home.path());
+        core.handshaken = true;
+        let mut data = core
+            .store
+            .create(
+                &temp.path().to_string_lossy(),
+                "scripted",
+                "scripted",
+                "medium",
+            )
+            .unwrap();
+        data.messages = vec![
+            json!({"role":"user","content":[{"type":"text","data":"imported question"}]}),
+            json!({"role":"assistant","content":[{"type":"text","data":"imported answer"}]}),
+        ];
+        core.store.save(&data).unwrap();
+        let id = data.meta.id.clone();
+
+        core.turn_start(json!({"session_id": id, "prompt": "live"}))
+            .unwrap();
+        wait_for_threads(&mut core);
+        let live_seq = core
+            .store
+            .read_events(&id)
+            .unwrap()
+            .iter()
+            .find_map(|stored| match &stored.event {
+                CoreEvent::UserMessage { text, .. } if text == "live" => Some(stored.seq),
+                _ => None,
+            })
+            .expect("live user event");
+
+        core.turn_start(json!({
+            "session_id": id,
+            "prompt": "rewrite",
+            "rewind_from_seq": live_seq,
+        }))
+        .unwrap();
+        wait_for_threads(&mut core);
+
+        let texts: Vec<String> = core
+            .store
+            .load(&id)
+            .unwrap()
+            .messages
+            .iter()
+            .map(history_message_text)
+            .collect();
+        assert!(
+            texts.iter().any(|text| text == "imported question"),
+            "{texts:?}"
+        );
+        assert!(
+            texts.iter().any(|text| text == "imported answer"),
+            "{texts:?}"
+        );
+        assert!(texts.iter().any(|text| text == "rewrite"), "{texts:?}");
+        assert!(!texts.iter().any(|text| text == "live"), "{texts:?}");
+    }
+
+    #[test]
+    fn turn_start_failure_clears_active_turn() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = temp.path().join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let config = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let (mut core, _) = new_test_core(config, home.path());
+        core.handshaken = true;
+        let created = core
+            .session_create(json!({"workspace": workspace.to_string_lossy()}))
+            .unwrap();
+        let session_id = created["session_id"].as_str().unwrap().to_owned();
+        std::fs::remove_dir_all(&workspace).unwrap();
+
+        let error = core
+            .turn_start(json!({"session_id": session_id, "prompt": "hello"}))
+            .unwrap_err();
+        assert_eq!(error.code, error_codes::INVALID_PARAMS);
+        let status = core
+            .session_status(json!({"session_id": session_id}))
+            .unwrap();
+        assert_eq!(status["turn_active"], false);
+
+        let again = core
+            .turn_start(json!({"session_id": session_id, "prompt": "hello"}))
+            .unwrap_err();
+        assert_eq!(again.code, error_codes::INVALID_PARAMS);
+    }
+
+    #[test]
+    fn delete_and_archive_reject_an_active_turn() {
+        let temp = tempfile::tempdir().unwrap();
+        let config = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let (mut core, _) = new_test_core(config, home.path());
+        core.handshaken = true;
+        let busy = core
+            .session_create(json!({"workspace": temp.path().to_string_lossy()}))
+            .unwrap()["session_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        core.session_create(json!({"workspace": temp.path().to_string_lossy()}))
+            .unwrap();
+        core.sessions
+            .lock()
+            .unwrap()
+            .get_mut(&busy)
+            .unwrap()
+            .active_turn = Some("turn-test".to_owned());
+
+        let delete = core
+            .session_delete(json!({"session_id": busy}))
+            .unwrap_err();
+        assert_eq!(delete.code, error_codes::TURN_IN_PROGRESS);
+        let archive = core
+            .session_archive(json!({"session_id": busy, "archived": true}))
+            .unwrap_err();
+        assert_eq!(archive.code, error_codes::TURN_IN_PROGRESS);
     }
 }

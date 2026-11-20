@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -76,6 +76,10 @@ pub enum StoreError {
 pub struct SessionStore {
     root: PathBuf,
     paths: std::sync::Arc<Mutex<HashMap<String, PathBuf>>>,
+    // Serializes every rollout write and the read half of read-modify-write.
+    // Lock order: sessions -> sequences -> lock -> paths; no store method
+    // acquires a lock outside this struct.
+    lock: std::sync::Arc<Mutex<()>>,
 }
 
 #[derive(Debug, Default)]
@@ -103,6 +107,7 @@ impl SessionStore {
         let store = Self {
             root,
             paths: std::sync::Arc::new(Mutex::new(HashMap::new())),
+            lock: std::sync::Arc::new(Mutex::new(())),
         };
         fs::create_dir_all(store.sessions_root())?;
         fs::create_dir_all(store.archived_root())?;
@@ -112,6 +117,10 @@ impl SessionStore {
 
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    fn write_guard(&self) -> std::sync::MutexGuard<'_, ()> {
+        self.lock.lock().unwrap_or_else(|error| error.into_inner())
     }
 
     fn sessions_root(&self) -> PathBuf {
@@ -137,6 +146,7 @@ impl SessionStore {
         model: &str,
         reasoning_effort: &str,
     ) -> Result<SessionData, StoreError> {
+        let _guard = self.write_guard();
         let now = now();
         let data = SessionData {
             meta: SessionMeta {
@@ -177,6 +187,11 @@ impl SessionStore {
     }
 
     pub fn load(&self, id: &str) -> Result<SessionData, StoreError> {
+        let _guard = self.write_guard();
+        self.load_unlocked(id)
+    }
+
+    fn load_unlocked(&self, id: &str) -> Result<SessionData, StoreError> {
         let path = self
             .resolve_path(id)
             .ok_or_else(|| StoreError::NotFound(id.to_owned()))?;
@@ -185,7 +200,7 @@ impl SessionStore {
             .meta
             .ok_or_else(|| StoreError::NotFound(id.to_owned()))?;
         // The snapshot is authoritative; only replay the events it does not cover.
-        let (mut messages, approval_rules) = match content.state {
+        let (messages, approval_rules) = match content.state {
             Some(state) => {
                 let newer: Vec<StoredEvent> = content
                     .events
@@ -197,17 +212,19 @@ impl SessionStore {
                 // Compaction saves its state before emitting the event, so the
                 // summary may already be in the snapshot.
                 for message in project_messages(&newer) {
-                    if !messages.contains(&message) {
-                        messages.push(message);
+                    // The snapshot already holds the compaction summary; equal
+                    // assistant/tool text is legitimate and must be kept.
+                    if message.get("role").and_then(Value::as_str) == Some("system")
+                        && messages.contains(&message)
+                    {
+                        continue;
                     }
+                    messages.push(message);
                 }
                 (messages, state.approval_rules)
             }
             None => (project_messages(&content.events), Vec::new()),
         };
-        if messages.is_empty() {
-            messages = project_messages(&content.events);
-        }
         Ok(SessionData {
             meta,
             messages,
@@ -223,6 +240,7 @@ impl SessionStore {
     }
 
     pub fn delete(&self, id: &str) -> Result<(), StoreError> {
+        let _guard = self.write_guard();
         let id = uuid::Uuid::parse_str(id).map_err(|_| StoreError::NotFound(id.to_owned()))?;
         let id = id.to_string();
         let path = self
@@ -240,14 +258,16 @@ impl SessionStore {
         if name.is_empty() || name.chars().count() > 160 {
             return Err(StoreError::InvalidName);
         }
-        let mut data = self.load(id)?;
+        let _guard = self.write_guard();
+        let mut data = self.load_unlocked(id)?;
         data.meta.name = Some(name.to_owned());
-        self.save(&data)?;
-        Ok(self.load(id)?.meta)
+        self.save_unlocked(&data)?;
+        Ok(self.load_unlocked(id)?.meta)
     }
 
     /// Moves a session between `sessions/` and `archived_sessions/`.
     pub fn set_archived(&self, id: &str, archived: bool) -> Result<(), StoreError> {
+        let _guard = self.write_guard();
         let path = self
             .resolve_path(id)
             .ok_or_else(|| StoreError::NotFound(id.to_owned()))?;
@@ -277,6 +297,11 @@ impl SessionStore {
     }
 
     pub fn save(&self, data: &SessionData) -> Result<(), StoreError> {
+        let _guard = self.write_guard();
+        self.save_unlocked(data)
+    }
+
+    fn save_unlocked(&self, data: &SessionData) -> Result<(), StoreError> {
         let path = self
             .resolve_path(&data.meta.id)
             .unwrap_or_else(|| self.rollout_path(&data.meta));
@@ -326,10 +351,11 @@ impl SessionStore {
         session_id: &str,
         turn_state: &str,
     ) -> Result<SessionMeta, StoreError> {
-        let mut data = self.load(session_id)?;
+        let _guard = self.write_guard();
+        let mut data = self.load_unlocked(session_id)?;
         data.meta.turn_state = turn_state.to_owned();
-        self.save(&data)?;
-        Ok(self.load(session_id)?.meta)
+        self.save_unlocked(&data)?;
+        Ok(self.load_unlocked(session_id)?.meta)
     }
 
     pub fn append_event(
@@ -338,6 +364,7 @@ impl SessionStore {
         seq: u64,
         event: &CoreEvent,
     ) -> Result<(), StoreError> {
+        let _guard = self.write_guard();
         let path = self
             .resolve_path(session_id)
             .ok_or_else(|| StoreError::NotFound(session_id.to_owned()))?;
@@ -349,7 +376,16 @@ impl SessionStore {
         };
         let mut line = serde_json::to_vec(&record)?;
         line.push(b'\n');
-        let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+        // Not `append(true)`: Windows then opens the file without the write
+        // access that healing a torn tail needs. The store lock serializes us.
+        let mut file = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(&path)?;
+        heal_torn_tail(&mut file, &path)?;
+        file.seek(SeekFrom::End(0))?;
         file.write_all(&line)?;
         file.flush()?;
         if let CoreEvent::UserMessage { text, .. } = event {
@@ -359,6 +395,7 @@ impl SessionStore {
     }
 
     pub fn read_events(&self, session_id: &str) -> Result<Vec<StoredEvent>, StoreError> {
+        let _guard = self.write_guard();
         match self.resolve_path(session_id) {
             Some(path) => Ok(read_rollout(&path)?.events),
             None => Ok(Vec::new()),
@@ -371,6 +408,7 @@ impl SessionStore {
     }
 
     pub fn last_seq(&self, session_id: &str) -> Result<u64, StoreError> {
+        let _guard = self.write_guard();
         match self.resolve_path(session_id) {
             Some(path) => Ok(read_rollout(&path)?
                 .events
@@ -544,12 +582,26 @@ fn collect_meta(root: &Path, sessions: &mut Vec<SessionMeta>) -> Result<(), Stor
 fn read_rollout(path: &Path) -> Result<RolloutContent, StoreError> {
     let file = fs::File::open(path)?;
     let mut content = RolloutContent::default();
-    for line in BufReader::new(file).lines() {
+    let mut lines = BufReader::new(file).lines();
+    while let Some(line) = lines.next() {
         let line = line?;
         if line.trim().is_empty() {
             continue;
         }
-        let value: Value = serde_json::from_str(&line)?;
+        let value: Value = match serde_json::from_str(&line) {
+            Ok(value) => value,
+            Err(error) => {
+                // A crash can leave one torn final line; anything earlier is
+                // real corruption.
+                if lines
+                    .by_ref()
+                    .all(|rest| rest.is_ok_and(|line| line.trim().is_empty()))
+                {
+                    break;
+                }
+                return Err(error.into());
+            }
+        };
         match value.get("type").and_then(Value::as_str) {
             Some("meta") => {
                 if let Some(meta) = value.get("meta") {
@@ -814,12 +866,41 @@ fn summarize(text: &str) -> String {
     summary
 }
 
-fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let temporary = path.with_extension("tmp");
-    fs::write(&temporary, bytes)?;
-    if path.exists() {
-        fs::remove_file(path)?;
+/// Repairs a rollout whose last append was torn so the next event cannot be
+/// concatenated onto an unterminated record.
+fn heal_torn_tail(file: &mut fs::File, path: &Path) -> std::io::Result<()> {
+    if file.metadata()?.len() == 0 {
+        return Ok(());
     }
+    file.seek(SeekFrom::End(-1))?;
+    let mut last = [0u8; 1];
+    file.read_exact(&mut last)?;
+    if last[0] == b'\n' {
+        return Ok(());
+    }
+    // Only reached after a crash, so reading the file once is acceptable.
+    let bytes = fs::read(path)?;
+    let cut = bytes
+        .iter()
+        .rposition(|byte| *byte == b'\n')
+        .map_or(0, |index| index + 1);
+    if serde_json::from_slice::<StoredEvent>(&bytes[cut..]).is_ok() {
+        file.write_all(b"\n")?;
+    } else {
+        file.set_len(cut as u64)?;
+    }
+    Ok(())
+}
+
+fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    // The fixed temp name is safe because saves of one session are serialized;
+    // concurrent processes on the same home are not supported.
+    let temporary = path.with_extension("tmp");
+    let mut file = fs::File::create(&temporary)?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    drop(file);
+    // rename replaces the destination atomically on Unix and Windows.
     fs::rename(temporary, path)
 }
 
@@ -1262,7 +1343,9 @@ mod tests {
         let mut bytes = std::fs::read(&path).unwrap();
         bytes.extend_from_slice(b"{\"type\":\"state\",\"through_seq\":5,\"messages\":[]}\n");
         std::fs::write(&path, bytes).unwrap();
-        assert_eq!(store.load(&data.meta.id).unwrap().messages, messages);
+        // A saved empty state is authoritative: a rewound-to-empty branch
+        // must not be resurrected from the old events.
+        assert!(store.load(&data.meta.id).unwrap().messages.is_empty());
     }
 
     #[test]
@@ -1464,5 +1547,238 @@ old rounds";
         store.delete(&data.meta.id).unwrap();
         assert!(!attachments.exists());
         assert!(store.load(&data.meta.id).is_err());
+    }
+
+    #[test]
+    fn read_rollout_tolerates_a_torn_trailing_line() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(temp.path()).unwrap();
+        let data = store
+            .create("D:/work", "openai", "gpt-test", "high")
+            .unwrap();
+        store
+            .append_event(
+                &data.meta.id,
+                1,
+                &CoreEvent::TurnStarted {
+                    turn_id: "t1".to_owned(),
+                },
+            )
+            .unwrap();
+        let path = store.resolve_path(&data.meta.id).unwrap();
+        let mut file = OpenOptions::new().append(true).open(&path).unwrap();
+        file.write_all(b"{\"seq\": 2, \"at\": ").unwrap();
+        drop(file);
+
+        assert_eq!(store.read_events(&data.meta.id).unwrap().len(), 1);
+        assert_eq!(store.last_seq(&data.meta.id).unwrap(), 1);
+        assert!(store.load(&data.meta.id).is_ok());
+
+        store
+            .append_event(
+                &data.meta.id,
+                2,
+                &CoreEvent::TurnStarted {
+                    turn_id: "t2".to_owned(),
+                },
+            )
+            .unwrap();
+        let events = store.read_events(&data.meta.id).unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[1].seq, 2);
+    }
+
+    #[test]
+    fn append_keeps_a_complete_record_missing_its_newline() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(temp.path()).unwrap();
+        let data = store
+            .create("D:/work", "openai", "gpt-test", "high")
+            .unwrap();
+        let path = store.resolve_path(&data.meta.id).unwrap();
+        let record = StoredEvent {
+            seq: 1,
+            at: "2026-01-01T00:00:00.000Z".to_owned(),
+            schema_version: EVENT_SCHEMA_VERSION,
+            event: CoreEvent::TurnStarted {
+                turn_id: "t1".to_owned(),
+            },
+        };
+        fs::write(&path, serde_json::to_vec(&record).unwrap()).unwrap();
+
+        store
+            .append_event(
+                &data.meta.id,
+                2,
+                &CoreEvent::TurnStarted {
+                    turn_id: "t2".to_owned(),
+                },
+            )
+            .unwrap();
+        let events = store.read_events(&data.meta.id).unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].seq, 1);
+        assert_eq!(events[1].seq, 2);
+    }
+
+    #[test]
+    fn read_rollout_still_fails_on_a_corrupt_middle_line() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(temp.path()).unwrap();
+        let data = store
+            .create("D:/work", "openai", "gpt-test", "high")
+            .unwrap();
+        store
+            .append_event(
+                &data.meta.id,
+                1,
+                &CoreEvent::TurnStarted {
+                    turn_id: "t1".to_owned(),
+                },
+            )
+            .unwrap();
+        let path = store.resolve_path(&data.meta.id).unwrap();
+        let mut file = OpenOptions::new().append(true).open(&path).unwrap();
+        file.write_all(b"not json\n").unwrap();
+        drop(file);
+
+        store
+            .append_event(
+                &data.meta.id,
+                2,
+                &CoreEvent::TurnStarted {
+                    turn_id: "t2".to_owned(),
+                },
+            )
+            .unwrap();
+
+        assert!(store.read_events(&data.meta.id).is_err());
+    }
+
+    #[test]
+    fn load_keeps_an_empty_state_empty() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(temp.path()).unwrap();
+        let data = store
+            .create("D:/work", "openai", "gpt-test", "high")
+            .unwrap();
+        store
+            .append_event(
+                &data.meta.id,
+                1,
+                &CoreEvent::UserMessage {
+                    turn_id: "t1".to_owned(),
+                    text: "hidden".to_owned(),
+                },
+            )
+            .unwrap();
+        let mut data = store.load(&data.meta.id).unwrap();
+        assert_eq!(data.messages.len(), 1);
+        data.messages.clear();
+        store.save(&data).unwrap();
+
+        assert!(store.load(&data.meta.id).unwrap().messages.is_empty());
+    }
+
+    #[test]
+    fn load_keeps_repeated_assistant_text() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(temp.path()).unwrap();
+        let data = store
+            .create("D:/work", "openai", "gpt-test", "high")
+            .unwrap();
+        let id = data.meta.id;
+        store
+            .append_event(
+                &id,
+                1,
+                &CoreEvent::UserMessage {
+                    turn_id: "t1".to_owned(),
+                    text: "hi".to_owned(),
+                },
+            )
+            .unwrap();
+        store
+            .append_event(
+                &id,
+                2,
+                &CoreEvent::TurnCompleted {
+                    turn_id: "t1".to_owned(),
+                    status: "completed".to_owned(),
+                    text: "same".to_owned(),
+                    input_tokens: 1,
+                    output_tokens: 1,
+                    cost_usd: None,
+                },
+            )
+            .unwrap();
+        let data = store.load(&id).unwrap();
+        assert_eq!(data.messages.len(), 2);
+        store.save(&data).unwrap();
+
+        store
+            .append_event(
+                &id,
+                3,
+                &CoreEvent::UserMessage {
+                    turn_id: "t2".to_owned(),
+                    text: "again".to_owned(),
+                },
+            )
+            .unwrap();
+        store
+            .append_event(
+                &id,
+                4,
+                &CoreEvent::TurnCompleted {
+                    turn_id: "t2".to_owned(),
+                    status: "completed".to_owned(),
+                    text: "same".to_owned(),
+                    input_tokens: 1,
+                    output_tokens: 1,
+                    cost_usd: None,
+                },
+            )
+            .unwrap();
+
+        let loaded = store.load(&id).unwrap();
+        assert_eq!(loaded.messages.len(), 4);
+        assert_eq!(message_text(&loaded.messages[3]), "same");
+    }
+
+    #[test]
+    fn concurrent_save_does_not_drop_appended_events() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(temp.path()).unwrap();
+        let data = store
+            .create("D:/work", "openai", "gpt-test", "high")
+            .unwrap();
+        let id = data.meta.id.clone();
+        std::thread::scope(|scope| {
+            let writer = store.clone();
+            let write_id = id.clone();
+            scope.spawn(move || {
+                for seq in 1..=40 {
+                    writer
+                        .append_event(
+                            &write_id,
+                            seq,
+                            &CoreEvent::TurnStarted {
+                                turn_id: format!("t{seq}"),
+                            },
+                        )
+                        .unwrap();
+                }
+            });
+            let saver = store.clone();
+            let save_data = data.clone();
+            scope.spawn(move || {
+                for _ in 0..40 {
+                    saver.save(&save_data).unwrap();
+                }
+            });
+        });
+
+        assert_eq!(store.read_events(&id).unwrap().len(), 40);
     }
 }
