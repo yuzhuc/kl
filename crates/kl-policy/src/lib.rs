@@ -95,6 +95,8 @@ pub struct PolicyConfig {
     pub auto_approve_edits: bool,
     pub auto_approve_shell: bool,
     pub auto_approve_plugins: bool,
+    /// Hard-denies commands that reach the network when false.
+    pub deny_network: bool,
     pub allow_outside_workspace: bool,
     pub allow_sensitive_reads: bool,
     #[serde(default)]
@@ -206,6 +208,9 @@ impl PolicyEngine {
         if let Some((needle, reason)) = dangerous_command(command) {
             return Evaluation::deny(format!("dangerous command denied ({reason}): {needle}"));
         }
+        if let Some(denial) = self.network_denial(command) {
+            return denial;
+        }
         if !self.config.network_allowlist.is_empty() {
             for host in extract_hosts(command) {
                 if !host_allowed(&self.config.network_allowlist, &host) {
@@ -267,6 +272,9 @@ impl PolicyEngine {
         if let Some((needle, reason)) = dangerous_command(command) {
             return Evaluation::deny(format!("dangerous command denied ({reason}): {needle}"));
         }
+        if let Some(denial) = self.network_denial(command) {
+            return denial;
+        }
         if !self.config.network_allowlist.is_empty() {
             for host in extract_hosts(command) {
                 if !host_allowed(&self.config.network_allowlist, &host) {
@@ -279,6 +287,36 @@ impl PolicyEngine {
         } else {
             Evaluation::ask("shell commands require approval", None)
         }
+    }
+
+    /// Best-effort network enforcement for shell commands: URLs, git remotes
+    /// and common transfer tools. Commands that tunnel traffic through another
+    /// program cannot be detected here; the sandbox remains the backstop.
+    fn network_denial(&self, command: &str) -> Option<Evaluation> {
+        if !self.config.deny_network {
+            return None;
+        }
+        let lowered = command.to_lowercase();
+        let transfer = lowered.split_whitespace().any(|token| {
+            matches!(
+                token.trim_matches(|c: char| !c.is_ascii_alphanumeric()),
+                "curl" | "wget" | "ssh" | "scp" | "sftp" | "nc" | "ncat" | "telnet" | "ping"
+            )
+        });
+        if transfer
+            || lowered.contains("://")
+            || lowered.contains("git@")
+            || !extract_hosts(command).is_empty()
+            || lowered.strip_prefix("git ").is_some_and(|rest| {
+                matches!(
+                    rest.split_whitespace().next(),
+                    Some("clone" | "fetch" | "pull" | "push" | "ls-remote")
+                )
+            })
+        {
+            return Some(Evaluation::deny("network access is disabled"));
+        }
+        None
     }
 
     pub fn evaluate_plugin(&self, resource: &str) -> Evaluation {

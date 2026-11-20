@@ -30,29 +30,30 @@ use kl_policy::{PolicyEngine, PolicyError, ToolAccess};
 use kl_protocol::{
     AgentConfigResult, AgentConfigSetParams, AgentInfo, AgentListResult, ApprovalDecision,
     ApprovalMode, ApprovalRespondParams, AuditTailParams, CORE_NAME, CORE_VERSION, CoreEvent,
-    DefaultModelResult, DoctorCheck, DoctorResult, EventNotification, HandshakeParams,
-    HandshakeResult, IncomingMessage, MIN_PROTOCOL_VERSION, McpListResult, McpToolInfo,
-    MemoryDeleteParams, MemoryDeleteResult, MemoryEntryInfo, MemoryListParams, MemoryListResult,
-    MemoryReadParams, MemoryReadResult, MemoryWriteParams, MemoryWriteResult, PROTOCOL_VERSION,
-    PermissionsResult, PermissionsSetParams, PingParams, PingResult, PluginIdParams,
-    PluginInstallParams, PluginListResult, ProviderDeleteParams, ProviderEnabledResult,
-    ProviderKeyResult, ProviderListResult, ProviderModelSummary, ProviderModelsParams,
-    ProviderModelsResult, ProviderProtocolSummary, ProviderSetApiKeyParams,
-    ProviderSetEnabledParams, ProviderUpsertParams, ProviderUpsertResult, RequestId, ReviewFinding,
-    ReviewResult, ReviewRunParams, RpcError, SandboxCapabilitiesSummary, SandboxSummary,
-    SessionArchiveParams, SessionArchiveResult, SessionCompactParams, SessionCompactResult,
-    SessionCreateParams, SessionDeleteParams, SessionDeleteResult, SessionHistoryEntry,
-    SessionHistoryParams, SessionHistoryResult, SessionHistoryToolSummary, SessionInfo,
-    SessionListResult, SessionRenameParams, SessionResumeParams, SessionStatusParams,
-    SessionStatusResult, SetDefaultModelParams, SkillGetParams, SkillGetResult, SkillInfo,
-    SkillListParams, SkillListResult, TurnCancelParams, TurnCancelResult, TurnStartParams,
-    TurnStartResult, WorkspaceInitParams, WorkspaceInitResult, error_codes, failure,
+    DefaultModelResult, DoctorCheck, DoctorResult, EmojiUsage, EventNotification, HandshakeParams,
+    HandshakeResult, HeadingStyle, IncomingMessage, MIN_PROTOCOL_VERSION, McpListResult,
+    McpToolInfo, MemoryDeleteParams, MemoryDeleteResult, MemoryEntryInfo, MemoryListParams,
+    MemoryListResult, MemoryReadParams, MemoryReadResult, MemoryWriteParams, MemoryWriteResult,
+    OutputVerbosity, PROTOCOL_VERSION, PermissionsResult, PermissionsSetParams, PersonalStyle,
+    PingParams, PingResult, PluginIdParams, PluginInstallParams, PluginListResult,
+    ProviderDeleteParams, ProviderEnabledResult, ProviderKeyResult, ProviderListResult,
+    ProviderModelSummary, ProviderModelsParams, ProviderModelsResult, ProviderProtocolSummary,
+    ProviderSetApiKeyParams, ProviderSetEnabledParams, ProviderUpsertParams, ProviderUpsertResult,
+    ReasoningEffort, ReasoningSummary, RequestId, ReviewFinding, ReviewResult, ReviewRunParams,
+    RpcError, SandboxCapabilitiesSummary, SandboxSummary, SessionArchiveParams,
+    SessionArchiveResult, SessionCompactParams, SessionCompactResult, SessionCreateParams,
+    SessionDeleteParams, SessionDeleteResult, SessionHistoryEntry, SessionHistoryParams,
+    SessionHistoryResult, SessionHistoryToolSummary, SessionInfo, SessionListResult,
+    SessionRenameParams, SessionResumeParams, SessionStatusParams, SessionStatusResult,
+    SetDefaultModelParams, SkillGetParams, SkillGetResult, SkillInfo, SkillListParams,
+    SkillListResult, ToneLevel, TurnCancelParams, TurnCancelResult, TurnStartParams,
+    TurnStartResult, VisualAnswers, WorkspaceInitParams, WorkspaceInitResult, error_codes, failure,
     failure_with_data, methods, negotiate, success, validate_envelope,
 };
 use kl_provider::{
     AnthropicAdapter, BoundProvider, CancellationToken, ChatEvent, ChatMessage, ChatOutcome,
     ChatRequest, ModelMetadata, OpenAiChatAdapter, OpenAiResponsesAdapter, Protocol,
-    ProtocolAdapter, Provider, ProviderError, ProviderRouter, ScriptedProvider, Usage,
+    ProtocolAdapter, Provider, ProviderError, ProviderRouter, Role, ScriptedProvider, Usage,
 };
 use kl_review::{
     Finding, ReviewContext, ReviewError, ReviewMode, ReviewReport, collect_context, finalize,
@@ -1006,10 +1007,15 @@ impl Core {
             config.audit.keep_files,
         )?);
         let tools = Arc::new(ToolRegistry::builtin());
+        tools.set_enabled(
+            "web_fetch",
+            config.agent.web_search && config.agent.network_access,
+        );
+        tools.set_enabled("memory", config.agent.memory_enabled);
         tools.register(Arc::new(skills::SkillTool {
             home: context.home.clone(),
         }));
-        register_plugin_adapters(&plugin_host, &router, &tools);
+        register_plugin_adapters(&plugin_host, &router, &tools, config.agent.plugins_enabled);
         // shortcut: MCP startup handshake is capped at 10s; tool calls still use the agent timeout.
         register_mcp_tools(
             &context.home,
@@ -1520,6 +1526,7 @@ impl Core {
                 event: stored.event,
             })
             .collect::<Vec<_>>();
+        let events = live_events(events);
         let history = build_session_history(&data.messages, &events);
         let start = history.len().saturating_sub(params.limit);
         to_value(SessionHistoryResult {
@@ -1753,6 +1760,35 @@ impl Core {
         })
     }
 
+    /// Validates a rewind target and maps it onto the retained messages.
+    fn rewind_plan(&self, session_id: &str, from_seq: u64) -> Result<RewindPlan, RpcError> {
+        let events = self.store.read_events(session_id).map_err(store_error)?;
+        let events = events
+            .into_iter()
+            .map(|stored| StoredSessionEvent {
+                seq: stored.seq,
+                at: stored.at,
+                event: stored.event,
+            })
+            .collect::<Vec<_>>();
+        let live = live_events(events);
+        let user_events: Vec<u64> = live
+            .iter()
+            .filter(|stored| matches!(stored.event, CoreEvent::UserMessage { .. }))
+            .map(|stored| stored.seq)
+            .collect();
+        if !user_events.contains(&from_seq) {
+            return Err(rpc_error(
+                error_codes::INVALID_PARAMS,
+                "rewind_from_seq must be a live user.message event",
+            ));
+        }
+        Ok(RewindPlan {
+            from_seq,
+            user_events,
+        })
+    }
+
     fn resolve_session_id(&self, requested: Option<&str>) -> Result<String, RpcError> {
         if let Some(session_id) = requested.filter(|session_id| !session_id.is_empty()) {
             return Ok(session_id.to_owned());
@@ -1848,7 +1884,12 @@ impl Core {
 
         self.ensure_session_loaded(&params.session_id)?;
 
-        let (metadata, workspace, history, provider) = {
+        let rewind = match params.rewind_from_seq {
+            Some(from_seq) => Some(self.rewind_plan(&params.session_id, from_seq)?),
+            None => None,
+        };
+
+        let (metadata, workspace, history, provider, rewound_messages) = {
             let mut sessions = self
                 .sessions
                 .lock()
@@ -1881,11 +1922,73 @@ impl Core {
                 .map_err(provider_error)?;
             check_provider_available(provider.as_ref())?;
             let workspace = state.meta.workspace.clone();
+            let rewound_messages = match &rewind {
+                Some(plan) => {
+                    let (truncated, _) = plan.truncate(&state.messages)?;
+                    state.messages = truncated;
+                    Some(state.messages.clone())
+                }
+                None => None,
+            };
             state.active_turn = Some(turn_id.clone());
             state.meta.provider = metadata.provider.clone();
             state.meta.model = metadata.model.clone();
-            (metadata, workspace, state.messages.clone(), provider)
+            (
+                metadata,
+                workspace,
+                state.messages.clone(),
+                provider,
+                rewound_messages,
+            )
         };
+
+        if let (Some(plan), Some(messages)) = (&rewind, &rewound_messages) {
+            let data = {
+                let sessions = self
+                    .sessions
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner());
+                let state = sessions.get(&params.session_id).ok_or_else(|| {
+                    rpc_error(
+                        error_codes::SESSION_NOT_FOUND,
+                        format!("session not found: {}", params.session_id),
+                    )
+                })?;
+                SessionData {
+                    meta: state.meta.clone(),
+                    messages: messages
+                        .iter()
+                        .map(|message| serde_json::to_value(message).unwrap_or(Value::Null))
+                        .collect(),
+                    approval_rules: state.approval_rules.clone(),
+                }
+            };
+            if let Err(error) = self.store.save(&data) {
+                let mut sessions = self
+                    .sessions
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner());
+                if let Some(state) = sessions.get_mut(&params.session_id) {
+                    state.active_turn = None;
+                }
+                return Err(store_error(error));
+            }
+            if let Err(error) = self.hub.emit(
+                &params.session_id,
+                CoreEvent::ConversationRewound {
+                    from_seq: plan.from_seq,
+                },
+            ) {
+                let mut sessions = self
+                    .sessions
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner());
+                if let Some(state) = sessions.get_mut(&params.session_id) {
+                    state.active_turn = None;
+                }
+                return Err(rpc_error(error_codes::INTERNAL_ERROR, error));
+            }
+        }
 
         let skills_summary =
             skills::summary_prompt(&skills::discover(&self.context.home, Path::new(&workspace)));
@@ -1953,7 +2056,13 @@ impl Core {
         }
         // Skills and memory are instructions, not user text: keeping them in the
         // system prompt leaves session titles derived from the raw prompt.
-        let system_extras = format!("{skills_summary}{memory_block}");
+        let system_extras = format!(
+            "{skills_summary}{memory_block}{}{}{}{}",
+            self.personalization_block(),
+            self.output_style_block(),
+            self.reasoning_summary_block(),
+            self.custom_instructions_block()
+        );
         let system_prompt = match profile.system.clone() {
             Some(system) if system_extras.is_empty() => system,
             Some(system) => format!("{system_extras}\n\n{system}"),
@@ -2169,6 +2278,7 @@ impl Core {
 
     fn effective_policy_config(&self) -> kl_policy::PolicyConfig {
         let mut policy = self.config.policy.clone();
+        policy.deny_network = !self.config.agent.network_access;
         match self.config.agent.approval_mode {
             ApprovalMode::AcceptEdits => {
                 policy.auto_approve_edits = true;
@@ -2207,12 +2317,31 @@ impl Core {
             .map(|model| ProviderModelSummary {
                 provider: model.provider,
                 model: model.model,
+                name: model.name,
                 protocol: model.protocol.as_str().to_owned(),
                 url: model.url,
                 context_window: model.context_window,
                 compact_threshold: model.compact_threshold,
                 max_output_tokens: model.max_output_tokens,
                 enabled: model.enabled,
+                reasoning_effort: model
+                    .reasoning_effort
+                    .unwrap_or_else(|| "default".to_owned()),
+                reasoning_efforts: model
+                    .reasoning_efforts
+                    .iter()
+                    .filter_map(|effort| match effort.as_str() {
+                        "none" => Some(ReasoningEffort::None),
+                        "minimal" => Some(ReasoningEffort::Minimal),
+                        "low" => Some(ReasoningEffort::Low),
+                        "medium" => Some(ReasoningEffort::Medium),
+                        "high" => Some(ReasoningEffort::High),
+                        "xhigh" => Some(ReasoningEffort::XHigh),
+                        "max" => Some(ReasoningEffort::Max),
+                        "ultra" => Some(ReasoningEffort::Ultra),
+                        _ => None,
+                    })
+                    .collect(),
                 key_configured: model.key_configured,
                 available: model.available,
                 detail: model.detail,
@@ -2340,13 +2469,24 @@ impl Core {
             .tail(1000)
             .map_err(|error| rpc_error(error_codes::INTERNAL_ERROR, error.to_string()))?;
         findings.extend(runtime_findings(&records));
-        findings.extend(self.llm_review(&context, mode));
+        findings.extend(self.llm_review(
+            &context,
+            mode,
+            params.instructions.as_deref(),
+            params.full_files,
+        ));
         let report = finalize(mode, context.changed_files.len(), findings);
         to_value(review_result(report))
     }
 
-    fn llm_review(&self, context: &ReviewContext, mode: ReviewMode) -> Vec<Finding> {
-        let prompt = model_prompt(context, mode);
+    fn llm_review(
+        &self,
+        context: &ReviewContext,
+        mode: ReviewMode,
+        instructions: Option<&str>,
+        full_files: bool,
+    ) -> Vec<Finding> {
+        let prompt = model_prompt(context, mode, instructions, full_files);
         let result: Result<String, String> = self
             .router
             .get(None, None)
@@ -2429,10 +2569,12 @@ impl Core {
     }
 
     fn sync_plugins(&self) {
+        let master = self.config.agent.plugins_enabled;
         for info in self.plugin_host.list() {
+            let enabled = info.enabled && master;
             match info.kind {
                 PluginKind::Provider => {
-                    if info.enabled {
+                    if enabled {
                         self.router.enable_provider(&info.id);
                         let provider = Arc::new(SidecarProvider::new(
                             self.plugin_host.clone(),
@@ -2455,7 +2597,7 @@ impl Core {
                     }
                 }
                 PluginKind::Tool => {
-                    if info.enabled {
+                    if enabled {
                         if let Some(tool) =
                             SidecarTool::new(self.plugin_host.clone(), info.id.clone())
                         {
@@ -2480,15 +2622,175 @@ impl Core {
     fn agent_config_get(&self) -> Result<Value, RpcError> {
         to_value(AgentConfigResult {
             reasoning_effort: self.config.agent.reasoning_effort,
+            web_search: self.config.agent.web_search,
+            network_access: self.config.agent.network_access,
+            output_verbosity: self.config.agent.output_verbosity,
+            reasoning_summary: self.config.agent.reasoning_summary,
+            memory_enabled: self.config.agent.memory_enabled,
+            plugins_enabled: self.config.agent.plugins_enabled,
+            custom_instructions: self.config.agent.custom_instructions.clone(),
+            personal_style: self.config.agent.personal_style,
+            warmth: self.config.agent.warmth,
+            enthusiasm: self.config.agent.enthusiasm,
+            emoji_usage: self.config.agent.emoji_usage,
+            visual_answers: self.config.agent.visual_answers,
+            heading_style: self.config.agent.heading_style,
+            quick_answers: self.config.agent.quick_answers,
         })
     }
 
     fn agent_config_set(&mut self, params: Value) -> Result<Value, RpcError> {
         let params: AgentConfigSetParams = parse_params(params, methods::AGENT_CONFIG_SET)?;
-        config::agent_config_set(&self.context.config_path, params.reasoning_effort)
-            .map_err(config_write_error)?;
-        self.config.agent.reasoning_effort = params.reasoning_effort;
+        config::agent_config_set(&self.context.config_path, &params).map_err(config_write_error)?;
+        let agent = &mut self.config.agent;
+        if let Some(value) = params.reasoning_effort {
+            agent.reasoning_effort = value;
+        }
+        if let Some(value) = params.web_search {
+            agent.web_search = value;
+        }
+        if let Some(value) = params.network_access {
+            agent.network_access = value;
+        }
+        if let Some(value) = params.output_verbosity {
+            agent.output_verbosity = value;
+        }
+        if let Some(value) = params.reasoning_summary {
+            agent.reasoning_summary = value;
+        }
+        if let Some(value) = params.memory_enabled {
+            agent.memory_enabled = value;
+        }
+        if let Some(value) = params.plugins_enabled {
+            agent.plugins_enabled = value;
+        }
+        if let Some(value) = &params.custom_instructions {
+            agent.custom_instructions = config::sanitize_custom_instructions(value);
+        }
+        if let Some(value) = params.personal_style {
+            agent.personal_style = value;
+        }
+        if let Some(value) = params.warmth {
+            agent.warmth = value;
+        }
+        if let Some(value) = params.enthusiasm {
+            agent.enthusiasm = value;
+        }
+        if let Some(value) = params.emoji_usage {
+            agent.emoji_usage = value;
+        }
+        if let Some(value) = params.visual_answers {
+            agent.visual_answers = value;
+        }
+        if let Some(value) = params.heading_style {
+            agent.heading_style = value;
+        }
+        if let Some(value) = params.quick_answers {
+            agent.quick_answers = value;
+        }
+        self.tools.set_enabled(
+            "web_fetch",
+            self.config.agent.web_search && self.config.agent.network_access,
+        );
+        self.tools
+            .set_enabled("memory", self.config.agent.memory_enabled);
+        self.sync_plugins();
         self.agent_config_get()
+    }
+
+    fn personalization_block(&self) -> String {
+        let agent = &self.config.agent;
+        let mut lines: Vec<&str> = Vec::new();
+        match agent.personal_style {
+            PersonalStyle::Default => {}
+            PersonalStyle::Friendly => lines.push("Use a friendly, approachable tone."),
+            PersonalStyle::Professional => lines.push("Use a professional, direct tone."),
+        }
+        match agent.warmth {
+            ToneLevel::Default => {}
+            ToneLevel::Low => lines.push("Keep the tone neutral and reserved."),
+            ToneLevel::High => lines.push("Be warm and supportive."),
+        }
+        match agent.enthusiasm {
+            ToneLevel::Default => {}
+            ToneLevel::Low => lines.push("Keep enthusiasm understated."),
+            ToneLevel::High => lines.push("Show enthusiasm where appropriate."),
+        }
+        match agent.emoji_usage {
+            EmojiUsage::Default => {}
+            EmojiUsage::Less => lines.push("Use emoji sparingly."),
+            EmojiUsage::More => lines.push("Use emoji when they fit the tone."),
+        }
+        match agent.visual_answers {
+            VisualAnswers::Default => {}
+            VisualAnswers::Off => {
+                lines.push("Prefer prose and avoid visual formatting unless asked.")
+            }
+            VisualAnswers::On => {
+                lines.push("Use tables, diagrams or other visual structure when they help.");
+            }
+        }
+        match agent.heading_style {
+            HeadingStyle::Default => {}
+            HeadingStyle::Concise => lines.push("Keep headings and lists short and minimal."),
+            HeadingStyle::Detailed => {
+                lines.push("Use descriptive headings and lists when they improve clarity.");
+            }
+        }
+        if agent.quick_answers {
+            lines.push(
+                "When general knowledge is sufficient, answer directly without relying on memory.",
+            );
+        }
+        if lines.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "
+
+Personalization preferences:
+- {}",
+                lines.join(
+                    "
+- "
+                )
+            )
+        }
+    }
+
+    fn output_style_block(&self) -> String {
+        match self.config.agent.output_verbosity {
+            OutputVerbosity::Default => String::new(),
+            OutputVerbosity::Concise => {
+                "\n\nResponse style: keep answers concise and omit unnecessary detail.".to_owned()
+            }
+            OutputVerbosity::Detailed => {
+                "\n\nResponse style: give detailed answers with the relevant context and tradeoffs."
+                    .to_owned()
+            }
+        }
+    }
+
+    fn reasoning_summary_block(&self) -> String {
+        match self.config.agent.reasoning_summary {
+            ReasoningSummary::Auto => String::new(),
+            ReasoningSummary::Off => {
+                "\n\nDo not include a separate reasoning summary in the final answer.".to_owned()
+            }
+            ReasoningSummary::Detailed => {
+                "\n\nBefore the final answer, briefly summarize the reasoning that led to it."
+                    .to_owned()
+            }
+        }
+    }
+
+    fn custom_instructions_block(&self) -> String {
+        let instructions = self.config.agent.custom_instructions.trim();
+        if instructions.is_empty() {
+            String::new()
+        } else {
+            format!("\n\nCustom instructions:\n{instructions}")
+        }
     }
 
     fn agent_list(&self) -> Result<Value, RpcError> {
@@ -2561,6 +2863,9 @@ impl Core {
     /// Builds the bounded memory block that is injected into the system
     /// prompt and records it in the audit trail.
     fn memory_injection(&self, workspace: &str) -> String {
+        if !self.config.agent.memory_enabled {
+            return String::new();
+        }
         let Ok(store) = MemoryStore::resolve(Path::new(workspace), Some(&self.context.home)) else {
             return String::new();
         };
@@ -2869,7 +3174,11 @@ fn register_plugin_adapters(
     host: &Arc<PluginHost>,
     router: &ProviderRouter,
     tools: &Arc<ToolRegistry>,
+    plugins_enabled: bool,
 ) {
+    if !plugins_enabled {
+        return;
+    }
     for info in host.list() {
         if !info.enabled {
             continue;
@@ -3054,6 +3363,87 @@ struct StoredSessionEvent {
     event: CoreEvent,
 }
 
+/// A validated rewind: the target user event plus all live user events.
+struct RewindPlan {
+    from_seq: u64,
+    user_events: Vec<u64>,
+}
+
+impl RewindPlan {
+    /// Drops the target user message and everything after it; leading system
+    /// messages (compaction summary) stay.
+    // shortcut: assumes retained user messages came from user.message events;
+    // imported messages without events are not rewind targets.
+    fn truncate(&self, messages: &[ChatMessage]) -> Result<(Vec<ChatMessage>, usize), RpcError> {
+        let user_count = messages
+            .iter()
+            .filter(|message| message.role == Role::User)
+            .count();
+        let retained_start = self.user_events.len().saturating_sub(user_count);
+        let target = self
+            .user_events
+            .iter()
+            .position(|seq| *seq == self.from_seq)
+            .ok_or_else(|| {
+                rpc_error(
+                    error_codes::INVALID_PARAMS,
+                    "rewind_from_seq must be a live user.message event",
+                )
+            })?;
+        if target < retained_start {
+            return Err(rpc_error(
+                error_codes::INVALID_PARAMS,
+                "rewind target was removed by compaction and cannot be restored",
+            ));
+        }
+        let mut remaining = target - retained_start;
+        let mut cut = None;
+        for (index, message) in messages.iter().enumerate() {
+            if message.role == Role::User {
+                if remaining == 0 {
+                    cut = Some(index);
+                    break;
+                }
+                remaining -= 1;
+            }
+        }
+        let cut = cut.ok_or_else(|| {
+            rpc_error(
+                error_codes::INTERNAL_ERROR,
+                "rewind target is missing from the session messages",
+            )
+        })?;
+        Ok((messages[..cut].to_vec(), cut))
+    }
+}
+
+/// Rewind markers `(from_seq, marker_seq)`; events inside a dead interval are
+/// hidden from history and attach replay without deleting anything on disk.
+fn rewind_intervals(events: &[StoredSessionEvent]) -> Vec<(u64, u64)> {
+    events
+        .iter()
+        .filter_map(|stored| match &stored.event {
+            CoreEvent::ConversationRewound { from_seq } => Some((*from_seq, stored.seq)),
+            _ => None,
+        })
+        .collect()
+}
+
+fn live_events(events: Vec<StoredSessionEvent>) -> Vec<StoredSessionEvent> {
+    let intervals = rewind_intervals(&events);
+    if intervals.is_empty() {
+        return events;
+    }
+    events
+        .into_iter()
+        .filter(|stored| {
+            !intervals
+                .iter()
+                .any(|(from, marker)| stored.seq >= *from && stored.seq < *marker)
+        })
+        .collect()
+}
+
 fn build_session_history(
     messages: &[Value],
     events: &[StoredSessionEvent],
@@ -3061,6 +3451,18 @@ fn build_session_history(
     let mut entries = Vec::new();
     let mut cursor = 0;
     let mut turn_id = None;
+    // Compaction drops whole rounds but keeps their events; pair the retained
+    // user messages with the newest user.message events so seqs stay correct.
+    let user_events: Vec<&StoredSessionEvent> = events
+        .iter()
+        .filter(|stored| matches!(stored.event, CoreEvent::UserMessage { .. }))
+        .collect();
+    let user_message_count = messages
+        .iter()
+        .filter(|message| message.get("role").and_then(Value::as_str) == Some("user"))
+        .count();
+    let first_user_event = user_events.len().saturating_sub(user_message_count);
+    let mut user_index = 0;
     for message in messages {
         let role = message
             .get("role")
@@ -3068,9 +3470,15 @@ fn build_session_history(
             .unwrap_or_default();
         match role {
             "user" => {
-                let event = next_history_event(events, &mut cursor, |event| {
-                    matches!(event, CoreEvent::UserMessage { .. })
-                });
+                let event = if user_events.len() >= user_message_count {
+                    let event = user_events.get(first_user_event + user_index).copied();
+                    user_index += 1;
+                    event
+                } else {
+                    next_history_event(events, &mut cursor, |event| {
+                        matches!(event, CoreEvent::UserMessage { .. })
+                    })
+                };
                 let text = event
                     .and_then(|event| match &event.event {
                         CoreEvent::UserMessage { turn_id, text } => {
@@ -3863,7 +4271,7 @@ path = "providers/missing.toml"
         let config_path = temp.path().join("kl.toml");
         let home_path = temp.path().join("home");
         let input = r#"{"jsonrpc":"2.0","id":1,"method":"kl.handshake","params":{"client_name":"test","client_version":"0.1.0","protocol_versions":[1]}}
-{"jsonrpc":"2.0","id":2,"method":"provider.upsert","params":{"id":"local","protocols":{"openai-responses":"https://gateway.example/custom/responses?tenant=kl"},"models":[{"id":"gpt-5-responses","protocol":"openai-responses","context_window":1000,"compact_threshold":0.8,"max_output_tokens":100}],"enabled":true}}
+{"jsonrpc":"2.0","id":2,"method":"provider.upsert","params":{"id":"local","protocols":{"openai-responses":"https://gateway.example/custom/responses?tenant=kl"},"models":[{"id":"gpt-5-responses","name":"Local GPT","protocol":"openai-responses","context_window":1000,"compact_threshold":0.8,"max_output_tokens":100}],"enabled":true}}
 {"jsonrpc":"2.0","id":3,"method":"provider.set_api_key","params":{"id":"local","key":"super-secret"}}
 {"jsonrpc":"2.0","id":4,"method":"config.set_default_model","params":{"provider":"local","model":"gpt-5-responses"}}
 "#;
@@ -3886,6 +4294,7 @@ path = "providers/missing.toml"
         assert_eq!(models.len(), 1);
         assert_eq!(models[0]["provider"], "local");
         assert_eq!(models[0]["model"], "gpt-5-responses");
+        assert_eq!(models[0]["name"], "Local GPT");
         assert_eq!(models[0]["protocol"], "openai-responses");
         assert_eq!(models[0]["enabled"], true);
         assert_eq!(models[0]["key_configured"], true);
@@ -4352,8 +4761,24 @@ auto_approve_plugins = true
             );
             core.permissions_set(json!({"approval_mode": "auto"}))
                 .unwrap();
-            core.agent_config_set(json!({"reasoning_effort": "high"}))
-                .unwrap();
+            core.agent_config_set(json!({
+                "reasoning_effort": "high",
+                "web_search": false,
+                "network_access": false,
+                "output_verbosity": "concise",
+                "reasoning_summary": "detailed",
+                "memory_enabled": false,
+                "plugins_enabled": false,
+                "custom_instructions": "  be terse  ",
+                "personal_style": "professional",
+                "warmth": "low",
+                "enthusiasm": "high",
+                "emoji_usage": "less",
+                "visual_answers": "off",
+                "heading_style": "detailed",
+                "quick_answers": false
+            }))
+            .unwrap();
         }
 
         let (mut restarted, _) = new_test_core(config_path, home.path());
@@ -4362,14 +4787,57 @@ auto_approve_plugins = true
             restarted.permissions_get().unwrap()["approval_mode"],
             "auto"
         );
-        assert_eq!(
-            restarted.agent_config_get().unwrap()["reasoning_effort"],
-            "high"
-        );
+        let agent = restarted.agent_config_get().unwrap();
+        assert_eq!(agent["reasoning_effort"], "high");
+        assert_eq!(agent["web_search"], false);
+        assert_eq!(agent["network_access"], false);
+        assert_eq!(agent["output_verbosity"], "concise");
+        assert_eq!(agent["reasoning_summary"], "detailed");
+        assert_eq!(agent["memory_enabled"], false);
+        assert_eq!(agent["plugins_enabled"], false);
+        assert_eq!(agent["custom_instructions"], "be terse");
+        assert_eq!(agent["personal_style"], "professional");
+        assert_eq!(agent["warmth"], "low");
+        assert_eq!(agent["enthusiasm"], "high");
+        assert_eq!(agent["emoji_usage"], "less");
+        assert_eq!(agent["visual_answers"], "off");
+        assert_eq!(agent["heading_style"], "detailed");
+        assert_eq!(agent["quick_answers"], false);
+        assert!(restarted.tools.get("web_fetch").is_none());
+        assert!(restarted.tools.get("memory").is_none());
+        assert!(restarted.effective_policy_config().deny_network);
         let error = restarted
             .agent_config_set(json!({"reasoning_effort": "extreme"}))
             .unwrap_err();
         assert_eq!(error.code, error_codes::INVALID_PARAMS);
+    }
+
+    #[test]
+    fn personalization_block_reflects_agent_settings() {
+        let temp = tempfile::tempdir().unwrap();
+        let config_path = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let (mut core, _) = new_test_core(config_path, home.path());
+        core.handshaken = true;
+        core.agent_config_set(json!({
+            "personal_style": "friendly",
+            "warmth": "high",
+            "enthusiasm": "low",
+            "emoji_usage": "more",
+            "visual_answers": "on",
+            "heading_style": "concise",
+            "quick_answers": false
+        }))
+        .unwrap();
+
+        let block = core.personalization_block();
+        assert!(block.contains("friendly"));
+        assert!(block.contains("warm and supportive"));
+        assert!(block.contains("enthusiasm understated"));
+        assert!(block.contains("emoji"));
+        assert!(block.contains("visual structure"));
+        assert!(block.contains("headings and lists short"));
+        assert!(!block.contains("general knowledge is sufficient"));
     }
 
     #[test]
@@ -4607,6 +5075,184 @@ auto_approve_plugins = true
                 "missing {expected}; got {rules:?}"
             );
         }
+    }
+
+    #[test]
+    fn rewind_from_a_user_message_truncates_and_hides_the_old_branch() {
+        let temp = tempfile::tempdir().unwrap();
+        let config = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let (mut core, _) = new_test_core(config, home.path());
+        core.handshaken = true;
+        let created = core
+            .session_create(json!({"workspace": temp.path().to_string_lossy()}))
+            .unwrap();
+        let session_id = created["session_id"].as_str().unwrap().to_owned();
+
+        core.turn_start(json!({"session_id": session_id, "prompt": "first"}))
+            .unwrap();
+        wait_for_threads(&mut core);
+        let first_user_seq = core
+            .store
+            .read_events(&session_id)
+            .unwrap()
+            .iter()
+            .find_map(|stored| match &stored.event {
+                CoreEvent::UserMessage { text, .. } if text == "first" => Some(stored.seq),
+                _ => None,
+            })
+            .expect("first user event");
+
+        core.turn_start(json!({"session_id": session_id, "prompt": "second"}))
+            .unwrap();
+        wait_for_threads(&mut core);
+
+        let started = core
+            .turn_start(json!({
+                "session_id": session_id,
+                "prompt": "again",
+                "rewind_from_seq": first_user_seq,
+            }))
+            .unwrap();
+        assert!(started["turn_id"].as_str().is_some());
+        wait_for_threads(&mut core);
+
+        let history = core
+            .session_history(json!({"session_id": session_id}))
+            .unwrap();
+        let entries = history["messages"].as_array().unwrap();
+        assert_eq!(entries.len(), 2, "{history}");
+        assert_eq!(entries[0]["role"], "user");
+        assert_eq!(entries[0]["text"], "again");
+        assert_eq!(entries[1]["role"], "assistant");
+
+        let events = core.store.read_events(&session_id).unwrap();
+        assert!(events.iter().any(|stored| matches!(
+            &stored.event,
+            CoreEvent::ConversationRewound { from_seq } if *from_seq == first_user_seq
+        )));
+        // The old branch stays on disk for audit; the marker hides it.
+        assert!(events.iter().any(|stored| matches!(
+            &stored.event,
+            CoreEvent::UserMessage { text, .. } if text == "second"
+        )));
+    }
+
+    #[test]
+    fn rewind_rejects_events_that_are_not_live_user_messages() {
+        let temp = tempfile::tempdir().unwrap();
+        let config = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let (mut core, _) = new_test_core(config, home.path());
+        core.handshaken = true;
+        let created = core
+            .session_create(json!({"workspace": temp.path().to_string_lossy()}))
+            .unwrap();
+        let session_id = created["session_id"].as_str().unwrap().to_owned();
+        core.turn_start(json!({"session_id": session_id, "prompt": "hello"}))
+            .unwrap();
+        wait_for_threads(&mut core);
+
+        let events = core.store.read_events(&session_id).unwrap();
+        let started_seq = events
+            .iter()
+            .find(|stored| matches!(stored.event, CoreEvent::TurnStarted { .. }))
+            .map(|stored| stored.seq)
+            .expect("turn.started event");
+
+        let not_user = core
+            .turn_start(json!({
+                "session_id": session_id,
+                "prompt": "rewrite",
+                "rewind_from_seq": started_seq,
+            }))
+            .unwrap_err();
+        assert_eq!(not_user.code, error_codes::INVALID_PARAMS);
+
+        let missing = core
+            .turn_start(json!({
+                "session_id": session_id,
+                "prompt": "rewrite",
+                "rewind_from_seq": 9999,
+            }))
+            .unwrap_err();
+        assert_eq!(missing.code, error_codes::INVALID_PARAMS);
+    }
+
+    #[test]
+    fn live_events_hide_rewound_intervals_but_keep_markers() {
+        let user = |seq: u64, text: &str| StoredSessionEvent {
+            seq,
+            at: format!("t{seq}"),
+            event: CoreEvent::UserMessage {
+                turn_id: format!("turn-{seq}"),
+                text: text.to_owned(),
+            },
+        };
+        let marker = |seq: u64, from_seq: u64| StoredSessionEvent {
+            seq,
+            at: format!("t{seq}"),
+            event: CoreEvent::ConversationRewound { from_seq },
+        };
+        let events = vec![
+            user(1, "old"),
+            marker(2, 1),
+            user(3, "dropped"),
+            marker(4, 3),
+            user(5, "kept"),
+        ];
+        let live: Vec<u64> = live_events(events).iter().map(|event| event.seq).collect();
+        assert_eq!(live, vec![2, 4, 5]);
+    }
+
+    #[test]
+    fn build_session_history_pairs_retained_user_messages_with_newest_events() {
+        let message = |role: &str, text: &str| json!({"role": role, "content": text});
+        let messages = vec![
+            message("user", "kept question"),
+            message("assistant", "answer"),
+        ];
+        let events = vec![
+            StoredSessionEvent {
+                seq: 1,
+                at: "t1".to_owned(),
+                event: CoreEvent::UserMessage {
+                    turn_id: "old".to_owned(),
+                    text: "compacted question".to_owned(),
+                },
+            },
+            StoredSessionEvent {
+                seq: 2,
+                at: "t2".to_owned(),
+                event: CoreEvent::TurnDelta {
+                    turn_id: "old".to_owned(),
+                    text: "old answer".to_owned(),
+                },
+            },
+            StoredSessionEvent {
+                seq: 3,
+                at: "t3".to_owned(),
+                event: CoreEvent::UserMessage {
+                    turn_id: "new".to_owned(),
+                    text: "kept question".to_owned(),
+                },
+            },
+            StoredSessionEvent {
+                seq: 4,
+                at: "t4".to_owned(),
+                event: CoreEvent::TurnDelta {
+                    turn_id: "new".to_owned(),
+                    text: "answer".to_owned(),
+                },
+            },
+        ];
+        let entries = build_session_history(&messages, &events);
+        let user = entries
+            .iter()
+            .find(|entry| entry.role == "user")
+            .expect("user entry");
+        assert_eq!(user.seq, Some(3));
+        assert_eq!(user.text, "kept question");
     }
 
     #[test]

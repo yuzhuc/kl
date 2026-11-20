@@ -63,6 +63,9 @@ impl Tool for WebFetchTool {
     }
 
     fn execute(&self, context: &ToolContext<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
+        if context.policy.config().deny_network {
+            return Err(ToolError::Policy("network access is disabled".to_owned()));
+        }
         let allowlist = &context.policy.config().network_allowlist;
         if allowlist.is_empty() {
             return Err(ToolError::Policy(

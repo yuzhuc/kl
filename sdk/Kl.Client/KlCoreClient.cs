@@ -66,6 +66,17 @@ public sealed class KlCoreClient : IAsyncDisposable
         return new KlCoreClient(process, new JsonRpcConnection(process), ResolveToken(options));
     }
 
+    /// <summary>Reads the TLS fingerprint from the options, then the environment.</summary>
+    public static string? ResolveTlsFingerprint(KlClientOptions options)
+    {
+        if (!string.IsNullOrWhiteSpace(options.TlsFingerprint))
+        {
+            return options.TlsFingerprint.Trim();
+        }
+        var fromEnvironment = Environment.GetEnvironmentVariable("KL_CORE_TLS_FINGERPRINT");
+        return string.IsNullOrWhiteSpace(fromEnvironment) ? null : fromEnvironment.Trim();
+    }
+
     /// <summary>Reads the shared secret from the options, then <c>KL_CORE_TOKEN</c>.</summary>
     public static string? ResolveToken(KlClientOptions options)
     {
@@ -148,7 +159,10 @@ public sealed class KlCoreClient : IAsyncDisposable
     {
         var endpoint = ResolveEndpoint(options)
             ?? throw new InvalidOperationException("no core endpoint available");
-        var stream = LocalSocketConnection.Connect(endpoint);
+        var stream = LocalSocketConnection.Connect(
+            endpoint,
+            ResolveTlsFingerprint(options),
+            cancellationToken);
         var client = new KlCoreClient(
             null,
             new JsonRpcConnection(stream, stream),
@@ -392,7 +406,8 @@ public sealed class KlCoreClient : IAsyncDisposable
         string? model,
         string? quality,
         string? agent,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        long? rewindFromSeq = null)
     {
         var parameters = new Dictionary<string, object?>
         {
@@ -415,6 +430,10 @@ public sealed class KlCoreClient : IAsyncDisposable
         {
             parameters["agent"] = agent;
         }
+        if (rewindFromSeq is { } rewind)
+        {
+            parameters["rewind_from_seq"] = rewind;
+        }
         return RequestAsync(Protocol.TurnStart, parameters, cancellationToken);
     }
 
@@ -423,6 +442,8 @@ public sealed class KlCoreClient : IAsyncDisposable
         string? baseRef,
         string? mode,
         bool strict,
+        string? instructions = null,
+        bool fullFiles = false,
         CancellationToken cancellationToken = default)
     {
         var parameters = new Dictionary<string, object?>
@@ -437,6 +458,14 @@ public sealed class KlCoreClient : IAsyncDisposable
         if (!string.IsNullOrWhiteSpace(mode))
         {
             parameters["mode"] = mode;
+        }
+        if (!string.IsNullOrWhiteSpace(instructions))
+        {
+            parameters["instructions"] = instructions;
+        }
+        if (fullFiles)
+        {
+            parameters["full_files"] = true;
         }
         return RequestAsync(Protocol.ReviewRun, parameters, cancellationToken);
     }

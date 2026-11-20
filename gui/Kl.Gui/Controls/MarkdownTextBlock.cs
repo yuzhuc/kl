@@ -18,13 +18,16 @@ public sealed class MarkdownTextBlock : UserControl
         AvaloniaProperty.Register<MarkdownTextBlock, double>(nameof(ContentLineHeight), 24);
     public static readonly StyledProperty<double> CodeFontSizeProperty =
         AvaloniaProperty.Register<MarkdownTextBlock, double>(nameof(CodeFontSize), 12);
+    public static readonly StyledProperty<FontFamily> ContentFontFamilyProperty =
+        AvaloniaProperty.Register<MarkdownTextBlock, FontFamily>(nameof(ContentFontFamily), FontFamily.Default);
+    public static readonly StyledProperty<FontWeight> ContentFontWeightProperty =
+        AvaloniaProperty.Register<MarkdownTextBlock, FontWeight>(nameof(ContentFontWeight), FontWeight.Normal);
+    public static readonly StyledProperty<FontFamily> CodeFontFamilyProperty =
+        AvaloniaProperty.Register<MarkdownTextBlock, FontFamily>(nameof(CodeFontFamily), FontFamily.Default);
+    public static readonly StyledProperty<FontWeight> CodeFontWeightProperty =
+        AvaloniaProperty.Register<MarkdownTextBlock, FontWeight>(nameof(CodeFontWeight), FontWeight.Normal);
 
-    private static readonly FontFamily CodeFont = new("Cascadia Mono, Consolas");
-    private static readonly IBrush PrimaryBrush = new SolidColorBrush(Color.Parse("#E3E4E6"));
-    private static readonly IBrush BodyBrush = new SolidColorBrush(Color.Parse("#E3E4E6"));
-    private static readonly IBrush CodeBrush = new SolidColorBrush(Color.Parse("#D7D9DD"));
-    private static readonly IBrush InlineCodeBrush = new SolidColorBrush(Color.Parse("#D7D9DD"));
-    private static readonly IBrush CodeBackground = new SolidColorBrush(Color.Parse("#1B1B1C"));
+    private static IBrush PrimaryBrush => ThemeBrushes.Get("TextPrimary", "#E3E4E6");
     private readonly StackPanel _root;
     private readonly DispatcherTimer _rebuildTimer = new() { Interval = TimeSpan.FromMilliseconds(40) };
 
@@ -37,6 +40,14 @@ public sealed class MarkdownTextBlock : UserControl
             (control, _) => control.ScheduleRebuild());
         CodeFontSizeProperty.Changed.AddClassHandler<MarkdownTextBlock>(
             (control, _) => control.ScheduleRebuild());
+        ContentFontFamilyProperty.Changed.AddClassHandler<MarkdownTextBlock>(
+            (control, _) => control.ScheduleRebuild());
+        ContentFontWeightProperty.Changed.AddClassHandler<MarkdownTextBlock>(
+            (control, _) => control.ScheduleRebuild());
+        CodeFontFamilyProperty.Changed.AddClassHandler<MarkdownTextBlock>(
+            (control, _) => control.ScheduleRebuild());
+        CodeFontWeightProperty.Changed.AddClassHandler<MarkdownTextBlock>(
+            (control, _) => control.ScheduleRebuild());
     }
 
     public MarkdownTextBlock()
@@ -48,7 +59,23 @@ public sealed class MarkdownTextBlock : UserControl
             _rebuildTimer.Stop();
             Rebuild();
         };
+        AttachedToVisualTree += (_, _) =>
+        {
+            if (Application.Current is { } application)
+            {
+                application.ActualThemeVariantChanged += OnApplicationThemeChanged;
+            }
+        };
+        DetachedFromVisualTree += (_, _) =>
+        {
+            if (Application.Current is { } application)
+            {
+                application.ActualThemeVariantChanged -= OnApplicationThemeChanged;
+            }
+        };
     }
+
+    private void OnApplicationThemeChanged(object? sender, EventArgs eventArgs) => ScheduleRebuild();
 
     public string Text
     {
@@ -72,6 +99,30 @@ public sealed class MarkdownTextBlock : UserControl
     {
         get => GetValue(CodeFontSizeProperty);
         set => SetValue(CodeFontSizeProperty, value);
+    }
+
+    public FontFamily ContentFontFamily
+    {
+        get => GetValue(ContentFontFamilyProperty);
+        set => SetValue(ContentFontFamilyProperty, value);
+    }
+
+    public FontWeight ContentFontWeight
+    {
+        get => GetValue(ContentFontWeightProperty);
+        set => SetValue(ContentFontWeightProperty, value);
+    }
+
+    public FontFamily CodeFontFamily
+    {
+        get => GetValue(CodeFontFamilyProperty);
+        set => SetValue(CodeFontFamilyProperty, value);
+    }
+
+    public FontWeight CodeFontWeight
+    {
+        get => GetValue(CodeFontWeightProperty);
+        set => SetValue(CodeFontWeightProperty, value);
     }
 
     private void ScheduleRebuild()
@@ -171,10 +222,12 @@ public sealed class MarkdownTextBlock : UserControl
         lines.Clear();
         var block = new SelectableTextBlock
         {
+            FontFamily = ContentFontFamily,
+            FontWeight = ContentFontWeight,
             FontSize = ContentFontSize,
             LineHeight = ContentLineHeight,
             TextWrapping = TextWrapping.Wrap,
-            Foreground = BodyBrush
+            Foreground = PrimaryBrush
         };
         AddInline(block.Inlines!, text);
         _root.Children.Add(block);
@@ -184,6 +237,7 @@ public sealed class MarkdownTextBlock : UserControl
     {
         var block = new SelectableTextBlock
         {
+            FontFamily = ContentFontFamily,
             FontSize = ContentFontSize + sizeDelta,
             LineHeight = ContentLineHeight + sizeDelta,
             FontWeight = FontWeight.SemiBold,
@@ -211,9 +265,11 @@ public sealed class MarkdownTextBlock : UserControl
             row.Children.Add(new TextBlock
             {
                 Text = item.Marker,
+                FontFamily = ContentFontFamily,
+                FontWeight = ContentFontWeight,
                 FontSize = ContentFontSize,
                 LineHeight = ContentLineHeight,
-                Foreground = BodyBrush,
+                Foreground = PrimaryBrush,
                 Margin = new Thickness(item.Numbered ? 0 : (item.Level == 0 ? 4 : 0), 0, item.Numbered ? 6 : 0, 0),
                 HorizontalAlignment = item.Numbered
                     ? Avalonia.Layout.HorizontalAlignment.Right
@@ -222,10 +278,12 @@ public sealed class MarkdownTextBlock : UserControl
             });
             var text = new SelectableTextBlock
             {
+                FontFamily = ContentFontFamily,
+                FontWeight = ContentFontWeight,
                 FontSize = ContentFontSize,
                 LineHeight = ContentLineHeight,
                 TextWrapping = TextWrapping.Wrap,
-                Foreground = BodyBrush
+                Foreground = PrimaryBrush
             };
             AddInline(text.Inlines!, item.Text);
             Grid.SetColumn(text, 1);
@@ -242,7 +300,7 @@ public sealed class MarkdownTextBlock : UserControl
         var headerIcon = new Avalonia.Controls.Shapes.Path
         {
             Data = Geometry.Parse("M10 4V20 M4 12H20 M16 8L20 12L16 16"),
-            Stroke = new SolidColorBrush(Color.Parse("#7E7F82")),
+            Stroke = ThemeBrushes.Get("CodeIcon", "#7E7F82"),
             StrokeThickness = 1.3,
             StrokeLineCap = PenLineCap.Round,
             StrokeJoin = PenLineJoin.Round,
@@ -256,7 +314,7 @@ public sealed class MarkdownTextBlock : UserControl
         {
             Text = string.IsNullOrWhiteSpace(language) ? "纯文本" : language,
             FontSize = 12,
-            Foreground = new SolidColorBrush(Color.Parse("#D0D1D3")),
+            Foreground = ThemeBrushes.Get("CodeText", "#D0D1D3"),
             VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
         };
         var headerStack = new StackPanel
@@ -330,7 +388,7 @@ public sealed class MarkdownTextBlock : UserControl
             await clipboard.SetTextAsync(code);
             // Show a check mark briefly, as the app does after copying code.
             copyIcon.Data = Geometry.Parse("M5 12L10 17L19 7");
-            copyIcon.Stroke = new SolidColorBrush(Color.Parse("#7FBF8F"));
+            copyIcon.Stroke = ThemeBrushes.Get("SuccessGreen", "#7FBF8F");
             await Task.Delay(1200);
             copyIcon.Data = copyGeometry;
             copyIcon.Stroke = copyStroke;
@@ -350,10 +408,11 @@ public sealed class MarkdownTextBlock : UserControl
         var codeText = new SelectableTextBlock
         {
             Text = code,
-            FontFamily = CodeFont,
+            FontFamily = CodeFontFamily,
+            FontWeight = CodeFontWeight,
             FontSize = CodeFontSize,
             LineHeight = CodeFontSize + 8,
-            Foreground = new SolidColorBrush(Color.Parse("#E3E4E6")),
+            Foreground = PrimaryBrush,
             TextWrapping = TextWrapping.NoWrap
         };
         var scroll = new ScrollViewer
@@ -365,7 +424,7 @@ public sealed class MarkdownTextBlock : UserControl
         };
         var wrapIcon = (Avalonia.Controls.Shapes.Path)wrapButton.Content!;
         var wrapOffStroke = wrapIcon.Stroke;
-        var wrapOnStroke = new SolidColorBrush(Color.Parse("#8FA8FF"));
+        var wrapOnStroke = ThemeBrushes.Get("AccentSoft", "#8FA8FF");
         wrapButton.Click += (_, _) =>
         {
             var wrap = codeText.TextWrapping != TextWrapping.Wrap;
@@ -389,8 +448,8 @@ public sealed class MarkdownTextBlock : UserControl
         _root.Children.Add(new Border
         {
             Child = layout,
-            Background = new SolidColorBrush(Color.Parse("#1E1E20")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#262628")),
+            Background = ThemeBrushes.Get("CodeBlockFill", "#1E1E20"),
+            BorderBrush = ThemeBrushes.Get("CodeActionBorder", "#262628"),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(10),
             ClipToBounds = true
@@ -432,7 +491,7 @@ public sealed class MarkdownTextBlock : UserControl
             Content = new Avalonia.Controls.Shapes.Path
             {
                 Data = Geometry.Parse(geometry),
-                Stroke = new SolidColorBrush(Color.Parse("#7E7F82")),
+                Stroke = ThemeBrushes.Get("CodeIcon", "#7E7F82"),
                 StrokeThickness = 1.3,
                 StrokeLineCap = PenLineCap.Round,
                 StrokeJoin = PenLineJoin.Round,
@@ -485,8 +544,9 @@ public sealed class MarkdownTextBlock : UserControl
                 {
                     target.Add(new Run(codeText)
                     {
-                        FontFamily = CodeFont,
-                        Foreground = InlineCodeBrush
+                        FontFamily = CodeFontFamily,
+                        FontWeight = CodeFontWeight,
+                        Foreground = PrimaryBrush
                     });
                     position = codeEnd + 1;
                     continue;
@@ -494,7 +554,7 @@ public sealed class MarkdownTextBlock : UserControl
 
                 var pill = new Border
                 {
-                    Background = new SolidColorBrush(Color.Parse("#242427")),
+                    Background = ThemeBrushes.Get("InlineCodeFill", "#242427"),
                     CornerRadius = new CornerRadius(4),
                     Padding = new Thickness(4, 0),
                     Margin = new Thickness(1, 0),
@@ -504,7 +564,8 @@ public sealed class MarkdownTextBlock : UserControl
                     Child = new TextBlock
                     {
                         Text = codeText,
-                        FontFamily = CodeFont,
+                        FontFamily = CodeFontFamily,
+                        FontWeight = CodeFontWeight,
                         FontSize = CodeFontSize - 1,
                         Foreground = PrimaryBrush,
                         TextWrapping = TextWrapping.NoWrap,

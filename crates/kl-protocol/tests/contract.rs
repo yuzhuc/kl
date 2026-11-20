@@ -3,11 +3,11 @@
 
 use kl_protocol::{
     AgentConfigResult, AgentConfigSetParams, ApprovalMode, CoreEvent, EventNotification,
-    HandshakeParams, HandshakeResult, IncomingMessage, PermissionsResult, PermissionsSetParams,
-    PingParams, PingResult, ProviderListResult, ReasoningEffort, RequestId, ReviewResult,
-    SessionCompactParams, SessionCompactResult, SessionHistoryParams, SessionHistoryResult,
-    SessionStatusParams, SessionStatusResult, WorkspaceInitParams, WorkspaceInitResult,
-    error_codes, methods,
+    HandshakeParams, HandshakeResult, IncomingMessage, OutputVerbosity, PermissionsResult,
+    PermissionsSetParams, PersonalStyle, PingParams, PingResult, ProviderListResult,
+    ReasoningEffort, RequestId, ReviewResult, ReviewRunParams, SessionCompactParams,
+    SessionCompactResult, SessionHistoryParams, SessionHistoryResult, SessionStatusParams,
+    SessionStatusResult, ToneLevel, WorkspaceInitParams, WorkspaceInitResult, error_codes, methods,
 };
 use serde_json::Value;
 use std::path::PathBuf;
@@ -106,6 +106,7 @@ fn provider_list_result_matches_shared_contract() {
     assert_eq!(result.active_model, "gpt-5-responses");
     assert_eq!(result.models.len(), 3);
     assert_eq!(result.models[0].protocol, "openai-chat");
+    assert_eq!(result.models[0].name, "GPT-5 Chat");
     assert!(result.models[0].enabled);
     assert!(result.models[0].key_configured);
     assert_eq!(result.models[1].protocol, "anthropic");
@@ -114,6 +115,21 @@ fn provider_list_result_matches_shared_contract() {
         result.models[2].url,
         "https://gateway.example/custom/responses"
     );
+}
+
+#[test]
+fn review_params_accept_instructions_and_full_files() {
+    let params: ReviewRunParams = serde_json::from_value(serde_json::json!({
+        "workspace": ".",
+        "mode": "strict",
+        "instructions": "check unsafe blocks",
+        "full_files": true
+    }))
+    .unwrap();
+    assert_eq!(params.mode.as_deref(), Some("strict"));
+    assert_eq!(params.instructions.as_deref(), Some("check unsafe blocks"));
+    assert!(params.full_files);
+    assert!(!params.strict);
 }
 
 #[test]
@@ -250,10 +266,26 @@ fn command_support_messages_match_shared_contract() {
         serde_json::from_value(read("agent_config_set_request.json")).unwrap();
     assert_eq!(agent_set.method.as_deref(), Some(methods::AGENT_CONFIG_SET));
     let agent_params: AgentConfigSetParams = serde_json::from_value(agent_set.params).unwrap();
-    assert_eq!(agent_params.reasoning_effort, ReasoningEffort::High);
+    assert_eq!(agent_params.reasoning_effort, Some(ReasoningEffort::High));
+    assert_eq!(agent_params.web_search, Some(false));
+    assert_eq!(
+        agent_params.output_verbosity,
+        Some(OutputVerbosity::Concise)
+    );
+    assert_eq!(
+        agent_params.personal_style,
+        Some(PersonalStyle::Professional)
+    );
+    assert_eq!(agent_params.warmth, Some(ToneLevel::Low));
+    assert_eq!(agent_params.quick_answers, Some(false));
     let agent_set_result: AgentConfigResult =
         serde_json::from_value(read("agent_config_set_result.json")["result"].clone()).unwrap();
     assert_eq!(agent_set_result.reasoning_effort, ReasoningEffort::High);
+    assert!(!agent_set_result.web_search);
+    assert!(agent_set_result.network_access);
+    assert_eq!(agent_result.personal_style, PersonalStyle::Default);
+    assert_eq!(agent_result.warmth, ToneLevel::Default);
+    assert!(agent_result.quick_answers);
 
     for value in [
         read("session_status_result.json"),

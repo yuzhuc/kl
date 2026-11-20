@@ -282,12 +282,18 @@ pub struct DoctorResult {
 pub struct ProviderModelSummary {
     pub provider: String,
     pub model: String,
+    #[serde(default)]
+    pub name: String,
     pub protocol: String,
     pub url: String,
     pub context_window: u32,
     pub compact_threshold: f32,
     pub max_output_tokens: u32,
     pub enabled: bool,
+    #[serde(default = "default_reasoning_effort")]
+    pub reasoning_effort: String,
+    #[serde(default)]
+    pub reasoning_efforts: Vec<ReasoningEffort>,
     pub key_configured: bool,
     pub available: bool,
     pub detail: String,
@@ -353,12 +359,20 @@ pub struct ProviderProtocolUrls {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ProviderModelInput {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     pub protocol: String,
     pub context_window: u32,
     pub compact_threshold: f32,
     pub max_output_tokens: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub reasoning_effort: ReasoningEffort,
+    #[serde(default)]
+    pub reasoning_efforts: Vec<ReasoningEffort>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -444,23 +458,174 @@ impl ApprovalMode {
     }
 }
 
+fn default_true() -> bool {
+    true
+}
+
+fn default_reasoning_effort() -> String {
+    "default".to_owned()
+}
+
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum ReasoningEffort {
     #[default]
     Default,
+    None,
+    Minimal,
     Low,
     Medium,
     High,
+    XHigh,
+    Max,
+    Ultra,
 }
 
 impl ReasoningEffort {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Default => "default",
+            Self::None => "none",
+            Self::Minimal => "minimal",
             Self::Low => "low",
             Self::Medium => "medium",
             Self::High => "high",
+            Self::XHigh => "xhigh",
+            Self::Max => "max",
+            Self::Ultra => "ultra",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum OutputVerbosity {
+    #[default]
+    Default,
+    Concise,
+    Detailed,
+}
+
+impl OutputVerbosity {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Concise => "concise",
+            Self::Detailed => "detailed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ReasoningSummary {
+    #[default]
+    Auto,
+    Off,
+    Detailed,
+}
+
+impl ReasoningSummary {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Off => "off",
+            Self::Detailed => "detailed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum PersonalStyle {
+    #[default]
+    Default,
+    Friendly,
+    Professional,
+}
+
+impl PersonalStyle {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Friendly => "friendly",
+            Self::Professional => "professional",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ToneLevel {
+    #[default]
+    Default,
+    Low,
+    High,
+}
+
+impl ToneLevel {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Low => "low",
+            Self::High => "high",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum EmojiUsage {
+    #[default]
+    Default,
+    Less,
+    More,
+}
+
+impl EmojiUsage {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Less => "less",
+            Self::More => "more",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum VisualAnswers {
+    #[default]
+    Default,
+    Off,
+    On,
+}
+
+impl VisualAnswers {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Off => "off",
+            Self::On => "on",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum HeadingStyle {
+    #[default]
+    Default,
+    Concise,
+    Detailed,
+}
+
+impl HeadingStyle {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Concise => "concise",
+            Self::Detailed => "detailed",
         }
     }
 }
@@ -545,11 +710,68 @@ pub struct WorkspaceInitResult {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AgentConfigResult {
     pub reasoning_effort: ReasoningEffort,
+    #[serde(default)]
+    pub web_search: bool,
+    #[serde(default)]
+    pub network_access: bool,
+    #[serde(default)]
+    pub output_verbosity: OutputVerbosity,
+    #[serde(default)]
+    pub reasoning_summary: ReasoningSummary,
+    #[serde(default)]
+    pub memory_enabled: bool,
+    #[serde(default)]
+    pub plugins_enabled: bool,
+    #[serde(default)]
+    pub custom_instructions: String,
+    #[serde(default)]
+    pub personal_style: PersonalStyle,
+    #[serde(default)]
+    pub warmth: ToneLevel,
+    #[serde(default)]
+    pub enthusiasm: ToneLevel,
+    #[serde(default)]
+    pub emoji_usage: EmojiUsage,
+    #[serde(default)]
+    pub visual_answers: VisualAnswers,
+    #[serde(default)]
+    pub heading_style: HeadingStyle,
+    #[serde(default)]
+    pub quick_answers: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct AgentConfigSetParams {
-    pub reasoning_effort: ReasoningEffort,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<ReasoningEffort>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub web_search: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_access: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_verbosity: Option<OutputVerbosity>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_summary: Option<ReasoningSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugins_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_instructions: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub personal_style: Option<PersonalStyle>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub warmth: Option<ToneLevel>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enthusiasm: Option<ToneLevel>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emoji_usage: Option<EmojiUsage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visual_answers: Option<VisualAnswers>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub heading_style: Option<HeadingStyle>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quick_answers: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -741,6 +963,9 @@ pub struct TurnStartParams {
     pub quality: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent: Option<String>,
+    /// Rewinds the conversation to this live `user.message` seq before the turn.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rewind_from_seq: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -820,6 +1045,10 @@ pub struct ReviewRunParams {
     pub mode: Option<String>,
     #[serde(default)]
     pub strict: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
+    #[serde(default)]
+    pub full_files: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -852,6 +1081,9 @@ pub enum CoreEvent {
     SessionCreated { session_id: String },
     #[serde(rename = "user.message")]
     UserMessage { turn_id: String, text: String },
+    /// Marks a rewind: events in `[from_seq, this seq)` are no longer live.
+    #[serde(rename = "conversation.rewound")]
+    ConversationRewound { from_seq: u64 },
     #[serde(rename = "turn.started")]
     TurnStarted { turn_id: String },
     #[serde(rename = "turn.delta")]
@@ -1131,6 +1363,7 @@ mod tests {
             model: None,
             quality: None,
             agent: Some("plan".to_owned()),
+            rewind_from_seq: None,
         };
         let encoded = serde_json::to_value(&params).unwrap();
         assert_eq!(encoded["agent"], "plan");

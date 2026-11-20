@@ -27,13 +27,32 @@ public partial class MainWindow : Window
 {
     private readonly MainWindowViewModel _viewModel;
     private readonly DispatcherTimer _automationTimer = new() { Interval = TimeSpan.FromSeconds(30) };
-    private readonly DispatcherTimer _providerRefreshTimer = new() { Interval = TimeSpan.FromSeconds(10) };
+    private readonly DispatcherTimer _providerRefreshTimer = new() { Interval = TimeSpan.FromSeconds(30) };
     private readonly DispatcherTimer _railHintOpenTimer = new() { Interval = TimeSpan.FromMilliseconds(80) };
     private readonly DispatcherTimer _moreMenuOpenTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
     private readonly DispatcherTimer _moreMenuCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
     private readonly DispatcherTimer _previewCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(140) };
     private readonly DispatcherTimer _previewShowTimer = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private readonly DispatcherTimer _sectionSubmenuCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
+    private static readonly string[] UiFonts =
+    [
+        "Inter, Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI",
+        "Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI"
+    ];
+    private static readonly string[] CodeFonts =
+    [
+        "Geist Mono, Cascadia Mono, Consolas",
+        "JetBrains Mono, Cascadia Mono, Consolas",
+        "Cascadia Mono, Consolas"
+    ];
+    private static readonly FontWeight[] FontWeights =
+        [FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold];
+    private static readonly string[] ContrastTextKeys =
+    [
+        "TextPrimary", "TextSecondary", "TextTertiary", "TextCaption",
+        "SidebarText", "SidebarTextHover", "SidebarLabel"
+    ];
+    private readonly Dictionary<(ThemeVariant Variant, string Key), Color> _baseBrushColors = new();
     private SessionItemViewModel? _pinnedDragSession;
     private SessionItemViewModel? _nestedDragSession;
     private WorkspaceItemViewModel? _workspaceDragTarget;
@@ -65,18 +84,33 @@ public partial class MainWindow : Window
             coreSessionService: new CoreSessionService(new KlClientOptions
             {
                 Endpoint = remoteEndpoint,
-                Token = ReadRemoteToken(KlDataPaths.Default.RemoteTokenFilePath)
+                Token = ReadRemoteToken(KlDataPaths.Default.RemoteTokenFilePath),
+                TlsFingerprint = string.IsNullOrWhiteSpace(state.RemoteCoreTlsFingerprint)
+                    ? null
+                    : state.RemoteCoreTlsFingerprint.Trim()
             }),
             dispatcher: action => Dispatcher.UIThread.Post(action));
+        ApplyThemeVariant();
         InitializeComponent();
         ApplyStartupWindowSize();
         // Grayscale antialiasing matches the flat Codex look; subpixel AA fringes
         // badly on near-black surfaces.
         TextOptions.SetTextRenderingMode(this, TextRenderingMode.Antialias);
         DataContext = _viewModel;
+        if (Application.Current is { } application)
+        {
+            application.ActualThemeVariantChanged += OnActualThemeVariantChanged;
+        }
+
+        SyncEffectiveTheme();
         _viewModel.AttentionRequested += OnAttentionRequested;
         Activated += OnWindowActivated;
-        Opened += (_, _) => WireSettingsChevrons();
+        Opened += (_, _) =>
+        {
+            WireSettingsChevrons();
+            ApplyAppearanceResources();
+        };
+        Closed += (_, _) => TerminalView.Dispose();
         WireComboBoxMenus();
         SettingsNavScroller.SizeChanged += (_, _) => FitSettingsNavWidth();
         _viewModel.PropertyChanged += OnSettingsPaneChanged;
@@ -89,8 +123,17 @@ public partial class MainWindow : Window
         PinnedSectionMenuCard.DataContext = _viewModel;
         NotificationMenuPopup.DataContext = _viewModel;
         ApplyContentFontResources();
+        ApplyAppearanceResources();
         ApplyAccentResources();
+        ApplyDiffMarkerResources();
         ApplyPointerCursor();
+        ApplyTerminalPosition();
+        UpdateTerminalShellLabel();
+        if (_viewModel.IsTerminalPanelOpen)
+        {
+            StartTerminal();
+            Dispatcher.UIThread.Post(() => TerminalView.Focus(), DispatcherPriority.Background);
+        }
         UpdatePinGlyphs();
         SidebarPanelBorder.Width = _viewModel.IsSidebarVisible
             ? Math.Clamp(_viewModel.SidebarWidth, SidebarMinWidth, SidebarMaxWidth)
@@ -160,6 +203,8 @@ public partial class MainWindow : Window
         AddHandler(PointerPressedEvent, OnPinnedDragPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
         AddHandler(PointerMovedEvent, OnPinnedDragMoved, RoutingStrategies.Tunnel, handledEventsToo: true);
         AddHandler(PointerReleasedEvent, OnPinnedDragReleased, RoutingStrategies.Tunnel, handledEventsToo: true);
+        // App shortcuts win over focused controls (the terminal consumes every Ctrl+letter).
+        AddHandler(KeyDownEvent, OnWindowShortcutTunnel, RoutingStrategies.Tunnel, handledEventsToo: true);
         ConfigureRailPointerNavigation();
 
         // Test hook: open the command palette with a query (IME-safe verification).
@@ -1812,9 +1857,6 @@ public partial class MainWindow : Window
         AnimateSection(WorkspaceItemsControl, _viewModel.IsProjectSectionExpanded,
             _viewModel.ToggleProjectSection);
 
-    private void OnToggleArchivedClicked(object? sender, RoutedEventArgs eventArgs) =>
-        _viewModel.ToggleArchived();
-
     /// <summary>Codex's header share action: copy the conversation as plain text.</summary>
     private void OnShareConversationClicked(object? sender, RoutedEventArgs eventArgs)
     {
@@ -2049,7 +2091,7 @@ public partial class MainWindow : Window
     private void OnOpenModelSettingsClicked(object? sender, RoutedEventArgs eventArgs)
     {
         HideOwnerFlyout(sender);
-        _viewModel.OpenSettings(SettingsPane.Config);
+        _viewModel.OpenSettings(SettingsPane.Models);
     }
 
     private void OnWorkspacePickerClicked(object? sender, RoutedEventArgs eventArgs)
@@ -2126,16 +2168,31 @@ public partial class MainWindow : Window
     private async void OnRefreshWorktreesClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.RefreshWorktreesAsync();
 
+    private async void OnRunReviewClicked(object? sender, RoutedEventArgs eventArgs) =>
+        await _viewModel.RunReviewAsync();
+
+    private async void OnCreateWorktreeClicked(object? sender, RoutedEventArgs eventArgs) =>
+        await _viewModel.CreateWorktreeAsync();
+
+    private void OnDeleteWorktreeClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is Control { DataContext: WorktreeRow row })
+        {
+            _viewModel.RequestDeleteWorktree(row);
+        }
+    }
+
+    private void OnCancelWorktreeDeleteClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.CancelDeleteWorktree();
+
+    private async void OnConfirmWorktreeDeleteClicked(object? sender, RoutedEventArgs eventArgs) =>
+        await _viewModel.ConfirmDeleteWorktreeAsync();
+
     private void OnOpenWorktreeClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (sender is Control { DataContext: WorktreeRow row } && Directory.Exists(row.Path))
         {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = "explorer.exe",
-                Arguments = $"\"{row.Path}\"",
-                UseShellExecute = true
-            });
+            OpenInFileTarget(row.Path);
         }
     }
 
@@ -2144,7 +2201,7 @@ public partial class MainWindow : Window
         var path = _viewModel.HooksFilePath;
         if (File.Exists(path))
         {
-            Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true });
+            OpenInFileTarget(path);
             return;
         }
 
@@ -2229,6 +2286,9 @@ public partial class MainWindow : Window
     private async void OnSaveProviderModelClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.SaveProviderModelAsync();
 
+    private void OnToggleProviderApiKeyVisibilityClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.IsProviderApiKeyVisible = !_viewModel.IsProviderApiKeyVisible;
+
     private async void OnSaveProviderApiKeyClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.SaveProviderDetailApiKeyAsync();
 
@@ -2237,6 +2297,14 @@ public partial class MainWindow : Window
         if (sender is ToggleSwitch { DataContext: ProviderCardRow provider } toggle)
         {
             await _viewModel.SetProviderEnabledAsync(provider, toggle.IsChecked == true);
+        }
+    }
+
+    private async void OnProviderModelEnabledChanged(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is ToggleSwitch { DataContext: ProviderModelRow model } toggle)
+        {
+            await _viewModel.SetProviderModelEnabledAsync(model, toggle.IsChecked == true);
         }
     }
 
@@ -2273,6 +2341,173 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnThemeModeClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is Control { Tag: string mode })
+        {
+            _viewModel.SetThemeMode(mode);
+        }
+    }
+
+    private void OnDiffMarkerModeClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is Control { Tag: string mode })
+        {
+            _viewModel.SetDiffMarkerMode(mode);
+        }
+    }
+
+    private void OnToggleTerminalClicked(object? sender, RoutedEventArgs eventArgs) =>
+        ToggleTerminalFromAnyPage();
+
+    private void ToggleTerminalFromAnyPage()
+    {
+        if (!_viewModel.IsChatPage || _viewModel.IsSettingsOpen)
+        {
+            _viewModel.CloseSettings();
+            _viewModel.Navigate(AppSection.Chat);
+            if (!_viewModel.IsTerminalPanelOpen)
+            {
+                _viewModel.ToggleTerminalPanel();
+            }
+
+            return;
+        }
+
+        _viewModel.ToggleTerminalPanel();
+    }
+
+    private void OnTerminalPositionClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is Control { Tag: string position })
+        {
+            _viewModel.SetTerminalPosition(position);
+        }
+    }
+
+    private void OnTerminalPanelCloseClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.IsTerminalPanelOpen = false;
+
+    private void OnTerminalClearClicked(object? sender, RoutedEventArgs eventArgs) =>
+        TerminalView.Clear();
+
+    private void OnTerminalCopyClicked(object? sender, RoutedEventArgs eventArgs) =>
+        TerminalView.CopySelectionOrAll();
+
+    private void OnTerminalRestartClicked(object? sender, RoutedEventArgs eventArgs) =>
+        StartTerminal(forceRestart: true);
+
+    private void StartTerminal(bool forceRestart = false)
+    {
+        if (!_viewModel.IsTerminalPanelOpen)
+        {
+            return;
+        }
+
+        if (TerminalView.IsRunning && !forceRestart)
+        {
+            return;
+        }
+
+        var cwd = Directory.Exists(_viewModel.WorkspacePath)
+            ? _viewModel.WorkspacePath
+            : Environment.CurrentDirectory;
+        TerminalView.Start(_viewModel.TerminalShell, cwd);
+        UpdateTerminalShellLabel();
+    }
+
+    private void UpdateTerminalShellLabel() =>
+        TerminalShellLabel.Text = _viewModel.TerminalShell switch
+        {
+            "cmd" => "命令提示符",
+            "git-bash" => "Git Bash",
+            _ => "PowerShell"
+        };
+
+    private void ApplyTerminalPosition()
+    {
+        if (TerminalPanelBorder is null || TerminalSplitter is null)
+        {
+            return;
+        }
+
+        var size = _viewModel.TerminalPanelSize;
+        if (_viewModel.IsTerminalRight)
+        {
+            Grid.SetRow(TerminalSplitter, 0);
+            Grid.SetColumn(TerminalSplitter, 1);
+            TerminalSplitter.Width = 6;
+            TerminalSplitter.Height = double.NaN;
+            TerminalSplitter.Cursor = new Cursor(StandardCursorType.SizeWestEast);
+            TerminalSplitterLine.Width = 1;
+            TerminalSplitterLine.Height = double.NaN;
+            TerminalSplitterLine.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center;
+            TerminalSplitterLine.VerticalAlignment = Avalonia.Layout.VerticalAlignment.Stretch;
+
+            Grid.SetRow(TerminalPanelBorder, 0);
+            Grid.SetColumn(TerminalPanelBorder, 2);
+            TerminalPanelBorder.Width = size;
+            TerminalPanelBorder.Height = double.NaN;
+            TerminalPanelBorder.BorderThickness = new Thickness(1, 0, 0, 0);
+            return;
+        }
+
+        Grid.SetRow(TerminalSplitter, 1);
+        Grid.SetColumn(TerminalSplitter, 0);
+        TerminalSplitter.Width = double.NaN;
+        TerminalSplitter.Height = 6;
+        TerminalSplitter.Cursor = new Cursor(StandardCursorType.SizeNorthSouth);
+        TerminalSplitterLine.Width = double.NaN;
+        TerminalSplitterLine.Height = 1;
+        TerminalSplitterLine.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch;
+        TerminalSplitterLine.VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center;
+
+        Grid.SetRow(TerminalPanelBorder, 2);
+        Grid.SetColumn(TerminalPanelBorder, 0);
+        TerminalPanelBorder.Width = double.NaN;
+        TerminalPanelBorder.Height = size;
+        TerminalPanelBorder.BorderThickness = new Thickness(0, 1, 0, 0);
+    }
+
+    private bool _terminalSplitterDragging;
+
+    private void OnTerminalSplitterPressed(object? sender, PointerPressedEventArgs eventArgs)
+    {
+        if (!eventArgs.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        _terminalSplitterDragging = true;
+        eventArgs.Pointer.Capture(TerminalSplitter);
+        eventArgs.Handled = true;
+    }
+
+    private void OnTerminalSplitterMoved(object? sender, PointerEventArgs eventArgs)
+    {
+        if (!_terminalSplitterDragging
+            || !eventArgs.GetCurrentPoint(this).Properties.IsLeftButtonPressed
+            || TerminalSplitter.Parent is not Visual parent)
+        {
+            return;
+        }
+
+        // Drive the size straight from the pointer so the splitter stays under the cursor.
+        var point = eventArgs.GetPosition(parent);
+        var size = _viewModel.IsTerminalRight
+            ? parent.Bounds.Width - point.X
+            : parent.Bounds.Height - point.Y;
+        _viewModel.SetTerminalPanelSize(size);
+        ApplyTerminalPosition();
+        eventArgs.Handled = true;
+    }
+
+    private void OnTerminalSplitterReleased(object? sender, PointerReleasedEventArgs eventArgs)
+    {
+        _terminalSplitterDragging = false;
+        eventArgs.Pointer.Capture(null);
+    }
+
     private void OnRefreshCredentialsClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.RefreshCredentials();
 
@@ -2288,17 +2523,28 @@ public partial class MainWindow : Window
         });
     }
 
-    private void OnOpenRemoteCoreSettingsClicked(object? sender, RoutedEventArgs eventArgs) =>
-        SwitchSettingsPane(SettingsPane.Connections);
-
-    private void OnOpenAutomationFromSettingsClicked(object? sender, RoutedEventArgs eventArgs)
-    {
-        _viewModel.CloseSettings();
-        _viewModel.Navigate(AppSection.Automation);
-    }
-
     private async void OnDeleteAllMemoriesClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.DeleteAllMemoriesAsync();
+
+    private async void OnScanImportsClicked(object? sender, RoutedEventArgs eventArgs) =>
+        await _viewModel.DiscoverImportsAsync();
+
+    private async void OnImportSelectedClicked(object? sender, RoutedEventArgs eventArgs) =>
+        await _viewModel.ImportSelectedAsync();
+
+    private void OnOpenImportSourceClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        var path = Directory.Exists(_viewModel.ImportCodexHome)
+            ? _viewModel.ImportCodexHome
+            : _viewModel.ImportClaudeHome;
+        if (!Directory.Exists(path))
+        {
+            _viewModel.ReportError("没有找到 Codex 或 Claude 配置目录。");
+            return;
+        }
+
+        OpenDirectory(path, "导入来源");
+    }
 
     private void OnRefreshMcpToolsClicked(object? sender, RoutedEventArgs eventArgs) =>
         _ = _viewModel.RefreshMcpToolsAsync();
@@ -2346,30 +2592,20 @@ public partial class MainWindow : Window
         SettingsScroller.Offset = new Vector(0, 0);
     }
 
-    /// <summary>Settings controls that are UI-only still respond: segments select, rows open the detail sheet.</summary>
-    private void OnSettingsPlaceholderClicked(object? sender, RoutedEventArgs eventArgs)
+    /// <summary>Clicking blank space drops the text focus, as Codex does.</summary>
+    private void OnOpenRemoteCoreSettingsClicked(object? sender, RoutedEventArgs eventArgs)
     {
-        if (sender is not Button button)
+        SwitchSettingsPane(SettingsPane.Connections);
+        var tab = SettingsPanesPanel.GetLogicalDescendants().OfType<Button>()
+            .FirstOrDefault(button => button.Tag is "connect:other");
+        if (tab is not null && !tab.Classes.Contains("active"))
         {
-            return;
+            OnSettingsTabClicked(tab, new RoutedEventArgs());
         }
 
-        if ((button.Classes.Contains("filter") || button.Classes.Contains("segment"))
-            && button.Parent is Panel panel)
-        {
-            foreach (var sibling in panel.Children.OfType<Button>())
-            {
-                sibling.Classes.Set("active", sibling == button);
-            }
-            return;
-        }
-
-        _viewModel.OpenSettingsDetail(
-            SettingsRowTitle(button),
-            "这个设置项目前只有界面。接入 KL Core 后会提供真实数据与操作。");
+        this.FindControl<TextBox>("RemoteEndpointBox")?.Focus();
     }
 
-    /// <summary>Clicking blank space drops the text focus, as Codex does.</summary>
     private void OnSettingsScrollerPointerPressed(object? sender, PointerPressedEventArgs eventArgs) =>
         FocusManager?.Focus(null, NavigationMethod.Unspecified, KeyModifiers.None);
 
@@ -2388,19 +2624,35 @@ public partial class MainWindow : Window
         down.IsVisible = panel.IsVisible;
     }
 
-    /// <summary>Same collapsed-by-default advanced row as the appearance pane.</summary>
-    private void OnVoiceAdvancedClicked(object? sender, RoutedEventArgs eventArgs)
+    /// <summary>Marks the selected appearance preview and routes clicks to the theme mode.</summary>
+    private void WireSettingsChevrons()
     {
-        if (this.FindControl<StackPanel>("VoiceAdvancedPanel") is not { } panel
-            || this.FindControl<Avalonia.Controls.Shapes.Path>("VoiceAdvancedChevronRight") is not { } right
-            || this.FindControl<Avalonia.Controls.Shapes.Path>("VoiceAdvancedChevronDown") is not { } down)
+        var modeCards = SettingsPanesPanel.GetLogicalDescendants().OfType<Border>()
+            .Where(card => card.Classes.Contains("settings-mode-card"))
+            .ToList();
+        foreach (var card in modeCards)
         {
-            return;
+            if (card.Tag is not string mode)
+            {
+                continue;
+            }
+
+            card.Cursor = new Cursor(StandardCursorType.Hand);
+            card.PointerPressed += (_, _) => _viewModel.SetThemeMode(mode);
         }
 
-        panel.IsVisible = !panel.IsVisible;
-        right.IsVisible = !panel.IsVisible;
-        down.IsVisible = panel.IsVisible;
+        UpdateThemeModeCards();
+    }
+
+    private void UpdateThemeModeCards()
+    {
+        foreach (var card in SettingsPanesPanel.GetLogicalDescendants().OfType<Border>()
+                     .Where(card => card.Classes.Contains("settings-mode-card")))
+        {
+            var active = card.Tag is string mode && mode == _viewModel.ThemeMode;
+            card.BorderBrush = new SolidColorBrush(Color.Parse(active ? "#606ACC" : "#2E2E31"));
+            card.BorderThickness = new Thickness(active ? 2 : 1);
+        }
     }
 
     private void OnSettingsTabClicked(object? sender, RoutedEventArgs eventArgs)
@@ -2453,31 +2705,6 @@ public partial class MainWindow : Window
     private void OnSaveAgentsClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.SaveAgents();
 
-    private void OnCloseSettingsDetailClicked(object? sender, RoutedEventArgs eventArgs) =>
-        _viewModel.CloseSettingsDetail();
-
-    private void OnSettingsDetailBackdropPressed(object? sender, PointerPressedEventArgs eventArgs)
-    {
-        if (ReferenceEquals(eventArgs.Source, sender))
-        {
-            _viewModel.CloseSettingsDetail();
-        }
-    }
-
-    private static string SettingsRowTitle(Control control)
-    {
-        if (control is Button { Content: string text } && text.Length > 0)
-        {
-            return text;
-        }
-
-        var label = control.GetLogicalDescendants().OfType<TextBlock>()
-            .FirstOrDefault(block => block.Classes.Contains("settings-title"));
-        return label?.Text is { Length: > 0 } value
-            ? value
-            : control.GetLogicalDescendants().OfType<TextBlock>().FirstOrDefault()?.Text ?? "设置项";
-    }
-
     /// <summary>Chevron rows without a destination become clickable and open the detail sheet.</summary>
     private void OnSettingsPaneChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -2508,7 +2735,6 @@ public partial class MainWindow : Window
         }
 
         _providerRefreshTimer.Stop();
-        _viewModel.ClearProviderRefreshStatus();
     }
 
     private void OnProviderRefreshTimerTick(object? sender, EventArgs eventArgs)
@@ -2558,55 +2784,6 @@ public partial class MainWindow : Window
                 if (combo.GetVisualDescendants().OfType<Popup>().FirstOrDefault() is { } popup)
                 {
                     popup.Placement = PlacementMode.BottomEdgeAlignedRight;
-                }
-            };
-        }
-    }
-
-    private void WireSettingsChevrons()
-    {
-        foreach (var path in SettingsPanesPanel.GetLogicalDescendants().OfType<Avalonia.Controls.Shapes.Path>())
-        {
-            if (!path.Classes.Contains("row-chevron"))
-            {
-                continue;
-            }
-
-            // The chevron sits in a right-hand panel, or directly in the row grid for list rows.
-            var row = path.Parent switch
-            {
-                StackPanel right => right.Parent as Grid,
-                Grid grid => grid,
-                _ => null,
-            };
-            if (row is null || row.FindAncestorOfType<Button>() is not null)
-            {
-                continue;
-            }
-
-            row.Cursor = new Cursor(StandardCursorType.Hand);
-            row.Classes.Add("settings-link-row");
-            row.PointerPressed += (_, _) =>
-                _viewModel.OpenSettingsDetail(
-                    SettingsRowTitle(row),
-                    "这个设置项目前只有界面。接入 KL Core 后会提供真实数据与操作。");
-        }
-
-        var modeCards = SettingsPanesPanel.GetLogicalDescendants().OfType<Border>()
-            .Where(card => card.Classes.Contains("settings-mode-card"))
-            .ToList();
-        foreach (var card in modeCards)
-        {
-            card.Cursor = new Cursor(StandardCursorType.Hand);
-            card.PointerPressed += (_, _) =>
-            {
-                foreach (var other in modeCards)
-                {
-                    var active = other == card;
-                    other.BorderBrush = active
-                        ? new SolidColorBrush(Color.Parse("#606ACC"))
-                        : new SolidColorBrush(Color.Parse("#2E2E31"));
-                    other.BorderThickness = new Thickness(active ? 2 : 1);
                 }
             };
         }
@@ -2915,6 +3092,9 @@ public partial class MainWindow : Window
     private async void OnSaveApiKeyClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.SaveApiKeyAsync();
 
+    private async void OnSaveCustomInstructionsClicked(object? sender, RoutedEventArgs eventArgs) =>
+        await _viewModel.SaveCustomInstructionsAsync();
+
     private async void OnExportConversationClicked(object? sender, RoutedEventArgs eventArgs)
     {
         var markdown = _viewModel.BuildSessionMarkdown();
@@ -2996,10 +3176,38 @@ public partial class MainWindow : Window
         var path = _viewModel.ConfigFilePath;
         if (File.Exists(path))
         {
-            Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true });
+            OpenInFileTarget(path);
             return;
         }
         OpenDirectory(_viewModel.KlHomeDirectory, "KL Home");
+    }
+
+    private void OpenInFileTarget(string path)
+    {
+        if (_viewModel.FileOpenTargetIndex == 1 && TryOpenInVsCode(path))
+        {
+            return;
+        }
+
+        Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true });
+    }
+
+    private static bool TryOpenInVsCode(string path)
+    {
+        try
+        {
+            var start = new ProcessStartInfo("code") { UseShellExecute = true };
+            start.ArgumentList.Add("--reuse-window");
+            start.ArgumentList.Add(path);
+            using var process = Process.Start(start);
+            return process is not null;
+        }
+        catch (Exception error) when (error is InvalidOperationException
+            or System.ComponentModel.Win32Exception
+            or PlatformNotSupportedException)
+        {
+            return false;
+        }
     }
 
     private async void OnExportStateBackupClicked(object? sender, RoutedEventArgs eventArgs)
@@ -3106,7 +3314,7 @@ public partial class MainWindow : Window
 
     private async void OnCopyMessageClicked(object? sender, RoutedEventArgs eventArgs)
     {
-        if (sender is not Button { DataContext: ChatItemViewModel item } button)
+        if (sender is not Control { DataContext: ChatItemViewModel item } control)
         {
             return;
         }
@@ -3118,6 +3326,10 @@ public partial class MainWindow : Window
         try
         {
             await clipboard.SetTextAsync(item.Text);
+            if (control is not Button button)
+            {
+                return;
+            }
             ToolTip.SetTip(button, "已复制");
             button.Opacity = 1;
             await Task.Delay(1200);
@@ -3150,6 +3362,12 @@ public partial class MainWindow : Window
 
     private void OnClearRemoteCoreClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.ClearRemoteCoreSettings();
+
+    private async void OnTestRemoteCoreClicked(object? sender, RoutedEventArgs eventArgs) =>
+        await _viewModel.TestRemoteCoreConnectionAsync();
+
+    private async void OnReconnectCoreClicked(object? sender, RoutedEventArgs eventArgs) =>
+        await _viewModel.RetryCoreAsync();
 
     private void OnOpenCleanupClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.OpenCleanupDialog();
@@ -3270,7 +3488,12 @@ public partial class MainWindow : Window
         new("settings", "打开设置", '/', () => _viewModel.OpenSettings()),
         new("plugins", "打开插件页", '/', () => _viewModel.Navigate(AppSection.Plugins)),
         new("library", "打开资料库", '/', () => _viewModel.Navigate(AppSection.Library)),
-        new("doctor", "运行 KL Core 诊断（设置 → 模型与连接查看）", '/', () => _ = _viewModel.RunDoctorAsync())
+        new("doctor", "运行 KL Core 诊断（设置 → 模型与连接查看）", '/', () => _ = _viewModel.RunDoctorAsync()),
+        new("review", "运行代码审查", '/', () =>
+        {
+            _viewModel.OpenSettings(SettingsPane.CodeReview);
+            _ = _viewModel.RunReviewAsync();
+        })
     ];
 
     private void OnComposerTextChanged(object? sender, TextChangedEventArgs eventArgs)
@@ -3677,6 +3900,15 @@ public partial class MainWindow : Window
             _viewModel.CloseDialogs();
             return;
         }
+    }
+
+    /// <summary>Runs before focused controls so Ctrl+letter shortcuts still work in the terminal.</summary>
+    private void OnWindowShortcutTunnel(object? sender, KeyEventArgs eventArgs)
+    {
+        if (_viewModel.IsShortcutCapturing)
+        {
+            return;
+        }
 
         if (FormatShortcutGesture(eventArgs.Key, eventArgs.KeyModifiers) is { } gesture
             && _viewModel.FindShortcut(gesture) is { } shortcut)
@@ -3718,6 +3950,9 @@ public partial class MainWindow : Window
                 break;
             case "openSettings":
                 _viewModel.OpenSettings();
+                break;
+            case "toggleTerminal":
+                ToggleTerminalFromAnyPage();
                 break;
             case "closeWindow":
                 _closeRequestedByShortcut = true;
@@ -3856,11 +4091,54 @@ public partial class MainWindow : Window
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs eventArgs)
     {
+        if (eventArgs.PropertyName is nameof(MainWindowViewModel.UiFontIndex)
+            or nameof(MainWindowViewModel.ContentFontIndex)
+            or nameof(MainWindowViewModel.CodeFontIndex)
+            or nameof(MainWindowViewModel.UiFontWeightIndex)
+            or nameof(MainWindowViewModel.ContentFontWeightIndex)
+            or nameof(MainWindowViewModel.CodeFontWeightIndex)
+            or nameof(MainWindowViewModel.Contrast)
+            or nameof(MainWindowViewModel.TranslucentSidebar))
+        {
+            ApplyAppearanceResources();
+            return;
+        }
+
         if (eventArgs.PropertyName is nameof(MainWindowViewModel.IsChatPage)
             or nameof(MainWindowViewModel.IsProjectsPage)
             or nameof(MainWindowViewModel.IsPluginsPage)
             or nameof(MainWindowViewModel.IsAutomationPage))
         {
+            return;
+        }
+
+        if (eventArgs.PropertyName == nameof(MainWindowViewModel.IsTerminalPanelOpen))
+        {
+            ApplyTerminalPosition();
+            if (_viewModel.IsTerminalPanelOpen)
+            {
+                StartTerminal();
+                Dispatcher.UIThread.Post(() => TerminalView.Focus(), DispatcherPriority.Background);
+            }
+
+            return;
+        }
+
+        if (eventArgs.PropertyName == nameof(MainWindowViewModel.TerminalShellIndex))
+        {
+            UpdateTerminalShellLabel();
+            if (_viewModel.IsTerminalPanelOpen)
+            {
+                StartTerminal(forceRestart: true);
+            }
+
+            return;
+        }
+
+        if (eventArgs.PropertyName is nameof(MainWindowViewModel.IsTerminalBottom)
+            or nameof(MainWindowViewModel.IsTerminalRight))
+        {
+            ApplyTerminalPosition();
             return;
         }
 
@@ -3907,6 +4185,20 @@ public partial class MainWindow : Window
             or nameof(MainWindowViewModel.IsCodeReviewPinned))
         {
             UpdatePinGlyphs();
+            return;
+        }
+
+        if (eventArgs.PropertyName == nameof(MainWindowViewModel.ThemeMode))
+        {
+            ApplyThemeVariant();
+            UpdateThemeModeCards();
+            return;
+        }
+
+        if (eventArgs.PropertyName is nameof(MainWindowViewModel.DiffMarkerMode)
+            or nameof(MainWindowViewModel.IsDiffMarkers))
+        {
+            ApplyDiffMarkerResources();
             return;
         }
 
@@ -4408,6 +4700,15 @@ public partial class MainWindow : Window
         await CommitAppearanceFontSizeAsync();
     }
 
+    private void OnContrastCommitted(object? sender, PointerReleasedEventArgs eventArgs) =>
+        _viewModel.SaveAppearanceSettings();
+
+    private void OnContrastKeyUp(object? sender, KeyEventArgs eventArgs) =>
+        _viewModel.SaveAppearanceSettings();
+
+    private void OnContrastLostFocus(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.SaveAppearanceSettings();
+
     private async Task CommitAppearanceFontSizeAsync()
     {
         await _viewModel.SaveSettingsAsync();
@@ -4450,6 +4751,134 @@ public partial class MainWindow : Window
         application.Resources["ChatContentLineHeight"] = size + 9;
         application.Resources["ChatSecondaryFontSize"] = size - 1;
         application.Resources["ChatSecondaryLineHeight"] = size + 6;
+    }
+
+    private void ApplyThemeVariant()
+    {
+        if (Application.Current is not { } application)
+        {
+            return;
+        }
+
+        application.RequestedThemeVariant = _viewModel.ThemeMode switch
+        {
+            "light" => ThemeVariant.Light,
+            "system" => ThemeVariant.Default,
+            _ => ThemeVariant.Dark
+        };
+    }
+
+    private void OnActualThemeVariantChanged(object? sender, EventArgs eventArgs)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            SyncEffectiveTheme();
+            ApplyAppearanceResources();
+            ApplyAccentResources();
+            ApplyDiffMarkerResources();
+        }, DispatcherPriority.Background);
+    }
+
+    private void SyncEffectiveTheme()
+    {
+        var variant = Application.Current?.ActualThemeVariant ?? ThemeVariant.Dark;
+        _viewModel.SetEffectiveTheme(variant == ThemeVariant.Light);
+    }
+
+    private void ApplyDiffMarkerResources()
+    {
+        if (Application.Current is { } application)
+        {
+            application.Resources["DiffMarkers"] = _viewModel.IsDiffMarkers;
+        }
+    }
+
+    private void ApplyAppearanceResources()
+    {
+        if (Application.Current is not { } application)
+        {
+            return;
+        }
+
+        ApplyFontResources(application);
+        ApplyContrastResources(application);
+        ApplySidebarTranslucency(application);
+    }
+
+    private void ApplyFontResources(Application application)
+    {
+        var ui = UiFonts[Math.Clamp(_viewModel.UiFontIndex, 0, UiFonts.Length - 1)];
+        var content = _viewModel.ContentFontIndex switch
+        {
+            1 => UiFonts[0],
+            2 => UiFonts[1],
+            _ => ui
+        };
+        var code = CodeFonts[Math.Clamp(_viewModel.CodeFontIndex, 0, CodeFonts.Length - 1)];
+        application.Resources["UiFont"] = new FontFamily(ui);
+        application.Resources["ContentFont"] = new FontFamily(content);
+        application.Resources["CodeFont"] = new FontFamily(code);
+        application.Resources["UiFontWeight"] = FontWeights[Math.Clamp(_viewModel.UiFontWeightIndex, 0, 2)];
+        application.Resources["ContentFontWeight"] = FontWeights[Math.Clamp(_viewModel.ContentFontWeightIndex, 0, 2)];
+        application.Resources["CodeFontWeight"] = FontWeights[Math.Clamp(_viewModel.CodeFontWeightIndex, 0, 2)];
+    }
+
+    private void ApplyContrastResources(Application application)
+    {
+        var contrast = Math.Clamp(_viewModel.Contrast, 0, 100);
+        var background = BaseBrushColor(application, "BgBase");
+        var highTarget = ActualThemeVariant == ThemeVariant.Light ? Colors.Black : Colors.White;
+        foreach (var key in ContrastTextKeys)
+        {
+            var baseColor = BaseBrushColor(application, key);
+            Resources[key] = new SolidColorBrush(contrast switch
+            {
+                < 50 => Blend(baseColor, background, (50 - contrast) / 50.0 * 0.45),
+                > 50 => Blend(baseColor, highTarget, (contrast - 50) / 50.0 * 0.25),
+                _ => baseColor
+            });
+        }
+    }
+
+    private void ApplySidebarTranslucency(Application application)
+    {
+        var background = BaseBrushColor(application, "BgBase");
+        var sidebar = BaseBrushColor(application, "SidebarFill");
+        var rail = BaseBrushColor(application, "SidebarRailFill");
+        var enabled = _viewModel.TranslucentSidebar;
+        Resources["BgBase"] = new SolidColorBrush(enabled ? WithAlpha(background, 0) : background);
+        Resources["SidebarFill"] = new SolidColorBrush(enabled ? WithAlpha(sidebar, 0xB4) : sidebar);
+        Resources["SidebarRailFill"] = new SolidColorBrush(enabled ? WithAlpha(rail, 0xB4) : rail);
+        TransparencyLevelHint = enabled
+            ? [WindowTransparencyLevel.AcrylicBlur, WindowTransparencyLevel.Blur, WindowTransparencyLevel.Transparent]
+            : [WindowTransparencyLevel.None];
+    }
+
+    private Color BaseBrushColor(Application application, string key)
+    {
+        var variant = ActualThemeVariant;
+        var cacheKey = (variant, key);
+        if (_baseBrushColors.TryGetValue(cacheKey, out var color))
+        {
+            return color;
+        }
+
+        color = application.TryFindResource(key, variant, out var value)
+            && value is SolidColorBrush brush
+            ? brush.Color
+            : Colors.White;
+        _baseBrushColors[cacheKey] = color;
+        return color;
+    }
+
+    private static Color WithAlpha(Color color, byte alpha) =>
+        Color.FromArgb(alpha, color.R, color.G, color.B);
+
+    private static Color Blend(Color from, Color to, double amount)
+    {
+        amount = Math.Clamp(amount, 0, 1);
+        byte Mix(byte a, byte b) => (byte)Math.Round(a + (b - a) * amount);
+        return Color.FromArgb(from.A, Mix(from.R, to.R), Mix(from.G, to.G), Mix(from.B, to.B));
     }
 
     private void FocusComposer()
@@ -4510,6 +4939,13 @@ public partial class MainWindow : Window
             else if (kind == AttentionKind.Question)
             {
                 if (!_viewModel.QuestionNotifications || _windowActive)
+                {
+                    return;
+                }
+            }
+            else if (kind == AttentionKind.Automation)
+            {
+                if (!_viewModel.AutomationNotifications || _windowActive)
                 {
                     return;
                 }
@@ -4838,6 +5274,25 @@ public partial class MainWindow : Window
     }
 
     private void OnExitClicked(object? sender, RoutedEventArgs eventArgs) => Close();
+
+    private async void OnRegenerateMessageClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is Control { DataContext: ChatItemViewModel item })
+        {
+            await _viewModel.RegenerateAsync(item);
+        }
+    }
+
+    private async void OnResendUserMessageClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (sender is Control { DataContext: ChatItemViewModel item })
+        {
+            await _viewModel.ResendUserAsync(item);
+        }
+    }
+
+    private void OnCancelEditMessageClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.CancelEditUserMessage();
 
     private void OnEditUserMessageClicked(object? sender, RoutedEventArgs eventArgs)
     {

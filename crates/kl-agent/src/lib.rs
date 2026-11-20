@@ -682,6 +682,7 @@ impl Agent {
         request.max_tokens = self.metadata.max_output_tokens;
         request.system = system;
         request.tools = self.tools.definitions();
+        request.reasoning_effort = self.metadata.reasoning_effort.clone();
         request
     }
 

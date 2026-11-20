@@ -17,6 +17,12 @@ public sealed class KlClientOptions
     /// the <c>KL_CORE_TOKEN</c> environment variable.
     /// </summary>
     public string? Token { get; init; }
+
+    /// <summary>
+    /// SHA-256 fingerprint of the TLS server certificate for <c>tls://</c>
+    /// endpoints. Falls back to the <c>KL_CORE_TLS_FINGERPRINT</c> variable.
+    /// </summary>
+    public string? TlsFingerprint { get; init; }
 }
 
 public sealed class KlSessionOptions

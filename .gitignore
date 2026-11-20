@@ -7,6 +7,9 @@
 *.suo
 *.pem
 *.key
+# Throwaway TLS fixtures for the transport test; not credentials.
+!tests/fixtures/tls/cert.pem
+!tests/fixtures/tls/key.pem
 .env
 .env.*
 .DS_Store

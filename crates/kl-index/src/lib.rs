@@ -220,10 +220,7 @@ impl RepoIndex {
                         return false;
                     }
                 }
-                if query.changed_only && !changed.contains(&file.path) {
-                    return false;
-                }
-                true
+                !(query.changed_only && !changed.contains(&file.path))
             })
             .collect();
         files.sort_by(|left, right| {

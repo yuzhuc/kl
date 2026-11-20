@@ -216,7 +216,7 @@ and the release matrix in
   packaged `kl serve` smoke test.
 - The GUI is a Core client in local development builds; release packaging for
   the GUI and its automatic multi-window reconnect UX are Phase 2 work.
-- Provider prompt caching and session rewind/revert are not complete.
+- Provider prompt caching is not complete. Session rewind is available through `turn.start` (`rewind_from_seq`); tool side effects are audit-logged and are not undone.
 - MCP servers start in the Core startup workspace, not a per-session workspace.
 - PTY under Windows AppContainer fails closed because that backend cannot be
   wrapped by an external PTY runner.

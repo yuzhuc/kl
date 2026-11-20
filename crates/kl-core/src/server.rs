@@ -11,7 +11,7 @@ use interprocess::local_socket::GenericFilePath;
 use interprocess::local_socket::GenericNamespaced;
 use interprocess::local_socket::{ListenerOptions, prelude::*};
 use kl_protocol::{
-    CORE_NAME, CORE_VERSION, EventParams, IncomingMessage, PROTOCOL_VERSION, RequestId,
+    CORE_NAME, CORE_VERSION, CoreEvent, EventParams, IncomingMessage, PROTOCOL_VERSION, RequestId,
     ServerInfoResult, SessionAttachParams, SessionAttachResult, SessionDetachParams,
     SessionDetachResult, SessionLeaseParams, SessionLeaseResult, error_codes, failure, methods,
     success, validate_envelope,
@@ -19,11 +19,11 @@ use kl_protocol::{
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::io::{self, BufRead, BufReader, Write};
-use std::net::TcpListener;
+use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::{
     Arc, Mutex,
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     mpsc,
 };
 use std::thread;
@@ -32,6 +32,264 @@ use std::time::{Duration, Instant};
 const DEFAULT_ENDPOINT: &str = "kl-core";
 const DEFAULT_LEASE_MS: u64 = 300_000;
 const MAX_LEASE_MS: u64 = 86_400_000;
+const TLS_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Loads a certificate chain and private key, prints the leaf fingerprint and
+/// returns the server config used for `--listen --tls-cert/--tls-key`.
+fn load_tls_config(cert_path: &Path, key_path: &Path) -> Result<rustls::ServerConfig, CoreError> {
+    use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+    use sha2::{Digest, Sha256};
+
+    let cert_bytes = std::fs::read(cert_path)?;
+    let cert_text = String::from_utf8_lossy(&cert_bytes);
+    let certificates: Vec<CertificateDer<'static>> = if cert_text.contains("BEGIN CERTIFICATE") {
+        pem_blocks(&cert_text, "CERTIFICATE")
+            .into_iter()
+            .map(CertificateDer::from)
+            .collect()
+    } else {
+        vec![CertificateDer::from(cert_bytes)]
+    };
+    if certificates.is_empty() {
+        return Err(CoreError::Io(io::Error::other(format!(
+            "no certificate found in {}",
+            cert_path.display()
+        ))));
+    }
+
+    let key_text = std::fs::read(key_path)?;
+    let key_text = String::from_utf8_lossy(&key_text).into_owned();
+    let key = if let Some(bytes) = pem_blocks(&key_text, "PRIVATE KEY").into_iter().next() {
+        PrivateKeyDer::Pkcs8(bytes.into())
+    } else if let Some(bytes) = pem_blocks(&key_text, "RSA PRIVATE KEY").into_iter().next() {
+        PrivateKeyDer::Pkcs1(bytes.into())
+    } else if let Some(bytes) = pem_blocks(&key_text, "EC PRIVATE KEY").into_iter().next() {
+        PrivateKeyDer::Sec1(bytes.into())
+    } else {
+        return Err(CoreError::Io(io::Error::other(format!(
+            "no private key found in {}; export a PEM PKCS#8 key with openssl",
+            key_path.display()
+        ))));
+    };
+
+    let config = rustls::ServerConfig::builder()
+        .with_no_client_auth()
+        .with_single_cert(certificates.clone(), key)
+        .map_err(|error| io::Error::other(format!("TLS certificate: {error}")))?;
+    let fingerprint: String = Sha256::digest(certificates[0].as_ref())
+        .iter()
+        .map(|byte| format!("{byte:02X}"))
+        .collect();
+    eprintln!("kl-core TLS certificate SHA-256 fingerprint: {fingerprint}");
+    Ok(config)
+}
+
+fn pem_blocks(text: &str, label: &str) -> Vec<Vec<u8>> {
+    use base64::Engine;
+    let begin = format!("-----BEGIN {label}-----");
+    let end = format!("-----END {label}-----");
+    let mut blocks = Vec::new();
+    let mut rest = text;
+    while let Some(start) = rest.find(&begin) {
+        let after = &rest[start + begin.len()..];
+        let Some(finish) = after.find(&end) else {
+            break;
+        };
+        let body: String = after[..finish]
+            .chars()
+            .filter(|character| !character.is_whitespace())
+            .collect();
+        if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(body) {
+            blocks.push(bytes);
+        }
+        rest = &after[finish + end.len()..];
+    }
+    blocks
+}
+
+/// One TLS connection shared by the reader and writer threads. The socket is
+/// nonblocking so a blocked writer never starves the reader; each retry
+/// releases the lock for a couple of milliseconds.
+struct TlsState {
+    stream: Mutex<Option<rustls::StreamOwned<rustls::ServerConnection, TcpStream>>>,
+    closed: AtomicBool,
+}
+
+impl TlsState {
+    fn stream_closed() -> io::Error {
+        io::Error::new(io::ErrorKind::BrokenPipe, "TLS connection closed")
+    }
+
+    fn close(&self) {
+        if self.closed.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let mut guard = self
+            .stream
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if let Some(mut stream) = guard.take() {
+            stream.conn.send_close_notify();
+            let _ = stream.conn.complete_io(&mut stream.sock);
+        }
+    }
+}
+
+struct TlsReader {
+    state: Arc<TlsState>,
+    finished: bool,
+}
+
+impl io::Read for TlsReader {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        if self.finished {
+            return Ok(0);
+        }
+        loop {
+            if self.state.closed.load(Ordering::SeqCst) {
+                self.finished = true;
+                return Ok(0);
+            }
+            let mut guard = self
+                .state
+                .stream
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            let Some(stream) = guard.as_mut() else {
+                self.finished = true;
+                return Ok(0);
+            };
+            match stream.read(buffer) {
+                Ok(0) => {
+                    drop(guard);
+                    self.finished = true;
+                    self.state.close();
+                    return Ok(0);
+                }
+                Ok(length) => return Ok(length),
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                    drop(guard);
+                    thread::sleep(Duration::from_millis(2));
+                }
+                Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => {
+                    drop(guard);
+                    self.finished = true;
+                    self.state.close();
+                    return Ok(0);
+                }
+                Err(error) => {
+                    drop(guard);
+                    self.finished = true;
+                    self.state.close();
+                    return Err(error);
+                }
+            }
+        }
+    }
+}
+
+struct TlsWriter {
+    state: Arc<TlsState>,
+}
+
+impl Write for TlsWriter {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        loop {
+            if self.state.closed.load(Ordering::SeqCst) {
+                return Err(TlsState::stream_closed());
+            }
+            let mut guard = self
+                .state
+                .stream
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            let Some(stream) = guard.as_mut() else {
+                return Err(TlsState::stream_closed());
+            };
+            match stream.write(buffer) {
+                Ok(length) if length > 0 => return Ok(length),
+                Ok(_) => {
+                    drop(guard);
+                    thread::sleep(Duration::from_millis(2));
+                }
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                    drop(guard);
+                    thread::sleep(Duration::from_millis(2));
+                }
+                Err(error) => {
+                    drop(guard);
+                    self.state.close();
+                    return Err(error);
+                }
+            }
+        }
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        loop {
+            if self.state.closed.load(Ordering::SeqCst) {
+                return Err(TlsState::stream_closed());
+            }
+            let mut guard = self
+                .state
+                .stream
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            let Some(stream) = guard.as_mut() else {
+                return Err(TlsState::stream_closed());
+            };
+            match stream.flush() {
+                Ok(()) => return Ok(()),
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                    drop(guard);
+                    thread::sleep(Duration::from_millis(2));
+                }
+                Err(error) => {
+                    drop(guard);
+                    self.state.close();
+                    return Err(error);
+                }
+            }
+        }
+    }
+}
+
+fn accept_tls(
+    config: Arc<rustls::ServerConfig>,
+    socket: TcpStream,
+) -> io::Result<(TlsReader, TlsWriter)> {
+    socket.set_nonblocking(true)?;
+    let connection = rustls::ServerConnection::new(config)
+        .map_err(|error| io::Error::other(error.to_string()))?;
+    let mut stream = rustls::StreamOwned::new(connection, socket);
+    let deadline = Instant::now() + TLS_HANDSHAKE_TIMEOUT;
+    while stream.conn.is_handshaking() {
+        match stream.conn.complete_io(&mut stream.sock) {
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                if Instant::now() >= deadline {
+                    return Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "TLS handshake timed out",
+                    ));
+                }
+                thread::sleep(Duration::from_millis(2));
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    let state = Arc::new(TlsState {
+        stream: Mutex::new(Some(stream)),
+        closed: AtomicBool::new(false),
+    });
+    Ok((
+        TlsReader {
+            state: Arc::clone(&state),
+            finished: false,
+        },
+        TlsWriter { state },
+    ))
+}
 
 #[derive(Clone)]
 struct Broadcaster {
@@ -210,13 +468,23 @@ pub fn run_tcp_server(
     home: Option<PathBuf>,
     address: &str,
     token: Option<String>,
+    tls: Option<(PathBuf, PathBuf)>,
 ) -> Result<(), CoreError> {
     let context = ServerContext::resolve(config_path, home);
     std::fs::create_dir_all(&context.home)?;
+    let tls_config = match &tls {
+        Some((certificate, key)) => Some(Arc::new(load_tls_config(certificate, key)?)),
+        None => None,
+    };
     let listener = TcpListener::bind(address)?;
     let bound = listener.local_addr()?.to_string();
-    let endpoint = format!("tcp://{bound}");
-    let state = start_server(context, "tcp".to_owned(), endpoint, token)?;
+    let (scheme, transport) = if tls_config.is_some() {
+        ("tls", "tls")
+    } else {
+        ("tcp", "tcp")
+    };
+    let endpoint = format!("{scheme}://{bound}");
+    let state = start_server(context, transport.to_owned(), endpoint, token)?;
     for connection in listener.incoming() {
         let stream = match connection {
             Ok(stream) => stream,
@@ -225,6 +493,16 @@ pub fn run_tcp_server(
                 continue;
             }
         };
+        if let Some(config) = tls_config.clone() {
+            let connection_state = state.clone();
+            thread::spawn(move || match accept_tls(config, stream) {
+                Ok((reader, writer)) => {
+                    spawn_connection(&connection_state, BufReader::new(reader), writer);
+                }
+                Err(error) => eprintln!("kl-core TLS handshake failed: {error}"),
+            });
+            continue;
+        }
         let writer = match stream.try_clone() {
             Ok(writer) => writer,
             Err(error) => {
@@ -237,6 +515,7 @@ pub fn run_tcp_server(
     Ok(())
 }
 
+#[derive(Clone)]
 struct ServerState {
     core: Arc<Mutex<Core>>,
     broadcaster: Broadcaster,
@@ -511,9 +790,21 @@ fn handle_attach(
     };
     let after_seq = params.after_seq.unwrap_or(0);
     let last_seq = events.last().map(|event| event.seq).unwrap_or(0);
+    let rewinds: Vec<(u64, u64)> = events
+        .iter()
+        .filter_map(|event| match &event.event {
+            CoreEvent::ConversationRewound { from_seq } => Some((*from_seq, event.seq)),
+            _ => None,
+        })
+        .collect();
     let replay = events
         .into_iter()
         .filter(|event| event.seq > after_seq)
+        .filter(|event| {
+            !rewinds
+                .iter()
+                .any(|(from, marker)| event.seq >= *from && event.seq < *marker)
+        })
         .map(|event| EventParams {
             session_id: params.session_id.clone(),
             seq: event.seq,

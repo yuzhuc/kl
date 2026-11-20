@@ -82,11 +82,19 @@ impl Protocol {
 pub struct ModelMetadata {
     pub provider: String,
     pub model: String,
+    #[serde(default)]
+    pub name: String,
     pub protocol: Protocol,
     pub url: String,
     pub context_window: u32,
     pub compact_threshold: f32,
     pub max_output_tokens: u32,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reasoning_efforts: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub catalog: Option<ModelCatalogEntry>,
 }
@@ -104,19 +112,47 @@ impl ModelMetadata {
         Self {
             provider: provider.into(),
             model: model.into(),
+            name: String::new(),
             protocol,
             url: url.into(),
             context_window,
             compact_threshold,
             max_output_tokens,
+            enabled: true,
+            reasoning_effort: None,
+            reasoning_efforts: Vec::new(),
             catalog: None,
         }
+    }
+
+    pub fn with_name(mut self, name: String) -> Self {
+        self.name = name;
+        self
+    }
+
+    pub fn with_enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+
+    pub fn with_reasoning_effort(mut self, reasoning_effort: Option<String>) -> Self {
+        self.reasoning_effort = reasoning_effort;
+        self
+    }
+
+    pub fn with_reasoning_efforts(mut self, reasoning_efforts: Vec<String>) -> Self {
+        self.reasoning_efforts = reasoning_efforts;
+        self
     }
 
     pub fn with_catalog(mut self, catalog: Option<ModelCatalogEntry>) -> Self {
         self.catalog = catalog;
         self
     }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -242,6 +278,8 @@ pub struct ChatRequest {
     pub tools: Vec<ToolDefinition>,
     pub max_tokens: u32,
     pub temperature: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
 }
 
 impl ChatRequest {
@@ -253,6 +291,7 @@ impl ChatRequest {
             tools: Vec::new(),
             max_tokens: 4096,
             temperature: 0.2,
+            reasoning_effort: None,
         }
     }
 }
@@ -440,12 +479,15 @@ pub trait Provider: Send + Sync {
 pub struct ProviderModelInfo {
     pub provider: String,
     pub model: String,
+    pub name: String,
     pub protocol: Protocol,
     pub url: String,
     pub context_window: u32,
     pub compact_threshold: f32,
     pub max_output_tokens: u32,
     pub enabled: bool,
+    pub reasoning_effort: Option<String>,
+    pub reasoning_efforts: Vec<String>,
     pub key_configured: bool,
     pub available: bool,
     pub detail: String,
@@ -571,34 +613,55 @@ impl ProviderRouter {
             )));
         }
 
+        let enabled_routes: Vec<&RouteEntry> = provider_routes
+            .iter()
+            .copied()
+            .filter(|route| route.metadata.enabled)
+            .collect();
+        if enabled_routes.is_empty() {
+            return Err(ProviderError::config(format!(
+                "provider `{provider_id}` has no enabled models"
+            )));
+        }
+
         let requested_model = model
             .filter(|model| !model.is_empty())
             .map(str::to_owned)
             .or_else(|| {
-                (provider_id == self.default_provider && !self.default_model.is_empty())
-                    .then(|| self.default_model.clone())
+                (provider_id == self.default_provider
+                    && !self.default_model.is_empty()
+                    && enabled_routes
+                        .iter()
+                        .any(|route| route.metadata.model == self.default_model))
+                .then(|| self.default_model.clone())
             })
             .or_else(|| {
-                provider_routes
+                enabled_routes
                     .first()
                     .map(|route| route.metadata.model.clone())
             })
             .unwrap_or_default();
 
-        provider_routes
+        if let Some(route) = provider_routes
             .iter()
             .find(|route| route.metadata.model == requested_model)
-            .map(|route| (route.provider.clone(), route.metadata.clone()))
-            .ok_or_else(|| {
-                let available = provider_routes
-                    .iter()
-                    .map(|route| route.metadata.model.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                ProviderError::config(format!(
-                    "unknown model `{requested_model}` for provider `{provider_id}`; available models: {available}"
-                ))
-            })
+        {
+            if !route.metadata.enabled {
+                return Err(ProviderError::config(format!(
+                    "model `{requested_model}` is disabled for provider `{provider_id}`"
+                )));
+            }
+            return Ok((route.provider.clone(), route.metadata.clone()));
+        }
+
+        let available = enabled_routes
+            .iter()
+            .map(|route| route.metadata.model.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        Err(ProviderError::config(format!(
+            "unknown model `{requested_model}` for provider `{provider_id}`; available models: {available}"
+        )))
     }
 
     pub fn list(&self) -> Vec<ProviderModelInfo> {
@@ -611,12 +674,15 @@ impl ProviderRouter {
                 ProviderModelInfo {
                     provider: route.metadata.provider.clone(),
                     model: route.metadata.model.clone(),
+                    name: route.metadata.name.clone(),
                     protocol: route.metadata.protocol,
                     url: route.metadata.url.clone(),
                     context_window: route.metadata.context_window,
                     compact_threshold: route.metadata.compact_threshold,
                     max_output_tokens: route.metadata.max_output_tokens,
-                    enabled: true,
+                    enabled: route.metadata.enabled,
+                    reasoning_effort: route.metadata.reasoning_effort.clone(),
+                    reasoning_efforts: route.metadata.reasoning_efforts.clone(),
                     key_configured: available,
                     available,
                     detail,
@@ -945,6 +1011,76 @@ mod tests {
         assert_eq!(metadata.protocol, Protocol::OpenAiResponses);
         assert_eq!(metadata.url, "https://gateway.example/custom/responses");
         assert_eq!(router.list().len(), 3);
+    }
+
+    #[test]
+    fn disabled_models_are_listed_but_not_selectable() {
+        let (_, disabled_provider) = route(
+            "opencode",
+            "gpt-5-chat",
+            Protocol::OpenAiChat,
+            "https://gateway.example/v1/chat/completions",
+        );
+        let disabled_metadata = ModelMetadata::new(
+            "opencode",
+            "gpt-5-chat",
+            Protocol::OpenAiChat,
+            "https://gateway.example/v1/chat/completions",
+            1000,
+            0.5,
+            100,
+        )
+        .with_enabled(false);
+        let router = ProviderRouter::new(
+            vec![
+                (disabled_metadata, disabled_provider),
+                route(
+                    "opencode",
+                    "claude-native",
+                    Protocol::Anthropic,
+                    "https://gateway.example/v1/messages",
+                ),
+            ],
+            "opencode",
+            "gpt-5-chat",
+        );
+
+        assert!(router.get(Some("opencode"), Some("gpt-5-chat")).is_err());
+        let (_, metadata) = router.get(Some("opencode"), None).unwrap();
+        assert_eq!(metadata.model, "claude-native");
+        let listed = router.list();
+        assert!(
+            !listed
+                .iter()
+                .find(|model| model.model == "gpt-5-chat")
+                .unwrap()
+                .enabled
+        );
+    }
+
+    #[test]
+    fn chat_bodies_include_reasoning_only_when_set() {
+        let mut request = ChatRequest::new("model", vec![ChatMessage::user("hi")]);
+        assert!(
+            crate::openai::openai_body(&request)
+                .get("reasoning_effort")
+                .is_none()
+        );
+        assert!(
+            crate::responses::responses_body(&request)
+                .get("reasoning")
+                .is_none()
+        );
+
+        request.reasoning_effort = Some("high".to_owned());
+        assert_eq!(
+            crate::openai::openai_body(&request)["reasoning_effort"],
+            "high"
+        );
+        assert_eq!(
+            crate::responses::responses_body(&request)["reasoning"]["effort"],
+            "high"
+        );
     }
 
     #[test]

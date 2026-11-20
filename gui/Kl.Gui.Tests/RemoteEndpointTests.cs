@@ -17,6 +17,33 @@ public sealed class RemoteEndpointTests
     }
 
     [Theory]
+    [InlineData("tls://127.0.0.1:8788", "127.0.0.1", 8788)]
+    [InlineData("TLS://build-box:7001", "build-box", 7001)]
+    public void TlsEndpointsParseHostAndPort(string endpoint, string host, int port)
+    {
+        Assert.True(LocalSocketConnection.TryParseTcp(endpoint, out var parsedHost, out var parsedPort));
+        Assert.Equal(host, parsedHost);
+        Assert.Equal(port, parsedPort);
+    }
+
+    [Fact]
+    public void TlsEndpointWithoutFingerprintIsRejectedBeforeConnecting()
+    {
+        var error = Assert.Throws<InvalidOperationException>(
+            () => LocalSocketConnection.Connect("tls://127.0.0.1:1", tlsFingerprint: null));
+        Assert.Contains("fingerprint", error.Message);
+    }
+
+    [Theory]
+    [InlineData("ab:cd:ef")]
+    [InlineData("AB CD EF")]
+    [InlineData("ab-cd-ef")]
+    public void FingerprintsIgnoreSeparatorsAndCase(string fingerprint)
+    {
+        Assert.Equal("ABCDEF", LocalSocketConnection.NormalizeFingerprint(fingerprint));
+    }
+
+    [Theory]
     [InlineData("kl-core")]
     [InlineData("/tmp/kl-core.sock")]
     [InlineData(@"\.\pipe\kl-core")]

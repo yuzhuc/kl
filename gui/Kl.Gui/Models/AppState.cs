@@ -10,6 +10,21 @@ public sealed class AppState
     /// <summary>User chose 不再显示 on the full-access warning card.</summary>
     public bool FullAccessWarningDismissed { get; set; }
     public int ContentFontSize { get; set; } = 14;
+    /// <summary>0 = Inter, 1 = system UI font.</summary>
+    public int UiFontIndex { get; set; }
+    /// <summary>0 = same as UI, 1 = Inter, 2 = system UI font.</summary>
+    public int ContentFontIndex { get; set; }
+    /// <summary>0 = Geist Mono, 1 = JetBrains Mono, 2 = system monospace.</summary>
+    public int CodeFontIndex { get; set; }
+    /// <summary>0 = normal, 1 = medium, 2 = semibold.</summary>
+    public int UiFontWeightIndex { get; set; }
+    public int ContentFontWeightIndex { get; set; }
+    public int CodeFontWeightIndex { get; set; }
+    /// <summary>0..100; 50 keeps the original palette.</summary>
+    public int Contrast { get; set; } = 50;
+    public bool TranslucentSidebar { get; set; }
+    /// <summary>Gzip the GUI state file (chat history and settings).</summary>
+    public bool CompressHistory { get; set; } = true;
     public string InteractionMode { get; set; } = "work";
     public bool IsAddProjectPinned { get; set; }
     public bool IsProjectSectionExpanded { get; set; } = true;
@@ -20,12 +35,16 @@ public sealed class AppState
     public string PinnedSort { get; set; } = "manual";
     public string NotificationFilter { get; set; } = "priority";
 
-    /// <summary>Remote Core endpoint (tcp://host:port); null means local.</summary>
+    /// <summary>Remote Core endpoint (tcp:// or tls://host:port); null means local.</summary>
     public string? RemoteCoreEndpoint { get; set; }
+    /// <summary>SHA-256 of the TLS leaf certificate; empty for plain tcp://.</summary>
+    public string? RemoteCoreTlsFingerprint { get; set; }
     /// <summary>"enter" sends on Enter (Shift+Enter is a newline); "ctrlEnter" requires Ctrl.</summary>
     public string SendShortcut { get; set; } = "enter";
     /// <summary>"always" confirms every close; "shortcut" only for Ctrl+Shift+W; "never" closes at once.</summary>
     public string CloseWindowAction { get; set; } = "shortcut";
+    /// <summary>"system" opens files with the OS default; "vscode" uses the code CLI.</summary>
+    public string FileOpenTarget { get; set; } = "system";
     public bool LaunchAtLogin { get; set; }
     /// <summary>Archive chats untouched for this many days on startup; 0 keeps them.</summary>
     public int AutoArchiveDays { get; set; }
@@ -33,6 +52,7 @@ public sealed class AppState
     public string TurnNotifications { get; set; } = "unfocused";
     public bool ApprovalNotifications { get; set; } = true;
     public bool QuestionNotifications { get; set; } = true;
+    public bool AutomationNotifications { get; set; } = true;
     public bool NotificationSound { get; set; } = true;
     /// <summary>Show the active session's token usage in the chat header.</summary>
     public bool ShowContextUsage { get; set; } = true;
@@ -41,12 +61,42 @@ public sealed class AppState
     public Dictionary<string, string> ShortcutBindings { get; set; } = [];
     /// <summary>Hex accent used for focus rings, carets and slider tracks.</summary>
     public string AccentColor { get; set; } = "#4D9FFF";
+    /// <summary>"dark", "light" or "system".</summary>
+    public string ThemeMode { get; set; } = "dark";
+    /// <summary>Keep separate accent and contrast values for light and dark.</summary>
+    public bool SeparateThemeSettings { get; set; }
+    public string LightAccentColor { get; set; } = "#3566F0";
+    public string DarkAccentColor { get; set; } = "#4D9FFF";
+    public int LightContrast { get; set; } = 50;
+    public int DarkContrast { get; set; } = 50;
+    /// <summary>"color" hides +/- and tints changed lines; "markers" keeps the signs.</summary>
+    public string DiffMarkerMode { get; set; } = "color";
+    /// <summary>"powershell", "cmd" or "git-bash".</summary>
+    public string TerminalShell { get; set; } = "powershell";
+    /// <summary>"bottom" or "right".</summary>
+    public string TerminalPosition { get; set; } = "bottom";
+    /// <summary>Panel height (bottom) or width (right); 0 uses the orientation default.</summary>
+    public double TerminalPanelSize { get; set; }
+    /// <summary>Show the title-bar control that toggles the terminal panel.</summary>
+    public bool ShowTerminalPanelControl { get; set; } = true;
+    public bool TerminalPanelOpen { get; set; }
     public bool UsePointerCursor { get; set; }
     public int ContentCodeFontSize { get; set; } = 12;
     /// <summary>"system", "on" (reduce) or "off"; controls sidebar and list animations.</summary>
     public string ReduceMotion { get; set; } = "system";
     /// <summary>"queue" holds a prompt until the running turn ends; "steer" is not supported by Core yet.</summary>
     public string FollowUpMode { get; set; } = "queue";
+    /// <summary>"quick", "standard" or "strict".</summary>
+    public string ReviewMode { get; set; } = "standard";
+    /// <summary>Send changed files in full instead of only the diff.</summary>
+    public bool ReviewFullFiles { get; set; }
+    public string ReviewInstructions { get; set; } = string.Empty;
+    /// <summary>Blank uses the project's .kl/worktrees directory.</summary>
+    public string WorktreeRoot { get; set; } = string.Empty;
+    public bool WorktreeFetchBeforeCreate { get; set; }
+    public bool WorktreeConfirmDelete { get; set; } = true;
+    /// <summary>Prefix for branches created from the Worktree settings.</summary>
+    public string GitBranchPrefix { get; set; } = "kl/";
     public string LastSettingsPane { get; set; } = "General";
     public bool RestoreLastSession { get; set; } = true;
     public string? ActiveWorkspaceId { get; set; }

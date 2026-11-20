@@ -932,10 +932,12 @@ public sealed class MainWindowViewModelCoreTests
         Assert.Equal("DeepSeek", vm.ProviderDetailName);
         var existing = Assert.Single(vm.ProviderModels);
         Assert.Equal("deepseek-chat", existing.Id);
+        Assert.Equal("deepseek-chat", existing.DisplayName);
         Assert.Equal("openai-chat", existing.Protocol);
         Assert.Equal("https://api.example.com/chat/completions", existing.Url);
 
         vm.OpenAddProviderModel();
+        vm.ProviderModelDraftName = "DeepSeek Reasoner";
         vm.ProviderModelDraftId = "deepseek-reasoner";
         vm.ProviderModelDraftUrl = "https://api.deepseek.com/chat/completions";
         vm.ProviderModelDraftContextWindow = "64000";
@@ -944,15 +946,17 @@ public sealed class MainWindowViewModelCoreTests
 
         Assert.False(vm.IsProviderModelFormOpen);
         Assert.Equal(2, vm.ProviderModels.Count);
-        Assert.Contains(vm.ProviderModels, model => model.Id == "deepseek-reasoner");
+        var added = Assert.Single(vm.ProviderModels, model => model.Id == "deepseek-reasoner");
+        Assert.Equal("DeepSeek Reasoner", added.DisplayName);
         var request = Assert.Single(core.Requests, item => item.Method == Protocol.ProviderUpsert);
         var json = JsonSerializer.SerializeToElement(request.Parameters);
         var models = json.GetProperty("models");
         Assert.Equal(2, models.GetArrayLength());
         Assert.Contains(
             models.EnumerateArray(),
-            model => model.GetProperty("id").GetString() == "deepseek-reasoner");
-        Assert.Contains("已写入", vm.ProviderDetailStatus);
+            model => model.GetProperty("id").GetString() == "deepseek-reasoner"
+                && model.GetProperty("name").GetString() == "DeepSeek Reasoner");
+        Assert.False(vm.HasProviderDetailStatus);
         Assert.Equal(2, provider.Models.Count);
     }
 
@@ -1041,6 +1045,115 @@ public sealed class MainWindowViewModelCoreTests
     }
 
     [Fact]
+    public async Task ModelUrlFollowsProtocolAndSupportsCustom()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var core = new FakeCoreSessionService
+        {
+            Snapshot = new CoreCatalogSnapshot(
+                true,
+                string.Empty,
+                "test-core",
+                1,
+                string.Empty,
+                string.Empty,
+                Array.Empty<string>(),
+                false,
+                Array.Empty<CoreSessionSummary>())
+            {
+                ProviderProtocols =
+                [
+                    new CoreProviderProtocols(
+                        "deepseek",
+                        "https://api.deepseek.com/chat/completions",
+                        "https://api.deepseek.com/messages",
+                        string.Empty)
+                ]
+            }
+        };
+        var (vm, _) = Create(temp, store, core);
+        await vm.TestConnectionAsync();
+        vm.OpenProviderDetail(Assert.Single(vm.ProviderCards));
+        vm.OpenAddProviderModel();
+
+        Assert.Equal("https://api.deepseek.com/chat/completions", vm.ProviderModelDraftUrl);
+
+        vm.ProviderModelProtocolIndex = 1;
+        Assert.Equal("https://api.deepseek.com/messages", vm.ProviderModelDraftUrl);
+
+        vm.ProviderModelProtocolIndex = 3;
+        Assert.Equal("https://api.deepseek.com/messages", vm.ProviderModelDraftUrl);
+
+        vm.ProviderModelDraftId = "custom-model";
+        vm.ProviderModelDraftUrl = "https://custom.example/v1/messages";
+        await vm.SaveProviderModelAsync();
+
+        var request = Assert.Single(core.Requests, item => item.Method == Protocol.ProviderUpsert);
+        var json = JsonSerializer.SerializeToElement(request.Parameters);
+        var model = Assert.Single(json.GetProperty("models").EnumerateArray());
+        Assert.Equal("anthropic", model.GetProperty("protocol").GetString());
+        Assert.Equal("https://custom.example/v1/messages", model.GetProperty("url").GetString());
+    }
+
+    [Fact]
+    public async Task ProviderModelToggleSavesEnabledState()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var core = new FakeCoreSessionService { Snapshot = Snapshot("deepseek", "deepseek-chat") };
+        var (vm, _) = Create(temp, store, core);
+        await vm.TestConnectionAsync();
+        vm.OpenProviderDetail(Assert.Single(vm.ProviderCards));
+
+        var model = Assert.Single(vm.ProviderModels);
+        await vm.SetProviderModelEnabledAsync(model, false);
+
+        Assert.False(model.Enabled);
+        Assert.True(Assert.Single(vm.ProviderCards).Enabled);
+        var request = Assert.Single(core.Requests, item => item.Method == Protocol.ProviderUpsert);
+        var json = JsonSerializer.SerializeToElement(request.Parameters);
+        var saved = Assert.Single(json.GetProperty("models").EnumerateArray());
+        Assert.False(saved.GetProperty("enabled").GetBoolean());
+        Assert.Equal("default", saved.GetProperty("reasoning_effort").GetString());
+    }
+
+    [Fact]
+    public async Task ProviderModelReasoningLevelIsSaved()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var core = new FakeCoreSessionService { Snapshot = Snapshot("deepseek", "deepseek-chat") };
+        var (vm, _) = Create(temp, store, core);
+        await vm.TestConnectionAsync();
+        vm.OpenProviderDetail(Assert.Single(vm.ProviderCards));
+        vm.OpenAddProviderModel();
+        Assert.Equal(
+            new[] { "low", "medium", "high", "max" },
+            vm.ProviderModelDefaultReasoningChoices);
+        vm.ProviderModelDraftId = "deepseek-reasoner";
+        vm.SelectedProviderModelDefaultReasoning = "high";
+        await vm.SaveProviderModelAsync();
+
+        var request = Assert.Single(core.Requests, item => item.Method == Protocol.ProviderUpsert);
+        var json = JsonSerializer.SerializeToElement(request.Parameters);
+        var saved = Assert.Single(
+            json.GetProperty("models").EnumerateArray(),
+            item => item.GetProperty("id").GetString() == "deepseek-reasoner");
+        Assert.Equal("high", saved.GetProperty("reasoning_effort").GetString());
+        Assert.Equal(
+            new[] { "low", "medium", "high", "max" },
+            saved.GetProperty("reasoning_efforts")
+                .EnumerateArray()
+                .Select(value => value.GetString())
+                .ToArray());
+        Assert.True(saved.GetProperty("enabled").GetBoolean());
+    }
+
+    [Fact]
     public async Task ProviderModelRejectsMalformedUrl()
     {
         using var temp = new TempDirectory();
@@ -1060,7 +1173,7 @@ public sealed class MainWindowViewModelCoreTests
     }
 
     [Fact]
-    public async Task ProviderModelCannotRemoveItsLastModel()
+    public async Task ProviderModelCanRemoveItsLastModel()
     {
         using var temp = new TempDirectory();
         var store = temp.CreateStore();
@@ -1072,9 +1185,10 @@ public sealed class MainWindowViewModelCoreTests
 
         await vm.DeleteProviderModelAsync(Assert.Single(vm.ProviderModels));
 
-        Assert.Single(vm.ProviderModels);
-        Assert.Contains("至少保留", vm.ProviderDetailStatus);
-        Assert.DoesNotContain(core.Requests, item => item.Method == Protocol.ProviderUpsert);
+        Assert.Empty(vm.ProviderModels);
+        var request = Assert.Single(core.Requests, item => item.Method == Protocol.ProviderUpsert);
+        var json = JsonSerializer.SerializeToElement(request.Parameters);
+        Assert.Equal(0, json.GetProperty("models").GetArrayLength());
     }
 
     [Fact]
@@ -1106,7 +1220,7 @@ public sealed class MainWindowViewModelCoreTests
         Assert.Equal("deepseek", FakeCoreSessionService.ReadParameter(request.Parameters, "id"));
         Assert.False(vm.IsProviderDetailOpen);
         Assert.False(vm.IsProviderDeleteConfirmOpen);
-        Assert.Contains("已删除提供商 deepseek", vm.ProviderStatusText);
+        Assert.Empty(vm.ProviderStatusText);
     }
 
     [Fact]
@@ -1142,7 +1256,7 @@ public sealed class MainWindowViewModelCoreTests
     }
 
     [Fact]
-    public async Task SilentProviderRefreshKeepsTheOneTimeStatusHidden()
+    public async Task ProviderRefreshDoesNotShowStatus()
     {
         using var temp = new TempDirectory();
         var store = temp.CreateStore();
@@ -1150,11 +1264,9 @@ public sealed class MainWindowViewModelCoreTests
         var (vm, _) = Create(temp, store);
 
         await vm.RefreshProvidersAsync(force: true);
-        Assert.Contains("已刷新提供商目录", vm.ProviderStatusText);
-        vm.ClearProviderRefreshStatus();
+        Assert.Empty(vm.ProviderStatusText);
 
         await vm.RefreshProvidersAsync(force: true, announce: false);
-
         Assert.Empty(vm.ProviderStatusText);
     }
 
@@ -1481,6 +1593,77 @@ public sealed class MainWindowViewModelCoreTests
         Assert.False(vm.IsCoreReadOnly);
     }
 
+    private const string RewindHistoryJson = """
+        {"messages":[
+          {"role":"user","text":"第一个问题","seq":1},
+          {"role":"assistant","text":"第一个回答","seq":2},
+          {"role":"user","text":"第二个问题","seq":5},
+          {"role":"assistant","text":"第二个回答","seq":6}
+        ]}
+        """;
+
+    [Fact]
+    public async Task RegenerateRewindsToTheUserMessageBeforeTheReply()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        var core = new FakeCoreSessionService();
+        var vm = CreateWithSession(temp, store, core, RewindHistoryJson);
+        await vm.OpenSessionAsync(Assert.Single(vm.Workspaces[0].Sessions));
+
+        var assistant = vm.Messages[3];
+        Assert.True(assistant.IsAssistant);
+        Assert.Equal(6, assistant.Seq);
+
+        await vm.RegenerateAsync(assistant);
+
+        Assert.Equal("第二个问题", Assert.Single(core.TurnPrompts));
+        Assert.Equal(5, Assert.Single(core.RewindSeqs));
+        Assert.False(vm.IsEditingUserMessage);
+        Assert.Equal(3, vm.Messages.Count);
+        Assert.Equal("第二个问题", vm.Messages[^1].Text);
+        Assert.True(vm.Messages[^1].IsUser);
+    }
+
+    [Fact]
+    public async Task EditingAUserMessageSendsTheRewoundText()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        var core = new FakeCoreSessionService();
+        var vm = CreateWithSession(temp, store, core, RewindHistoryJson);
+        await vm.OpenSessionAsync(Assert.Single(vm.Workspaces[0].Sessions));
+
+        vm.BeginEditUserMessage(vm.Messages[2]);
+        Assert.True(vm.IsEditingUserMessage);
+        Assert.Equal("第二个问题", vm.Composer);
+
+        vm.Composer = "改过的问题";
+        await vm.SendAsync();
+
+        Assert.Equal("改过的问题", Assert.Single(core.TurnPrompts));
+        Assert.Equal(5, Assert.Single(core.RewindSeqs));
+        Assert.False(vm.IsEditingUserMessage);
+    }
+
+    [Fact]
+    public async Task ResendingAUserMessageReplacesItAndTheFollowingReplies()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        var core = new FakeCoreSessionService();
+        var vm = CreateWithSession(temp, store, core, RewindHistoryJson);
+        await vm.OpenSessionAsync(Assert.Single(vm.Workspaces[0].Sessions));
+
+        await vm.ResendUserAsync(vm.Messages[0]);
+
+        Assert.Equal("第一个问题", Assert.Single(core.TurnPrompts));
+        Assert.Equal(1, Assert.Single(core.RewindSeqs));
+        var only = Assert.Single(vm.Messages);
+        Assert.True(only.IsUser);
+        Assert.Equal("第一个问题", only.Text);
+    }
+
     [Fact]
     public async Task OpenSessionFailureSurfacesTheCoreError()
     {
@@ -1726,4 +1909,327 @@ public sealed class MainWindowViewModelCoreTests
         Assert.True(vm.CanRetryCore);
         Assert.Empty(vm.CoreBannerText);
     }
+    [Fact]
+    public async Task ReasoningDefaultFollowsAvailabilityChanges()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var (vm, _) = Create(temp, store, new FakeCoreSessionService { Snapshot = Snapshot("deepseek", "deepseek-chat") });
+        await vm.TestConnectionAsync();
+        vm.OpenProviderDetail(Assert.Single(vm.ProviderCards));
+        vm.OpenAddProviderModel();
+
+        Assert.Equal(
+            new[] { "low", "medium", "high", "max" },
+            vm.ProviderModelReasoningLevels.Where(level => level.IsEnabled).Select(level => level.Value));
+        Assert.Equal("medium", vm.SelectedProviderModelDefaultReasoning);
+
+        vm.ProviderModelReasoningLevels.Single(level => level.Value == "ultra").IsEnabled = true;
+        Assert.Equal("medium", vm.SelectedProviderModelDefaultReasoning);
+
+        vm.ProviderModelReasoningLevels.Single(level => level.Value == "low").IsEnabled = false;
+        Assert.Equal("medium", vm.SelectedProviderModelDefaultReasoning);
+
+        vm.ProviderModelReasoningLevels.Single(level => level.Value == "medium").IsEnabled = false;
+        Assert.Equal("high", vm.SelectedProviderModelDefaultReasoning);
+
+        vm.SelectedProviderModelDefaultReasoning = "max";
+        vm.ProviderModelReasoningLevels.Single(level => level.Value == "max").IsEnabled = false;
+        Assert.Equal("ultra", vm.SelectedProviderModelDefaultReasoning);
+
+        vm.ProviderModelReasoningLevels.Single(level => level.Value == "ultra").IsEnabled = false;
+        Assert.Equal("high", vm.SelectedProviderModelDefaultReasoning);
+
+        vm.ProviderModelReasoningLevels.Single(level => level.Value == "high").IsEnabled = false;
+        Assert.Equal(string.Empty, vm.SelectedProviderModelDefaultReasoning);
+    }
+
+    [Theory]
+    [InlineData("high", "high")]
+    [InlineData("default", "medium")]
+    public async Task EditingLegacyModelRestoresDefaultReasoningLevels(
+        string savedDefault,
+        string expectedDefault)
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var snapshot = Snapshot("deepseek", "deepseek-chat") with
+        {
+            ModelOptions =
+            [
+                new CoreModelOption("deepseek", "deepseek-chat", true, true)
+                {
+                    Protocol = "openai-chat",
+                    Url = "https://api.example.com/chat/completions",
+                    ContextWindow = 128000,
+                    CompactThreshold = 0.8,
+                    MaxOutputTokens = 8192,
+                    ReasoningEffort = savedDefault
+                }
+            ]
+        };
+        var (vm, _) = Create(temp, store, new FakeCoreSessionService { Snapshot = snapshot });
+        await vm.TestConnectionAsync();
+        vm.OpenProviderDetail(Assert.Single(vm.ProviderCards));
+
+        var model = Assert.Single(vm.ProviderModels);
+        vm.OpenEditProviderModel(model);
+
+        Assert.Equal(
+            new[] { "low", "medium", "high", "max" },
+            vm.ProviderModelReasoningLevels.Where(level => level.IsEnabled).Select(level => level.Value));
+        Assert.Equal(expectedDefault, vm.SelectedProviderModelDefaultReasoning);
+    }
+
+    [Fact]
+    public async Task SavingModelKeepsExistingProviderProtocols()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var snapshot = Snapshot("deepseek", "deepseek-chat") with
+        {
+            ProviderProtocols =
+            [
+                new CoreProviderProtocols(
+                    "deepseek",
+                    "https://api.example.com/chat/completions",
+                    "https://api.example.com/messages",
+                    string.Empty)
+            ]
+        };
+        var (vm, core) = Create(temp, store, new FakeCoreSessionService { Snapshot = snapshot });
+        await vm.TestConnectionAsync();
+        var provider = Assert.Single(vm.ProviderCards);
+        vm.OpenProviderDetail(provider);
+        vm.OpenAddProviderModel();
+        vm.ProviderModelDraftId = "deepseek-reasoner";
+        await vm.SaveProviderModelAsync();
+
+        var request = Assert.Single(core.Requests, item => item.Method == Protocol.ProviderUpsert);
+        var json = JsonSerializer.SerializeToElement(request.Parameters);
+        var protocols = json.GetProperty("protocols");
+        Assert.Equal(
+            "https://api.example.com/chat/completions",
+            protocols.GetProperty("openai-chat").GetString());
+        Assert.Equal(
+            "https://api.example.com/messages",
+            protocols.GetProperty("anthropic").GetString());
+        Assert.Equal("https://api.example.com/messages", provider.Protocols["anthropic"]);
+    }
+
+    [Fact]
+    public async Task SavingConnectionUpdatesTheDetailPageImmediately()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var (vm, _) = Create(temp, store, new FakeCoreSessionService { Snapshot = Snapshot("deepseek", "deepseek-chat") });
+        await vm.TestConnectionAsync();
+        var provider = Assert.Single(vm.ProviderCards);
+        vm.OpenProviderDetail(provider);
+        Assert.False(vm.ProviderAnthropicProtocolEnabled);
+
+        vm.ProviderDraftAnthropicUrl = "https://api.example.com/messages";
+        vm.ProviderAnthropicProtocolEnabled = true;
+        await vm.SaveProviderConnectionAsync();
+        vm.CloseProviderDetail();
+        vm.OpenProviderDetail(provider);
+
+        Assert.True(vm.ProviderAnthropicProtocolEnabled);
+        Assert.Equal("https://api.example.com/messages", vm.ProviderDraftAnthropicUrl);
+    }
+
+    [Fact]
+    public async Task RefreshRemovesDuplicateProviderCards()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var (vm, _) = Create(temp, store, new FakeCoreSessionService { Snapshot = Snapshot("deepseek", "deepseek-chat") });
+        await vm.TestConnectionAsync();
+        var provider = Assert.Single(vm.ProviderCards);
+        vm.ProviderCards.Add(new ProviderCardRow(
+            provider.Id,
+            provider.Name,
+            provider.Note,
+            provider.Website,
+            provider.IsDefault,
+            provider.Enabled,
+            provider.KeyConfigured,
+            provider.Models,
+            provider.Protocols));
+        Assert.Equal(2, vm.ProviderCards.Count);
+
+        await vm.RefreshProvidersAsync(force: true);
+
+        Assert.Single(vm.ProviderCards);
+    }
+
+    [Fact]
+    public void NonAsciiProviderNamesGetAStableId()
+    {
+        var method = typeof(MainWindowViewModel).GetMethod(
+            "ProviderIdFromName",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        Assert.NotNull(method);
+        var first = (string)method.Invoke(null, ["深度求索"])!;
+        var second = (string)method.Invoke(null, ["深度求索"])!;
+
+        Assert.Equal(first, second);
+        Assert.StartsWith("provider-", first);
+    }
+
+    [Fact]
+    public async Task DeletingProviderRemovesAllDuplicateCards()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var core = new FakeCoreSessionService { Snapshot = Snapshot("deepseek", "deepseek-chat") };
+        var (vm, _) = Create(temp, store, core);
+        await vm.TestConnectionAsync();
+        var provider = Assert.Single(vm.ProviderCards);
+        vm.ProviderCards.Add(new ProviderCardRow(
+            provider.Id,
+            provider.Name,
+            provider.Note,
+            provider.Website,
+            provider.IsDefault,
+            provider.Enabled,
+            provider.KeyConfigured,
+            provider.Models,
+            provider.Protocols));
+        vm.OpenProviderDetail(provider);
+        vm.OpenProviderDeleteConfirm();
+        core.Snapshot = CoreCatalogSnapshot.Failed("停止刷新，验证删除结果");
+
+        await vm.ConfirmDeleteProviderAsync();
+
+        Assert.Empty(vm.ProviderCards);
+    }
+
+    [Fact]
+    public void DuplicateProviderNamesGetCopySuffix()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var vm = TestData.CreateViewModel(temp, store, new FakeCoreSessionService());
+        var first = new ProviderCardRow("a", "Same", string.Empty, string.Empty, false, true, true, []);
+        var second = new ProviderCardRow("b", "Same", string.Empty, string.Empty, false, true, true, []);
+        var third = new ProviderCardRow("c", "Same", string.Empty, string.Empty, false, true, true, []);
+        vm.ProviderCards.Add(first);
+        vm.ProviderCards.Add(second);
+        vm.ProviderCards.Add(third);
+
+        var method = typeof(MainWindowViewModel).GetMethod(
+            "EnsureUniqueProviderNames",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        Assert.NotNull(method);
+        method.Invoke(vm, null);
+
+        Assert.Equal("Same", first.Name);
+        Assert.Equal("Same copy", second.Name);
+        Assert.Equal("Same copycopy", third.Name);
+    }
+
+    [Fact]
+    public async Task ClosingProviderDetailDuringModelSaveDoesNotCrash()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var core = new FakeCoreSessionService { Snapshot = Snapshot("deepseek", "deepseek-chat") };
+        var (vm, _) = Create(temp, store, core);
+        await vm.TestConnectionAsync();
+        vm.OpenProviderDetail(Assert.Single(vm.ProviderCards));
+        var model = Assert.Single(vm.ProviderModels);
+        var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        core.ProviderUpsertGate = gate;
+
+        var saving = vm.SetProviderModelEnabledAsync(model, false);
+        vm.CloseProviderDetail();
+        gate.SetResult(true);
+        await saving;
+
+        Assert.False(model.Enabled);
+    }
+
+    [Fact]
+    public async Task ProviderDetailHeaderFollowsWebsitePresence()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var (vm, _) = Create(temp, store, new FakeCoreSessionService { Snapshot = Snapshot("deepseek", "deepseek-chat") });
+        await vm.TestConnectionAsync();
+        vm.OpenProviderDetail(Assert.Single(vm.ProviderCards));
+
+        Assert.True(vm.HasProviderDetailNote);
+        Assert.False(vm.HasProviderDetailWebsite);
+        Assert.Equal(
+            Avalonia.Layout.Orientation.Vertical,
+            vm.ProviderDetailHeaderOrientation);
+
+        vm.ProviderEditWebsite = "https://www.deepseek.com";
+        Assert.True(vm.SaveProviderProfile());
+
+        Assert.True(vm.HasProviderDetailWebsite);
+        Assert.Equal(
+            Avalonia.Layout.Orientation.Horizontal,
+            vm.ProviderDetailHeaderOrientation);
+    }
+
+    [Fact]
+    public async Task SavingModelClosesFormBeforeCoreWrite()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var core = new FakeCoreSessionService { Snapshot = Snapshot("deepseek", "deepseek-chat") };
+        var (vm, _) = Create(temp, store, core);
+        await vm.TestConnectionAsync();
+        vm.OpenProviderDetail(Assert.Single(vm.ProviderCards));
+        vm.OpenAddProviderModel();
+        vm.ProviderModelDraftId = "deepseek-reasoner";
+        var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        core.ProviderUpsertGate = gate;
+
+        var saving = vm.SaveProviderModelAsync();
+
+        Assert.False(vm.IsProviderModelFormOpen);
+        gate.SetResult(true);
+        await saving;
+        core.ProviderUpsertGate = null;
+        Assert.Contains(vm.ProviderModels, model => model.Id == "deepseek-reasoner");
+    }
+
+    [Fact]
+    public async Task ProviderDetailLoadsLocalApiKeyAndTogglesVisibility()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var credentials = Path.Combine(temp.Path, "credentials");
+        Directory.CreateDirectory(credentials);
+        File.WriteAllText(Path.Combine(credentials, "deepseek.key"), "sk-local\n");
+        var (vm, _) = Create(temp, store, new FakeCoreSessionService { Snapshot = Snapshot("deepseek", "deepseek-chat") });
+        await vm.TestConnectionAsync();
+
+        vm.OpenProviderDetail(Assert.Single(vm.ProviderCards));
+
+        Assert.Equal("sk-local", vm.ProviderDetailApiKey);
+        Assert.Equal('•', vm.ProviderApiKeyPasswordChar);
+        vm.IsProviderApiKeyVisible = true;
+        Assert.Equal((char)0, vm.ProviderApiKeyPasswordChar);
+
+        vm.CloseProviderDetail();
+
+        Assert.Empty(vm.ProviderDetailApiKey);
+        Assert.False(vm.IsProviderApiKeyVisible);
+    }
+
 }

@@ -1,3 +1,5 @@
+using System.IO.Compression;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Kl.Gui.Models;
@@ -45,7 +47,7 @@ public sealed class StateStore
                 return new AppState { ApiKey = ReadCredential() };
             }
 
-            var state = JsonSerializer.Deserialize<AppState>(File.ReadAllText(_path), JsonOptions)
+            var state = JsonSerializer.Deserialize<AppState>(ReadStateJson(_path), JsonOptions)
                 ?? new AppState();
             var credential = ReadCredential();
             if (credential.Length == 0 && !string.IsNullOrWhiteSpace(state.ApiKey))
@@ -64,7 +66,7 @@ public sealed class StateStore
             }
             return state;
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidDataException)
         {
             return new AppState { ApiKey = ReadCredential() };
         }
@@ -89,13 +91,41 @@ public sealed class StateStore
 
             state.ApiKey = null!;
             var temporary = _path + ".tmp";
-            File.WriteAllText(temporary, JsonSerializer.Serialize(state, JsonOptions));
+            var json = JsonSerializer.SerializeToUtf8Bytes(state, JsonOptions);
+            File.WriteAllBytes(temporary, state.CompressHistory ? Compress(json) : json);
             File.Move(temporary, _path, overwrite: true);
         }
         finally
         {
             state.ApiKey = apiKey;
         }
+    }
+
+    /// <summary>Reads either a plain JSON state file or a gzip-compressed one.</summary>
+    public static string ReadStateJson(string path)
+    {
+        var bytes = File.ReadAllBytes(path);
+        if (bytes.Length >= 2 && bytes[0] == 0x1F && bytes[1] == 0x8B)
+        {
+            using var input = new MemoryStream(bytes);
+            using var gzip = new GZipStream(input, CompressionMode.Decompress);
+            using var output = new MemoryStream();
+            gzip.CopyTo(output);
+            bytes = output.ToArray();
+        }
+
+        return Encoding.UTF8.GetString(bytes);
+    }
+
+    private static byte[] Compress(byte[] json)
+    {
+        using var output = new MemoryStream();
+        using (var gzip = new GZipStream(output, CompressionLevel.Optimal, leaveOpen: true))
+        {
+            gzip.Write(json);
+        }
+
+        return output.ToArray();
     }
 
     private string ReadCredential()

@@ -90,10 +90,10 @@ public interface ICoreSessionService : IAsyncDisposable
     /// <summary>Runs <c>kl.doctor</c> against a fresh Core connection.</summary>
     Task<JsonElement> DoctorAsync(CancellationToken cancellationToken);
 
-    /// <summary>Reads <c>mcp.list</c> from a fresh handshaken Core connection.</summary>
+    /// <summary>Reads <c>mcp.list</c> from the shared Core connection.</summary>
     Task<JsonElement> ListMcpToolsAsync(CancellationToken cancellationToken);
 
-    /// <summary>Reads <c>plugin.list</c> from a fresh handshaken Core connection.</summary>
+    /// <summary>Reads <c>plugin.list</c> from the shared Core connection.</summary>
     Task<JsonElement> ListPluginsAsync(CancellationToken cancellationToken);
 
     /// <summary>Enables or disables a Core plugin.</summary>
@@ -102,13 +102,20 @@ public interface ICoreSessionService : IAsyncDisposable
     /// <summary>Installs a plugin directory through Core.</summary>
     Task<JsonElement> InstallPluginAsync(string path, CancellationToken cancellationToken);
 
-    /// <summary>Writes a provider through a fresh Core connection.</summary>
+    /// <summary>Writes a provider through the shared Core connection.</summary>
     Task<JsonElement> UpsertProviderAsync(object parameters, CancellationToken cancellationToken);
 
-    /// <summary>Stores a provider API key through a fresh Core connection.</summary>
+    /// <summary>Writes a provider and its optional API key over one Core connection.</summary>
+    Task<JsonElement> UpsertProviderWithKeyAsync(
+        object parameters,
+        string id,
+        string? apiKey,
+        CancellationToken cancellationToken);
+
+    /// <summary>Stores a provider API key through the shared Core connection.</summary>
     Task<JsonElement> SetProviderApiKeyAsync(string id, string key, CancellationToken cancellationToken);
 
-    /// <summary>Enables or disables a provider through a fresh Core connection.</summary>
+    /// <summary>Enables or disables a provider through the shared Core connection.</summary>
     Task<JsonElement> SetProviderEnabledAsync(string id, bool enabled, CancellationToken cancellationToken);
 
     /// <summary>Removes a provider from Core config and its stored credential.</summary>
@@ -132,13 +139,27 @@ public interface ICoreSessionService : IAsyncDisposable
     /// <summary>Writes Core's global reasoning effort and returns the applied value.</summary>
     Task<string> SetReasoningEffortAsync(string effort, CancellationToken cancellationToken);
 
+    /// <summary>Reads the full global agent settings from Core.</summary>
+    Task<JsonElement> GetAgentConfigAsync(CancellationToken cancellationToken);
+
+    /// <summary>Writes a partial agent-settings patch and returns the applied settings.</summary>
+    Task<JsonElement> SetAgentConfigAsync(object parameters, CancellationToken cancellationToken);
+
+    /// <summary>Runs Core's local/model code review for one workspace.</summary>
+    Task<JsonElement> RunReviewAsync(
+        string workspace,
+        string mode,
+        string instructions,
+        bool fullFiles,
+        CancellationToken cancellationToken);
+
     Task<JsonElement> HistoryAsync(int limit, CancellationToken cancellationToken);
 
     Task<CoreCatalogSnapshot> LoadSnapshotAsync(CancellationToken cancellationToken);
 
     Task<JsonElement> RequestAsync(string method, object? parameters, CancellationToken cancellationToken);
 
-    Task<TurnOutcome> RunTurnAsync(string prompt, CancellationToken cancellationToken);
+    Task<TurnOutcome> RunTurnAsync(string prompt, CancellationToken cancellationToken, long? rewindFromSeq = null);
 
     Task CancelAsync(CancellationToken cancellationToken);
 
@@ -154,8 +175,10 @@ public interface ICoreSessionService : IAsyncDisposable
 public sealed class CoreSessionService : ICoreSessionService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly SemaphoreSlim _providerGate = new(1, 1);
     private readonly KlClientOptions _catalogOptions;
     private KlSessionClient? _session;
+    private KlCoreClient? _providerClient;
     private CoreSessionPresenter? _presenter;
     private CoreSessionRequest? _lastRequest;
     private CancellationTokenSource? _pumpCancellation;
@@ -206,7 +229,8 @@ public sealed class CoreSessionService : ICoreSessionService
             ConfigPath = request.ConfigPath,
             HomePath = request.HomePath,
             Endpoint = _catalogOptions.Endpoint,
-            Token = _catalogOptions.Token
+            Token = _catalogOptions.Token,
+            TlsFingerprint = _catalogOptions.TlsFingerprint
         };
         var sessionOptions = new KlSessionOptions
         {
@@ -402,6 +426,59 @@ public sealed class CoreSessionService : ICoreSessionService
     public Task<JsonElement> UpsertProviderAsync(object parameters, CancellationToken cancellationToken) =>
         OneShotRequestAsync(Protocol.ProviderUpsert, parameters, cancellationToken);
 
+    public Task<JsonElement> UpsertProviderWithKeyAsync(
+        object parameters,
+        string id,
+        string? apiKey,
+        CancellationToken cancellationToken) =>
+        Task.Run(
+            () => UpsertProviderWithKeyCoreAsync(
+                parameters,
+                id,
+                apiKey,
+                cancellationToken),
+            cancellationToken);
+
+    private async Task<JsonElement> UpsertProviderWithKeyCoreAsync(
+        object parameters,
+        string id,
+        string? apiKey,
+        CancellationToken cancellationToken)
+    {
+        await _providerGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            try
+            {
+                var client = await GetProviderClientAsync(cancellationToken).ConfigureAwait(false);
+                var result = await client.RequestAsync(
+                        Protocol.ProviderUpsert,
+                        parameters,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(apiKey))
+                {
+                    await client.RequestAsync(
+                            Protocol.ProviderSetApiKey,
+                            new { id, key = apiKey },
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
+                return result;
+            }
+            catch (Exception error) when (IsProviderTransportError(error))
+            {
+                await ResetProviderClientAsync().ConfigureAwait(false);
+                throw;
+            }
+        }
+        finally
+        {
+            _providerGate.Release();
+        }
+    }
+
     public Task<JsonElement> SetProviderApiKeyAsync(
         string id,
         string key,
@@ -433,14 +510,27 @@ public sealed class CoreSessionService : ICoreSessionService
     public Task<JsonElement> ReadConfigAsync(CancellationToken cancellationToken) =>
         OneShotRequestAsync("config.get", null, cancellationToken);
 
-    public async Task<CoreProviderCatalog> LoadProviderCatalogAsync(
+    public Task<CoreProviderCatalog> LoadProviderCatalogAsync(
+        CancellationToken cancellationToken) =>
+        Task.Run(
+            () => LoadProviderCatalogCoreAsync(cancellationToken),
+            cancellationToken);
+
+    private async Task<CoreProviderCatalog> LoadProviderCatalogCoreAsync(
         CancellationToken cancellationToken)
     {
-        KlCoreClient? client = null;
+        await _providerGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            client = await KlCoreClient.ConnectOrStartAsync(_catalogOptions, cancellationToken)
-                .ConfigureAwait(false);
+            KlCoreClient client;
+            try
+            {
+                client = await GetProviderClientAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception error) when (error is not OperationCanceledException)
+            {
+                return CoreProviderCatalog.Failed(DescribeError(error));
+            }
 
             JsonElement providerList = default;
             var providerListRead = false;
@@ -452,6 +542,11 @@ public sealed class CoreSessionService : ICoreSessionService
             }
             catch (Exception error) when (error is not OperationCanceledException)
             {
+                if (IsProviderTransportError(error))
+                {
+                    await ResetProviderClientAsync().ConfigureAwait(false);
+                    return CoreProviderCatalog.Failed(DescribeError(error));
+                }
                 // The config still reveals configured providers when the catalog fails.
             }
 
@@ -465,6 +560,11 @@ public sealed class CoreSessionService : ICoreSessionService
             }
             catch (Exception error) when (error is not OperationCanceledException)
             {
+                if (IsProviderTransportError(error))
+                {
+                    await ResetProviderClientAsync().ConfigureAwait(false);
+                    return CoreProviderCatalog.Failed(DescribeError(error));
+                }
                 // Provider cards from the live catalog are still useful.
             }
 
@@ -482,49 +582,45 @@ public sealed class CoreSessionService : ICoreSessionService
         }
         finally
         {
-            if (client is not null)
-            {
-                try
-                {
-                    await client.DisposeAsync().ConfigureAwait(false);
-                }
-                catch (Exception)
-                {
-                }
-            }
+            _providerGate.Release();
         }
     }
 
     public Task<JsonElement> ListSkillsAsync(string workspace, CancellationToken cancellationToken) =>
         OneShotRequestAsync("skill.list", new { workspace }, cancellationToken);
 
-    /// <summary>Runs one request over a handshaken throwaway Core connection.</summary>
-    private async Task<JsonElement> OneShotRequestAsync(
+    /// <summary>Runs one request over the shared provider Core connection.</summary>
+    private Task<JsonElement> OneShotRequestAsync(
+        string method,
+        object? parameters,
+        CancellationToken cancellationToken) =>
+        Task.Run(
+            () => OneShotRequestCoreAsync(method, parameters, cancellationToken),
+            cancellationToken);
+
+    private async Task<JsonElement> OneShotRequestCoreAsync(
         string method,
         object? parameters,
         CancellationToken cancellationToken)
     {
-        KlCoreClient? client = null;
+        await _providerGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            client = await KlCoreClient.ConnectOrStartAsync(_catalogOptions, cancellationToken)
-                .ConfigureAwait(false);
-            return await client.RequestAsync(method, parameters, cancellationToken)
-                .ConfigureAwait(false);
+            try
+            {
+                var client = await GetProviderClientAsync(cancellationToken).ConfigureAwait(false);
+                return await client.RequestAsync(method, parameters, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception error) when (IsProviderTransportError(error))
+            {
+                await ResetProviderClientAsync().ConfigureAwait(false);
+                throw;
+            }
         }
         finally
         {
-            if (client is not null)
-            {
-                try
-                {
-                    await client.DisposeAsync().ConfigureAwait(false);
-                }
-                catch (Exception)
-                {
-                    // A one-shot probe must never leak into the caller.
-                }
-            }
+            _providerGate.Release();
         }
     }
 
@@ -538,6 +634,33 @@ public sealed class CoreSessionService : ICoreSessionService
     {
         var result = await AgentConfigAsync(effort, cancellationToken).ConfigureAwait(false);
         return ReadReasoningEffort(result);
+    }
+
+    public Task<JsonElement> GetAgentConfigAsync(CancellationToken cancellationToken) =>
+        OneShotRequestAsync(Protocol.AgentConfigGet, null, cancellationToken);
+
+    public Task<JsonElement> SetAgentConfigAsync(object parameters, CancellationToken cancellationToken) =>
+        OneShotRequestAsync(Protocol.AgentConfigSet, parameters, cancellationToken);
+
+    public Task<JsonElement> RunReviewAsync(
+        string workspace,
+        string mode,
+        string instructions,
+        bool fullFiles,
+        CancellationToken cancellationToken)
+    {
+        var parameters = new Dictionary<string, object?>
+        {
+            ["workspace"] = workspace,
+            ["mode"] = mode,
+            ["strict"] = string.Equals(mode, "strict", StringComparison.OrdinalIgnoreCase),
+            ["full_files"] = fullFiles
+        };
+        if (!string.IsNullOrWhiteSpace(instructions))
+        {
+            parameters["instructions"] = instructions;
+        }
+        return OneShotRequestAsync(Protocol.ReviewRun, parameters, cancellationToken);
     }
 
     private async Task<JsonElement> AgentConfigAsync(string? effort, CancellationToken cancellationToken)
@@ -718,10 +841,13 @@ public sealed class CoreSessionService : ICoreSessionService
         return session.RequestAsync(method, parameters, cancellationToken);
     }
 
-    public async Task<TurnOutcome> RunTurnAsync(string prompt, CancellationToken cancellationToken)
+    public async Task<TurnOutcome> RunTurnAsync(
+        string prompt,
+        CancellationToken cancellationToken,
+        long? rewindFromSeq = null)
     {
         var session = _session ?? throw new InvalidOperationException("KL Core 会话尚未建立。");
-        return await session.RunTurnAsync(prompt, cancellationToken).ConfigureAwait(false);
+        return await session.RunTurnAsync(prompt, cancellationToken, rewindFromSeq).ConfigureAwait(false);
     }
 
     public async Task CancelAsync(CancellationToken cancellationToken)
@@ -785,8 +911,45 @@ public sealed class CoreSessionService : ICoreSessionService
     public async ValueTask DisposeAsync()
     {
         await CloseSessionAsync().ConfigureAwait(false);
+        await ResetProviderClientAsync().ConfigureAwait(false);
         _gate.Dispose();
+        _providerGate.Dispose();
     }
+
+    private async Task<KlCoreClient> GetProviderClientAsync(CancellationToken cancellationToken)
+    {
+        if (_providerClient is { } client)
+        {
+            return client;
+        }
+
+        var created = await KlCoreClient.ConnectOrStartAsync(_catalogOptions, cancellationToken)
+            .ConfigureAwait(false);
+        _providerClient = created;
+        return created;
+    }
+
+    private async Task ResetProviderClientAsync()
+    {
+        var client = _providerClient;
+        _providerClient = null;
+        if (client is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await client.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // A dead provider connection must not break shutdown or the next request.
+        }
+    }
+
+    private static bool IsProviderTransportError(Exception error) =>
+        error is not OperationCanceledException and not JsonRpcException;
 
     private static string DescribeError(Exception error)
     {
@@ -869,6 +1032,13 @@ public sealed class UnavailableCoreSessionService : ICoreSessionService
     public Task<JsonElement> UpsertProviderAsync(object parameters, CancellationToken cancellationToken) =>
         throw new InvalidOperationException("KL Core 不可用。");
 
+    public Task<JsonElement> UpsertProviderWithKeyAsync(
+        object parameters,
+        string id,
+        string? apiKey,
+        CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("KL Core 不可用。");
+
     public Task<JsonElement> SetProviderApiKeyAsync(string id, string key, CancellationToken cancellationToken) =>
         throw new InvalidOperationException("KL Core 不可用。");
 
@@ -898,6 +1068,37 @@ public sealed class UnavailableCoreSessionService : ICoreSessionService
     public Task<string> SetReasoningEffortAsync(string effort, CancellationToken cancellationToken) =>
         Task.FromResult(effort);
 
+    public Task<JsonElement> GetAgentConfigAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(JsonSerializer.SerializeToElement(new
+        {
+            reasoning_effort = "default",
+            web_search = true,
+            network_access = true,
+            output_verbosity = "default",
+            reasoning_summary = "auto",
+            memory_enabled = true,
+            plugins_enabled = true,
+            custom_instructions = string.Empty,
+            personal_style = "default",
+            warmth = "default",
+            enthusiasm = "default",
+            emoji_usage = "default",
+            visual_answers = "default",
+            heading_style = "default",
+            quick_answers = true
+        }));
+
+    public Task<JsonElement> SetAgentConfigAsync(object parameters, CancellationToken cancellationToken) =>
+        Task.FromResult(JsonSerializer.SerializeToElement(parameters));
+
+    public Task<JsonElement> RunReviewAsync(
+        string workspace,
+        string mode,
+        string instructions,
+        bool fullFiles,
+        CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("KL Core 不可用。");
+
     public Task<JsonElement> HistoryAsync(int limit, CancellationToken cancellationToken) =>
         throw new InvalidOperationException("KL Core 不可用。");
 
@@ -913,7 +1114,10 @@ public sealed class UnavailableCoreSessionService : ICoreSessionService
     public Task<JsonElement> RequestAsync(string method, object? parameters, CancellationToken cancellationToken) =>
         throw new InvalidOperationException("KL Core 不可用。");
 
-    public Task<TurnOutcome> RunTurnAsync(string prompt, CancellationToken cancellationToken) =>
+    public Task<TurnOutcome> RunTurnAsync(
+        string prompt,
+        CancellationToken cancellationToken,
+        long? rewindFromSeq = null) =>
         throw new InvalidOperationException("KL Core 不可用。");
 
     public Task CancelAsync(CancellationToken cancellationToken) => Task.CompletedTask;

@@ -4,6 +4,11 @@
   "id": 16,
   "method": "agent.config.set",
   "params": {
-    "reasoning_effort": "high"
+    "reasoning_effort": "high",
+    "web_search": false,
+    "output_verbosity": "concise",
+    "personal_style": "professional",
+    "warmth": "low",
+    "quick_answers": false
   }
 }

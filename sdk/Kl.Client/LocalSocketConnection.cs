@@ -1,5 +1,9 @@
 using System.IO.Pipes;
+using System.Net.Security;
 using System.Net.Sockets;
+using System.Security.Authentication;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 
 namespace Kl.Client;
 
@@ -10,16 +14,58 @@ namespace Kl.Client;
 /// </summary>
 public static class LocalSocketConnection
 {
-    public static Stream Connect(string endpoint)
+    public static Stream Connect(string endpoint, CancellationToken cancellationToken = default) =>
+        Connect(endpoint, tlsFingerprint: null, cancellationToken);
+
+    /// <summary>
+    /// Connects to <c>tcp://</c>, <c>tls://</c> or a local transport. A
+    /// <c>tls://</c> endpoint requires <paramref name="tlsFingerprint"/>: the
+    /// leaf certificate's SHA-256 (with or without colons).
+    /// </summary>
+    public static Stream Connect(
+        string endpoint,
+        string? tlsFingerprint,
+        CancellationToken cancellationToken = default)
     {
         if (TryParseTcp(endpoint, out var host, out var port))
         {
+            var usesTls = endpoint.TrimStart().StartsWith("tls://", StringComparison.OrdinalIgnoreCase);
+            if (usesTls && string.IsNullOrWhiteSpace(tlsFingerprint))
+            {
+                throw new InvalidOperationException(
+                    "tls:// endpoints require the server's SHA-256 certificate fingerprint");
+            }
+
             var client = new TcpClient();
             try
             {
-                client.Connect(host, port);
+                client.ConnectAsync(host, port, cancellationToken).GetAwaiter().GetResult();
                 client.NoDelay = true;
-                return client.GetStream();
+                if (!usesTls)
+                {
+                    return client.GetStream();
+                }
+
+                var expected = NormalizeFingerprint(tlsFingerprint!);
+                var ssl = new SslStream(
+                    client.GetStream(),
+                    leaveInnerStreamOpen: false,
+                    (_, certificate, _, _) =>
+                        certificate is not null
+                        && string.Equals(
+                            Convert.ToHexString(SHA256.HashData(certificate.GetRawCertData())),
+                            expected,
+                            StringComparison.OrdinalIgnoreCase));
+                ssl.AuthenticateAsClientAsync(
+                        new SslClientAuthenticationOptions
+                        {
+                            TargetHost = host,
+                            EnabledSslProtocols = SslProtocols.None
+                        },
+                        cancellationToken)
+                    .GetAwaiter()
+                    .GetResult();
+                return ssl;
             }
             catch
             {
@@ -34,14 +80,23 @@ public static class LocalSocketConnection
                 ? endpoint[8..]
                 : endpoint;
             var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-            pipe.Connect(5000);
-            return pipe;
+            try
+            {
+                pipe.ConnectAsync(5000, cancellationToken).GetAwaiter().GetResult();
+                return pipe;
+            }
+            catch
+            {
+                pipe.Dispose();
+                throw;
+            }
         }
 
         var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         try
         {
-            socket.Connect(new UnixDomainSocketEndPoint(endpoint));
+            socket.ConnectAsync(new UnixDomainSocketEndPoint(endpoint), cancellationToken)
+                .GetAwaiter().GetResult();
             return new NetworkStream(socket, ownsSocket: true);
         }
         catch
@@ -52,9 +107,14 @@ public static class LocalSocketConnection
     }
 
     /// <summary>
-    /// Recognises <c>tcp://host:port</c> and bare <c>host:port</c>. Pipe names
-    /// and Unix socket paths stay on the local transport.
+    /// Recognises <c>tcp://host:port</c>, <c>tls://host:port</c> and bare
+    /// <c>host:port</c>. Pipe names and Unix socket paths stay local.
     /// </summary>
+    /// <summary>Uppercase hex without separators; accepts colons and spaces.</summary>
+    public static string NormalizeFingerprint(string fingerprint) =>
+        fingerprint.Trim().Replace(":", string.Empty)
+            .Replace("-", string.Empty).Replace(" ", string.Empty).ToUpperInvariant();
+
     public static bool TryParseTcp(string? endpoint, out string host, out int port)
     {
         host = string.Empty;
@@ -65,7 +125,8 @@ public static class LocalSocketConnection
         }
 
         var value = endpoint.Trim();
-        var explicitScheme = value.StartsWith("tcp://", StringComparison.OrdinalIgnoreCase);
+        var explicitScheme = value.StartsWith("tcp://", StringComparison.OrdinalIgnoreCase)
+            || value.StartsWith("tls://", StringComparison.OrdinalIgnoreCase);
         if (explicitScheme)
         {
             value = value[6..];

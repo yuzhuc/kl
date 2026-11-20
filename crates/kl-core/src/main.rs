@@ -11,6 +11,8 @@ fn main() -> ExitCode {
     let mut socket = None;
     let mut listen = None;
     let mut token = None;
+    let mut tls_cert = None;
+    let mut tls_key = None;
     let mut args = std::env::args().skip(1);
     while let Some(argument) = args.next() {
         match argument.as_str() {
@@ -55,6 +57,28 @@ fn main() -> ExitCode {
                     return ExitCode::from(2);
                 }
             },
+            "--tls-cert" => match args.next() {
+                Some(path) if !path.trim().is_empty() => tls_cert = Some(PathBuf::from(path)),
+                Some(_) => {
+                    eprintln!("kl-core: --tls-cert requires a path");
+                    return ExitCode::from(2);
+                }
+                None => {
+                    eprintln!("kl-core: --tls-cert requires a path");
+                    return ExitCode::from(2);
+                }
+            },
+            "--tls-key" => match args.next() {
+                Some(path) if !path.trim().is_empty() => tls_key = Some(PathBuf::from(path)),
+                Some(_) => {
+                    eprintln!("kl-core: --tls-key requires a path");
+                    return ExitCode::from(2);
+                }
+                None => {
+                    eprintln!("kl-core: --tls-key requires a path");
+                    return ExitCode::from(2);
+                }
+            },
             "--socket" => match args.next() {
                 Some(name) if !name.trim().is_empty() => socket = Some(name),
                 Some(_) => {
@@ -73,6 +97,20 @@ fn main() -> ExitCode {
         }
     }
 
+    let tls = match (tls_cert, tls_key) {
+        (Some(certificate), Some(key)) => Some((certificate, key)),
+        (None, None) => None,
+        _ => {
+            eprintln!("kl-core: --tls-cert and --tls-key must be used together");
+            return ExitCode::from(2);
+        }
+    };
+
+    if tls.is_some() && listen.is_none() {
+        eprintln!("kl-core: --tls-cert/--tls-key require --listen");
+        return ExitCode::from(2);
+    }
+
     if let Some(address) = listen {
         if socket.is_some() {
             eprintln!("kl-core: use either --socket or --listen, not both");
@@ -84,7 +122,7 @@ fn main() -> ExitCode {
             );
             return ExitCode::from(2);
         }
-        return match run_tcp_server(config, home, &address, token) {
+        return match run_tcp_server(config, home, &address, token, tls) {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {
                 eprintln!("kl-core: {error}");

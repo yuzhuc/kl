@@ -21,47 +21,85 @@ kl-core --serve --listen 0.0.0.0:8787 --token <secret> `
   server transport. Multiple clients share one core; only the lease holder may
   run turns, other clients attach as read-only observers.
 
+### TLS
+
+Pass a certificate and private key to encrypt the TCP transport:
+
+```powershell
+.\scripts\make-tls-cert.ps1 -OutDir .	ls   # self-signed cert.pem + key.pem
+kl-core --serve --listen 0.0.0.0:8787 --token <secret> `
+  --tls-cert .	ls\cert.pem --tls-key .	ls\key.pem
+```
+
+- `--tls-cert` and `--tls-key` must be used together and only with `--listen`.
+- The core prints the leaf certificate's SHA-256 fingerprint on startup and
+  writes a `tls://host:port` endpoint into `server.json`.
+- Clients pin that fingerprint; certificates are not checked against a CA, so a
+  self-signed certificate is enough. Distribute the fingerprint out of band.
+- A mismatching fingerprint or an untrusted certificate aborts the connection;
+  clients never fall back to plain text.
+- `--token` is still required beyond loopback: TLS protects the wire, the token
+  authorizes the client.
+
+The script needs `openssl` (Git for Windows ships one). The equivalent command
+is:
+
+```bash
+openssl req -x509 -newkey rsa:2048 -nodes -keyout key.pem -out cert.pem   -days 3650 -subj "/CN=localhost"   -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+```
+
+The private key must be PEM (PKCS#8, `BEGIN PRIVATE KEY`); the certificate may
+be PEM or DER.
+
 ## Clients
 
 Every `Kl.Client`-based client honours two environment variables:
 
 ```powershell
-$env:KL_CORE_ENDPOINT = "tcp://build-box:8787"
+$env:KL_CORE_ENDPOINT = "tls://build-box:8787"
 $env:KL_CORE_TOKEN = "<secret>"
+$env:KL_CORE_TLS_FINGERPRINT = "9546C9C10A006F9C...DCBD"
 
 kl chat --workspace .          # TUI
 kl run "fix the failing test"  # TUI one-shot
 D:\kl\bin\run-gui.bat          # GUI
 ```
 
-`KL_CORE_ENDPOINT` may be `tcp://host:port` or a bare `host:port`. Without it,
+`KL_CORE_ENDPOINT` may be `tcp://host:port`, `tls://host:port` or a bare
+`host:port`. A `tls://` endpoint requires `KL_CORE_TLS_FINGERPRINT` (colons and
+case are ignored). Without an endpoint,
 clients keep using `server.json`, stdio, or the local endpoint as before. When
 an explicit endpoint is set, a connection failure is reported instead of
 silently starting a local core, so a typo cannot run the agent on the wrong
 machine.
 
 The GUI also has a saved setting: 设置 → 连接 → 控制其他设备 → 远程 KL Core.
-Fill in the address and token and press 保存; the endpoint and token are stored
-in `gui/state.json` and `credentials/core.token`. The connection changes on the
-next launch, and 清除 returns the GUI to a local core.
+Fill in the address, token and (for `tls://`) the fingerprint and press 保存;
+the endpoint and fingerprint are stored in `gui/state.json`, the token in
+`credentials/core.token`. 测试连接 checks the draft without saving it, 保存
+applies on the next launch, and 清除 returns the GUI to a local core.
 
 Programmatic clients set the same values on `KlClientOptions`:
 
 ```csharp
 var options = new KlClientOptions
 {
-    Endpoint = "tcp://192.168.1.20:8787",
-    Token = Environment.GetEnvironmentVariable("KL_CORE_TOKEN")
+    Endpoint = "tls://192.168.1.20:8787",
+    Token = Environment.GetEnvironmentVariable("KL_CORE_TOKEN"),
+    TlsFingerprint = Environment.GetEnvironmentVariable("KL_CORE_TLS_FINGERPRINT")
 };
 await using var client = await KlCoreClient.ConnectOrStartAsync(options);
 ```
 
 ## Security
 
-- The token is a shared secret sent in plain text in the handshake. There is no
-  TLS yet. Use a private network, a VPN, or an SSH tunnel
+- Without `--tls-cert`, the token is a shared secret sent in plain text in the
+  handshake. Use TLS, a private network, a VPN, or an SSH tunnel
   (`ssh -L 8787:127.0.0.1:8787 me@build-box` then connect to
   `tcp://127.0.0.1:8787`) when the network is not trusted.
+- TLS authenticates the server through a pinned SHA-256 fingerprint, not a CA
+  chain. If the certificate is regenerated, update every client's fingerprint;
+  a mismatch is a hard failure.
 - The core runs tools with the account and sandbox policy of the server
   process. Treat remote access as shell access to that machine.
 - Workspace paths are resolved on the server. A GUI running elsewhere can open
@@ -74,7 +112,7 @@ await using var client = await KlCoreClient.ConnectOrStartAsync(options);
 
 - One core per home directory: two servers sharing a home would race on the
   session store.
-- The saved GUI endpoint applies after a restart; there is no in-place
-  reconnect yet. Environment variables still win for one-off sessions.
+- The saved GUI endpoint applies after a restart; 重连 re-runs the local core
+  connection check. Environment variables still win for one-off sessions.
 - The remote endpoint is not advertised to other machines; clients need the
   address out of band.

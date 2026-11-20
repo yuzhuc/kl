@@ -2,6 +2,8 @@ namespace Kl.Client;
 
 public enum SessionEventKind
 {
+    UserMessage,
+    ConversationRewound,
     TurnStarted,
     AssistantDelta,
     ReasoningDelta,
@@ -41,6 +43,7 @@ public sealed record SessionEvent(
     double? CostUsd = null,
     long Seq = 0,
     string? CallId = null,
+    long? RewindFromSeq = null,
     string? Output = null,
     bool ConnectionLost = false);
 

@@ -137,6 +137,7 @@ internal sealed class FakeCoreSessionService : ICoreSessionService
 
     public List<CoreSessionRequest> OpenRequests { get; } = [];
     public List<string> TurnPrompts { get; } = [];
+    public List<long?> RewindSeqs { get; } = [];
     public List<int> HistoryLimits { get; } = [];
     public CoreReconnectResult ReconnectResult { get; set; } = new(true, true, string.Empty);
     public bool WriterAllowed { get; set; }
@@ -273,6 +274,45 @@ internal sealed class FakeCoreSessionService : ICoreSessionService
         return Task.FromResult(effort);
     }
 
+    public string AgentConfigJson { get; set; } = """
+        {"reasoning_effort":"default","web_search":true,"network_access":true,
+         "output_verbosity":"default","reasoning_summary":"auto",
+         "memory_enabled":true,"plugins_enabled":true,"custom_instructions":"",
+         "personal_style":"default","warmth":"default","enthusiasm":"default",
+         "emoji_usage":"default","visual_answers":"default","heading_style":"default",
+         "quick_answers":true}
+        """;
+    public List<JsonElement> AgentConfigSets { get; } = [];
+
+    public Task<JsonElement> GetAgentConfigAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(TestData.Json(AgentConfigJson));
+
+    public Task<JsonElement> SetAgentConfigAsync(object parameters, CancellationToken cancellationToken)
+    {
+        var element = JsonSerializer.SerializeToElement(parameters);
+        AgentConfigSets.Add(element);
+        return Task.FromResult(element);
+    }
+
+    public string ReviewResultJson { get; set; } = """
+        {"mode":"standard","summary":"1 finding","changed_files":1,
+         "findings":[{"rule":"secret-openai","source":"local","file":"src/a.rs","line":3,
+         "severity":"high","confidence":0.99,"evidence":"sk-...","recommendation":"remove it",
+         "introduced":true,"low_confidence":false}]}
+        """;
+    public int ReviewCalls { get; private set; }
+
+    public Task<JsonElement> RunReviewAsync(
+        string workspace,
+        string mode,
+        string instructions,
+        bool fullFiles,
+        CancellationToken cancellationToken)
+    {
+        ReviewCalls++;
+        return Task.FromResult(TestData.Json(ReviewResultJson));
+    }
+
     public Task<CoreCatalogSnapshot> LoadSnapshotAsync(CancellationToken cancellationToken)
     {
         SnapshotCalls++;
@@ -318,6 +358,21 @@ internal sealed class FakeCoreSessionService : ICoreSessionService
     public Task<JsonElement> UpsertProviderAsync(object parameters, CancellationToken cancellationToken) =>
         RequestAsync(Protocol.ProviderUpsert, parameters, cancellationToken);
 
+    public async Task<JsonElement> UpsertProviderWithKeyAsync(
+        object parameters,
+        string id,
+        string? apiKey,
+        CancellationToken cancellationToken)
+    {
+        var result = await RequestAsync(Protocol.ProviderUpsert, parameters, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(apiKey))
+        {
+            await RequestAsync(Protocol.ProviderSetApiKey, new { id, key = apiKey }, cancellationToken);
+        }
+
+        return result;
+    }
+
     public Task<JsonElement> SetProviderApiKeyAsync(string id, string key, CancellationToken cancellationToken) =>
         RequestAsync(Protocol.ProviderSetApiKey, new { id, key }, cancellationToken);
 
@@ -356,16 +411,30 @@ internal sealed class FakeCoreSessionService : ICoreSessionService
         return Task.FromResult(TestData.Json(SkillsJson));
     }
 
-    public Task<JsonElement> RequestAsync(string method, object? parameters, CancellationToken cancellationToken)
+    public TaskCompletionSource<bool>? ProviderUpsertGate { get; set; }
+
+    public async Task<JsonElement> RequestAsync(
+        string method,
+        object? parameters,
+        CancellationToken cancellationToken)
     {
         Requests.Add((method, parameters));
+        if (method == Protocol.ProviderUpsert && ProviderUpsertGate is not null)
+        {
+            await ProviderUpsertGate.Task.ConfigureAwait(false);
+        }
+
         var json = RequestResponses.TryGetValue(method, out var response) ? response : RequestJson;
-        return Task.FromResult(TestData.Json(json));
+        return TestData.Json(json);
     }
 
-    public Task<TurnOutcome> RunTurnAsync(string prompt, CancellationToken cancellationToken)
+    public Task<TurnOutcome> RunTurnAsync(
+        string prompt,
+        CancellationToken cancellationToken,
+        long? rewindFromSeq = null)
     {
         TurnPrompts.Add(prompt);
+        RewindSeqs.Add(rewindFromSeq);
         return TurnHandler is null
             ? Task.FromResult(new TurnOutcome("completed", string.Empty))
             : TurnHandler(prompt, cancellationToken);

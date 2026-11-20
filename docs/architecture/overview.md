@@ -202,6 +202,6 @@ packaged binaries really match them. Adding or removing a RID requires an ADR
   `kl serve` smoke coverage is still pending.
 - Real provider/MCP live smoke with credentials.
 - Provider prompt caching.
-- Session rewind/revert and MCP resources/OAuth.
+- MCP resources/OAuth. Session rewind exists (`turn.start.rewind_from_seq`) as a marked event interval; it does not undo tool side effects.
 - Per-session MCP workspace.
 - Repository split.

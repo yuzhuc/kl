@@ -593,7 +593,7 @@ public sealed partial class MainWindowViewModel
             ? "API Key 已配置（由 KL Core 管理）"
             : "未配置 API Key（在 KL Core 配置中设置）";
         SettingsModelChoices.Clear();
-        foreach (var option in snapshot.ModelOptions)
+        foreach (var option in snapshot.ModelOptions.Where(option => option.Enabled))
         {
             SettingsModelChoices.Add($"{option.Provider} / {option.Model}");
         }
@@ -922,11 +922,13 @@ public sealed partial class MainWindowViewModel
             switch (message.Role)
             {
                 case "user":
-                    Messages.Add(ChatItemViewModel.User(
+                    var userItem = ChatItemViewModel.User(
                         AttachmentPromptText.Collapse(message.Text),
                         timestamp: DateTimeOffset.TryParse(message.Timestamp, out var userTime)
                             ? userTime
-                            : null));
+                            : null);
+                    userItem.Seq = message.Seq;
+                    Messages.Add(userItem);
                     break;
                 case "assistant":
                     if (!string.IsNullOrWhiteSpace(message.Reasoning))
@@ -935,7 +937,9 @@ public sealed partial class MainWindowViewModel
                         reasoning.Complete("成功", "思考完成");
                         Messages.Add(reasoning);
                     }
-                    Messages.Add(ChatItemViewModel.Assistant(message.Text));
+                    var assistantItem = ChatItemViewModel.Assistant(message.Text);
+                    assistantItem.Seq = message.Seq;
+                    Messages.Add(assistantItem);
                     break;
                 case "tool":
                     var tool = ChatItemViewModel.Tool(
@@ -997,6 +1001,29 @@ public sealed partial class MainWindowViewModel
     {
         switch (sessionEvent.Kind)
         {
+            case SessionEventKind.UserMessage:
+                if (_pendingUserItem is { } pending)
+                {
+                    pending.Seq = sessionEvent.Seq;
+                    _pendingUserItem = null;
+                }
+                else if (!IsBusy && !string.IsNullOrWhiteSpace(sessionEvent.Text))
+                {
+                    // Another client sent this message; keep this window in sync.
+                    var incoming = ChatItemViewModel.User(
+                        AttachmentPromptText.Collapse(sessionEvent.Text),
+                        timestamp: DateTimeOffset.Now);
+                    incoming.Seq = sessionEvent.Seq;
+                    Messages.Add(incoming);
+                    SyncStoredMessages();
+                }
+                break;
+            case SessionEventKind.ConversationRewound:
+                if (!_suppressRewindReload)
+                {
+                    _ = LoadHistoryAsync();
+                }
+                break;
             case SessionEventKind.TurnStarted:
                 IsBusy = true;
                 CoreStatusText = "正在生成…";

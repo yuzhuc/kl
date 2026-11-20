@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Kl.Client;
 using Kl.Gui.Models;
 using Kl.Gui.Services;
@@ -160,6 +161,37 @@ public sealed class MainWindowViewModelStateTests
         vm.ClearRemoteCoreSettings();
         Assert.Null(store.Load().RemoteCoreEndpoint);
         Assert.False(File.Exists(tokenPath));
+    }
+
+    [Fact]
+    public void RemoteCoreTlsFingerprintIsRequiredAndPersisted()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var vm = TestData.CreateViewModel(temp, store, new FakeCoreSessionService());
+
+        vm.RemoteCoreEndpointDraft = "tls://10.0.0.5:8787";
+        vm.RemoteCoreTokenDraft = "s3cret";
+        vm.SaveRemoteCoreSettings();
+        Assert.Contains("指纹", vm.RemoteCoreStatus);
+        Assert.Null(store.Load().RemoteCoreEndpoint);
+
+        vm.RemoteCoreTlsFingerprintDraft = "xyz";
+        vm.SaveRemoteCoreSettings();
+        Assert.Contains("64", vm.RemoteCoreStatus);
+
+        var fingerprint = new string('a', 64);
+        vm.RemoteCoreTlsFingerprintDraft = fingerprint;
+        vm.SaveRemoteCoreSettings();
+        Assert.Contains("已保存", vm.RemoteCoreStatus);
+        Assert.Equal(fingerprint.ToUpperInvariant(), store.Load().RemoteCoreTlsFingerprint);
+
+        var reloaded = TestData.CreateViewModel(temp, store, new FakeCoreSessionService());
+        Assert.Equal(fingerprint.ToUpperInvariant(), reloaded.RemoteCoreTlsFingerprintDraft);
+
+        vm.ClearRemoteCoreSettings();
+        Assert.Null(store.Load().RemoteCoreTlsFingerprint);
     }
 
     [Fact]
@@ -351,51 +383,15 @@ public sealed class MainWindowViewModelStateTests
         Assert.True(vm.IsSettingsUsage);
         Assert.Equal("使用情况和计费", vm.SettingsPaneTitle);
 
-        vm.SelectSettingsPane(SettingsPane.Integration);
-        Assert.True(vm.IsSettingsIntegration);
-        Assert.Equal("集成", vm.SettingsPaneTitle);
-
-        vm.SelectSettingsPane(SettingsPane.Data);
-        Assert.Equal("存储", vm.SettingsPaneTitle);
-
-        vm.SelectSettingsPane(SettingsPane.DataManagement);
-        Assert.True(vm.IsSettingsDataManagement);
-        Assert.Equal("数据管理", vm.SettingsPaneTitle);
-
         vm.SelectSettingsPane(SettingsPane.Config);
         Assert.True(vm.IsSettingsConfig);
         Assert.Equal("配置", vm.SettingsPaneTitle);
-
-        vm.SelectSettingsPane(SettingsPane.Import);
-        Assert.Equal("导入", vm.SettingsPaneTitle);
-
-        vm.SelectSettingsPane(SettingsPane.Profile);
-        Assert.Equal("个人资料", vm.SettingsPaneTitle);
-
-        vm.SelectSettingsPane(SettingsPane.Account);
-        Assert.True(vm.IsSettingsAccount);
-        Assert.Equal("账户", vm.SettingsPaneTitle);
-
-        vm.SelectSettingsPane(SettingsPane.Ads);
-        Assert.Equal("广告设置", vm.SettingsPaneTitle);
-
-        vm.SelectSettingsPane(SettingsPane.Parental);
-        Assert.Equal("家长控制", vm.SettingsPaneTitle);
-
-        vm.SelectSettingsPane(SettingsPane.Trusted);
-        Assert.Equal("受信任联系人", vm.SettingsPaneTitle);
-
-        vm.SelectSettingsPane(SettingsPane.Voice);
-        Assert.Equal("语音", vm.SettingsPaneTitle);
 
         vm.SelectSettingsPane(SettingsPane.Storage);
         Assert.Equal("存储空间", vm.SettingsPaneTitle);
 
         vm.SelectSettingsPane(SettingsPane.Personalization);
         Assert.Equal("个性化", vm.SettingsPaneTitle);
-
-        vm.SelectSettingsPane(SettingsPane.Mini);
-        Assert.Equal("迷你界面和智能伙伴", vm.SettingsPaneTitle);
 
         vm.SelectSettingsPane(SettingsPane.Plugins);
         Assert.True(vm.IsSettingsPlugins);
@@ -404,23 +400,11 @@ public sealed class MainWindowViewModelStateTests
         vm.SelectSettingsPane(SettingsPane.Passwords);
         Assert.Equal("密码", vm.SettingsPaneTitle);
 
-        vm.SelectSettingsPane(SettingsPane.ComputerUse);
-        Assert.Equal("电脑操控", vm.SettingsPaneTitle);
-
-        vm.SelectSettingsPane(SettingsPane.Browser);
-        Assert.Equal("浏览器", vm.SettingsPaneTitle);
-
-        vm.SelectSettingsPane(SettingsPane.CloudPc);
-        Assert.Equal("云电脑", vm.SettingsPaneTitle);
-
         vm.SelectSettingsPane(SettingsPane.Hooks);
         Assert.Equal("钩子", vm.SettingsPaneTitle);
 
         vm.SelectSettingsPane(SettingsPane.Connections);
         Assert.Equal("连接", vm.SettingsPaneTitle);
-
-        vm.SelectSettingsPane(SettingsPane.CodeReview);
-        Assert.Equal("代码审查", vm.SettingsPaneTitle);
 
         vm.SelectSettingsPane(SettingsPane.Git);
         Assert.Equal("Git", vm.SettingsPaneTitle);
@@ -675,13 +659,11 @@ public sealed class MainWindowViewModelStateTests
         Assert.Equal("pinned", store.Load().NotificationFilter);
 
         vm.SetSidebarWidth(360);
-        Assert.True(vm.IsSidebarWide);
-        Assert.False(vm.IsSidebarNarrow);
+        Assert.Equal(360, vm.SidebarWidth);
         Assert.Equal(360, store.Load().SidebarWidth);
 
         vm.SetSidebarWidth(238);
-        Assert.True(vm.IsSidebarNarrow);
-        Assert.False(vm.IsSidebarWide);
+        Assert.Equal(238, vm.SidebarWidth);
 
         vm.RestoreLastSession = false;
         Assert.False(store.Load().RestoreLastSession);
@@ -799,11 +781,10 @@ public sealed class MainWindowViewModelStateTests
         };
         var vm = TestData.CreateViewModel(temp, store, core);
 
-        vm.SelectSettingsPane(SettingsPane.Integration);
+        vm.SelectSettingsPane(SettingsPane.Plugins);
         await vm.RefreshMcpToolsAsync();
 
-        Assert.True(vm.IsSettingsIntegration);
-        Assert.Equal("集成", vm.SettingsPaneTitle);
+        Assert.True(vm.IsSettingsPlugins);
         var tool = Assert.Single(vm.McpTools);
         Assert.Equal("mcp__fs__read", tool.Name);
         Assert.Equal("读取文件", tool.Description);
@@ -836,6 +817,81 @@ public sealed class MainWindowViewModelStateTests
         Assert.Contains(vm.ConfigRows, row => row.Label == "审批模式" && row.Value == "suggest");
         Assert.Contains(vm.ConfigRows, row => row.Label == "提供方" && row.Value == "anthropic、openai");
     }
+
+    [Fact]
+    public async Task AgentSettingsLoadAndSaveThroughCore()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var core = new FakeCoreSessionService
+        {
+            AgentConfigJson = """
+                {"reasoning_effort":"high","web_search":false,"network_access":false,
+                 "output_verbosity":"concise","reasoning_summary":"detailed",
+                 "memory_enabled":false,"plugins_enabled":false,
+                 "custom_instructions":"be terse","personal_style":"professional",
+                 "warmth":"high","enthusiasm":"low","emoji_usage":"more",
+                 "visual_answers":"off","heading_style":"detailed","quick_answers":false}
+                """
+        };
+        var vm = TestData.CreateViewModel(temp, store, core);
+
+        await vm.RefreshAgentSettingsAsync();
+
+        Assert.False(vm.WebSearch);
+        Assert.False(vm.NetworkAccess);
+        Assert.False(vm.MemoryEnabled);
+        Assert.False(vm.PluginsEnabled);
+        Assert.Equal(1, vm.OutputVerbosityIndex);
+        Assert.Equal(2, vm.ReasoningSummaryIndex);
+        Assert.Equal("be terse", vm.CustomInstructionsDraft);
+        Assert.Equal(2, vm.PersonalStyleIndex);
+        Assert.Equal(2, vm.WarmthIndex);
+        Assert.Equal(1, vm.EnthusiasmIndex);
+        Assert.Equal(2, vm.EmojiIndex);
+        Assert.Equal(1, vm.VisualAnswersIndex);
+        Assert.Equal(2, vm.HeadingStyleIndex);
+        Assert.False(vm.QuickAnswers);
+
+        vm.WebSearch = true;
+        vm.NetworkAccess = true;
+        vm.MemoryEnabled = true;
+        vm.PluginsEnabled = true;
+        vm.OutputVerbosityIndex = 2;
+        vm.ReasoningSummaryIndex = 1;
+        vm.CustomInstructionsDraft = "  answer briefly  ";
+        vm.PersonalStyleIndex = 1;
+        vm.WarmthIndex = 1;
+        vm.EnthusiasmIndex = 2;
+        vm.EmojiIndex = 1;
+        vm.VisualAnswersIndex = 2;
+        vm.HeadingStyleIndex = 1;
+        vm.QuickAnswers = true;
+        await vm.SaveCustomInstructionsAsync();
+
+        Assert.Contains(core.AgentConfigSets, patch => ReadBool(patch, "web_search"));
+        Assert.Contains(core.AgentConfigSets, patch => ReadBool(patch, "network_access"));
+        Assert.Contains(core.AgentConfigSets, patch => ReadBool(patch, "memory_enabled"));
+        Assert.Contains(core.AgentConfigSets, patch => ReadBool(patch, "plugins_enabled"));
+        Assert.Contains(core.AgentConfigSets, patch => ReadString(patch, "output_verbosity") == "detailed");
+        Assert.Contains(core.AgentConfigSets, patch => ReadString(patch, "reasoning_summary") == "off");
+        Assert.Contains(core.AgentConfigSets,
+            patch => ReadString(patch, "custom_instructions") == "  answer briefly  ");
+        Assert.Contains(core.AgentConfigSets, patch => ReadString(patch, "personal_style") == "friendly");
+        Assert.Contains(core.AgentConfigSets, patch => ReadString(patch, "warmth") == "low");
+        Assert.Contains(core.AgentConfigSets, patch => ReadString(patch, "enthusiasm") == "high");
+        Assert.Contains(core.AgentConfigSets, patch => ReadString(patch, "emoji_usage") == "less");
+        Assert.Contains(core.AgentConfigSets, patch => ReadString(patch, "visual_answers") == "on");
+        Assert.Contains(core.AgentConfigSets, patch => ReadString(patch, "heading_style") == "concise");
+        Assert.Contains(core.AgentConfigSets, patch => ReadBool(patch, "quick_answers"));
+    }
+
+    private static bool ReadBool(JsonElement patch, string name) =>
+        patch.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
+
+    private static string? ReadString(JsonElement patch, string name) =>
+        patch.TryGetProperty(name, out var value) ? value.GetString() : null;
 
     [Fact]
     public async Task SkillsPageLoadsSkillsForActiveWorkspace()
@@ -884,24 +940,33 @@ public sealed class MainWindowViewModelStateTests
     }
 
     [Fact]
-    public void SettingsDetailSheetOpensAndCloses()
+    public void RestoredSettingsPanesOpenDirectly()
     {
         using var temp = new TempDirectory();
         var store = temp.CreateStore();
         TestData.Seed(store, temp.Path);
         var vm = TestData.CreateViewModel(temp, store, new FakeCoreSessionService());
 
-        vm.OpenSettingsDetail("源许可证", "该功能目前只有界面。");
-        Assert.True(vm.IsSettingsDetailOpen);
-        Assert.Equal("源许可证", vm.SettingsDetailTitle);
-        Assert.Equal("该功能目前只有界面。", vm.SettingsDetailBody);
+        vm.OpenSettings(SettingsPane.Storage);
+        Assert.True(vm.IsSettingsStorage);
+        Assert.Equal("存储空间", vm.SettingsPaneTitle);
 
-        vm.CloseSettingsDetail();
-        Assert.False(vm.IsSettingsDetailOpen);
+        Assert.Equal("Storage", store.Load().LastSettingsPane);
+    }
 
-        vm.OpenSettingsDetail("历史", "占位");
-        vm.CloseDialogs();
-        Assert.False(vm.IsSettingsDetailOpen);
+    [Fact]
+    public void RemovedSettingsPaneFallsBackToGeneral()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var state = store.Load();
+        state.LastSettingsPane = "Browser";
+        store.Save(state);
+
+        var vm = TestData.CreateViewModel(temp, store, new FakeCoreSessionService());
+        vm.OpenSettings();
+        Assert.True(vm.IsSettingsGeneral);
     }
 
     [Fact]
@@ -912,12 +977,12 @@ public sealed class MainWindowViewModelStateTests
         TestData.Seed(store, temp.Path);
         var first = TestData.CreateViewModel(temp, store, new FakeCoreSessionService());
 
-        first.OpenSettings(SettingsPane.Voice);
-        Assert.Equal("Voice", store.Load().LastSettingsPane);
+        first.OpenSettings(SettingsPane.Appearance);
+        Assert.Equal("Appearance", store.Load().LastSettingsPane);
 
         var second = TestData.CreateViewModel(temp, store, new FakeCoreSessionService());
         second.OpenSettings();
-        Assert.True(second.IsSettingsVoice);
+        Assert.True(second.IsSettingsAppearance);
     }
 
     [Fact]
@@ -1003,10 +1068,21 @@ public sealed class MainWindowViewModelStateTests
         vm.ApprovalNotifications = false;
         vm.QuestionNotifications = false;
         vm.NotificationSound = false;
-        vm.SettingsFullAccess = false;
+        vm.ApprovalModeIndex = 1;
         vm.AccentColorIndex = 2;
         vm.CodeFontSize = 15;
         vm.SetReduceMotionMode("on");
+        vm.UiFontIndex = 1;
+        vm.ContentFontIndex = 2;
+        vm.CodeFontIndex = 1;
+        vm.UiFontWeightIndex = 2;
+        vm.ContentFontWeightIndex = 1;
+        vm.CodeFontWeightIndex = 2;
+        vm.Contrast = 70;
+        vm.TranslucentSidebar = true;
+        vm.CompressHistory = false;
+        vm.GitBranchPrefix = "team/";
+        vm.SaveAppearanceSettings();
 
         var saved = store.Load();
         Assert.Equal("ctrlEnter", saved.SendShortcut);
@@ -1021,6 +1097,16 @@ public sealed class MainWindowViewModelStateTests
         Assert.Equal("#179E8A", saved.AccentColor);
         Assert.Equal(15, saved.ContentCodeFontSize);
         Assert.Equal("on", saved.ReduceMotion);
+        Assert.Equal(1, saved.UiFontIndex);
+        Assert.Equal(2, saved.ContentFontIndex);
+        Assert.Equal(1, saved.CodeFontIndex);
+        Assert.Equal(2, saved.UiFontWeightIndex);
+        Assert.Equal(1, saved.ContentFontWeightIndex);
+        Assert.Equal(2, saved.CodeFontWeightIndex);
+        Assert.Equal(70, saved.Contrast);
+        Assert.True(saved.TranslucentSidebar);
+        Assert.False(saved.CompressHistory);
+        Assert.Equal("team/", saved.GitBranchPrefix);
 
         var reloaded = TestData.CreateViewModel(temp, store, new FakeCoreSessionService());
         Assert.Equal(1, reloaded.SendShortcutIndex);
@@ -1032,12 +1118,22 @@ public sealed class MainWindowViewModelStateTests
         Assert.False(reloaded.ApprovalNotifications);
         Assert.False(reloaded.QuestionNotifications);
         Assert.False(reloaded.NotificationSound);
-        Assert.False(reloaded.SettingsFullAccess);
+        Assert.False(reloaded.IsPermissionFull);
         Assert.False(reloaded.SendsOnEnter);
         Assert.Equal(2, reloaded.AccentColorIndex);
         Assert.Equal(15, reloaded.CodeFontSize);
         Assert.True(reloaded.IsReduceMotionOn);
         Assert.True(reloaded.ReduceMotion);
+        Assert.Equal(1, reloaded.UiFontIndex);
+        Assert.Equal(2, reloaded.ContentFontIndex);
+        Assert.Equal(1, reloaded.CodeFontIndex);
+        Assert.Equal(2, reloaded.UiFontWeightIndex);
+        Assert.Equal(1, reloaded.ContentFontWeightIndex);
+        Assert.Equal(2, reloaded.CodeFontWeightIndex);
+        Assert.Equal(70, reloaded.Contrast);
+        Assert.True(reloaded.TranslucentSidebar);
+        Assert.False(reloaded.CompressHistory);
+        Assert.Equal("team/", reloaded.GitBranchPrefix);
     }
 
     [Fact]
@@ -1051,6 +1147,13 @@ public sealed class MainWindowViewModelStateTests
         state.CloseWindowAction = "sometimes";
         state.TurnNotifications = "often";
         state.AutoArchiveDays = -5;
+        state.UiFontIndex = 99;
+        state.ContentFontIndex = -1;
+        state.CodeFontIndex = 9;
+        state.UiFontWeightIndex = 9;
+        state.ContentFontWeightIndex = -2;
+        state.CodeFontWeightIndex = 7;
+        state.Contrast = 500;
         store.Save(state);
 
         var vm = TestData.CreateViewModel(temp, store, new FakeCoreSessionService());
@@ -1059,6 +1162,13 @@ public sealed class MainWindowViewModelStateTests
         Assert.Equal(0, vm.TurnNotificationIndex);
         Assert.Equal(0, vm.AutoArchiveIndex);
         Assert.True(vm.SendsOnEnter);
+        Assert.Equal(1, vm.UiFontIndex);
+        Assert.Equal(0, vm.ContentFontIndex);
+        Assert.Equal(2, vm.CodeFontIndex);
+        Assert.Equal(2, vm.UiFontWeightIndex);
+        Assert.Equal(0, vm.ContentFontWeightIndex);
+        Assert.Equal(2, vm.CodeFontWeightIndex);
+        Assert.Equal(100, vm.Contrast);
     }
 
     [Fact]
@@ -1184,6 +1294,82 @@ public sealed class MainWindowViewModelStateTests
         Assert.Contains(vm.Worktrees, row => row.Branch == "feature");
     }
 
+    [Fact]
+    public async Task ReviewSettingsPersistAndRunParsesFindings()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var core = new FakeCoreSessionService();
+        var vm = TestData.CreateViewModel(temp, store, core);
+
+        vm.ReviewModeIndex = 2;
+        vm.ReviewFullFiles = true;
+        vm.ReviewInstructions = "check concurrency";
+
+        var saved = store.Load();
+        Assert.Equal("strict", saved.ReviewMode);
+        Assert.True(saved.ReviewFullFiles);
+        Assert.Equal("check concurrency", saved.ReviewInstructions);
+
+        await vm.RunReviewAsync();
+
+        Assert.True(core.ReviewCalls > 0);
+        var finding = Assert.Single(vm.ReviewFindings);
+        Assert.Equal("high", finding.Severity);
+        Assert.Equal("src/a.rs:3", finding.Location);
+        Assert.Equal("secret-openai", finding.Rule);
+        Assert.True(finding.IsHigh);
+        Assert.Contains("1 finding", vm.ReviewStatusText);
+    }
+
+    [Fact]
+    public async Task WorktreeSettingsPersistAndCreateDelete()
+    {
+        using var temp = new TempDirectory();
+        var projectPath = System.IO.Path.Combine(temp.Path, "project");
+        var root = System.IO.Path.Combine(temp.Path, "worktrees");
+        Directory.CreateDirectory(projectPath);
+        RunGitTestCommand(projectPath, "init -q");
+        RunGitTestCommand(projectPath, "-c user.name=Test -c user.email=test@example.com commit --allow-empty -m init");
+
+        var store = temp.CreateStore();
+        TestData.Seed(store, projectPath);
+        var vm = TestData.CreateViewModel(temp, store, new FakeCoreSessionService());
+
+        vm.WorktreeRoot = root;
+        vm.WorktreeFetchBeforeCreate = false;
+        vm.WorktreeConfirmDelete = true;
+        vm.GitBranchPrefix = "kl/";
+        var saved = store.Load();
+        Assert.Equal(root, saved.WorktreeRoot);
+        Assert.False(saved.WorktreeFetchBeforeCreate);
+        Assert.True(saved.WorktreeConfirmDelete);
+
+        vm.NewWorktreeName = "bad/name";
+        Assert.False(vm.CanCreateWorktree);
+        await vm.CreateWorktreeAsync();
+        Assert.Contains("名称", vm.WorktreesStatusText);
+
+        vm.NewWorktreeName = "demo";
+        Assert.True(vm.CanCreateWorktree);
+        await vm.CreateWorktreeAsync();
+        var created = Assert.Single(vm.Worktrees, row => row.Path.EndsWith("demo", StringComparison.Ordinal));
+        Assert.True(Directory.Exists(created.Path));
+        Assert.Equal("kl/demo", created.Branch);
+
+        vm.GitBranchPrefix = "bad prefix";
+        vm.NewWorktreeName = "other";
+        await vm.CreateWorktreeAsync();
+        Assert.Contains("前缀", vm.WorktreesStatusText);
+
+        vm.GitBranchPrefix = "kl/";
+        vm.RequestDeleteWorktree(created);
+        Assert.True(vm.IsWorktreeDeleteConfirmOpen);
+        await vm.ConfirmDeleteWorktreeAsync();
+        Assert.DoesNotContain(vm.Worktrees, row => row.Path.EndsWith("demo", StringComparison.Ordinal));
+    }
+
     private static void RunGitTestCommand(string workspace, string arguments)
     {
         using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
@@ -1224,6 +1410,50 @@ public sealed class MainWindowViewModelStateTests
 
         Assert.NotEqual("—", vm.GitBranchText);
         Assert.Contains("未提交更改", vm.GitStatusText);
+    }
+
+    [Fact]
+    public async Task RemoteCoreTestReportsCurrentCore()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var vm = TestData.CreateViewModel(temp, store, new FakeCoreSessionService());
+
+        vm.RemoteCoreEndpointDraft = string.Empty;
+        await vm.TestRemoteCoreConnectionAsync();
+
+        Assert.Contains("当前 Core 可用", vm.RemoteCoreStatus);
+        Assert.Contains("test-core", vm.RemoteCoreStatus);
+    }
+
+    [Fact]
+    public async Task RemoteCoreTestRejectsInvalidEndpoint()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var vm = TestData.CreateViewModel(temp, store, new FakeCoreSessionService());
+
+        vm.RemoteCoreEndpointDraft = "bad";
+        await vm.TestRemoteCoreConnectionAsync();
+
+        Assert.Contains("格式", vm.RemoteCoreStatus);
+    }
+
+    [Fact]
+    public async Task RemoteCoreTestRequiresTokenForRemoteHost()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var vm = TestData.CreateViewModel(temp, store, new FakeCoreSessionService());
+
+        vm.RemoteCoreEndpointDraft = "tcp://example.com:7878";
+        vm.RemoteCoreTokenDraft = string.Empty;
+        await vm.TestRemoteCoreConnectionAsync();
+
+        Assert.Contains("令牌", vm.RemoteCoreStatus);
     }
 
     [Fact]
@@ -1472,5 +1702,35 @@ public sealed class MainWindowViewModelStateTests
         vm.OpenSettings(SettingsPane.Models);
         Assert.True(vm.IsSettingsModels);
         Assert.Equal("模型与连接", vm.SettingsPaneTitle);
+    }
+
+    [Fact]
+    public void GeneralFileTargetAndAutomationNotificationsPersist()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var vm = TestData.CreateViewModel(temp, store, new FakeCoreSessionService());
+
+        vm.FileOpenTargetIndex = 1;
+        vm.AutomationNotifications = false;
+
+        var reloaded = TestData.CreateViewModel(temp, store, new FakeCoreSessionService());
+        Assert.Equal(1, reloaded.FileOpenTargetIndex);
+        Assert.False(reloaded.AutomationNotifications);
+    }
+
+    [Fact]
+    public void ImportPaneIsAvailableAgain()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var vm = TestData.CreateViewModel(temp, store, new FakeCoreSessionService());
+
+        vm.OpenSettings(SettingsPane.Import);
+
+        Assert.True(vm.IsSettingsImport);
+        Assert.Equal("导入", vm.SettingsPaneTitle);
     }
 }

@@ -1,8 +1,10 @@
 use kl_policy::{PolicyConfig, ToolAccess};
 use kl_protocol::{
-    ApprovalMode, DefaultModelResult, ProviderDeleteResult, ProviderEnabledResult,
-    ProviderKeyResult, ProviderProtocolUrls, ProviderSetApiKeyParams, ProviderSetEnabledParams,
-    ProviderUpsertParams, ProviderUpsertResult, ReasoningEffort, SetDefaultModelParams,
+    AgentConfigSetParams, ApprovalMode, DefaultModelResult, EmojiUsage, HeadingStyle,
+    OutputVerbosity, PersonalStyle, ProviderDeleteResult, ProviderEnabledResult, ProviderKeyResult,
+    ProviderProtocolUrls, ProviderSetApiKeyParams, ProviderSetEnabledParams, ProviderUpsertParams,
+    ProviderUpsertResult, ReasoningEffort, ReasoningSummary, SetDefaultModelParams, ToneLevel,
+    VisualAnswers,
 };
 use kl_provider::{ModelMetadata, Protocol};
 use kl_sandbox::SandboxConfig;
@@ -182,6 +184,20 @@ pub struct AgentSettings {
     pub quality: QualityMode,
     pub approval_mode: ApprovalMode,
     pub reasoning_effort: ReasoningEffort,
+    pub web_search: bool,
+    pub network_access: bool,
+    pub output_verbosity: OutputVerbosity,
+    pub reasoning_summary: ReasoningSummary,
+    pub memory_enabled: bool,
+    pub plugins_enabled: bool,
+    pub custom_instructions: String,
+    pub personal_style: PersonalStyle,
+    pub warmth: ToneLevel,
+    pub enthusiasm: ToneLevel,
+    pub emoji_usage: EmojiUsage,
+    pub visual_answers: VisualAnswers,
+    pub heading_style: HeadingStyle,
+    pub quick_answers: bool,
     pub roles: BTreeMap<String, RoleSettings>,
     pub max_iterations: usize,
     pub max_tool_output_bytes: usize,
@@ -231,6 +247,8 @@ impl ProtocolUrls {
 #[derive(Debug, Clone, Deserialize)]
 pub struct ModelConfig {
     pub id: String,
+    #[serde(default)]
+    pub name: Option<String>,
     pub protocol: Protocol,
     pub context_window: u32,
     pub compact_threshold: f32,
@@ -238,6 +256,12 @@ pub struct ModelConfig {
     /// Optional per-model override; when present it is the complete request URL.
     #[serde(default)]
     pub url: Option<String>,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub reasoning_effort: Option<ReasoningEffort>,
+    #[serde(default)]
+    pub reasoning_efforts: Vec<ReasoningEffort>,
 }
 
 #[derive(Debug, Clone)]
@@ -299,6 +323,8 @@ pub enum ConfigError {
     ProviderDisabled(String),
     #[error("provider `{provider}` has no model `{model}`")]
     UnknownModel { provider: String, model: String },
+    #[error("model `{model}` for provider `{provider}` is disabled")]
+    ModelDisabled { provider: String, model: String },
     #[error("invalid provider id `{0}`")]
     InvalidProviderId(String),
     #[error("API key must not be empty")]
@@ -361,6 +387,20 @@ impl Default for AgentSettings {
             quality: QualityMode::default(),
             approval_mode: ApprovalMode::default(),
             reasoning_effort: ReasoningEffort::default(),
+            web_search: true,
+            network_access: true,
+            output_verbosity: OutputVerbosity::default(),
+            reasoning_summary: ReasoningSummary::default(),
+            memory_enabled: true,
+            plugins_enabled: true,
+            custom_instructions: String::new(),
+            personal_style: PersonalStyle::default(),
+            warmth: ToneLevel::default(),
+            enthusiasm: ToneLevel::default(),
+            emoji_usage: EmojiUsage::default(),
+            visual_answers: VisualAnswers::default(),
+            heading_style: HeadingStyle::default(),
+            quick_answers: true,
             roles: BTreeMap::new(),
             max_iterations: 12,
             max_tool_output_bytes: 32 * 1024,
@@ -392,7 +432,10 @@ impl Config {
     pub fn validate(&self) -> Result<(), ConfigError> {
         let scripted_configured =
             self.agent.provider == "scripted" && self.agent.scripted_path.is_some();
+        // An empty provider table is a valid GUI-managed state: the user can still
+        // start Core and add a new provider. A non-empty table must have a valid default.
         if !self.agent.provider.is_empty()
+            && !self.providers.is_empty()
             && !self.providers.contains_key(&self.agent.provider)
             && !scripted_configured
         {
@@ -425,6 +468,20 @@ impl Config {
                 "quality": self.agent.quality,
                 "approval_mode": self.agent.approval_mode,
                 "reasoning_effort": self.agent.reasoning_effort,
+                "web_search": self.agent.web_search,
+                "network_access": self.agent.network_access,
+                "output_verbosity": self.agent.output_verbosity,
+                "reasoning_summary": self.agent.reasoning_summary,
+                "memory_enabled": self.agent.memory_enabled,
+                "plugins_enabled": self.agent.plugins_enabled,
+                "custom_instructions": self.agent.custom_instructions,
+                "personal_style": self.agent.personal_style,
+                "warmth": self.agent.warmth,
+                "enthusiasm": self.agent.enthusiasm,
+                "emoji_usage": self.agent.emoji_usage,
+                "visual_answers": self.agent.visual_answers,
+                "heading_style": self.agent.heading_style,
+                "quick_answers": self.agent.quick_answers,
                 "roles": self.agent.roles,
                 "max_iterations": self.agent.max_iterations,
                 "max_tool_output_bytes": self.agent.max_tool_output_bytes,
@@ -498,15 +555,33 @@ impl ProviderCatalog {
                     .filter(|url| !url.trim().is_empty())
                     .or_else(|| file.protocols.url(model.protocol).map(str::to_owned))
                     .unwrap_or_default();
-                models.push(ModelMetadata::new(
-                    id.clone(),
-                    model.id.clone(),
-                    model.protocol,
-                    url,
-                    model.context_window,
-                    model.compact_threshold,
-                    model.max_output_tokens,
-                ));
+                models.push(
+                    ModelMetadata::new(
+                        id.clone(),
+                        model.id.clone(),
+                        model.protocol,
+                        url,
+                        model.context_window,
+                        model.compact_threshold,
+                        model.max_output_tokens,
+                    )
+                    .with_name(model.name.clone().unwrap_or_default())
+                    .with_enabled(model.enabled)
+                    .with_reasoning_effort(
+                        model
+                            .reasoning_effort
+                            .filter(|effort| *effort != ReasoningEffort::Default)
+                            .map(|effort| effort.as_str().to_owned()),
+                    )
+                    .with_reasoning_efforts(
+                        model
+                            .reasoning_efforts
+                            .iter()
+                            .filter(|effort| **effort != ReasoningEffort::Default)
+                            .map(|effort| effort.as_str().to_owned())
+                            .collect(),
+                    ),
+                );
             }
             catalog.providers.push(LoadedProvider {
                 id: id.clone(),
@@ -876,6 +951,19 @@ pub fn provider_upsert(
     }
     let config_dir = Config::config_dir(config_path);
     let mut config_value = read_toml_value(config_path)?;
+    let default_missing = {
+        let current = config_value
+            .get("agent")
+            .and_then(toml::Value::as_table)
+            .and_then(|agent| agent.get("provider"))
+            .and_then(toml::Value::as_str)
+            .unwrap_or_default();
+        current.is_empty()
+            || !config_value
+                .get("providers")
+                .and_then(toml::Value::as_table)
+                .is_some_and(|providers| providers.contains_key(current))
+    };
     let stored_path = {
         let providers = ensure_table(&mut config_value, "providers")?;
         let entry = providers
@@ -911,11 +999,16 @@ pub fn provider_upsert(
             })?;
             Ok(ModelConfig {
                 id: model.id.clone(),
+                name: clean(model.name.clone()),
                 protocol,
                 context_window: model.context_window,
                 compact_threshold: model.compact_threshold,
                 max_output_tokens: model.max_output_tokens,
                 url: clean(model.url.clone()),
+                enabled: model.enabled,
+                reasoning_effort: (model.reasoning_effort != ReasoningEffort::Default)
+                    .then_some(model.reasoning_effort),
+                reasoning_efforts: model.reasoning_efforts.clone(),
             })
         })
         .collect::<Result<Vec<_>, ConfigError>>()?;
@@ -971,10 +1064,41 @@ pub fn provider_upsert(
                     "max_output_tokens".to_owned(),
                     toml::Value::Integer(i64::from(model.max_output_tokens)),
                 );
+                if let Some(name) = &model.name {
+                    model_table.insert("name".to_owned(), toml::Value::String(name.clone()));
+                } else {
+                    model_table.remove("name");
+                }
                 if let Some(url) = &model.url {
                     model_table.insert("url".to_owned(), toml::Value::String(url.clone()));
                 } else {
                     model_table.remove("url");
+                }
+                model_table.insert("enabled".to_owned(), toml::Value::Boolean(model.enabled));
+                match &model.reasoning_effort {
+                    Some(effort) => {
+                        model_table.insert(
+                            "reasoning_effort".to_owned(),
+                            toml::Value::String(effort.as_str().to_owned()),
+                        );
+                    }
+                    None => {
+                        model_table.remove("reasoning_effort");
+                    }
+                }
+                if model.reasoning_efforts.is_empty() {
+                    model_table.remove("reasoning_efforts");
+                } else {
+                    model_table.insert(
+                        "reasoning_efforts".to_owned(),
+                        toml::Value::Array(
+                            model
+                                .reasoning_efforts
+                                .iter()
+                                .map(|effort| toml::Value::String(effort.as_str().to_owned()))
+                                .collect(),
+                        ),
+                    );
                 }
                 toml::Value::Table(model_table)
             })
@@ -1019,6 +1143,39 @@ pub fn provider_upsert(
         })?;
         table.insert("enabled".to_owned(), toml::Value::Boolean(params.enabled));
         table.insert("path".to_owned(), toml::Value::String(stored_path.clone()));
+    }
+    let first_enabled_model = params
+        .models
+        .iter()
+        .find(|model| model.enabled)
+        .map(|model| model.id.clone())
+        .unwrap_or_default();
+    {
+        let agent = ensure_table(&mut config_value, "agent")?;
+        let active_provider = agent
+            .get("provider")
+            .and_then(toml::Value::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        if default_missing {
+            agent.insert(
+                "provider".to_owned(),
+                toml::Value::String(params.id.clone()),
+            );
+        }
+        if default_missing || active_provider == params.id {
+            let active_model = agent
+                .get("model")
+                .and_then(toml::Value::as_str)
+                .unwrap_or_default();
+            let model_is_enabled = params
+                .models
+                .iter()
+                .any(|model| model.id == active_model && model.enabled);
+            if !model_is_enabled {
+                agent.insert("model".to_owned(), toml::Value::String(first_enabled_model));
+            }
+        }
     }
     write_toml_atomic(config_path, &config_value)?;
 
@@ -1072,16 +1229,37 @@ pub fn provider_delete(
         return Err(ConfigError::InvalidProviderId(id.to_owned()));
     }
 
+    let config_dir = Config::config_dir(config_path);
     let mut config_value = read_toml_value(config_path)?;
-    {
+    let provider_path = {
         let providers = ensure_table(&mut config_value, "providers")?;
+        let stored_path = providers
+            .get(id)
+            .and_then(toml::Value::as_table)
+            .and_then(|entry| entry.get("path"))
+            .and_then(toml::Value::as_str)
+            .filter(|path| !path.trim().is_empty())
+            .map(str::to_owned)
+            .unwrap_or_else(|| format!("providers/{id}.toml"));
         if providers.remove(id).is_none() {
             return Err(ConfigError::UnknownProvider(id.to_owned()));
+        }
+        resolve_path(&config_dir, &stored_path)
+    };
+
+    {
+        let agent = ensure_table(&mut config_value, "agent")?;
+        if agent.get("provider").and_then(toml::Value::as_str) == Some(id) {
+            agent.insert("provider".to_owned(), toml::Value::String(String::new()));
+            agent.insert("model".to_owned(), toml::Value::String(String::new()));
         }
     }
     write_toml_atomic(config_path, &config_value)?;
 
-    // The config entry is gone; drop the secret so re-adding starts clean.
+    // Drop the provider file and secret so re-adding starts clean.
+    if provider_path.starts_with(&config_dir) {
+        let _ = std::fs::remove_file(provider_path);
+    }
     let _ = std::fs::remove_file(home.join("credentials").join(format!("{id}.key")));
     Ok(ProviderDeleteResult {
         provider: id.to_owned(),
@@ -1134,12 +1312,18 @@ pub fn config_set_default_model(
         .iter()
         .find(|provider| provider.id == params.provider)
         .ok_or_else(|| ConfigError::UnknownProvider(params.provider.clone()))?;
-    if !provider
+    let Some(model) = provider
         .models
         .iter()
-        .any(|model| model.model == params.model)
-    {
+        .find(|model| model.model == params.model)
+    else {
         return Err(ConfigError::UnknownModel {
+            provider: params.provider.clone(),
+            model: params.model.clone(),
+        });
+    };
+    if !model.enabled {
+        return Err(ConfigError::ModelDisabled {
             provider: params.provider.clone(),
             model: params.model.clone(),
         });
@@ -1196,17 +1380,89 @@ pub fn permissions_set(config_path: &Path, approval_mode: ApprovalMode) -> Resul
     write_toml_atomic(config_path, &value)
 }
 
+pub const MAX_CUSTOM_INSTRUCTIONS: usize = 20_000;
+
 pub fn agent_config_set(
     config_path: &Path,
-    reasoning_effort: ReasoningEffort,
+    params: &AgentConfigSetParams,
 ) -> Result<(), ConfigError> {
     let mut value = read_toml_value(config_path)?;
     let agent = ensure_table(&mut value, "agent")?;
-    agent.insert(
-        "reasoning_effort".to_owned(),
-        toml::Value::String(reasoning_effort.as_str().to_owned()),
-    );
+    if let Some(reasoning_effort) = params.reasoning_effort {
+        agent.insert(
+            "reasoning_effort".to_owned(),
+            toml::Value::String(reasoning_effort.as_str().to_owned()),
+        );
+    }
+    for (key, enabled) in [
+        ("web_search", params.web_search),
+        ("network_access", params.network_access),
+        ("memory_enabled", params.memory_enabled),
+        ("plugins_enabled", params.plugins_enabled),
+    ] {
+        if let Some(enabled) = enabled {
+            agent.insert(key.to_owned(), toml::Value::Boolean(enabled));
+        }
+    }
+    if let Some(verbosity) = params.output_verbosity {
+        agent.insert(
+            "output_verbosity".to_owned(),
+            toml::Value::String(verbosity.as_str().to_owned()),
+        );
+    }
+    if let Some(summary) = params.reasoning_summary {
+        agent.insert(
+            "reasoning_summary".to_owned(),
+            toml::Value::String(summary.as_str().to_owned()),
+        );
+    }
+    if let Some(instructions) = &params.custom_instructions {
+        let instructions = sanitize_custom_instructions(instructions);
+        if instructions.is_empty() {
+            agent.remove("custom_instructions");
+        } else {
+            agent.insert(
+                "custom_instructions".to_owned(),
+                toml::Value::String(instructions),
+            );
+        }
+    }
+    for (key, value) in [
+        (
+            "personal_style",
+            params.personal_style.map(|value| value.as_str()),
+        ),
+        ("warmth", params.warmth.map(|value| value.as_str())),
+        ("enthusiasm", params.enthusiasm.map(|value| value.as_str())),
+        (
+            "emoji_usage",
+            params.emoji_usage.map(|value| value.as_str()),
+        ),
+        (
+            "visual_answers",
+            params.visual_answers.map(|value| value.as_str()),
+        ),
+        (
+            "heading_style",
+            params.heading_style.map(|value| value.as_str()),
+        ),
+    ] {
+        if let Some(value) = value {
+            agent.insert(key.to_owned(), toml::Value::String(value.to_owned()));
+        }
+    }
+    if let Some(enabled) = params.quick_answers {
+        agent.insert("quick_answers".to_owned(), toml::Value::Boolean(enabled));
+    }
     write_toml_atomic(config_path, &value)
+}
+
+pub fn sanitize_custom_instructions(instructions: &str) -> String {
+    instructions
+        .trim()
+        .chars()
+        .take(MAX_CUSTOM_INSTRUCTIONS)
+        .collect()
 }
 
 #[cfg(test)]
@@ -1476,19 +1732,25 @@ max_output_tokens = 100
     }
 
     #[test]
-    fn provider_delete_removes_the_config_entry_and_credential() {
+    fn provider_delete_removes_config_provider_file_and_credential() {
         let temp = tempfile::tempdir().unwrap();
         let config_path = temp.path().join("config.toml");
         std::fs::write(
             &config_path,
             r#"
+[agent]
+provider = "deepseek"
+model = "deepseek-chat"
+
 [providers.deepseek]
 enabled = true
 path = "providers/deepseek.toml"
 "#,
         )
         .unwrap();
+        std::fs::create_dir_all(temp.path().join("providers")).unwrap();
         std::fs::create_dir_all(temp.path().join("credentials")).unwrap();
+        std::fs::write(temp.path().join("providers/deepseek.toml"), "").unwrap();
         std::fs::write(temp.path().join("credentials/deepseek.key"), "sk-test").unwrap();
 
         let result = provider_delete(&config_path, temp.path(), "deepseek").unwrap();
@@ -1496,11 +1758,101 @@ path = "providers/deepseek.toml"
         assert!(result.deleted);
         let config = Config::load(&config_path).unwrap();
         assert!(!config.providers.contains_key("deepseek"));
+        assert!(config.agent.provider.is_empty());
+        assert!(config.agent.model.is_empty());
+        assert!(!temp.path().join("providers/deepseek.toml").exists());
         assert!(!temp.path().join("credentials/deepseek.key").exists());
         assert!(matches!(
             provider_delete(&config_path, temp.path(), "deepseek"),
             Err(ConfigError::UnknownProvider(_))
         ));
+    }
+
+    #[test]
+    fn provider_upsert_persists_model_enabled_and_reasoning() {
+        let temp = tempfile::tempdir().unwrap();
+        let config_path = temp.path().join("config.toml");
+        let mut params = upsert_params("local", true);
+        params.models[0].enabled = false;
+        params.models[0].name = Some("Local Model".to_owned());
+        params.models[0].reasoning_effort = ReasoningEffort::High;
+        params.models[0].reasoning_efforts = vec![
+            ReasoningEffort::Low,
+            ReasoningEffort::Medium,
+            ReasoningEffort::High,
+            ReasoningEffort::Max,
+        ];
+
+        provider_upsert(&config_path, &params).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let catalog = ProviderCatalog::load(&config, temp.path(), temp.path()).unwrap();
+        let model = &catalog.providers[0].models[0];
+        assert_eq!(model.name, "Local Model");
+        assert!(!model.enabled);
+        assert_eq!(model.reasoning_effort.as_deref(), Some("high"));
+        assert_eq!(
+            model.reasoning_efforts,
+            vec![
+                "low".to_owned(),
+                "medium".to_owned(),
+                "high".to_owned(),
+                "max".to_owned()
+            ]
+        );
+        assert!(matches!(
+            config_set_default_model(
+                &config_path,
+                temp.path(),
+                &SetDefaultModelParams {
+                    provider: "local".to_owned(),
+                    model: "gpt-5-responses".to_owned(),
+                },
+            ),
+            Err(ConfigError::ModelDisabled { .. })
+        ));
+    }
+
+    #[test]
+    fn provider_upsert_repairs_a_missing_default_provider() {
+        let temp = tempfile::tempdir().unwrap();
+        let config_path = temp.path().join("config.toml");
+        std::fs::write(
+            &config_path,
+            r#"
+[agent]
+provider = "gone"
+model = "gone-model"
+"#,
+        )
+        .unwrap();
+        let params = ProviderUpsertParams {
+            id: "deepseek".to_owned(),
+            protocols: kl_protocol::ProviderProtocolUrls {
+                openai_chat: Some("https://api.deepseek.com/v1/chat/completions".to_owned()),
+                ..Default::default()
+            },
+            models: vec![kl_protocol::ProviderModelInput {
+                id: "deepseek-chat".to_owned(),
+                name: None,
+                protocol: "openai-chat".to_owned(),
+                context_window: 128000,
+                compact_threshold: 0.8,
+                max_output_tokens: 8192,
+                url: None,
+                enabled: true,
+                reasoning_effort: ReasoningEffort::Default,
+                reasoning_efforts: Vec::new(),
+            }],
+            enabled: true,
+            api_key_env: None,
+        };
+
+        provider_upsert(&config_path, &params).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        assert_eq!(config.agent.provider, "deepseek");
+        assert_eq!(config.agent.model, "deepseek-chat");
     }
 
     #[test]
@@ -1823,11 +2175,15 @@ anthropic = "https://api.deepseek.com/v1/messages"
             },
             models: vec![kl_protocol::ProviderModelInput {
                 id: "gpt-5-responses".to_owned(),
+                name: None,
                 protocol: "openai-responses".to_owned(),
                 context_window: 1000,
                 compact_threshold: 0.5,
                 max_output_tokens: 100,
                 url: None,
+                enabled: true,
+                reasoning_effort: ReasoningEffort::Default,
+                reasoning_efforts: Vec::new(),
             }],
             enabled,
             api_key_env: None,

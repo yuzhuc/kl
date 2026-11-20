@@ -129,13 +129,54 @@ public sealed class StateAndServiceTests
     }
 
     [Fact]
+    public void StateStoreCompressesAndRestoresState()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        var state = new AppState
+        {
+            CompressHistory = true,
+            Workspaces =
+            [
+                new WorkspaceState
+                {
+                    Name = "压缩项目",
+                    Path = temp.Path,
+                    Sessions =
+                    [
+                        new SessionState
+                        {
+                            Title = "压缩会话",
+                            Messages = [new StoredMessage { Text = "hello" }]
+                        }
+                    ]
+                }
+            ]
+        };
+
+        store.Save(state);
+
+        var bytes = File.ReadAllBytes(store.Path);
+        Assert.Equal(0x1F, bytes[0]);
+        Assert.Equal(0x8B, bytes[1]);
+        var loaded = store.Load();
+        Assert.Equal("压缩项目", Assert.Single(loaded.Workspaces).Name);
+        Assert.Equal("hello", Assert.Single(Assert.Single(loaded.Workspaces).Sessions).Messages[0].Text);
+
+        loaded.CompressHistory = false;
+        store.Save(loaded);
+        Assert.Equal((byte)'{', File.ReadAllBytes(store.Path)[0]);
+        Assert.Equal("压缩项目", Assert.Single(store.Load().Workspaces).Name);
+    }
+
+    [Fact]
     public void StateStoreKeepsApiKeyOutsideStateJson()
     {
         using var temp = new TempDirectory();
         var statePath = Path.Combine(temp.Path, "gui", "state.json");
         var credentialPath = Path.Combine(temp.Path, "credentials", "deepseek.key");
         var store = new StateStore(statePath, credentialPath: credentialPath);
-        var state = new AppState { ApiKey = "secret-key" };
+        var state = new AppState { ApiKey = "secret-key", CompressHistory = false };
 
         store.Save(state);
 

@@ -3,6 +3,20 @@
   "kl_protocol": 1,
   "id": 16,
   "result": {
-    "reasoning_effort": "high"
+    "reasoning_effort": "high",
+    "web_search": false,
+    "network_access": true,
+    "output_verbosity": "concise",
+    "reasoning_summary": "auto",
+    "memory_enabled": true,
+    "plugins_enabled": true,
+    "custom_instructions": "",
+    "personal_style": "default",
+    "warmth": "default",
+    "enthusiasm": "default",
+    "emoji_usage": "default",
+    "visual_answers": "default",
+    "heading_style": "default",
+    "quick_answers": true
   }
 }

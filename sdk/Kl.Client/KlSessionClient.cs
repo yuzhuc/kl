@@ -324,7 +324,8 @@ public sealed class KlSessionClient : IAsyncDisposable
 
     public async Task<TurnOutcome> RunTurnAsync(
         string prompt,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        long? rewindFromSeq = null)
     {
         var client = await EnsureWriterAsync(cancellationToken).ConfigureAwait(false);
         var completion = new TaskCompletionSource<TurnOutcome>(
@@ -344,7 +345,8 @@ public sealed class KlSessionClient : IAsyncDisposable
                 _sessionOptions.Model,
                 _sessionOptions.Quality,
                 _sessionOptions.Agent,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                rewindFromSeq).ConfigureAwait(false);
             _currentTurnId = start.GetProperty("turn_id").GetString();
             if (_cancelRequested)
             {
@@ -648,6 +650,23 @@ public sealed class KlSessionClient : IAsyncDisposable
         var data = envelope.TryGetProperty("data", out var payload) ? payload : default;
         switch (typeElement.GetString())
         {
+            case "user.message":
+                await _presenter.OnEventAsync(
+                    new SessionEvent(
+                        SessionEventKind.UserMessage,
+                        Text: Sanitize(GetString(data, "text")),
+                        TurnId: GetNullableString(data, "turn_id"),
+                        Seq: seq),
+                    cancellationToken).ConfigureAwait(false);
+                break;
+            case "conversation.rewound":
+                await _presenter.OnEventAsync(
+                    new SessionEvent(
+                        SessionEventKind.ConversationRewound,
+                        Seq: seq,
+                        RewindFromSeq: GetLong(data, "from_seq")),
+                    cancellationToken).ConfigureAwait(false);
+                break;
             case "turn.started":
                 await _presenter.OnEventAsync(
                     new SessionEvent(

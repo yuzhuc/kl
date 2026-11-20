@@ -57,11 +57,14 @@ public sealed record CoreProviderProtocols(
 
 public sealed record CoreModelOption(string Provider, string Model, bool Enabled, bool KeyConfigured)
 {
+    public string Name { get; init; } = string.Empty;
     public string Protocol { get; init; } = string.Empty;
     public string Url { get; init; } = string.Empty;
     public int ContextWindow { get; init; }
     public double CompactThreshold { get; init; }
     public int MaxOutputTokens { get; init; }
+    public string ReasoningEffort { get; init; } = "default";
+    public IReadOnlyList<string> ReasoningEfforts { get; init; } = Array.Empty<string>();
     public string? Detail { get; init; }
 }
 
@@ -246,6 +249,7 @@ public static class CoreProtocolParser
                         model.TryGetProperty("key_configured", out var key)
                             && key.ValueKind == JsonValueKind.True)
                     {
+                        Name = GetString(model, "name"),
                         Protocol = GetString(model, "protocol"),
                         Url = GetString(model, "url"),
                         ContextWindow = GetInt(model, "context_window"),
@@ -254,6 +258,17 @@ public static class CoreProtocolParser
                                 ? parsedThreshold
                                 : 0.8,
                         MaxOutputTokens = GetInt(model, "max_output_tokens"),
+                        ReasoningEffort = NormalizeReasoningEffort(
+                            GetString(model, "reasoning_effort")),
+                        ReasoningEfforts = model.TryGetProperty("reasoning_efforts", out var efforts)
+                            && efforts.ValueKind == JsonValueKind.Array
+                                ? efforts.EnumerateArray()
+                                    .Where(value => value.ValueKind == JsonValueKind.String)
+                                    .Select(value => NormalizeReasoningEffort(value.GetString()))
+                                    .Where(value => value != "default")
+                                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                                    .ToList()
+                                : Array.Empty<string>(),
                         Detail = GetOptionalString(model, "detail")
                     });
                 }
@@ -283,6 +298,19 @@ public static class CoreProtocolParser
             ProviderProtocols = providerProtocols
         };
     }
+
+    private static string NormalizeReasoningEffort(string? value) => value switch
+    {
+        "none" => "none",
+        "minimal" => "minimal",
+        "low" => "low",
+        "medium" => "medium",
+        "high" => "high",
+        "xhigh" => "xhigh",
+        "max" => "max",
+        "ultra" => "ultra",
+        _ => "default"
+    };
 
     public static string DeriveTitle(CoreSessionSummary session)
     {

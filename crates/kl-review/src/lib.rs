@@ -521,16 +521,42 @@ pub fn runtime_findings(records: &[Value]) -> Vec<Finding> {
     findings
 }
 
-pub fn model_prompt(context: &ReviewContext, mode: ReviewMode) -> String {
-    let diff = truncate(&context.diff, 80_000);
+pub fn model_prompt(
+    context: &ReviewContext,
+    mode: ReviewMode,
+    instructions: Option<&str>,
+    full_files: bool,
+) -> String {
+    let source = if full_files {
+        let mut text = String::new();
+        for file in &context.changed_files {
+            text.push_str(&format!("\n--- {} ---\n{}", file.path, file.full_text));
+        }
+        format!(
+            "Full contents of changed files:\n{}",
+            truncate(&text, 80_000)
+        )
+    } else {
+        format!("Diff:\n{}", truncate(&context.diff, 80_000))
+    };
+    let guidance = instructions
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| {
+            format!(
+                "\n\nAdditional review instructions:\n{}",
+                truncate(value, 4_000)
+            )
+        })
+        .unwrap_or_default();
     format!(
-        "You are a code review model. Review only the supplied diff.\n\
+        "You are a code review model. Review only the supplied changes.\n\
          Mode: {}\n\
          Return ONLY a JSON array. Each item must have: rule, file, line, severity \
          (critical|high|medium|low|info), confidence (0..1), evidence, recommendation, \
          and optionally introduced (boolean). Focus on security bugs, correctness, \
          missing tests, and cross-file risks. Do not invent files or lines.\n\n\
-         Diff:\n{diff}",
+         {source}{guidance}",
         mode.as_str()
     )
 }
@@ -696,6 +722,33 @@ fn truncate(text: &str, limit: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn prompt_context() -> ReviewContext {
+        ReviewContext {
+            workspace: PathBuf::from("/tmp/workspace"),
+            base: None,
+            diff: "- old\n+new".to_owned(),
+            changed_files: vec![ChangedFile {
+                path: "src/lib.rs".to_owned(),
+                added: Vec::new(),
+                full_text: "fn full_file() {}".to_owned(),
+            }],
+        }
+    }
+
+    #[test]
+    fn prompt_appends_instructions_and_can_use_full_files() {
+        let context = prompt_context();
+        let diff_prompt = model_prompt(&context, ReviewMode::Standard, Some("check unsafe"), false);
+        assert!(diff_prompt.contains("+new"));
+        assert!(diff_prompt.contains("Additional review instructions:\ncheck unsafe"));
+        assert!(!diff_prompt.contains("fn full_file()"));
+
+        let full_prompt = model_prompt(&context, ReviewMode::Strict, None, true);
+        assert!(full_prompt.contains("--- src/lib.rs ---"));
+        assert!(full_prompt.contains("fn full_file() {}"));
+        assert!(!full_prompt.contains("+new"));
+    }
 
     #[test]
     fn parses_structured_model_findings() {

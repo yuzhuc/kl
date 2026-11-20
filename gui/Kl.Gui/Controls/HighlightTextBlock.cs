@@ -11,11 +11,28 @@ namespace Kl.Gui.Controls;
 /// </summary>
 public sealed class HighlightTextBlock : TextBlock
 {
-    private static readonly IBrush HitBackground = new SolidColorBrush(Color.Parse("#453719"));
-    private static readonly IBrush HitForeground = new SolidColorBrush(Color.Parse("#F0D9A8"));
-
     public static readonly StyledProperty<string?> HighlightQueryProperty =
         AvaloniaProperty.Register<HighlightTextBlock, string?>(nameof(HighlightQuery));
+
+    public HighlightTextBlock()
+    {
+        AttachedToVisualTree += (_, _) =>
+        {
+            if (Application.Current is { } application)
+            {
+                application.ActualThemeVariantChanged += OnApplicationThemeChanged;
+            }
+        };
+        DetachedFromVisualTree += (_, _) =>
+        {
+            if (Application.Current is { } application)
+            {
+                application.ActualThemeVariantChanged -= OnApplicationThemeChanged;
+            }
+        };
+    }
+
+    private void OnApplicationThemeChanged(object? sender, EventArgs eventArgs) => RebuildInlines();
 
     public string? HighlightQuery
     {
@@ -60,8 +77,8 @@ public sealed class HighlightTextBlock : TextBlock
             }
             inlines.Add(new Run(text.Substring(index, query.Length))
             {
-                Background = HitBackground,
-                Foreground = HitForeground
+                Background = ThemeBrushes.Get("HighlightFill", "#453719"),
+                Foreground = ThemeBrushes.Get("HighlightText", "#F0D9A8")
             });
             start = index + query.Length;
         }

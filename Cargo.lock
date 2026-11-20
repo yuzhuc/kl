@@ -815,6 +815,7 @@ dependencies = [
 name = "kl-core"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "dunce",
  "interprocess",
  "kl-agent",
@@ -829,8 +830,10 @@ dependencies = [
  "kl-sandbox",
  "kl-store",
  "kl-tools",
+ "rustls",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "thiserror 2.0.21",
  "toml",

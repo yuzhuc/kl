@@ -26,26 +26,16 @@ public enum SettingsPane
     General,
     Notifications,
     Import,
-    Profile,
     Appearance,
-    Account,
     Archived,
-    Ads,
-    Parental,
-    Trusted,
-    Voice,
     Storage,
     Config,
     Personalization,
-    Mini,
     Shortcuts,
     Providers,
     Usage,
-    DataManagement,
     Plugins,
     Passwords,
-    ComputerUse,
-    Browser,
     CloudPc,
     Hooks,
     Connections,
@@ -55,15 +45,14 @@ public enum SettingsPane
     Worktrees,
     Memory,
     Models,
-    Integration,
-    Data
 }
 
 public enum AttentionKind
 {
     TurnCompleted,
     Approval,
-    Question
+    Question,
+    Automation
 }
 
 public enum AutomationFilter
@@ -97,6 +86,7 @@ public sealed class ChatItemViewModel : ObservableObject
     private bool _isRunning;
     private bool _isJumpHighlighted;
     private bool _isExpanded;
+    private long? _seq;
 
     private ChatItemViewModel(
         ChatItemKind kind,
@@ -140,6 +130,21 @@ public sealed class ChatItemViewModel : ObservableObject
     public bool HasStatus => !string.IsNullOrWhiteSpace(StatusText);
     public bool ShowAssistantActions => IsAssistant && HasText && !IsRunning;
     public string ApiText => IsUser && !string.IsNullOrWhiteSpace(Detail) ? Detail : Text;
+
+    /// <summary>History event seq; null until the core reports it.</summary>
+    public long? Seq
+    {
+        get => _seq;
+        set
+        {
+            if (SetProperty(ref _seq, value))
+            {
+                OnPropertyChanged(nameof(HasSeq));
+            }
+        }
+    }
+
+    public bool HasSeq => _seq is not null;
 
     /// <summary>Short local time label shown under user messages (Codex-style).</summary>
     public string TimestampLabel
@@ -1174,7 +1179,6 @@ public sealed class PaletteFileGroupViewModel
 
     public IReadOnlyList<PaletteLineViewModel> Lines { get; }
     public string CountLabel => Lines.Count > 0 ? $"{Lines.Count} 处" : string.Empty;
-    public bool HasLines => Lines.Count > 0;
 }
 
 /// <summary>One matching line under a file group in the palette.</summary>
@@ -1216,6 +1220,54 @@ public sealed class LibraryItemViewModel
 
         return line.Length <= 32 ? line : line[..32] + "…";
     }
+}
+
+/// <summary>One discovered import item with the user's selection and result.</summary>
+public sealed class ImportCandidateRow : ObservableObject
+{
+    private readonly Action _selectionChanged;
+    private bool _isSelected = true;
+    private string _status = string.Empty;
+
+    public ImportCandidateRow(ImportCandidate candidate, Action selectionChanged)
+    {
+        Candidate = candidate;
+        _selectionChanged = selectionChanged;
+    }
+
+    public ImportCandidate Candidate { get; }
+    public string Name => Candidate.Name;
+    public string Description => Candidate.Description;
+    public string SourcePath => Candidate.SourcePath;
+    public string DestinationPath => Candidate.DestinationPath;
+    public string SizeLabel => Candidate.SizeLabel;
+    public string KindLabel => Candidate.Kind == ImportKind.Instructions ? "说明文件" : "技能";
+
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            if (SetProperty(ref _isSelected, value))
+            {
+                _selectionChanged();
+            }
+        }
+    }
+
+    public string Status
+    {
+        get => _status;
+        set
+        {
+            if (SetProperty(ref _status, value))
+            {
+                OnPropertyChanged(nameof(HasStatus));
+            }
+        }
+    }
+
+    public bool HasStatus => _status.Length > 0;
 }
 
 public sealed partial class MainWindowViewModel : ObservableObject
@@ -1265,7 +1317,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private bool _isSidebarVisible = true;
     private bool _isSearchVisible;
     private bool _isRecentExpanded = true;
-    private bool _isArchivedExpanded;
     private bool _isChatPage = true;
     private bool _isLibraryPage;
     private bool _isCodeReviewDraftActive;
@@ -1278,6 +1329,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private bool _isTestingConnection;
     private bool _settingsStatusIsError;
     private string _errorMessage = string.Empty;
+    private readonly ImportDiscoveryService _importService;
+    private bool _isImportScanning;
+    private string _importStatusText = "点击“扫描”查找 Codex 或 Claude 的说明文件与用户技能。";
     private string _pluginStatus = string.Empty;
     private string _pluginSearch = string.Empty;
     private IReadOnlyList<PluginItemViewModel> _allPlugins = [];
@@ -1302,9 +1356,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
         ICoreSessionService? coreSessionService = null,
         Action<Action>? dispatcher = null,
         string? homeDirectory = null,
-        ProviderCacheStore? providerCacheStore = null)
+        ProviderCacheStore? providerCacheStore = null,
+        ImportDiscoveryService? importService = null)
     {
         _homeDirectory = homeDirectory ?? KlDataPaths.Default.HomeDirectory;
+        _importService = importService ?? new ImportDiscoveryService(klHome: _homeDirectory);
         _agentsPath = Path.Combine(_homeDirectory, "AGENTS.md");
         _stateStore = stateStore ?? new StateStore();
         _providerCacheStore = providerCacheStore
@@ -1352,7 +1408,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             OnPropertyChanged(nameof(IsEmpty));
             OnPropertyChanged(nameof(HasConversation));
-            OnPropertyChanged(nameof(IsConversationEmpty));
             OnPropertyChanged(nameof(ShowConversationHeader));
             OnPropertyChanged(nameof(ShowWorkspaceStrip));
             OnPropertyChanged(nameof(ShowChatComposerChips));
@@ -1368,6 +1423,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public ObservableCollection<ChatItemViewModel> Messages { get; } = [];
     public ObservableCollection<AttachmentItemViewModel> PendingAttachments { get; } = [];
     public ObservableCollection<PluginItemViewModel> Plugins { get; } = [];
+    public ObservableCollection<ImportCandidateRow> ImportCandidates { get; } = [];
     public ObservableCollection<SessionItemViewModel> RecentSessions { get; } = [];
     public ObservableCollection<SessionItemViewModel> PinnedSessions { get; } = [];
     public ObservableCollection<SessionItemViewModel> ArchivedSessions { get; } = [];
@@ -1488,6 +1544,250 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public bool HasReasoningEffort => !string.Equals(_reasoningEffort, "default", StringComparison.Ordinal);
 
+    public bool WebSearch
+    {
+        get => _webSearch;
+        set
+        {
+            if (_webSearch == value)
+            {
+                return;
+            }
+            _webSearch = value;
+            OnPropertyChanged();
+            _ = SaveAgentSettingAsync(new { web_search = value });
+        }
+    }
+
+    public bool NetworkAccess
+    {
+        get => _networkAccess;
+        set
+        {
+            if (_networkAccess == value)
+            {
+                return;
+            }
+            _networkAccess = value;
+            OnPropertyChanged();
+            _ = SaveAgentSettingAsync(new { network_access = value });
+        }
+    }
+
+    public bool MemoryEnabled
+    {
+        get => _memoryEnabled;
+        set
+        {
+            if (_memoryEnabled == value)
+            {
+                return;
+            }
+            _memoryEnabled = value;
+            OnPropertyChanged();
+            _ = SaveAgentSettingAsync(new { memory_enabled = value });
+        }
+    }
+
+    public bool PluginsEnabled
+    {
+        get => _pluginsEnabled;
+        set
+        {
+            if (_pluginsEnabled == value)
+            {
+                return;
+            }
+            _pluginsEnabled = value;
+            OnPropertyChanged();
+            _ = SaveAgentSettingAsync(new { plugins_enabled = value });
+        }
+    }
+
+    public int OutputVerbosityIndex
+    {
+        get => _outputVerbosity switch { "concise" => 1, "detailed" => 2, _ => 0 };
+        set
+        {
+            var id = value switch { 1 => "concise", 2 => "detailed", _ => "default" };
+            if (_outputVerbosity == id)
+            {
+                return;
+            }
+            _outputVerbosity = id;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(OutputVerbosityIndex));
+            _ = SaveAgentSettingAsync(new { output_verbosity = id });
+        }
+    }
+
+    public int ReasoningSummaryIndex
+    {
+        get => _reasoningSummary switch { "off" => 1, "detailed" => 2, _ => 0 };
+        set
+        {
+            var id = value switch { 1 => "off", 2 => "detailed", _ => "auto" };
+            if (_reasoningSummary == id)
+            {
+                return;
+            }
+            _reasoningSummary = id;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ReasoningSummaryIndex));
+            _ = SaveAgentSettingAsync(new { reasoning_summary = id });
+        }
+    }
+
+    public int PersonalStyleIndex
+    {
+        get => _personalStyle switch { "friendly" => 1, "professional" => 2, _ => 0 };
+        set
+        {
+            var id = value switch { 1 => "friendly", 2 => "professional", _ => "default" };
+            if (_personalStyle == id)
+            {
+                return;
+            }
+            _personalStyle = id;
+            OnPropertyChanged();
+            _ = SaveAgentSettingAsync(new { personal_style = id });
+        }
+    }
+
+    public int WarmthIndex
+    {
+        get => _warmth switch { "low" => 1, "high" => 2, _ => 0 };
+        set
+        {
+            var id = value switch { 1 => "low", 2 => "high", _ => "default" };
+            if (_warmth == id)
+            {
+                return;
+            }
+            _warmth = id;
+            OnPropertyChanged();
+            _ = SaveAgentSettingAsync(new { warmth = id });
+        }
+    }
+
+    public int EnthusiasmIndex
+    {
+        get => _enthusiasm switch { "low" => 1, "high" => 2, _ => 0 };
+        set
+        {
+            var id = value switch { 1 => "low", 2 => "high", _ => "default" };
+            if (_enthusiasm == id)
+            {
+                return;
+            }
+            _enthusiasm = id;
+            OnPropertyChanged();
+            _ = SaveAgentSettingAsync(new { enthusiasm = id });
+        }
+    }
+
+    public int EmojiIndex
+    {
+        get => _emojiUsage switch { "less" => 1, "more" => 2, _ => 0 };
+        set
+        {
+            var id = value switch { 1 => "less", 2 => "more", _ => "default" };
+            if (_emojiUsage == id)
+            {
+                return;
+            }
+            _emojiUsage = id;
+            OnPropertyChanged();
+            _ = SaveAgentSettingAsync(new { emoji_usage = id });
+        }
+    }
+
+    public int VisualAnswersIndex
+    {
+        get => _visualAnswers switch { "off" => 1, "on" => 2, _ => 0 };
+        set
+        {
+            var id = value switch { 1 => "off", 2 => "on", _ => "default" };
+            if (_visualAnswers == id)
+            {
+                return;
+            }
+            _visualAnswers = id;
+            OnPropertyChanged();
+            _ = SaveAgentSettingAsync(new { visual_answers = id });
+        }
+    }
+
+    public int HeadingStyleIndex
+    {
+        get => _headingStyle switch { "concise" => 1, "detailed" => 2, _ => 0 };
+        set
+        {
+            var id = value switch { 1 => "concise", 2 => "detailed", _ => "default" };
+            if (_headingStyle == id)
+            {
+                return;
+            }
+            _headingStyle = id;
+            OnPropertyChanged();
+            _ = SaveAgentSettingAsync(new { heading_style = id });
+        }
+    }
+
+    public bool QuickAnswers
+    {
+        get => _quickAnswers;
+        set
+        {
+            if (_quickAnswers == value)
+            {
+                return;
+            }
+            _quickAnswers = value;
+            OnPropertyChanged();
+            _ = SaveAgentSettingAsync(new { quick_answers = value });
+        }
+    }
+
+    public string CustomInstructionsDraft
+    {
+        get => _customInstructionsDraft;
+        set
+        {
+            if (_customInstructionsDraft == value)
+            {
+                return;
+            }
+            _customInstructionsDraft = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public async Task SaveCustomInstructionsAsync()
+    {
+        await SaveAgentSettingAsync(new { custom_instructions = _customInstructionsDraft })
+            .ConfigureAwait(true);
+    }
+
+    private async Task SaveAgentSettingAsync(object patch)
+    {
+        if (_loadingAgentSettings)
+        {
+            return;
+        }
+        try
+        {
+            await _core.SetAgentConfigAsync(patch, CancellationToken.None).ConfigureAwait(true);
+        }
+        catch (Exception error) when (error is JsonRpcException
+            or IOException
+            or InvalidOperationException
+            or FileNotFoundException)
+        {
+            ReportError($"保存设置失败：{error.Message}");
+        }
+    }
+
     public bool IsReasoningDefault => string.Equals(_reasoningEffort, "default", StringComparison.Ordinal);
     public bool IsReasoningLow => string.Equals(_reasoningEffort, "low", StringComparison.Ordinal);
     public bool IsReasoningMedium => string.Equals(_reasoningEffort, "medium", StringComparison.Ordinal);
@@ -1525,7 +1825,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public bool IsEmpty => Messages.Count == 0;
     public bool HasConversation => !IsEmpty;
-    public bool IsConversationEmpty => IsEmpty;
     public bool IsChatPage => _isChatPage;
     public bool IsLibraryPage => _isLibraryPage;
     public bool IsProjectsPage => _isProjectsPage;
@@ -1545,10 +1844,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// <summary>Expanded sidebar width; the rail collapses below 3/4 of this value.</summary>
     public double SidebarWidth => _state.SidebarWidth;
 
-    public bool IsSidebarNarrow => SidebarWidth < 260;
-    public bool IsSidebarStandard => SidebarWidth is >= 260 and < 320;
-    public bool IsSidebarWide => SidebarWidth >= 320;
-
     public void SetSidebarWidth(double width)
     {
         var clamped = Math.Clamp(width, 238, 468);
@@ -1560,9 +1855,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _state.SidebarWidth = clamped;
         SaveState();
         OnPropertyChanged(nameof(SidebarWidth));
-        OnPropertyChanged(nameof(IsSidebarNarrow));
-        OnPropertyChanged(nameof(IsSidebarStandard));
-        OnPropertyChanged(nameof(IsSidebarWide));
     }
 
     public void SetSidebarVisible(bool visible) => IsSidebarVisible = visible;
@@ -1673,21 +1965,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
         SaveState();
     }
 
-    public bool IsArchivedExpanded
-    {
-        get => _isArchivedExpanded;
-        private set => SetProperty(ref _isArchivedExpanded, value);
-    }
-
     public void ToggleProjectSection()
     {
         IsProjectSectionExpanded = !IsProjectSectionExpanded;
         SaveState();
-    }
-
-    public void ToggleArchived()
-    {
-        IsArchivedExpanded = !IsArchivedExpanded;
     }
 
     public string UserInitials
@@ -1739,30 +2020,18 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public bool IsSettingsProviders => _settingsPane == SettingsPane.Providers;
     public bool IsSettingsModels => _settingsPane == SettingsPane.Models;
     public bool IsSettingsUsage => _settingsPane == SettingsPane.Usage;
-    public bool IsSettingsIntegration => _settingsPane == SettingsPane.Integration;
-    public bool IsSettingsData => _settingsPane == SettingsPane.Data;
-    public bool IsSettingsDataManagement => _settingsPane == SettingsPane.DataManagement;
     public bool IsSettingsConfig => _settingsPane == SettingsPane.Config;
     public WorkspaceItemViewModel ActiveWorkspace => _activeWorkspace;
 
     public bool IsSettingsImport => _settingsPane == SettingsPane.Import;
-    public bool IsSettingsProfile => _settingsPane == SettingsPane.Profile;
-    public bool IsSettingsAccount => _settingsPane == SettingsPane.Account;
-    public bool IsSettingsAds => _settingsPane == SettingsPane.Ads;
-    public bool IsSettingsParental => _settingsPane == SettingsPane.Parental;
-    public bool IsSettingsTrusted => _settingsPane == SettingsPane.Trusted;
-    public bool IsSettingsVoice => _settingsPane == SettingsPane.Voice;
+    public bool IsSettingsCloudPc => _settingsPane == SettingsPane.CloudPc;
+    public bool IsSettingsCodeReview => _settingsPane == SettingsPane.CodeReview;
     public bool IsSettingsStorage => _settingsPane == SettingsPane.Storage;
     public bool IsSettingsPersonalization => _settingsPane == SettingsPane.Personalization;
-    public bool IsSettingsMini => _settingsPane == SettingsPane.Mini;
     public bool IsSettingsPlugins => _settingsPane == SettingsPane.Plugins;
     public bool IsSettingsPasswords => _settingsPane == SettingsPane.Passwords;
-    public bool IsSettingsComputerUse => _settingsPane == SettingsPane.ComputerUse;
-    public bool IsSettingsBrowser => _settingsPane == SettingsPane.Browser;
-    public bool IsSettingsCloudPc => _settingsPane == SettingsPane.CloudPc;
     public bool IsSettingsHooks => _settingsPane == SettingsPane.Hooks;
     public bool IsSettingsConnections => _settingsPane == SettingsPane.Connections;
-    public bool IsSettingsCodeReview => _settingsPane == SettingsPane.CodeReview;
     public bool IsSettingsGit => _settingsPane == SettingsPane.Git;
     public bool IsSettingsEnvironments => _settingsPane == SettingsPane.Environments;
     public bool IsSettingsWorktrees => _settingsPane == SettingsPane.Worktrees;
@@ -1770,26 +2039,16 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         SettingsPane.Notifications => "通知",
         SettingsPane.Import => "导入",
-        SettingsPane.Profile => "个人资料",
         SettingsPane.Appearance => "外观",
-        SettingsPane.Account => "账户",
         SettingsPane.Archived => "已归档的聊天",
-        SettingsPane.Ads => "广告设置",
-        SettingsPane.Parental => "家长控制",
-        SettingsPane.Trusted => "受信任联系人",
-        SettingsPane.Voice => "语音",
         SettingsPane.Storage => "存储空间",
         SettingsPane.Config => "配置",
         SettingsPane.Personalization => "个性化",
-        SettingsPane.Mini => "迷你界面和智能伙伴",
         SettingsPane.Shortcuts => "键盘快捷键",
         SettingsPane.Providers => "模型提供商",
         SettingsPane.Usage => "使用情况和计费",
-        SettingsPane.DataManagement => "数据管理",
         SettingsPane.Plugins => "插件",
         SettingsPane.Passwords => "密码",
-        SettingsPane.ComputerUse => "电脑操控",
-        SettingsPane.Browser => "浏览器",
         SettingsPane.CloudPc => "云电脑",
         SettingsPane.Hooks => "钩子",
         SettingsPane.Connections => "连接",
@@ -1799,18 +2058,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
         SettingsPane.Worktrees => "Worktrees",
         SettingsPane.Memory => "记忆",
         SettingsPane.Models => "模型与连接",
-        SettingsPane.Integration => "集成",
-        SettingsPane.Data => "存储",
         _ => "常规"
     };
     public string SettingsPaneSubtitle => _settingsPane switch
     {
         SettingsPane.Import => "将其他 AI 应用的设置、项目和聊天导入 KL",
         SettingsPane.Config => "配置新聊天的权限、网页访问和智能体回复",
-        SettingsPane.Mini => "按下 Alt+Win+P，即可显示并聚焦智能伙伴",
         SettingsPane.Plugins => "管理插件、技能和 MCP",
-        SettingsPane.ComputerUse => "管理 KL 如何使用你电脑上的其他应用程序",
-        SettingsPane.Browser => "管理你的浏览器偏好设置和网站访问权限。",
         SettingsPane.CloudPc => "管理云端浏览设置和已保存的网站 Cookie",
         SettingsPane.Hooks => "通过配置和已启用的插件管理生命周期钩子。",
         SettingsPane.Environments => "本地环境用于指导 KL 如何为项目设置工作树。",
@@ -1832,56 +2086,47 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public bool IsRenameDialogOpen
     {
         get => _isRenameDialogOpen;
-        private set => SetProperty(ref _isRenameDialogOpen, value);
+        private set
+        {
+            if (SetProperty(ref _isRenameDialogOpen, value))
+            {
+                OnPropertyChanged(nameof(IsModalDialogOpen));
+            }
+        }
     }
     public bool IsDeleteDialogOpen
     {
         get => _isDeleteDialogOpen;
-        private set => SetProperty(ref _isDeleteDialogOpen, value);
+        private set
+        {
+            if (SetProperty(ref _isDeleteDialogOpen, value))
+            {
+                OnPropertyChanged(nameof(IsModalDialogOpen));
+            }
+        }
     }
+
+    /// <summary>Any modal dialog owns the keyboard; the terminal must not eat its keys.</summary>
+    public bool IsModalDialogOpen => IsRenameDialogOpen || IsDeleteDialogOpen || IsCloseConfirmOpen
+        || IsCreateProjectDialogOpen || IsAutomationDialogOpen || IsAutomationDeleteDialogOpen
+        || IsWorktreeDeleteConfirmOpen;
 
     private bool _isCloseConfirmOpen;
     public bool IsCloseConfirmOpen
     {
         get => _isCloseConfirmOpen;
-        private set => SetProperty(ref _isCloseConfirmOpen, value);
+        private set
+        {
+            if (SetProperty(ref _isCloseConfirmOpen, value))
+            {
+                OnPropertyChanged(nameof(IsModalDialogOpen));
+            }
+        }
     }
 
     public void OpenCloseConfirm() => IsCloseConfirmOpen = true;
 
     public void CloseCloseConfirm() => IsCloseConfirmOpen = false;
-
-    private bool _isSettingsDetailOpen;
-    private string _settingsDetailTitle = string.Empty;
-    private string _settingsDetailBody = string.Empty;
-
-    public bool IsSettingsDetailOpen
-    {
-        get => _isSettingsDetailOpen;
-        private set => SetProperty(ref _isSettingsDetailOpen, value);
-    }
-
-    public string SettingsDetailTitle
-    {
-        get => _settingsDetailTitle;
-        private set => SetProperty(ref _settingsDetailTitle, value);
-    }
-
-    public string SettingsDetailBody
-    {
-        get => _settingsDetailBody;
-        private set => SetProperty(ref _settingsDetailBody, value);
-    }
-
-    /// <summary>Shows the shared placeholder sheet for settings rows that are UI-only.</summary>
-    public void OpenSettingsDetail(string title, string body)
-    {
-        SettingsDetailTitle = title;
-        SettingsDetailBody = body;
-        IsSettingsDetailOpen = true;
-    }
-
-    public void CloseSettingsDetail() => IsSettingsDetailOpen = false;
 
     private const int MaxAgentsFileCharacters = 64 * 1024;
     private bool _isAgentsEditorOpen;
@@ -1951,6 +2196,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     private string _remoteCoreEndpointDraft = string.Empty;
     private string _remoteCoreTokenDraft = string.Empty;
+    private string _remoteCoreTlsFingerprintDraft = string.Empty;
     private string _remoteCoreStatus = string.Empty;
 
     private string RemoteTokenPath => Path.Combine(_homeDirectory, "credentials", "core.token");
@@ -1979,12 +2225,105 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    public string RemoteCoreTlsFingerprintDraft
+    {
+        get => _remoteCoreTlsFingerprintDraft;
+        set
+        {
+            if (SetProperty(ref _remoteCoreTlsFingerprintDraft, value))
+            {
+                SetRemoteCoreStatus(string.Empty);
+            }
+        }
+    }
+
     public string RemoteCoreStatus => _remoteCoreStatus;
     public bool HasRemoteCoreStatus => _remoteCoreStatus.Length > 0;
+
+    private bool _isRemoteCoreTesting;
+    public bool IsRemoteCoreTesting
+    {
+        get => _isRemoteCoreTesting;
+        private set
+        {
+            if (SetProperty(ref _isRemoteCoreTesting, value))
+            {
+                OnPropertyChanged(nameof(CanTestRemoteCore));
+            }
+        }
+    }
+
+    public bool CanTestRemoteCore => !IsRemoteCoreTesting;
+
+    /// <summary>Tests the draft endpoint/token without saving them.</summary>
+    public async Task TestRemoteCoreConnectionAsync()
+    {
+        if (IsRemoteCoreTesting)
+        {
+            return;
+        }
+
+        var endpoint = _remoteCoreEndpointDraft.Trim();
+        var token = _remoteCoreTokenDraft.Trim();
+        var fingerprint = LocalSocketConnection.NormalizeFingerprint(_remoteCoreTlsFingerprintDraft);
+        if (endpoint.Length > 0 && !LocalSocketConnection.TryParseTcp(endpoint, out _, out _))
+        {
+            SetRemoteCoreStatus("地址格式应为 tcp:// 或 tls://主机:端口。");
+            return;
+        }
+        if (endpoint.Length > 0 && token.Length == 0 && !IsLoopbackEndpoint(endpoint))
+        {
+            SetRemoteCoreStatus("连接非本机地址需要访问令牌。");
+            return;
+        }
+        if (!ValidateTlsFingerprint(endpoint, fingerprint))
+        {
+            return;
+        }
+
+        IsRemoteCoreTesting = true;
+        SetRemoteCoreStatus("正在测试 KL Core 连接…");
+        try
+        {
+            if (endpoint.Length == 0)
+            {
+                var snapshot = await _core.LoadSnapshotAsync(CancellationToken.None).ConfigureAwait(true);
+                SetRemoteCoreStatus(snapshot.Success
+                    ? $"当前 Core 可用：{snapshot.CoreVersion}（协议 v{snapshot.ProtocolVersion}）"
+                    : $"当前 Core 连接失败：{snapshot.Error}");
+                return;
+            }
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await using var client = await KlCoreClient.ConnectAsync(
+                new KlClientOptions
+                {
+                    Endpoint = endpoint,
+                    Token = token,
+                    TlsFingerprint = fingerprint.Length == 0 ? null : fingerprint
+                },
+                timeout.Token).ConfigureAwait(true);
+            await client.PingAsync("remote-core-test", timeout.Token).ConfigureAwait(true);
+            SetRemoteCoreStatus($"连接成功：{endpoint}。保存并重启 KL 后使用此 Core。");
+        }
+        catch (OperationCanceledException)
+        {
+            SetRemoteCoreStatus("连接超时：10 秒内没有收到响应。");
+        }
+        catch (Exception error)
+        {
+            SetRemoteCoreStatus($"连接失败：{error.Message}");
+        }
+        finally
+        {
+            IsRemoteCoreTesting = false;
+        }
+    }
 
     private void LoadRemoteCoreSettings()
     {
         _remoteCoreEndpointDraft = _state.RemoteCoreEndpoint ?? string.Empty;
+        _remoteCoreTlsFingerprintDraft = _state.RemoteCoreTlsFingerprint ?? string.Empty;
         try
         {
             _remoteCoreTokenDraft = File.Exists(RemoteTokenPath)
@@ -2003,7 +2342,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
         var endpoint = _remoteCoreEndpointDraft.Trim();
         if (endpoint.Length > 0 && !LocalSocketConnection.TryParseTcp(endpoint, out _, out _))
         {
-            SetRemoteCoreStatus("地址格式应为 tcp://主机:端口。");
+            SetRemoteCoreStatus("地址格式应为 tcp:// 或 tls://主机:端口。");
+            return;
+        }
+
+        var fingerprint = LocalSocketConnection.NormalizeFingerprint(_remoteCoreTlsFingerprintDraft);
+        if (!ValidateTlsFingerprint(endpoint, fingerprint))
+        {
             return;
         }
 
@@ -2040,6 +2385,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
 
         _state.RemoteCoreEndpoint = endpoint.Length == 0 ? null : endpoint;
+        _state.RemoteCoreTlsFingerprint = fingerprint.Length == 0 ? null : fingerprint;
         SaveState();
         OnPropertyChanged(nameof(RemoteCoreConnectionLabel));
         RefreshCredentials();
@@ -2050,9 +2396,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         _remoteCoreEndpointDraft = string.Empty;
         _remoteCoreTokenDraft = string.Empty;
+        _remoteCoreTlsFingerprintDraft = string.Empty;
         OnPropertyChanged(nameof(RemoteCoreEndpointDraft));
         OnPropertyChanged(nameof(RemoteCoreTokenDraft));
+        OnPropertyChanged(nameof(RemoteCoreTlsFingerprintDraft));
         _state.RemoteCoreEndpoint = null;
+        _state.RemoteCoreTlsFingerprint = null;
         try
         {
             if (File.Exists(RemoteTokenPath))
@@ -2067,6 +2416,24 @@ public sealed partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(RemoteCoreConnectionLabel));
         RefreshCredentials();
         SetRemoteCoreStatus("已清除。重启 KL 后使用本地 Core。");
+    }
+
+    /// <summary>tls:// needs a 64-character SHA-256 fingerprint; plain tcp:// must not carry one.</summary>
+    private bool ValidateTlsFingerprint(string endpoint, string fingerprint)
+    {
+        if (fingerprint.Length > 0
+            && (fingerprint.Length != 64 || !fingerprint.All(Uri.IsHexDigit)))
+        {
+            SetRemoteCoreStatus("TLS 指纹应为 64 位十六进制 SHA-256。");
+            return false;
+        }
+        if (endpoint.StartsWith("tls://", StringComparison.OrdinalIgnoreCase)
+            && fingerprint.Length == 0)
+        {
+            SetRemoteCoreStatus("tls:// 地址需要服务器启动时打印的证书指纹。");
+            return false;
+        }
+        return true;
     }
 
     private static bool IsLoopbackEndpoint(string endpoint)
@@ -2134,7 +2501,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public bool IsCreateProjectDialogOpen
     {
         get => _isCreateProjectDialogOpen;
-        private set => SetProperty(ref _isCreateProjectDialogOpen, value);
+        private set
+        {
+            if (SetProperty(ref _isCreateProjectDialogOpen, value))
+            {
+                OnPropertyChanged(nameof(IsModalDialogOpen));
+            }
+        }
     }
 
     public string ProjectNameDraft
@@ -2278,13 +2651,25 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public bool IsAutomationDialogOpen
     {
         get => _isAutomationDialogOpen;
-        private set => SetProperty(ref _isAutomationDialogOpen, value);
+        private set
+        {
+            if (SetProperty(ref _isAutomationDialogOpen, value))
+            {
+                OnPropertyChanged(nameof(IsModalDialogOpen));
+            }
+        }
     }
 
     public bool IsAutomationDeleteDialogOpen
     {
         get => _isAutomationDeleteDialogOpen;
-        private set => SetProperty(ref _isAutomationDeleteDialogOpen, value);
+        private set
+        {
+            if (SetProperty(ref _isAutomationDeleteDialogOpen, value))
+            {
+                OnPropertyChanged(nameof(IsModalDialogOpen));
+            }
+        }
     }
 
     public string AutomationDialogTitle => _automationDialogTarget is null ? "新建自动化任务" : "编辑自动化任务";
@@ -2351,10 +2736,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public bool IsWorkMode => _state.InteractionMode != "chat";
     public bool IsChatMode => !IsWorkMode;
 
-    /// <summary>Codex's ChatGPT home composer is narrower than in a conversation.</summary>
+    /// <summary>The desktop app's home composer is narrower than in a conversation.</summary>
     public double ComposerMaxWidth => IsChatMode && IsEmpty ? 640 : 734;
 
-    /// <summary>Codex's ChatGPT home floats the composer under the headline instead of pinning it to the bottom.</summary>
+    /// <summary>The desktop home floats the composer under the headline instead of pinning it to the bottom.</summary>
     public Thickness ComposerMargin => IsChatMode && IsEmpty
         ? new Thickness(1, 0, 0, 326)
         : new Thickness(1, 0, 0, 20);
@@ -2362,7 +2747,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// <summary>Codex Work keeps the workspace strip above the composer.</summary>
     public bool ShowWorkspaceStrip => IsEmpty && IsWorkMode;
 
-    /// <summary>Codex's ChatGPT mode puts project/plugins chips below the composer instead.</summary>
+    /// <summary>Chat mode puts project/plugin chips below the composer instead.</summary>
     public bool ShowChatComposerChips => IsEmpty && IsChatMode;
     public bool CanSwitchSession => !IsBusy;
     public bool HasSessions => Workspaces.Any(workspace => workspace.Sessions.Count > 0);
@@ -2571,6 +2956,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             ("togglePin", "切换置顶状态", "置顶或取消置顶当前聊天", "Ctrl+Alt+P"),
             ("searchSessions", "搜索会话", "在侧边栏中搜索聊天", "Ctrl+F"),
             ("openSettings", "打开设置", "打开设置页面", "Ctrl+,"),
+            ("toggleTerminal", "切换终端", "显示或隐藏集成终端面板", "Ctrl+`"),
             ("closeWindow", "关闭窗口", "关闭当前窗口", "Ctrl+Shift+W")
         };
 
@@ -2687,10 +3073,26 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    public int FileOpenTargetIndex
+    {
+        get => string.Equals(_state.FileOpenTarget, "vscode", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+        set
+        {
+            var target = value == 1 ? "vscode" : "system";
+            if (string.Equals(_state.FileOpenTarget, target, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _state.FileOpenTarget = target;
+            SaveState();
+            OnPropertyChanged();
+        }
+    }
+
     public int AutoArchiveIndex
     {
-        get => _state.AutoArchiveDays switch
-        {
+        get => _state.AutoArchiveDays switch        {
             > 0 and <= 7 => 1,
             > 7 => 2,
             _ => 0
@@ -2851,6 +3253,260 @@ public sealed partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(WorktreesStatusText));
     }
 
+    public string WorktreeRoot
+    {
+        get => _state.WorktreeRoot;
+        set
+        {
+            var root = value?.Trim() ?? string.Empty;
+            if (_state.WorktreeRoot == root)
+            {
+                return;
+            }
+            _state.WorktreeRoot = root;
+            SaveState();
+            OnPropertyChanged();
+        }
+    }
+
+    public string GitBranchPrefix
+    {
+        get => _state.GitBranchPrefix;
+        set
+        {
+            var prefix = value?.Trim() ?? string.Empty;
+            if (_state.GitBranchPrefix == prefix)
+            {
+                return;
+            }
+            _state.GitBranchPrefix = prefix;
+            SaveState();
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>Shown as the placeholder when the root is left blank.</summary>
+    public string DefaultWorktreeRoot => string.IsNullOrWhiteSpace(WorkspacePath)
+        ? ".kl/worktrees"
+        : Path.Combine(WorkspacePath, ".kl", "worktrees");
+
+    public bool WorktreeFetchBeforeCreate
+    {
+        get => _state.WorktreeFetchBeforeCreate;
+        set
+        {
+            if (_state.WorktreeFetchBeforeCreate == value)
+            {
+                return;
+            }
+            _state.WorktreeFetchBeforeCreate = value;
+            SaveState();
+            OnPropertyChanged();
+        }
+    }
+
+    public bool WorktreeConfirmDelete
+    {
+        get => _state.WorktreeConfirmDelete;
+        set
+        {
+            if (_state.WorktreeConfirmDelete == value)
+            {
+                return;
+            }
+            _state.WorktreeConfirmDelete = value;
+            SaveState();
+            OnPropertyChanged();
+        }
+    }
+
+    private string _newWorktreeName = string.Empty;
+    public string NewWorktreeName
+    {
+        get => _newWorktreeName;
+        set
+        {
+            if (SetProperty(ref _newWorktreeName, value))
+            {
+                OnPropertyChanged(nameof(CanCreateWorktree));
+            }
+        }
+    }
+
+    public bool CanCreateWorktree => IsValidWorktreeName(_newWorktreeName.Trim());
+
+    private static string ExpandHome(string path)
+    {
+        var trimmed = path.Trim();
+        if (trimmed == "~")
+        {
+            return Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        }
+        if (trimmed.StartsWith("~/", StringComparison.Ordinal)
+            || trimmed.StartsWith("~\\", StringComparison.Ordinal))
+        {
+            return Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                trimmed[2..]);
+        }
+        return Environment.ExpandEnvironmentVariables(trimmed);
+    }
+
+    private static bool IsValidWorktreeName(string name) =>
+        name.Length > 0
+        && name != "."
+        && name != ".."
+        && name.All(character =>
+            char.IsAsciiLetterOrDigit(character) || character is '.' or '_' or '-');
+
+    private static bool IsValidBranchPrefix(string prefix) =>
+        prefix.Length <= 64
+        && !prefix.Contains("..", StringComparison.Ordinal)
+        && !prefix.StartsWith('/')
+        && !prefix.StartsWith('.')
+        && !prefix.StartsWith('-')
+        && prefix.All(character =>
+            char.IsAsciiLetterOrDigit(character) || character is '/' or '-' or '_' or '.');
+
+    public async Task CreateWorktreeAsync()
+    {
+        var workspace = WorkspacePath;
+        var name = _newWorktreeName.Trim();
+        if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace))
+        {
+            WorktreesStatusText = "当前项目路径不可用。";
+            NotifyWorktrees();
+            return;
+        }
+        if (!IsValidWorktreeName(name))
+        {
+            WorktreesStatusText = "工作树名称只能包含字母、数字、点、下划线和短横线。";
+            NotifyWorktrees();
+            return;
+        }
+
+        var branchPrefix = _state.GitBranchPrefix.Trim();
+        if (!IsValidBranchPrefix(branchPrefix))
+        {
+            WorktreesStatusText = "分支前缀包含非法字符，请检查 Git 设置。";
+            NotifyWorktrees();
+            return;
+        }
+        var branch = branchPrefix + name;
+
+        var root = string.IsNullOrWhiteSpace(_state.WorktreeRoot)
+            ? Path.Combine(workspace, ".kl", "worktrees")
+            : ExpandHome(_state.WorktreeRoot);
+        var path = Path.GetFullPath(Path.Combine(root, name));
+        if (Directory.Exists(path) || File.Exists(path))
+        {
+            WorktreesStatusText = "目标工作树已存在。";
+            NotifyWorktrees();
+            return;
+        }
+
+        WorktreesStatusText = "正在创建工作树…";
+        NotifyWorktrees();
+        var fetch = _state.WorktreeFetchBeforeCreate;
+        var (ok, output) = await Task.Run(() =>
+        {
+            if (fetch)
+            {
+                var fetched = RunGitArgs(workspace, "fetch", "--all", "--prune");
+                if (!fetched.Ok)
+                {
+                    return fetched;
+                }
+            }
+            try
+            {
+                Directory.CreateDirectory(root);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                return (false, error.Message);
+            }
+            return RunGitArgs(workspace, "worktree", "add", "-b", branch, path, "HEAD");
+        }).ConfigureAwait(true);
+
+        if (ok)
+        {
+            _newWorktreeName = string.Empty;
+            OnPropertyChanged(nameof(NewWorktreeName));
+            OnPropertyChanged(nameof(CanCreateWorktree));
+            await RefreshWorktreesAsync().ConfigureAwait(true);
+            WorktreesStatusText = $"已创建工作树 {name}（分支 {branch}）。";
+        }
+        else
+        {
+            WorktreesStatusText = $"创建工作树失败：{output.Trim()}";
+        }
+        NotifyWorktrees();
+    }
+
+    private WorktreeRow? _pendingWorktreeDelete;
+    public bool IsWorktreeDeleteConfirmOpen => _pendingWorktreeDelete is not null;
+    public string WorktreeDeleteConfirmText => _pendingWorktreeDelete is null
+        ? string.Empty
+        : $"删除工作树 {_pendingWorktreeDelete.Path}？";
+
+    public void RequestDeleteWorktree(WorktreeRow row)
+    {
+        if (!_state.WorktreeConfirmDelete)
+        {
+            _ = DeleteWorktreeAsync(row);
+            return;
+        }
+        _pendingWorktreeDelete = row;
+        OnPropertyChanged(nameof(IsWorktreeDeleteConfirmOpen));
+        OnPropertyChanged(nameof(WorktreeDeleteConfirmText));
+        OnPropertyChanged(nameof(IsModalDialogOpen));
+    }
+
+    public void CancelDeleteWorktree()
+    {
+        _pendingWorktreeDelete = null;
+        OnPropertyChanged(nameof(IsWorktreeDeleteConfirmOpen));
+        OnPropertyChanged(nameof(WorktreeDeleteConfirmText));
+        OnPropertyChanged(nameof(IsModalDialogOpen));
+    }
+
+    public async Task ConfirmDeleteWorktreeAsync()
+    {
+        var row = _pendingWorktreeDelete;
+        CancelDeleteWorktree();
+        if (row is not null)
+        {
+            await DeleteWorktreeAsync(row).ConfigureAwait(true);
+        }
+    }
+
+    private async Task DeleteWorktreeAsync(WorktreeRow row)
+    {
+        var workspace = WorkspacePath;
+        if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace))
+        {
+            WorktreesStatusText = "当前项目路径不可用。";
+            NotifyWorktrees();
+            return;
+        }
+
+        WorktreesStatusText = "正在删除工作树…";
+        NotifyWorktrees();
+        var (ok, output) = await Task.Run(() => RunGitArgs(workspace, "worktree", "remove", row.Path))
+            .ConfigureAwait(true);
+        if (ok)
+        {
+            await RefreshWorktreesAsync().ConfigureAwait(true);
+            WorktreesStatusText = "已删除工作树。";
+        }
+        else
+        {
+            WorktreesStatusText = $"删除工作树失败：{output.Trim()}";
+        }
+        NotifyWorktrees();
+    }
+
     private static IEnumerable<WorktreeRow> ParseWorktrees(string output, string currentWorkspace)
     {
         var path = string.Empty;
@@ -2898,6 +3554,46 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 StringComparison.OrdinalIgnoreCase)
                 ? "当前"
                 : string.Empty);
+
+    private static (bool Ok, string Output) RunGitArgs(string workspace, params string[] arguments)
+    {
+        try
+        {
+            var start = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "git",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            start.ArgumentList.Add("-C");
+            start.ArgumentList.Add(workspace);
+            foreach (var argument in arguments)
+            {
+                start.ArgumentList.Add(argument);
+            }
+
+            using var process = System.Diagnostics.Process.Start(start);
+            if (process is null)
+            {
+                return (false, "无法启动 git。");
+            }
+
+            var stdout = process.StandardOutput.ReadToEnd();
+            var stderr = process.StandardError.ReadToEnd();
+            process.WaitForExit(15000);
+            return process.ExitCode == 0
+                ? (true, stdout)
+                : (false, string.IsNullOrWhiteSpace(stderr) ? stdout : stderr);
+        }
+        catch (Exception error) when (error is System.ComponentModel.Win32Exception
+            or InvalidOperationException
+            or IOException)
+        {
+            return (false, error.Message);
+        }
+    }
 
     private static string? RunGit(string workspace, string arguments)
     {
@@ -2997,17 +3693,114 @@ public sealed partial class MainWindowViewModel : ObservableObject
         "#4D9FFF", "#3566F0", "#179E8A", "#FFCC38", "#FA70AB", "#FF8066", "#A25BFF", "#FFFFFF"
     ];
 
-    public string AccentColorHex => _state.AccentColor;
+    private bool _isLightTheme;
+
+    public string ThemeMode => _state.ThemeMode;
+
+    public bool IsThemeSystem => _state.ThemeMode == "system";
+    public bool IsThemeLight => _state.ThemeMode == "light";
+    public bool IsThemeDark => _state.ThemeMode == "dark";
+
+    public void SetThemeMode(string mode)
+    {
+        var value = mode is "light" or "dark" ? mode : "system";
+        if (_state.ThemeMode == value)
+        {
+            return;
+        }
+
+        _state.ThemeMode = value;
+        SaveState();
+        OnPropertyChanged(nameof(ThemeMode));
+        OnPropertyChanged(nameof(IsThemeSystem));
+        OnPropertyChanged(nameof(IsThemeLight));
+        OnPropertyChanged(nameof(IsThemeDark));
+    }
+
+    public bool SeparateThemeSettings
+    {
+        get => _state.SeparateThemeSettings;
+        set
+        {
+            if (_state.SeparateThemeSettings == value)
+            {
+                return;
+            }
+
+            if (value)
+            {
+                _state.LightAccentColor = _state.AccentColor;
+                _state.DarkAccentColor = _state.AccentColor;
+                _state.LightContrast = _state.Contrast;
+                _state.DarkContrast = _state.Contrast;
+            }
+
+            _state.SeparateThemeSettings = value;
+            SaveState();
+            OnPropertyChanged();
+            NotifyThemeAppearanceChanged();
+        }
+    }
+
+    public void SetEffectiveTheme(bool isLight)
+    {
+        if (_isLightTheme == isLight)
+        {
+            return;
+        }
+
+        _isLightTheme = isLight;
+        NotifyThemeAppearanceChanged();
+    }
+
+    public void NotifyThemeAppearanceChanged()
+    {
+        OnPropertyChanged(nameof(AccentColorHex));
+        OnPropertyChanged(nameof(AccentColorBrush));
+        OnPropertyChanged(nameof(AccentColorIndex));
+        OnPropertyChanged(nameof(Contrast));
+        OnPropertyChanged(nameof(ThemeBackgroundHex));
+        OnPropertyChanged(nameof(ThemeForegroundHex));
+    }
+
+    public string ThemeBackgroundHex => _isLightTheme ? "#F7F7F8" : "#0F0F11";
+
+    public string ThemeForegroundHex => _isLightTheme ? "#1B1C1E" : "#E3E4E6";
+
+    private string CurrentAccentColor => _state.SeparateThemeSettings
+        ? (_isLightTheme ? _state.LightAccentColor : _state.DarkAccentColor)
+        : _state.AccentColor;
+
+    private void SetCurrentAccentColor(string color)
+    {
+        if (_state.SeparateThemeSettings)
+        {
+            if (_isLightTheme)
+            {
+                _state.LightAccentColor = color;
+            }
+            else
+            {
+                _state.DarkAccentColor = color;
+            }
+        }
+        else
+        {
+            _state.AccentColor = color;
+        }
+    }
+
+    public string AccentColorHex => CurrentAccentColor;
 
     public Avalonia.Media.IBrush AccentColorBrush =>
-        new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse(_state.AccentColor));
+        new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse(CurrentAccentColor));
 
     public int AccentColorIndex
     {
         get
         {
             var index = Array.FindIndex(AccentColors,
-                color => string.Equals(color, _state.AccentColor, StringComparison.OrdinalIgnoreCase));
+                color => string.Equals(color, CurrentAccentColor, StringComparison.OrdinalIgnoreCase));
             return index < 0 ? 0 : index;
         }
         set
@@ -3018,17 +3811,133 @@ public sealed partial class MainWindowViewModel : ObservableObject
             }
 
             var color = AccentColors[value];
-            if (string.Equals(_state.AccentColor, color, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(CurrentAccentColor, color, StringComparison.OrdinalIgnoreCase))
             {
                 return;
             }
 
-            _state.AccentColor = color;
+            SetCurrentAccentColor(color);
             SaveState();
             OnPropertyChanged();
             OnPropertyChanged(nameof(AccentColorHex));
             OnPropertyChanged(nameof(AccentColorBrush));
         }
+    }
+
+    public string DiffMarkerMode => _state.DiffMarkerMode;
+
+    public bool IsDiffColorMode => _state.DiffMarkerMode != "markers";
+    public bool IsDiffMarkers => _state.DiffMarkerMode == "markers";
+
+    public void SetDiffMarkerMode(string mode)
+    {
+        var value = mode == "markers" ? "markers" : "color";
+        if (_state.DiffMarkerMode == value)
+        {
+            return;
+        }
+
+        _state.DiffMarkerMode = value;
+        SaveState();
+        OnPropertyChanged(nameof(DiffMarkerMode));
+        OnPropertyChanged(nameof(IsDiffColorMode));
+        OnPropertyChanged(nameof(IsDiffMarkers));
+    }
+
+    private static readonly string[] TerminalShells = ["powershell", "cmd", "git-bash"];
+
+    public int TerminalShellIndex
+    {
+        get => Math.Max(0, Array.IndexOf(TerminalShells, _state.TerminalShell));
+        set
+        {
+            if (value < 0 || value >= TerminalShells.Length)
+            {
+                return;
+            }
+
+            var shell = TerminalShells[value];
+            if (_state.TerminalShell == shell)
+            {
+                return;
+            }
+
+            _state.TerminalShell = shell;
+            SaveState();
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(TerminalShell));
+        }
+    }
+
+    public string TerminalShell => _state.TerminalShell;
+
+    public bool IsTerminalBottom => _state.TerminalPosition != "right";
+    public bool IsTerminalRight => _state.TerminalPosition == "right";
+
+    public void SetTerminalPosition(string position)
+    {
+        var value = position == "right" ? "right" : "bottom";
+        if (_state.TerminalPosition == value)
+        {
+            return;
+        }
+
+        _state.TerminalPosition = value;
+        SaveState();
+        OnPropertyChanged(nameof(IsTerminalBottom));
+        OnPropertyChanged(nameof(IsTerminalRight));
+    }
+
+    public bool ShowTerminalPanelControl
+    {
+        get => _state.ShowTerminalPanelControl;
+        set
+        {
+            if (_state.ShowTerminalPanelControl == value)
+            {
+                return;
+            }
+
+            _state.ShowTerminalPanelControl = value;
+            SaveState();
+            OnPropertyChanged();
+        }
+    }
+
+    public bool IsTerminalPanelOpen
+    {
+        get => _state.TerminalPanelOpen;
+        set
+        {
+            if (_state.TerminalPanelOpen == value)
+            {
+                return;
+            }
+
+            _state.TerminalPanelOpen = value;
+            SaveState();
+            OnPropertyChanged();
+        }
+    }
+
+    public void ToggleTerminalPanel() => IsTerminalPanelOpen = !IsTerminalPanelOpen;
+
+    /// <summary>Panel height (bottom) or width (right); 0 in state means "use the default".</summary>
+    public double TerminalPanelSize => _state.TerminalPanelSize > 0
+        ? _state.TerminalPanelSize
+        : IsTerminalRight ? 420 : 260;
+
+    public void SetTerminalPanelSize(double size)
+    {
+        var clamped = Math.Clamp(size, 180, 600);
+        if (Math.Abs(_state.TerminalPanelSize - clamped) < 0.5)
+        {
+            return;
+        }
+
+        _state.TerminalPanelSize = clamped;
+        SaveState();
+        OnPropertyChanged(nameof(TerminalPanelSize));
     }
 
     public string ReduceMotionMode => _state.ReduceMotion;
@@ -3164,6 +4073,124 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    public int UiFontIndex
+    {
+        get => _state.UiFontIndex;
+        set => SetFontIndex(value, 1, nameof(UiFontIndex), () => _state.UiFontIndex, v => _state.UiFontIndex = v);
+    }
+
+    public int ContentFontIndex
+    {
+        get => _state.ContentFontIndex;
+        set => SetFontIndex(value, 2, nameof(ContentFontIndex), () => _state.ContentFontIndex, v => _state.ContentFontIndex = v);
+    }
+
+    public int CodeFontIndex
+    {
+        get => _state.CodeFontIndex;
+        set => SetFontIndex(value, 2, nameof(CodeFontIndex), () => _state.CodeFontIndex, v => _state.CodeFontIndex = v);
+    }
+
+    public int UiFontWeightIndex
+    {
+        get => _state.UiFontWeightIndex;
+        set => SetFontIndex(value, 2, nameof(UiFontWeightIndex), () => _state.UiFontWeightIndex, v => _state.UiFontWeightIndex = v);
+    }
+
+    public int ContentFontWeightIndex
+    {
+        get => _state.ContentFontWeightIndex;
+        set => SetFontIndex(value, 2, nameof(ContentFontWeightIndex), () => _state.ContentFontWeightIndex, v => _state.ContentFontWeightIndex = v);
+    }
+
+    public int CodeFontWeightIndex
+    {
+        get => _state.CodeFontWeightIndex;
+        set => SetFontIndex(value, 2, nameof(CodeFontWeightIndex), () => _state.CodeFontWeightIndex, v => _state.CodeFontWeightIndex = v);
+    }
+
+    private int CurrentContrast => _state.SeparateThemeSettings
+        ? (_isLightTheme ? _state.LightContrast : _state.DarkContrast)
+        : _state.Contrast;
+
+    public int Contrast
+    {
+        get => CurrentContrast;
+        set
+        {
+            var clamped = Math.Clamp(value, 0, 100);
+            if (CurrentContrast == clamped)
+            {
+                return;
+            }
+
+            if (_state.SeparateThemeSettings)
+            {
+                if (_isLightTheme)
+                {
+                    _state.LightContrast = clamped;
+                }
+                else
+                {
+                    _state.DarkContrast = clamped;
+                }
+            }
+            else
+            {
+                _state.Contrast = clamped;
+            }
+
+            OnPropertyChanged();
+        }
+    }
+
+    public bool TranslucentSidebar
+    {
+        get => _state.TranslucentSidebar;
+        set
+        {
+            if (_state.TranslucentSidebar == value)
+            {
+                return;
+            }
+
+            _state.TranslucentSidebar = value;
+            SaveState();
+            OnPropertyChanged();
+        }
+    }
+
+    public bool CompressHistory
+    {
+        get => _state.CompressHistory;
+        set
+        {
+            if (_state.CompressHistory == value)
+            {
+                return;
+            }
+
+            _state.CompressHistory = value;
+            SaveState();
+            OnPropertyChanged();
+        }
+    }
+
+    private void SetFontIndex(int value, int max, string propertyName, Func<int> current, Action<int> update)
+    {
+        var clamped = Math.Clamp(value, 0, max);
+        if (current() == clamped)
+        {
+            return;
+        }
+
+        update(clamped);
+        SaveState();
+        OnPropertyChanged(propertyName);
+    }
+
+    public void SaveAppearanceSettings() => SaveState();
+
     public bool UsePointerCursor
     {
         get => _state.UsePointerCursor;
@@ -3246,6 +4273,22 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    public bool AutomationNotifications
+    {
+        get => _state.AutomationNotifications;
+        set
+        {
+            if (_state.AutomationNotifications == value)
+            {
+                return;
+            }
+
+            _state.AutomationNotifications = value;
+            SaveState();
+            OnPropertyChanged();
+        }
+    }
+
     /// <summary>0 = 默认 sound, 1 = 关闭; matches the settings ComboBox order.</summary>
     public int NotificationSoundIndex
     {
@@ -3279,6 +4322,33 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 RefreshPaletteFileSearch();
             }
         }
+    }
+
+    private ChatItemViewModel? _editingUserItem;
+    private string? _rewindModelText;
+    private ChatItemViewModel? _pendingUserItem;
+    private bool _suppressRewindReload;
+
+    public bool IsEditingUserMessage => _editingUserItem is not null;
+
+    public string EditMessageBanner =>
+        "正在编辑消息：发送后会替换这条消息及其后的回复。工具的改动不会被撤销。";
+
+    private void RaiseEditState()
+    {
+        OnPropertyChanged(nameof(IsEditingUserMessage));
+        OnPropertyChanged(nameof(EditMessageBanner));
+    }
+
+    public void CancelEditUserMessage()
+    {
+        if (_editingUserItem is null)
+        {
+            return;
+        }
+        _editingUserItem = null;
+        _rewindModelText = null;
+        RaiseEditState();
     }
 
     public bool IsBusy
@@ -3534,6 +4604,21 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private string _paletteFilter = "all";
     private string _reasoningEffort = "default";
     private string? _reasoningEffortPreview;
+    private bool _webSearch = true;
+    private bool _networkAccess = true;
+    private bool _memoryEnabled = true;
+    private bool _pluginsEnabled = true;
+    private string _outputVerbosity = "default";
+    private string _reasoningSummary = "auto";
+    private string _personalStyle = "default";
+    private string _warmth = "default";
+    private string _enthusiasm = "default";
+    private string _emojiUsage = "default";
+    private string _visualAnswers = "default";
+    private string _headingStyle = "default";
+    private bool _quickAnswers = true;
+    private string _customInstructionsDraft = string.Empty;
+    private bool _loadingAgentSettings;
     private CancellationTokenSource? _paletteSearchCancellation;
 
     public bool IsPaletteFilterAll => _paletteFilter == "all";
@@ -3865,6 +4950,84 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
 
         Composer = item.Text;
+        _rewindModelText = null;
+        _editingUserItem = item.Seq is null ? null : item;
+        RaiseEditState();
+        if (item.Seq is null)
+        {
+            ErrorMessage = "这条消息早于当前历史记录，只能作为新消息发送。";
+        }
+    }
+
+    /// <summary>Regenerates the reply by rewinding to the user message before it.</summary>
+    public async Task RegenerateAsync(ChatItemViewModel assistant)
+    {
+        if (!assistant.IsAssistant)
+        {
+            return;
+        }
+        if (IsBusy)
+        {
+            ErrorMessage = "请等待当前回合结束后再重新生成。";
+            return;
+        }
+        if (IsCoreReadOnly)
+        {
+            ErrorMessage = "另一客户端持有该会话的写权限，当前窗口只能观察。";
+            return;
+        }
+
+        var index = Messages.IndexOf(assistant);
+        ChatItemViewModel? target = null;
+        for (var cursor = index - 1; cursor >= 0; cursor--)
+        {
+            if (Messages[cursor].IsUser)
+            {
+                target = Messages[cursor];
+                break;
+            }
+        }
+        if (target?.Seq is null)
+        {
+            ErrorMessage = "无法定位这条回复对应的用户消息（可能已被压缩）。";
+            return;
+        }
+
+        Composer = target.Text;
+        _editingUserItem = target;
+        _rewindModelText = string.IsNullOrWhiteSpace(target.ApiText) ? target.Text : target.ApiText;
+        RaiseEditState();
+        await SendAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>Resends a user message, replacing it and every reply after it.</summary>
+    public async Task ResendUserAsync(ChatItemViewModel user)
+    {
+        if (!user.IsUser)
+        {
+            return;
+        }
+        if (IsBusy)
+        {
+            ErrorMessage = "请等待当前回合结束后再重新发送。";
+            return;
+        }
+        if (IsCoreReadOnly)
+        {
+            ErrorMessage = "另一客户端持有该会话的写权限，当前窗口只能观察。";
+            return;
+        }
+        if (user.Seq is null)
+        {
+            ErrorMessage = "无法定位这条消息（可能已被压缩）。";
+            return;
+        }
+
+        Composer = user.Text;
+        _editingUserItem = user;
+        _rewindModelText = string.IsNullOrWhiteSpace(user.ApiText) ? user.Text : user.ApiText;
+        RaiseEditState();
+        await SendAsync().ConfigureAwait(true);
     }
 
     public void RefreshRecentSessions()
@@ -4172,6 +5335,164 @@ public sealed partial class MainWindowViewModel : ObservableObject
         UpdatePinnedRailActiveState();
     }
 
+    private bool _isReviewRunning;
+    private string _reviewStatusText = "运行审查后在此显示结果。";
+
+    public ObservableCollection<ReviewFindingRow> ReviewFindings { get; } = [];
+    public bool HasReviewFindings => ReviewFindings.Count > 0;
+    public bool ShowNoReviewFindings => !HasReviewFindings;
+
+    public int ReviewModeIndex
+    {
+        get => _state.ReviewMode switch
+        {
+            "quick" => 0,
+            "strict" => 2,
+            _ => 1
+        };
+        set
+        {
+            var mode = value switch { 0 => "quick", 2 => "strict", _ => "standard" };
+            if (_state.ReviewMode == mode)
+            {
+                return;
+            }
+            _state.ReviewMode = mode;
+            SaveState();
+            OnPropertyChanged();
+        }
+    }
+
+    public bool ReviewFullFiles
+    {
+        get => _state.ReviewFullFiles;
+        set
+        {
+            if (_state.ReviewFullFiles == value)
+            {
+                return;
+            }
+            _state.ReviewFullFiles = value;
+            SaveState();
+            OnPropertyChanged();
+        }
+    }
+
+    public string ReviewInstructions
+    {
+        get => _state.ReviewInstructions;
+        set
+        {
+            if (_state.ReviewInstructions == value)
+            {
+                return;
+            }
+            _state.ReviewInstructions = value;
+            SaveState();
+            OnPropertyChanged();
+        }
+    }
+
+    public string ReviewStatusText
+    {
+        get => _reviewStatusText;
+        private set => SetProperty(ref _reviewStatusText, value);
+    }
+
+    public bool IsReviewRunning
+    {
+        get => _isReviewRunning;
+        private set
+        {
+            if (SetProperty(ref _isReviewRunning, value))
+            {
+                OnPropertyChanged(nameof(CanRunReview));
+            }
+        }
+    }
+
+    public bool CanRunReview => !IsReviewRunning && !string.IsNullOrWhiteSpace(WorkspacePath);
+
+    /// <summary>Runs Core's code review for the active workspace.</summary>
+    public async Task RunReviewAsync()
+    {
+        if (IsReviewRunning)
+        {
+            return;
+        }
+        var workspace = WorkspacePath;
+        if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace))
+        {
+            ReviewStatusText = "当前项目路径不可用。";
+            return;
+        }
+
+        IsReviewRunning = true;
+        ReviewStatusText = "正在审查…";
+        try
+        {
+            var result = await _core.RunReviewAsync(
+                    workspace,
+                    _state.ReviewMode,
+                    _state.ReviewInstructions,
+                    _state.ReviewFullFiles,
+                    CancellationToken.None)
+                .ConfigureAwait(true);
+            var rows = new List<ReviewFindingRow>();
+            if (result.ValueKind == JsonValueKind.Object
+                && result.TryGetProperty("findings", out var findings)
+                && findings.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var finding in findings.EnumerateArray())
+                {
+                    var severity = JsonString(finding, "severity") ?? "info";
+                    var file = JsonString(finding, "file") ?? string.Empty;
+                    var line = finding.TryGetProperty("line", out var lineValue)
+                        && lineValue.TryGetInt32(out var parsedLine)
+                        ? parsedLine
+                        : 0;
+                    var location = string.IsNullOrWhiteSpace(file)
+                        ? "(workspace)"
+                        : line > 0 ? $"{file}:{line}" : file;
+                    rows.Add(new ReviewFindingRow(
+                        severity,
+                        location,
+                        JsonString(finding, "rule") ?? string.Empty,
+                        JsonString(finding, "evidence") ?? string.Empty,
+                        JsonString(finding, "recommendation") ?? string.Empty));
+                }
+            }
+
+            ReviewFindings.Clear();
+            foreach (var row in rows)
+            {
+                ReviewFindings.Add(row);
+            }
+            OnPropertyChanged(nameof(HasReviewFindings));
+            OnPropertyChanged(nameof(ShowNoReviewFindings));
+            ReviewStatusText = JsonString(result, "summary")
+                ?? (rows.Count == 0 ? "审查完成：没有发现问题。" : $"审查完成：{rows.Count} 个发现。");
+        }
+        catch (Exception error) when (error is JsonRpcException
+            or IOException
+            or InvalidOperationException
+            or FileNotFoundException)
+        {
+            ReviewStatusText = $"审查失败：{error.Message}";
+        }
+        finally
+        {
+            IsReviewRunning = false;
+        }
+    }
+
+    private static string? JsonString(JsonElement element, string name) =>
+        element.ValueKind == JsonValueKind.Object
+            && element.TryGetProperty(name, out var value)
+            && value.ValueKind == JsonValueKind.String
+                ? value.GetString()
+                : null;
+
     public void OpenSettings(SettingsPane? pane = null)
     {
         RefreshSettingsDraft();
@@ -4179,13 +5500,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
             ?? (Enum.TryParse<SettingsPane>(_state.LastSettingsPane, out var saved)
                 ? saved
                 : SettingsPane.General);
-        // Panes removed from the nav may still be saved in an older state file.
-        if (target is SettingsPane.Profile or SettingsPane.Account or SettingsPane.Ads
-            or SettingsPane.Parental or SettingsPane.Trusted or SettingsPane.Mini
-            or SettingsPane.DataManagement)
-        {
-            target = SettingsPane.General;
-        }
         SelectSettingsPane(target);
         IsSettingsOpen = true;
     }
@@ -4209,37 +5523,34 @@ public sealed partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(IsSettingsProviders));
         OnPropertyChanged(nameof(IsSettingsModels));
         OnPropertyChanged(nameof(IsSettingsUsage));
-        OnPropertyChanged(nameof(IsSettingsIntegration));
-        OnPropertyChanged(nameof(IsSettingsData));
-        OnPropertyChanged(nameof(IsSettingsDataManagement));
         OnPropertyChanged(nameof(IsSettingsConfig));
         OnPropertyChanged(nameof(IsSettingsImport));
-        OnPropertyChanged(nameof(IsSettingsProfile));
-        OnPropertyChanged(nameof(IsSettingsAccount));
-        OnPropertyChanged(nameof(IsSettingsAds));
-        OnPropertyChanged(nameof(IsSettingsParental));
-        OnPropertyChanged(nameof(IsSettingsTrusted));
-        OnPropertyChanged(nameof(IsSettingsVoice));
+        OnPropertyChanged(nameof(IsSettingsCloudPc));
+        OnPropertyChanged(nameof(IsSettingsCodeReview));
         OnPropertyChanged(nameof(IsSettingsStorage));
         OnPropertyChanged(nameof(IsSettingsPersonalization));
-        OnPropertyChanged(nameof(IsSettingsMini));
         OnPropertyChanged(nameof(IsSettingsPlugins));
         OnPropertyChanged(nameof(IsSettingsPasswords));
-        OnPropertyChanged(nameof(IsSettingsComputerUse));
-        OnPropertyChanged(nameof(IsSettingsBrowser));
-        OnPropertyChanged(nameof(IsSettingsCloudPc));
         OnPropertyChanged(nameof(IsSettingsHooks));
         OnPropertyChanged(nameof(IsSettingsConnections));
-        OnPropertyChanged(nameof(IsSettingsCodeReview));
         OnPropertyChanged(nameof(IsSettingsGit));
         OnPropertyChanged(nameof(IsSettingsEnvironments));
         OnPropertyChanged(nameof(IsSettingsWorktrees));
         OnPropertyChanged(nameof(SettingsPaneTitle));
         OnPropertyChanged(nameof(SettingsPaneSubtitle));
         OnPropertyChanged(nameof(HasSettingsPaneSubtitle));
-        if (pane == SettingsPane.Personalization)
+        if (pane == SettingsPane.General)
+        {
+            _ = RefreshAgentSettingsAsync();
+        }
+        else if (pane == SettingsPane.Personalization)
         {
             _ = RefreshMemoryAsync();
+            _ = RefreshAgentSettingsAsync();
+        }
+        else if (pane == SettingsPane.Import)
+        {
+            _ = DiscoverImportsAsync();
         }
         else if (pane == SettingsPane.Plugins)
         {
@@ -4278,13 +5589,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             _ = RefreshWorktreesAsync();
         }
-        else if (pane == SettingsPane.Integration)
-        {
-            _ = RefreshMcpToolsAsync();
-        }
         else if (pane == SettingsPane.Config)
         {
             _ = RefreshConfigAsync();
+            _ = RefreshAgentSettingsAsync();
         }
         else if (pane == SettingsPane.Storage)
         {
@@ -4505,7 +5813,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public string ProviderDetailId => _detailProvider?.Id ?? string.Empty;
     public string ProviderDetailNote => _detailProvider?.Note ?? string.Empty;
     public string ProviderDetailWebsite => _detailProvider?.Website ?? string.Empty;
-    public bool HasProviderDetailWebsite => ProviderDetailWebsite.Length > 0;
+    public bool HasProviderDetailNote => !string.IsNullOrWhiteSpace(ProviderDetailNote);
+    public bool HasProviderDetailWebsite => !string.IsNullOrWhiteSpace(ProviderDetailWebsite);
+    public Avalonia.Layout.Orientation ProviderDetailHeaderOrientation =>
+        HasProviderDetailWebsite
+            ? Avalonia.Layout.Orientation.Horizontal
+            : Avalonia.Layout.Orientation.Vertical;
     public string ProviderDetailKeyStatus =>
         _detailProvider?.KeyConfigured == true ? "API Key 已配置" : "API Key 未配置";
 
@@ -4597,7 +5910,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         ProviderEditWebsite = provider.Website;
         ProviderEditStatus = string.Empty;
         ProviderDetailStatus = string.Empty;
-        ProviderDetailApiKey = string.Empty;
+        ProviderDetailApiKey = ReadProviderApiKey(provider.Id);
+        IsProviderApiKeyVisible = false;
         IsProviderDeleteConfirmOpen = false;
         ProviderModels.Clear();
         foreach (var model in provider.Models)
@@ -4608,7 +5922,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 model.Url,
                 model.ContextWindow,
                 model.CompactThreshold,
-                model.MaxOutputTokens));
+                model.MaxOutputTokens,
+                model.Enabled,
+                model.ReasoningEffort,
+                model.ReasoningEfforts.Count > 0 ? model.ReasoningEfforts : DefaultReasoningLevels,
+                model.Name));
         }
 
         LoadProviderConnections(provider);
@@ -4628,6 +5946,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         ProviderDetailStatus = string.Empty;
         ProviderConnectionStatus = string.Empty;
         ProviderDetailApiKey = string.Empty;
+        IsProviderApiKeyVisible = false;
         IsProviderDeleteConfirmOpen = false;
         ProviderModels.Clear();
         CloseProviderModelForm();
@@ -4674,12 +5993,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// <summary>Writes the detail page's protocol URLs without changing its models.</summary>
     public async Task SaveProviderConnectionAsync()
     {
-        if (_detailProvider is null)
+        var provider = _detailProvider;
+        if (provider is null)
         {
             ProviderConnectionStatus = "请先打开一个提供商。";
             return;
         }
 
+        var models = ProviderModels.ToList();
         var protocols = new Dictionary<string, string?>();
         bool AddProtocol(string key, string url, bool enabled, string label)
         {
@@ -4720,31 +6041,43 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         var parameters = new Dictionary<string, object?>
         {
-            ["id"] = _detailProvider.Id,
-            ["enabled"] = _detailProvider.Enabled,
+            ["id"] = provider.Id,
+            ["enabled"] = provider.Enabled,
             ["protocols"] = protocols,
-            ["models"] = ProviderModels.Select(model => new Dictionary<string, object?>
+            ["models"] = models.Select(model => new Dictionary<string, object?>
             {
                 ["id"] = model.Id,
+                ["name"] = model.Name,
                 ["protocol"] = model.Protocol,
                 ["context_window"] = model.ContextWindow,
                 ["compact_threshold"] = model.CompactThreshold,
                 ["max_output_tokens"] = model.MaxOutputTokens,
-                ["url"] = model.Url
+                ["url"] = model.Url,
+                ["enabled"] = model.Enabled,
+                ["reasoning_effort"] = model.ReasoningEffort,
+                ["reasoning_efforts"] = model.ReasoningEfforts
             }).ToArray()
         };
 
         try
         {
             await _core.UpsertProviderAsync(parameters, CancellationToken.None).ConfigureAwait(true);
-            ProviderConnectionStatus = "连接配置已写入 KL Core；重新连接后应用到聊天。";
+            provider.SetProtocols(SavedProtocols(protocols));
+            SaveProviderCache();
+            if (ReferenceEquals(_detailProvider, provider))
+            {
+                ProviderConnectionStatus = "连接配置已写入 KL Core；重新连接后应用到聊天。";
+            }
         }
         catch (Exception error) when (error is JsonRpcException
             or IOException
             or InvalidOperationException
             or NotSupportedException)
         {
-            ProviderConnectionStatus = $"保存连接配置失败：{error.Message}";
+            if (ReferenceEquals(_detailProvider, provider))
+            {
+                ProviderConnectionStatus = $"保存连接配置失败：{error.Message}";
+            }
         }
     }
 
@@ -4774,19 +6107,25 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
 
         var id = _detailProvider.Id;
-        var row = ProviderCards.FirstOrDefault(card =>
-            string.Equals(card.Id, id, StringComparison.OrdinalIgnoreCase));
+        var rows = ProviderCards
+            .Where(card => string.Equals(card.Id, id, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var row = rows.FirstOrDefault();
         var index = row is null ? -1 : ProviderCards.IndexOf(row);
 
         IsProviderDeleteConfirmOpen = false;
-        if (row is not null)
+        foreach (var duplicate in rows)
         {
-            ProviderCards.Remove(row);
+            ProviderCards.Remove(duplicate);
+        }
+
+        if (rows.Count > 0)
+        {
             NotifyProviderCardsChanged();
         }
 
         CloseProviderDetail();
-        ProviderStatusText = $"正在删除提供商 {id}…";
+        ProviderStatusText = string.Empty;
 
         try
         {
@@ -4797,7 +6136,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 SaveState();
             }
 
-            ProviderStatusText = $"已删除提供商 {id}。";
             SaveProviderCache();
             await RefreshProvidersAsync(force: true, announce: false).ConfigureAwait(true);
         }
@@ -4823,10 +6161,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private void NotifyProviderDetailChanged()
     {
         OnPropertyChanged(nameof(ProviderDetailName));
-        OnPropertyChanged(nameof(ProviderDetailId));
         OnPropertyChanged(nameof(ProviderDetailNote));
         OnPropertyChanged(nameof(ProviderDetailWebsite));
+        OnPropertyChanged(nameof(HasProviderDetailNote));
         OnPropertyChanged(nameof(HasProviderDetailWebsite));
+        OnPropertyChanged(nameof(ProviderDetailHeaderOrientation));
         OnPropertyChanged(nameof(ProviderDetailKeyStatus));
     }
 
@@ -4898,6 +6237,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public string ProviderModelFormTitle =>
         _editingProviderModel is null ? "添加模型" : "编辑模型";
 
+    private string _providerModelDraftName = string.Empty;
+    public string ProviderModelDraftName
+    {
+        get => _providerModelDraftName;
+        set => SetProperty(ref _providerModelDraftName, value);
+    }
+
     private string _providerModelDraftId = string.Empty;
     public string ProviderModelDraftId
     {
@@ -4906,11 +6252,42 @@ public sealed partial class MainWindowViewModel : ObservableObject
     }
 
     private int _providerModelProtocolIndex;
+    private int _providerModelCustomProtocolIndex;
     public int ProviderModelProtocolIndex
     {
         get => _providerModelProtocolIndex;
-        set => SetProperty(ref _providerModelProtocolIndex, value);
+        set
+        {
+            if (!SetProperty(ref _providerModelProtocolIndex, value))
+            {
+                return;
+            }
+
+            if (value is >= 0 and <= 2)
+            {
+                _providerModelCustomProtocolIndex = value;
+                var url = ProviderProtocolUrl(value);
+                if (url.Length > 0)
+                {
+                    ProviderModelDraftUrl = url;
+                }
+            }
+        }
     }
+
+    public ObservableCollection<ReasoningLevelChoice> ProviderModelReasoningLevels { get; } = [];
+    public ObservableCollection<string> ProviderModelDefaultReasoningChoices { get; } = [];
+
+    private string _selectedProviderModelDefaultReasoning = string.Empty;
+    public string SelectedProviderModelDefaultReasoning
+    {
+        get => _selectedProviderModelDefaultReasoning;
+        set => SetProperty(ref _selectedProviderModelDefaultReasoning, value);
+    }
+
+    private static readonly string[] ReasoningLevels =
+        ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
+    private static readonly string[] DefaultReasoningLevels = ["low", "medium", "high", "max"];
 
     private string _providerModelDraftUrl = string.Empty;
     public string ProviderModelDraftUrl
@@ -5056,8 +6433,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
                     _ => 0
                 };
                 if (result.TryGetProperty("url", out var url)
-                    && url.ValueKind == JsonValueKind.String
-                    && string.IsNullOrWhiteSpace(ProviderModelDraftUrl))
+                    && url.ValueKind == JsonValueKind.String)
                 {
                     ProviderModelDraftUrl = url.GetString() ?? string.Empty;
                 }
@@ -5089,15 +6465,153 @@ public sealed partial class MainWindowViewModel : ObservableObject
         ProviderModelFetchStatus = string.Empty;
     }
 
+    private void ResetProviderModelReasoningLevels(
+        IEnumerable<string> enabledLevels,
+        string defaultLevel)
+    {
+        var enabled = new HashSet<string>(enabledLevels, StringComparer.OrdinalIgnoreCase);
+        ProviderModelReasoningLevels.Clear();
+        foreach (var level in ReasoningLevels)
+        {
+            ProviderModelReasoningLevels.Add(new ReasoningLevelChoice(
+                level,
+                level,
+                enabled.Contains(level),
+                RefreshProviderModelReasoningChoices));
+        }
+
+        ProviderModelDefaultReasoningChoices.Clear();
+        foreach (var level in ReasoningLevels.Where(enabled.Contains))
+        {
+            ProviderModelDefaultReasoningChoices.Add(level);
+        }
+
+        SelectedProviderModelDefaultReasoning = ResolveReasoningDefault(defaultLevel);
+    }
+
+    private void RefreshProviderModelReasoningChoices()
+    {
+        var current = SelectedProviderModelDefaultReasoning;
+        var enabled = ProviderModelReasoningLevels
+            .Where(level => level.IsEnabled)
+            .Select(level => level.Value)
+            .ToList();
+
+        // Avoid Clear(): clearing the bound collection also clears the ComboBox
+        // selection. Adding a level must leave the current default untouched.
+        for (var index = ProviderModelDefaultReasoningChoices.Count - 1; index >= 0; index--)
+        {
+            if (!enabled.Contains(
+                    ProviderModelDefaultReasoningChoices[index],
+                    StringComparer.OrdinalIgnoreCase))
+            {
+                ProviderModelDefaultReasoningChoices.RemoveAt(index);
+            }
+        }
+
+        for (var index = 0; index < enabled.Count; index++)
+        {
+            var existing = IndexOfReasoningChoice(enabled[index]);
+            if (existing == index)
+            {
+                continue;
+            }
+
+            if (existing >= 0)
+            {
+                ProviderModelDefaultReasoningChoices.Move(existing, index);
+            }
+            else
+            {
+                ProviderModelDefaultReasoningChoices.Insert(index, enabled[index]);
+            }
+        }
+
+        if (enabled.Contains(current, StringComparer.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        SelectedProviderModelDefaultReasoning = NextReasoningDefault(current, enabled);
+    }
+
+    private string ResolveReasoningDefault(string current)
+    {
+        if (ProviderModelDefaultReasoningChoices.Contains(
+                current,
+                StringComparer.OrdinalIgnoreCase))
+        {
+            return current;
+        }
+
+        if (ProviderModelDefaultReasoningChoices.Contains("medium", StringComparer.OrdinalIgnoreCase))
+        {
+            return "medium";
+        }
+
+        return ProviderModelDefaultReasoningChoices.FirstOrDefault() ?? string.Empty;
+    }
+
+    private int IndexOfReasoningChoice(string level)
+    {
+        for (var index = 0; index < ProviderModelDefaultReasoningChoices.Count; index++)
+        {
+            if (string.Equals(
+                    ProviderModelDefaultReasoningChoices[index],
+                    level,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    private static string NextReasoningDefault(
+        string current,
+        IReadOnlyList<string> enabled)
+    {
+        if (enabled.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var index = Array.FindIndex(
+            ReasoningLevels,
+            level => string.Equals(level, current, StringComparison.OrdinalIgnoreCase));
+        if (index >= 0)
+        {
+            for (var next = index + 1; next < ReasoningLevels.Length; next++)
+            {
+                if (enabled.Contains(ReasoningLevels[next], StringComparer.OrdinalIgnoreCase))
+                {
+                    return ReasoningLevels[next];
+                }
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(current)
+            && enabled.Contains("medium", StringComparer.OrdinalIgnoreCase))
+        {
+            return "medium";
+        }
+
+        return enabled[^1];
+    }
+
     public void OpenAddProviderModel()
     {
         _editingProviderModel = null;
+        ProviderModelDraftName = string.Empty;
         ProviderModelDraftId = string.Empty;
         ProviderModelDraftUrl = string.Empty;
         ProviderModelDraftContextWindow = "128000";
         ProviderModelDraftCompactThreshold = "0.8";
         ProviderModelDraftMaxOutput = "8192";
         ProviderModelProtocolIndex = 0;
+        ProviderModelDraftUrl = ProviderProtocolUrl(0);
+        ResetProviderModelReasoningLevels(DefaultReasoningLevels, "medium");
         ProviderModelFormStatus = string.Empty;
         ClearProviderFetchedModels();
         OnPropertyChanged(nameof(ProviderModelFormTitle));
@@ -5107,18 +6621,31 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public void OpenEditProviderModel(ProviderModelRow model)
     {
         _editingProviderModel = model;
+        ProviderModelDraftName = model.Name;
         ProviderModelDraftId = model.Id;
         ProviderModelDraftUrl = model.Url;
         ProviderModelDraftContextWindow = model.ContextWindow.ToString(CultureInfo.InvariantCulture);
         ProviderModelDraftCompactThreshold =
             model.CompactThreshold.ToString("0.##", CultureInfo.InvariantCulture);
         ProviderModelDraftMaxOutput = model.MaxOutputTokens.ToString(CultureInfo.InvariantCulture);
-        ProviderModelProtocolIndex = model.Protocol switch
+        var protocolIndex = model.Protocol switch
         {
             "anthropic" => 1,
             "openai-responses" => 2,
             _ => 0
         };
+        var providerUrl = ProviderProtocolUrl(protocolIndex);
+        var modelUrl = model.Url.Trim();
+        var custom = modelUrl.Length > 0
+            && providerUrl.Length > 0
+            && !string.Equals(modelUrl, providerUrl, StringComparison.OrdinalIgnoreCase);
+        _providerModelCustomProtocolIndex = protocolIndex;
+        ProviderModelProtocolIndex = custom ? 3 : protocolIndex;
+        ProviderModelDraftUrl = custom || modelUrl.Length > 0 ? modelUrl : providerUrl;
+        var supportedLevels = model.ReasoningEfforts.Count > 0
+            ? model.ReasoningEfforts
+            : DefaultReasoningLevels;
+        ResetProviderModelReasoningLevels(supportedLevels, model.ReasoningEffort);
         ProviderModelFormStatus = string.Empty;
         ClearProviderFetchedModels();
         OnPropertyChanged(nameof(ProviderModelFormTitle));
@@ -5193,17 +6720,41 @@ public sealed partial class MainWindowViewModel : ObservableObject
             return;
         }
 
+        var protocolIndex = ProviderModelProtocolIndex == 3
+            ? _providerModelCustomProtocolIndex
+            : ProviderModelProtocolIndex;
+        var supportedLevels = ProviderModelReasoningLevels
+            .Where(level => level.IsEnabled)
+            .Select(level => level.Value)
+            .ToList();
+        if (supportedLevels.Count == 0)
+        {
+            ProviderModelFormStatus = "请至少启用一个思考等级。";
+            return;
+        }
+
+        var defaultReasoning = ProviderModelDefaultReasoningChoices.Contains(
+                SelectedProviderModelDefaultReasoning,
+                StringComparer.OrdinalIgnoreCase)
+            ? SelectedProviderModelDefaultReasoning
+            : supportedLevels[0];
+        var provider = _detailProvider;
+        var previous = _editingProviderModel;
+        var previousIndex = previous is null ? -1 : ProviderModels.IndexOf(previous);
         var row = new ProviderModelRow(
             id,
-            ProviderProtocol(ProviderModelProtocolIndex),
+            ProviderProtocol(protocolIndex),
             url,
             contextWindow,
             compactThreshold,
-            maxOutput);
-        if (_editingProviderModel is { } current && ProviderModels.IndexOf(current) is var index
-            && index >= 0)
+            maxOutput,
+            previous?.Enabled ?? true,
+            defaultReasoning,
+            supportedLevels,
+            ProviderModelDraftName.Trim());
+        if (previousIndex >= 0)
         {
-            ProviderModels[index] = row;
+            ProviderModels[previousIndex] = row;
         }
         else
         {
@@ -5211,24 +6762,29 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
 
         NotifyProviderModelsChanged();
-        if (await SaveProviderModelsAsync().ConfigureAwait(true))
+        CloseProviderModelForm();
+        if (!await SaveProviderModelsAsync().ConfigureAwait(true)
+            && ReferenceEquals(_detailProvider, provider))
         {
-            CloseProviderModelForm();
-        }
-        else
-        {
-            ProviderModelFormStatus = ProviderDetailStatus;
+            var rowIndex = ProviderModels.IndexOf(row);
+            if (rowIndex >= 0)
+            {
+                if (previous is null)
+                {
+                    ProviderModels.RemoveAt(rowIndex);
+                }
+                else
+                {
+                    ProviderModels[rowIndex] = previous;
+                }
+            }
+
+            NotifyProviderModelsChanged();
         }
     }
 
     public async Task DeleteProviderModelAsync(ProviderModelRow model)
     {
-        if (ProviderModels.Count <= 1)
-        {
-            ProviderDetailStatus = "至少保留一个模型。";
-            return;
-        }
-
         var index = ProviderModels.IndexOf(model);
         if (index < 0)
         {
@@ -5244,60 +6800,92 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    public async Task SetProviderModelEnabledAsync(ProviderModelRow model, bool enabled)
+    {
+        model.Enabled = enabled;
+        if (!await SaveProviderModelsAsync().ConfigureAwait(true))
+        {
+            model.Enabled = !enabled;
+        }
+    }
+
     private async Task<bool> SaveProviderModelsAsync()
     {
-        if (_detailProvider is null)
+        var provider = _detailProvider;
+        if (provider is null)
         {
             ProviderDetailStatus = "请先打开一个提供商。";
             return false;
         }
 
-        if (ProviderModels.Count == 0)
+        var models = ProviderModels.ToList();
+        // Model edits must not remove protocols saved from the connection form.
+        var protocols = provider.Protocols
+            .ToDictionary(
+                pair => pair.Key,
+                pair => (string?)pair.Value,
+                StringComparer.OrdinalIgnoreCase);
+        void AddEnabled(string key, string url, bool enabled)
         {
-            ProviderDetailStatus = "提供商至少需要一个模型。";
-            return false;
+            if (enabled && !string.IsNullOrWhiteSpace(url))
+            {
+                protocols[key] = url.Trim();
+            }
         }
 
-        var protocols = ProviderModels
-            .GroupBy(model => model.Protocol, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(
-                group => group.Key,
-                group => group.Select(model => model.Url)
-                    .FirstOrDefault(url => !string.IsNullOrWhiteSpace(url)));
+        AddEnabled("openai-chat", ProviderDraftChatUrl, ProviderChatProtocolEnabled);
+        AddEnabled("anthropic", ProviderDraftAnthropicUrl, ProviderAnthropicProtocolEnabled);
+        AddEnabled("openai-responses", ProviderDraftResponsesUrl, ProviderResponsesProtocolEnabled);
+        foreach (var model in models)
+        {
+            if (!string.IsNullOrWhiteSpace(model.Url)
+                && !protocols.ContainsKey(model.Protocol))
+            {
+                protocols[model.Protocol] = model.Url;
+            }
+        }
         var parameters = new Dictionary<string, object?>
         {
-            ["id"] = _detailProvider.Id,
-            ["enabled"] = _detailProvider.Enabled,
+            ["id"] = provider.Id,
+            ["enabled"] = provider.Enabled,
             ["protocols"] = protocols,
-            ["models"] = ProviderModels.Select(model => new Dictionary<string, object?>
+            ["models"] = models.Select(model => new Dictionary<string, object?>
             {
                 ["id"] = model.Id,
+                ["name"] = model.Name,
                 ["protocol"] = model.Protocol,
                 ["context_window"] = model.ContextWindow,
                 ["compact_threshold"] = model.CompactThreshold,
                 ["max_output_tokens"] = model.MaxOutputTokens,
-                ["url"] = model.Url
+                ["url"] = model.Url,
+                ["enabled"] = model.Enabled,
+                ["reasoning_effort"] = model.ReasoningEffort,
+                ["reasoning_efforts"] = model.ReasoningEfforts
             }).ToArray()
         };
 
         try
         {
             await _core.UpsertProviderAsync(parameters, CancellationToken.None).ConfigureAwait(true);
-            _detailProvider.SetModels(ProviderModels
+            provider.SetProtocols(SavedProtocols(protocols));
+            provider.SetModels(models
                 .Select(model => new CoreModelOption(
-                    _detailProvider.Id,
+                    provider.Id,
                     model.Id,
-                    _detailProvider.Enabled,
-                    _detailProvider.KeyConfigured)
+                    model.Enabled,
+                    provider.KeyConfigured)
                 {
                     Protocol = model.Protocol,
                     Url = model.Url,
                     ContextWindow = model.ContextWindow,
                     CompactThreshold = model.CompactThreshold,
-                    MaxOutputTokens = model.MaxOutputTokens
+                    MaxOutputTokens = model.MaxOutputTokens,
+                    Name = model.Name,
+                    ReasoningEffort = model.ReasoningEffort,
+                    ReasoningEfforts = model.ReasoningEfforts
                 })
                 .ToList());
-            ProviderDetailStatus = "模型配置已写入 KL Core；重新连接后应用到聊天。";
+            SaveProviderCache();
             return true;
         }
         catch (Exception error) when (error is JsonRpcException
@@ -5305,7 +6893,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
             or InvalidOperationException
             or NotSupportedException)
         {
-            ProviderDetailStatus = $"保存模型配置失败：{error.Message}";
+            if (ReferenceEquals(_detailProvider, provider))
+            {
+                ProviderDetailStatus = $"保存模型配置失败：{error.Message}";
+            }
+
             return false;
         }
     }
@@ -5317,9 +6909,25 @@ public sealed partial class MainWindowViewModel : ObservableObject
         set => SetProperty(ref _providerDetailApiKey, value);
     }
 
+    private bool _isProviderApiKeyVisible;
+    public bool IsProviderApiKeyVisible
+    {
+        get => _isProviderApiKeyVisible;
+        set
+        {
+            if (SetProperty(ref _isProviderApiKeyVisible, value))
+            {
+                OnPropertyChanged(nameof(ProviderApiKeyPasswordChar));
+            }
+        }
+    }
+
+    public char ProviderApiKeyPasswordChar => IsProviderApiKeyVisible ? '\0' : '•';
+
     public async Task SaveProviderDetailApiKeyAsync()
     {
-        if (_detailProvider is null)
+        var provider = _detailProvider;
+        if (provider is null)
         {
             return;
         }
@@ -5333,19 +6941,44 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         try
         {
-            await _core.SetProviderApiKeyAsync(_detailProvider.Id, key, CancellationToken.None)
+            await _core.SetProviderApiKeyAsync(provider.Id, key, CancellationToken.None)
                 .ConfigureAwait(true);
-            _detailProvider.SetKeyConfigured(true);
-            ProviderDetailApiKey = string.Empty;
-            ProviderDetailStatus = "API Key 已保存到本机凭据目录。";
-            OnPropertyChanged(nameof(ProviderDetailKeyStatus));
+            provider.SetKeyConfigured(true);
+            if (ReferenceEquals(_detailProvider, provider))
+            {
+                IsProviderApiKeyVisible = false;
+                OnPropertyChanged(nameof(ProviderDetailKeyStatus));
+            }
         }
         catch (Exception error) when (error is JsonRpcException
             or IOException
             or InvalidOperationException
             or NotSupportedException)
         {
-            ProviderDetailStatus = $"保存 API Key 失败：{error.Message}";
+            if (ReferenceEquals(_detailProvider, provider))
+            {
+                ProviderDetailStatus = $"保存 API Key 失败：{error.Message}";
+            }
+        }
+    }
+
+    private string ReadProviderApiKey(string id)
+    {
+        if (id.Length == 0
+            || id.Any(character => !(char.IsAsciiLetterOrDigit(character)
+                || character is '-' or '_' or '.')))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            var path = Path.Combine(CredentialsDirectory, $"{id}.key");
+            return File.Exists(path) ? File.ReadAllText(path).Trim() : string.Empty;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return string.Empty;
         }
     }
 
@@ -5360,6 +6993,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private static readonly TimeSpan ProviderRefreshCache = TimeSpan.FromMinutes(5);
     private DateTimeOffset _providersRefreshedAt;
     private bool _providersRefreshing;
+    private bool _providerSaveInFlight;
 
     /// <summary>Persists a provider's enabled flag through Core.</summary>
     public async Task SetProviderEnabledAsync(ProviderCardRow provider, bool enabled)
@@ -5429,10 +7063,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
 
         _providersRefreshing = true;
-        if (announce)
-        {
-            ProviderStatusText = "正在刷新提供商…";
-        }
 
         try
         {
@@ -5459,18 +7089,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 snapshot.KeyConfigured,
                 snapshot.ProviderProtocols);
             MergeConfiguredProviders(catalog.Config);
+            EnsureUniqueProviderNames();
+            NotifyProviderCardsChanged();
             _providersRefreshedAt = DateTimeOffset.Now;
             if (catalog.ConfigRead)
             {
                 SaveProviderCache();
-            }
-            if (announce)
-            {
-                ProviderStatusText = $"已刷新提供商目录（{_providersRefreshedAt:HH:mm}）。";
-            }
-            else if (ProviderStatusText.StartsWith("无法", StringComparison.Ordinal))
-            {
-                ProviderStatusText = string.Empty;
             }
         }
         catch (Exception error) when (error is JsonRpcException
@@ -5486,18 +7110,26 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>Hides the one-time refresh notice when leaving the provider page.</summary>
-    public void ClearProviderRefreshStatus()
+    /// <summary>Writes a provider (and optional key) into Core config.</summary>
+    public async Task SaveProviderAsync()
     {
-        if (ProviderStatusText.StartsWith("已刷新提供商目录", StringComparison.Ordinal)
-            || ProviderStatusText.StartsWith("正在刷新提供商", StringComparison.Ordinal))
+        if (_providerSaveInFlight)
         {
-            ProviderStatusText = string.Empty;
+            return;
+        }
+
+        _providerSaveInFlight = true;
+        try
+        {
+            await SaveProviderCoreAsync().ConfigureAwait(true);
+        }
+        finally
+        {
+            _providerSaveInFlight = false;
         }
     }
 
-    /// <summary>Writes a provider (and optional key) into Core config.</summary>
-    public async Task SaveProviderAsync()
+    private async Task SaveProviderCoreAsync()
     {
         var name = ProviderDraftName.Trim();
         if (name.Length == 0)
@@ -5557,44 +7189,96 @@ public sealed partial class MainWindowViewModel : ObservableObject
             ["models"] = Array.Empty<object>()
         };
 
-        ProviderFormStatus = "正在写入提供商…";
+        var note = ProviderDraftNote.Trim();
+        var key = ProviderDraftApiKey.Trim();
+        var protocolMap = protocols
+            .Where(pair => !string.IsNullOrWhiteSpace(pair.Value))
+            .ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value!,
+                StringComparer.OrdinalIgnoreCase);
+
+        // Show the card immediately; the Core write runs after the form closes.
+        var inserted = false;
+        var card = ProviderCards.FirstOrDefault(existing =>
+            string.Equals(existing.Id, id, StringComparison.OrdinalIgnoreCase));
+        if (card is null)
+        {
+            card = new ProviderCardRow(
+                id,
+                name,
+                note,
+                website,
+                isDefault: false,
+                enabled: true,
+                keyConfigured: key.Length > 0,
+                models: [],
+                protocolMap);
+            ProviderCards.Insert(0, card);
+            inserted = true;
+        }
+
+        EnsureUniqueProviderNames();
+        NotifyProviderCardsChanged();
+        IsProviderFormOpen = false;
+        ProviderStatusText = $"正在写入 {name}…";
+
         try
         {
-            await _core.UpsertProviderAsync(parameters, CancellationToken.None).ConfigureAwait(true);
-            var key = ProviderDraftApiKey.Trim();
-            if (key.Length > 0)
-            {
-                await _core.SetProviderApiKeyAsync(id, key, CancellationToken.None).ConfigureAwait(true);
-            }
+            await _core.UpsertProviderWithKeyAsync(
+                    parameters,
+                    id,
+                    key.Length > 0 ? key : null,
+                    CancellationToken.None)
+                .ConfigureAwait(true);
 
             var profiles = _state.ProviderProfiles ??= [];
             profiles[id] = new ProviderProfileState
             {
                 DisplayName = name,
-                Note = ProviderDraftNote.Trim(),
+                Note = note,
                 Website = website
             };
             SaveState();
-            await RefreshProvidersAsync(force: true).ConfigureAwait(true);
-            if (ProviderCards.FirstOrDefault(row =>
-                    string.Equals(row.Id, id, StringComparison.OrdinalIgnoreCase)) is { } row)
-            {
-                row.SetKeyConfigured(key.Length > 0);
-            }
 
-            IsProviderFormOpen = false;
+            card.Name = name;
+            card.Note = note;
+            card.Website = website;
+            card.SetKeyConfigured(key.Length > 0);
+            card.SetProtocols(protocolMap);
+            EnsureUniqueProviderNames();
+            SaveProviderCache();
+
             ProviderDraftApiKey = string.Empty;
             ProviderFormStatus = string.Empty;
             ProviderStatusText = $"已写入 {id}；可在提供商详情中继续添加模型。";
+            _ = RefreshProvidersAsync(force: true, announce: false);
         }
         catch (Exception error) when (error is JsonRpcException
             or IOException
             or InvalidOperationException
             or NotSupportedException)
         {
+            if (inserted)
+            {
+                ProviderCards.Remove(card);
+                NotifyProviderCardsChanged();
+            }
+
+            IsProviderFormOpen = true;
+            ProviderStatusText = string.Empty;
             ProviderFormStatus = $"保存提供商失败：{error.Message}";
         }
     }
+
+    private static IReadOnlyDictionary<string, string> SavedProtocols(
+        IReadOnlyDictionary<string, string?> protocols) =>
+        protocols
+            .Where(pair => !string.IsNullOrWhiteSpace(pair.Value))
+            .ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value!,
+                StringComparer.OrdinalIgnoreCase);
 
     private string ProviderChatEndpoint() =>
         AppendEndpointSuffix(
@@ -5634,7 +7318,16 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private static string ProviderIdFromName(string name)
     {
         var id = NormalizeProviderId(name);
-        return id.Length > 0 ? id : $"provider-{Guid.NewGuid():N}"[..17];
+        if (id.Length > 0)
+        {
+            return id;
+        }
+
+        // Non-ASCII names normalize to nothing; derive a stable id so the
+        // same name cannot be added twice with different ids.
+        var hash = System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(name.Trim()));
+        return $"provider-{Convert.ToHexString(hash)[..12].ToLowerInvariant()}";
     }
 
     private static string NormalizeProviderId(string value)
@@ -5649,6 +7342,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
             .Trim('-', '_', '.');
         return normalized;
     }
+
+    private string ProviderProtocolUrl(int index) => index switch
+    {
+        1 => ProviderDraftAnthropicUrl.Trim(),
+        2 => ProviderDraftResponsesUrl.Trim(),
+        _ => ProviderDraftChatUrl.Trim()
+    };
 
     private static string ProviderProtocol(int index) => index switch
     {
@@ -6001,7 +7701,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         try
         {
-            File.Copy(_stateStore.Path, targetPath, overwrite: true);
+            File.WriteAllText(targetPath, StateStore.ReadStateJson(_stateStore.Path));
             BackupStatusText = $"已导出到 {targetPath}";
             OnPropertyChanged(nameof(BackupStatusText));
             OnPropertyChanged(nameof(HasBackupStatus));
@@ -6021,7 +7721,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         try
         {
-            using var document = JsonDocument.Parse(File.ReadAllText(sourcePath));
+            using var document = JsonDocument.Parse(StateStore.ReadStateJson(sourcePath));
             var root = document.RootElement;
             var looksLikeState = root.ValueKind == JsonValueKind.Object
                 && (root.TryGetProperty("Workspaces", out _)
@@ -6440,7 +8140,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             return;
         }
         _state.InteractionMode = value;
-        // ChatGPT Work lists its projects flat; the Codex product expands their chats.
+        // The reference product lists projects flat; this app expands their chats.
         foreach (var workspace in Workspaces)
         {
             workspace.IsExpanded = workMode;
@@ -6792,7 +8492,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         var prompt = Composer.Trim();
         var attachments = PendingAttachments.ToList();
-        var modelPrompt = BuildModelPrompt(prompt, attachments);
+        var rewriteTarget = _editingUserItem;
+        var rewindSeq = rewriteTarget?.Seq;
+        // Regenerate/resend keep the original model text; edits use the typed text.
+        var modelPrompt = _rewindModelText ?? BuildModelPrompt(prompt, attachments);
         var displayPrompt = BuildDisplayPrompt(prompt, attachments);
         ErrorMessage = string.Empty;
         SettingsStatus = string.Empty;
@@ -6834,7 +8537,24 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _activeSessionItem?.RefreshTitle();
         _activeSessionItem?.RefreshTime();
 
+        if (rewindSeq is not null && rewriteTarget is not null)
+        {
+            var targetIndex = Messages.IndexOf(rewriteTarget);
+            if (targetIndex < 0)
+            {
+                rewindSeq = null;
+            }
+            else
+            {
+                while (Messages.Count > targetIndex)
+                {
+                    Messages.RemoveAt(Messages.Count - 1);
+                }
+            }
+        }
+
         var userItem = ChatItemViewModel.User(displayPrompt, modelPrompt, DateTimeOffset.Now);
+        _pendingUserItem = rewindSeq is not null ? null : userItem;
         Messages.Add(userItem);
         SyncStoredMessages();
         UpdateSessionOrder();
@@ -6844,7 +8564,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _turnCancellation = new CancellationTokenSource();
         try
         {
-            var outcome = await _core.RunTurnAsync(modelPrompt, _turnCancellation.Token).ConfigureAwait(true);
+            _suppressRewindReload = rewindSeq is not null;
+            var outcome = await _core.RunTurnAsync(
+                modelPrompt,
+                _turnCancellation.Token,
+                rewindSeq).ConfigureAwait(true);
             if (outcome.Status == "failed" && !string.IsNullOrWhiteSpace(outcome.Text))
             {
                 AddError(outcome.Text);
@@ -6861,6 +8585,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
             or FileNotFoundException)
         {
             AddError(ToUserFacingError(error));
+            if (rewindSeq is not null)
+            {
+                // The core may already have truncated; reload so the UI matches.
+                await LoadHistoryAsync().ConfigureAwait(true);
+                Composer = displayPrompt;
+            }
         }
         finally
         {
@@ -6870,6 +8600,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
             }
             _turnCancellation?.Dispose();
             _turnCancellation = null;
+            _pendingUserItem = null;
+            _suppressRewindReload = false;
+            _rewindModelText = null;
+            if (_editingUserItem is not null)
+            {
+                _editingUserItem = null;
+                RaiseEditState();
+            }
         }
 
         await DrainQueuedTurnsAsync().ConfigureAwait(true);
@@ -7077,7 +8815,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IsCreateProjectDialogOpen = false;
         IsCleanupDialogOpen = false;
         IsCloseConfirmOpen = false;
-        IsSettingsDetailOpen = false;
         DeletePrompt = string.Empty;
         CloseAutomationDialogs();
     }
@@ -7320,6 +9057,130 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    /// <summary>Reads Core's global agent settings for the settings panes.</summary>
+    public async Task RefreshAgentSettingsAsync()
+    {
+        try
+        {
+            var result = await _core.GetAgentConfigAsync(CancellationToken.None).ConfigureAwait(true);
+            if (result.ValueKind != JsonValueKind.Object)
+            {
+                return;
+            }
+
+            _loadingAgentSettings = true;
+            try
+            {
+                if (TryReadBool(result, "web_search", out var webSearch))
+                {
+                    WebSearch = webSearch;
+                }
+                if (TryReadBool(result, "network_access", out var networkAccess))
+                {
+                    NetworkAccess = networkAccess;
+                }
+                if (TryReadBool(result, "memory_enabled", out var memoryEnabled))
+                {
+                    MemoryEnabled = memoryEnabled;
+                }
+                if (TryReadBool(result, "plugins_enabled", out var pluginsEnabled))
+                {
+                    PluginsEnabled = pluginsEnabled;
+                }
+                if (result.TryGetProperty("output_verbosity", out var verbosity)
+                    && verbosity.GetString() is { } verbosityValue)
+                {
+                    _outputVerbosity = verbosityValue is "concise" or "detailed"
+                        ? verbosityValue
+                        : "default";
+                }
+                if (result.TryGetProperty("reasoning_summary", out var summary)
+                    && summary.GetString() is { } summaryValue)
+                {
+                    _reasoningSummary = summaryValue is "off" or "detailed"
+                        ? summaryValue
+                        : "auto";
+                }
+                if (result.TryGetProperty("custom_instructions", out var instructions)
+                    && instructions.GetString() is { } instructionsValue)
+                {
+                    CustomInstructionsDraft = instructionsValue;
+                }
+                if (result.TryGetProperty("personal_style", out var style)
+                    && style.GetString() is { } styleValue)
+                {
+                    _personalStyle = styleValue is "friendly" or "professional"
+                        ? styleValue
+                        : "default";
+                }
+                if (result.TryGetProperty("warmth", out var warmth)
+                    && warmth.GetString() is { } warmthValue)
+                {
+                    _warmth = warmthValue is "low" or "high" ? warmthValue : "default";
+                }
+                if (result.TryGetProperty("enthusiasm", out var enthusiasm)
+                    && enthusiasm.GetString() is { } enthusiasmValue)
+                {
+                    _enthusiasm = enthusiasmValue is "low" or "high" ? enthusiasmValue : "default";
+                }
+                if (result.TryGetProperty("emoji_usage", out var emoji)
+                    && emoji.GetString() is { } emojiValue)
+                {
+                    _emojiUsage = emojiValue is "less" or "more" ? emojiValue : "default";
+                }
+                if (result.TryGetProperty("visual_answers", out var visual)
+                    && visual.GetString() is { } visualValue)
+                {
+                    _visualAnswers = visualValue is "off" or "on" ? visualValue : "default";
+                }
+                if (result.TryGetProperty("heading_style", out var heading)
+                    && heading.GetString() is { } headingValue)
+                {
+                    _headingStyle = headingValue is "concise" or "detailed"
+                        ? headingValue
+                        : "default";
+                }
+                if (TryReadBool(result, "quick_answers", out var quickAnswers))
+                {
+                    _quickAnswers = quickAnswers;
+                }
+            }
+            finally
+            {
+                _loadingAgentSettings = false;
+            }
+
+            OnPropertyChanged(nameof(OutputVerbosityIndex));
+            OnPropertyChanged(nameof(ReasoningSummaryIndex));
+            OnPropertyChanged(nameof(PersonalStyleIndex));
+            OnPropertyChanged(nameof(WarmthIndex));
+            OnPropertyChanged(nameof(EnthusiasmIndex));
+            OnPropertyChanged(nameof(EmojiIndex));
+            OnPropertyChanged(nameof(VisualAnswersIndex));
+            OnPropertyChanged(nameof(HeadingStyleIndex));
+            OnPropertyChanged(nameof(QuickAnswers));
+        }
+        catch (Exception error) when (error is JsonRpcException
+            or IOException
+            or InvalidOperationException
+            or FileNotFoundException)
+        {
+            // Settings stay at their last known values when Core is unavailable.
+        }
+    }
+
+    private static bool TryReadBool(JsonElement element, string name, out bool value)
+    {
+        if (element.TryGetProperty(name, out var property)
+            && property.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            value = property.GetBoolean();
+            return true;
+        }
+        value = false;
+        return false;
+    }
+
     /// <summary>Applies a reasoning effort through Core and updates the picker.</summary>
     public async Task SetReasoningEffortAsync(string effort)
     {
@@ -7523,9 +9384,120 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public void ResetSettingsDefaults()
     {
-        SettingsPermissionMode = "完全访问";
+        SetThemeMode("dark");
+        AccentColorIndex = 0;
+        UiFontIndex = 0;
+        ContentFontIndex = 0;
+        CodeFontIndex = 0;
+        UiFontWeightIndex = 0;
+        ContentFontWeightIndex = 0;
+        CodeFontWeightIndex = 0;
+        Contrast = 50;
+        TranslucentSidebar = false;
         SettingsContentFontSize = 14;
-        SetSettingsStatus("已恢复默认值，点击保存后生效。", isError: false);
+        CodeFontSize = 12;
+        SetReduceMotionMode("system");
+        SetDiffMarkerMode("color");
+        SaveAppearanceSettings();
+        SetSettingsStatus("已恢复默认外观设置。", isError: false);
+    }
+
+    public string ImportCodexHome => _importService.CodexHome;
+    public string ImportClaudeHome => _importService.ClaudeHome;
+    public bool IsImportScanning
+    {
+        get => _isImportScanning;
+        private set
+        {
+            if (SetProperty(ref _isImportScanning, value))
+            {
+                OnPropertyChanged(nameof(CanImportSelected));
+            }
+        }
+    }
+
+    public string ImportStatusText
+    {
+        get => _importStatusText;
+        private set => SetProperty(ref _importStatusText, value);
+    }
+
+    public bool HasImportCandidates => ImportCandidates.Count > 0;
+    public bool CanImportSelected => !IsImportScanning && ImportCandidates.Any(item => item.IsSelected);
+
+    private void NotifyImportSelection() => OnPropertyChanged(nameof(CanImportSelected));
+
+    public async Task DiscoverImportsAsync()
+    {
+        if (IsImportScanning)
+        {
+            return;
+        }
+
+        IsImportScanning = true;
+        ImportStatusText = "正在扫描 Codex 和 Claude 的安全配置项…";
+        try
+        {
+            var service = _importService;
+            var candidates = await Task.Run(service.Discover).ConfigureAwait(true);
+            ImportCandidates.Clear();
+            foreach (var candidate in candidates)
+            {
+                ImportCandidates.Add(new ImportCandidateRow(candidate, NotifyImportSelection));
+            }
+
+            ImportStatusText = candidates.Count == 0
+                ? "没有找到可导入项。"
+                : $"找到 {candidates.Count} 个可导入项。";
+        }
+        catch (Exception error)
+        {
+            ImportStatusText = $"扫描失败：{error.Message}";
+        }
+        finally
+        {
+            IsImportScanning = false;
+            OnPropertyChanged(nameof(HasImportCandidates));
+            OnPropertyChanged(nameof(CanImportSelected));
+        }
+    }
+
+    public async Task ImportSelectedAsync()
+    {
+        var selected = ImportCandidates.Where(item => item.IsSelected).ToList();
+        if (selected.Count == 0)
+        {
+            return;
+        }
+
+        IsImportScanning = true;
+        var imported = 0;
+        try
+        {
+            foreach (var row in selected)
+            {
+                row.Status = "导入中…";
+                var service = _importService;
+                var candidate = row.Candidate;
+                row.Status = await Task.Run(() => service.Import(candidate)).ConfigureAwait(true);
+                if (row.Status.StartsWith("已合并", StringComparison.Ordinal)
+                    || row.Status.StartsWith("已导入技能", StringComparison.Ordinal))
+                {
+                    imported++;
+                }
+            }
+
+            ImportStatusText = $"已处理 {selected.Count} 项，成功 {imported} 项。";
+        }
+        catch (Exception error)
+        {
+            ImportStatusText = $"导入失败：{error.Message}";
+        }
+        finally
+        {
+            IsImportScanning = false;
+            OnPropertyChanged(nameof(CanImportSelected));
+        }
     }
 
     public void RefreshSettingsDraft()
@@ -7791,6 +9763,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
             automation.NotifyStateChanged();
             SaveState();
             OnPropertyChanged(nameof(AutomationPageSummary));
+            if (_state.AutomationNotifications)
+            {
+                RequestAttention(AttentionKind.Automation);
+            }
         }
     }
 
@@ -8167,13 +10143,40 @@ public sealed partial class MainWindowViewModel : ObservableObject
             : "完全访问";
         _state.SendShortcut = _state.SendShortcut == "ctrlEnter" ? "ctrlEnter" : "enter";
         _state.CloseWindowAction = _state.CloseWindowAction is "always" or "never" ? _state.CloseWindowAction : "shortcut";
+        _state.FileOpenTarget = string.Equals(_state.FileOpenTarget, "vscode", StringComparison.OrdinalIgnoreCase)
+            ? "vscode"
+            : "system";
         _state.TurnNotifications = _state.TurnNotifications is "always" or "never" ? _state.TurnNotifications : "unfocused";
         _state.AccentColor = AccentColors.Contains(_state.AccentColor, StringComparer.OrdinalIgnoreCase)
             ? _state.AccentColor
             : AccentColors[0];
+        _state.ThemeMode = _state.ThemeMode is "light" or "system" ? _state.ThemeMode : "dark";
+        _state.LightAccentColor = AccentColors.Contains(_state.LightAccentColor, StringComparer.OrdinalIgnoreCase)
+            ? _state.LightAccentColor
+            : AccentColors[1];
+        _state.DarkAccentColor = AccentColors.Contains(_state.DarkAccentColor, StringComparer.OrdinalIgnoreCase)
+            ? _state.DarkAccentColor
+            : AccentColors[0];
+        _state.LightContrast = Math.Clamp(_state.LightContrast, 0, 100);
+        _state.DarkContrast = Math.Clamp(_state.DarkContrast, 0, 100);
+        _state.DiffMarkerMode = _state.DiffMarkerMode == "markers" ? "markers" : "color";
+        _state.TerminalShell = TerminalShells.Contains(_state.TerminalShell) ? _state.TerminalShell : TerminalShells[0];
+        _state.TerminalPosition = _state.TerminalPosition == "right" ? "right" : "bottom";
+        _state.TerminalPanelSize = _state.TerminalPanelSize is >= 180 and <= 600 ? _state.TerminalPanelSize : 0;
         _state.ContentCodeFontSize = Math.Clamp(_state.ContentCodeFontSize, 9, 20);
+        _state.UiFontIndex = Math.Clamp(_state.UiFontIndex, 0, 1);
+        _state.ContentFontIndex = Math.Clamp(_state.ContentFontIndex, 0, 2);
+        _state.CodeFontIndex = Math.Clamp(_state.CodeFontIndex, 0, 2);
+        _state.UiFontWeightIndex = Math.Clamp(_state.UiFontWeightIndex, 0, 2);
+        _state.ContentFontWeightIndex = Math.Clamp(_state.ContentFontWeightIndex, 0, 2);
+        _state.CodeFontWeightIndex = Math.Clamp(_state.CodeFontWeightIndex, 0, 2);
+        _state.Contrast = Math.Clamp(_state.Contrast, 0, 100);
         _state.ReduceMotion = _state.ReduceMotion is "on" or "off" ? _state.ReduceMotion : "system";
         _state.FollowUpMode = _state.FollowUpMode == "steer" ? "steer" : "queue";
+        _state.ReviewMode = _state.ReviewMode is "quick" or "strict" ? _state.ReviewMode : "standard";
+        _state.GitBranchPrefix = (_state.GitBranchPrefix ?? string.Empty).Trim();
+        _state.ReviewInstructions ??= string.Empty;
+        _state.WorktreeRoot ??= string.Empty;
         _state.AutoArchiveDays = _state.AutoArchiveDays > 0 ? Math.Clamp(_state.AutoArchiveDays, 7, 3650) : 0;
         // Codex renders conversation text at 14px; 15 came from an earlier calibration.
         _state.ContentFontSize = _state.ContentFontSize is 13 or 14 or 15 ? 14 : _state.ContentFontSize;
@@ -8641,7 +10644,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
                     ProviderText(profile?.Note, "已接入的模型提供商"),
                     ProviderText(profile?.Website, string.Empty),
                     string.Equals(id, activeProvider, StringComparison.OrdinalIgnoreCase),
-                    group.Any(option => option.Enabled),
+                    true,
                     group.Any(option => option.KeyConfigured),
                     group.ToList(),
                     protocolUrls);
@@ -8707,7 +10710,50 @@ public sealed partial class MainWindowViewModel : ObservableObject
             ProviderCards.Remove(stale);
         }
 
+        RemoveDuplicateProviderCards();
+        EnsureUniqueProviderNames();
         NotifyProviderCardsChanged();
+    }
+
+    private void RemoveDuplicateProviderCards()
+    {
+        foreach (var duplicate in ProviderCards
+            .GroupBy(card => card.Id, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() > 1)
+            .SelectMany(group => group.Skip(1))
+            .ToList())
+        {
+            ProviderCards.Remove(duplicate);
+        }
+    }
+
+    private void EnsureUniqueProviderNames()
+    {
+        var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var card in ProviderCards
+            .OrderByDescending(card => card.IsDefault)
+            .ThenByDescending(card => card.Enabled)
+            .ThenBy(card => card.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(card => card.Id, StringComparer.OrdinalIgnoreCase)
+            .ToList())
+        {
+            var baseName = string.IsNullOrWhiteSpace(card.Name) ? card.Id : card.Name.Trim();
+            if (used.Add(baseName))
+            {
+                card.Name = baseName;
+                continue;
+            }
+
+            var suffix = " copy";
+            var candidate = baseName + suffix;
+            while (!used.Add(candidate))
+            {
+                suffix += "copy";
+                candidate = baseName + suffix;
+            }
+
+            card.Name = candidate;
+        }
     }
 
     private void NotifyProviderCardsChanged()
@@ -8764,6 +10810,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// <summary>Persists the cards the page shows; the file never contains API keys.</summary>
     private void SaveProviderCache()
     {
+        RemoveDuplicateProviderCards();
+        EnsureUniqueProviderNames();
         _providerCacheStore.Save(ProviderCards.Select(row => new ProviderCacheEntry
         {
             Id = row.Id,
@@ -8937,6 +10985,17 @@ public sealed record WorktreeRow(string Path, string Branch, string CurrentLabel
     public bool IsCurrent => CurrentLabel.Length > 0;
 }
 
+/// <summary>One finding rendered on the code-review settings page.</summary>
+public sealed record ReviewFindingRow(
+    string Severity,
+    string Location,
+    string Rule,
+    string Evidence,
+    string Recommendation)
+{
+    public bool IsHigh => Severity is "critical" or "high";
+}
+
 /// <summary>A follow-up prompt waiting for the current turn to finish.</summary>
 public sealed record QueuedTurn(string Prompt, IReadOnlyList<AttachmentItemViewModel> Attachments);
 
@@ -8994,15 +11053,83 @@ public sealed class ShortcutRowViewModel : ObservableObject
     }
 }
 
-/// <summary>One model row on a provider's detail page.</summary>
-public sealed record ProviderModelRow(
-    string Id,
-    string Protocol,
-    string Url,
-    int ContextWindow,
-    double CompactThreshold,
-    int MaxOutputTokens)
+/// <summary>One selectable reasoning level in the model form.</summary>
+public sealed class ReasoningLevelChoice : ObservableObject
 {
+    private readonly Action _changed;
+    private bool _isEnabled;
+
+    public ReasoningLevelChoice(string value, string label, bool isEnabled, Action changed)
+    {
+        Value = value;
+        Label = label;
+        _isEnabled = isEnabled;
+        _changed = changed;
+    }
+
+    public string Value { get; }
+    public string Label { get; }
+
+    public bool IsEnabled
+    {
+        get => _isEnabled;
+        set
+        {
+            if (SetProperty(ref _isEnabled, value))
+            {
+                _changed();
+            }
+        }
+    }
+}
+
+/// <summary>One model row on a provider's detail page.</summary>
+public sealed class ProviderModelRow : ObservableObject
+{
+    private bool _enabled;
+
+    public ProviderModelRow(
+        string id,
+        string protocol,
+        string url,
+        int contextWindow,
+        double compactThreshold,
+        int maxOutputTokens,
+        bool enabled = true,
+        string reasoningEffort = "default",
+        IReadOnlyList<string>? reasoningEfforts = null,
+        string name = "")
+    {
+        Id = id;
+        Name = name;
+        Protocol = protocol;
+        Url = url;
+        ContextWindow = contextWindow;
+        CompactThreshold = compactThreshold;
+        MaxOutputTokens = maxOutputTokens;
+        ReasoningEffort = reasoningEffort;
+        ReasoningEfforts = reasoningEfforts ?? Array.Empty<string>();
+        _enabled = enabled;
+    }
+
+    public string Id { get; }
+    public string Name { get; }
+    public string Protocol { get; }
+    public string Url { get; }
+    public int ContextWindow { get; }
+    public double CompactThreshold { get; }
+    public int MaxOutputTokens { get; }
+    public string ReasoningEffort { get; }
+    public IReadOnlyList<string> ReasoningEfforts { get; }
+
+    public bool Enabled
+    {
+        get => _enabled;
+        set => SetProperty(ref _enabled, value);
+    }
+
+    public string DisplayName => string.IsNullOrWhiteSpace(Name) ? Id : Name;
+
     public string ProtocolLabel => Protocol switch
     {
         "anthropic" => "Anthropic",
@@ -9010,8 +11137,21 @@ public sealed record ProviderModelRow(
         _ => "OpenAI Chat"
     };
 
+    public string ReasoningLabel => ReasoningEffort switch
+    {
+        "none" => "思考 none",
+        "minimal" => "思考 minimal",
+        "low" => "思考 low",
+        "medium" => "思考 medium",
+        "high" => "思考 high",
+        "xhigh" => "思考 xhigh",
+        "max" => "思考 max",
+        "ultra" => "思考 ultra",
+        _ => "思考 默认"
+    };
+
     public string Summary =>
-        $"{ProtocolLabel} · {FormatTokens(ContextWindow)} 上下文 · {FormatTokens(MaxOutputTokens)} 输出";
+        $"{ProtocolLabel} · {ReasoningLabel} · {FormatTokens(ContextWindow)} 上下文 · {FormatTokens(MaxOutputTokens)} 输出";
 
     private static string FormatTokens(int value) =>
         value >= 1000

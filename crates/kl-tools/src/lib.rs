@@ -27,7 +27,7 @@ use kl_policy::{Action, PolicyEngine};
 use kl_provider::ToolDefinition;
 use kl_sandbox::SandboxManager;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, RwLock};
@@ -165,12 +165,14 @@ pub trait Tool: Send + Sync {
 
 pub struct ToolRegistry {
     tools: RwLock<HashMap<String, Arc<dyn Tool>>>,
+    disabled: RwLock<HashSet<String>>,
 }
 
 impl ToolRegistry {
     pub fn empty() -> Self {
         Self {
             tools: RwLock::new(HashMap::new()),
+            disabled: RwLock::new(HashSet::new()),
         }
     }
 
@@ -197,7 +199,29 @@ impl ToolRegistry {
                     .map(|tool| (tool.name().to_owned(), tool))
                     .collect(),
             ),
+            disabled: RwLock::new(HashSet::new()),
         }
+    }
+
+    /// Hides a tool from Core and model definitions without dropping its
+    /// registration, so toggling it back on needs no rebuild.
+    pub fn set_enabled(&self, name: &str, enabled: bool) {
+        let mut disabled = self
+            .disabled
+            .write()
+            .unwrap_or_else(|error| error.into_inner());
+        if enabled {
+            disabled.remove(name);
+        } else {
+            disabled.insert(name.to_owned());
+        }
+    }
+
+    fn is_disabled(&self, name: &str) -> bool {
+        self.disabled
+            .read()
+            .unwrap_or_else(|error| error.into_inner())
+            .contains(name)
     }
 
     pub fn register(&self, tool: Arc<dyn Tool>) {
@@ -208,6 +232,10 @@ impl ToolRegistry {
     }
 
     pub fn remove(&self, name: &str) -> bool {
+        self.disabled
+            .write()
+            .unwrap_or_else(|error| error.into_inner())
+            .remove(name);
         self.tools
             .write()
             .unwrap_or_else(|error| error.into_inner())
@@ -216,6 +244,9 @@ impl ToolRegistry {
     }
 
     pub fn get(&self, name: &str) -> Option<Arc<dyn Tool>> {
+        if self.is_disabled(name) {
+            return None;
+        }
         self.tools
             .read()
             .unwrap_or_else(|error| error.into_inner())
@@ -225,22 +256,33 @@ impl ToolRegistry {
 
     pub fn snapshot(&self) -> Vec<Arc<dyn Tool>> {
         let tools = self.tools.read().unwrap_or_else(|error| error.into_inner());
-        let mut snapshot: Vec<Arc<dyn Tool>> = tools.values().cloned().collect();
+        let mut snapshot: Vec<Arc<dyn Tool>> = tools
+            .iter()
+            .filter(|(name, _)| !self.is_disabled(name))
+            .map(|(_, tool)| tool.clone())
+            .collect();
         snapshot.sort_by(|left, right| left.name().cmp(right.name()));
         snapshot
     }
 
     pub fn definitions(&self) -> Vec<ToolDefinition> {
         let tools = self.tools.read().unwrap_or_else(|error| error.into_inner());
-        let mut definitions: Vec<ToolDefinition> =
-            tools.values().map(|tool| tool.definition()).collect();
+        let mut definitions: Vec<ToolDefinition> = tools
+            .iter()
+            .filter(|(name, _)| !self.is_disabled(name))
+            .map(|(_, tool)| tool.definition())
+            .collect();
         definitions.sort_by(|left, right| left.name.cmp(&right.name));
         definitions
     }
 
     pub fn names(&self) -> Vec<String> {
         let tools = self.tools.read().unwrap_or_else(|error| error.into_inner());
-        let mut names: Vec<String> = tools.keys().cloned().collect();
+        let mut names: Vec<String> = tools
+            .keys()
+            .filter(|name| !self.is_disabled(name))
+            .cloned()
+            .collect();
         names.sort_unstable();
         names
     }
