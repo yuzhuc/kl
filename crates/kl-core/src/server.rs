@@ -643,6 +643,11 @@ fn spawn_connection<R: BufRead + Send + 'static, W: Write + Send + 'static>(
             if writer.write_all(line.as_bytes()).is_err() {
                 break;
             }
+            // rustls' Write may report success after swallowing a transport
+            // error; flush drains the TLS buffer and surfaces it.
+            if writer.flush().is_err() {
+                break;
+            }
         }
     });
     let core = Arc::clone(&state.core);
