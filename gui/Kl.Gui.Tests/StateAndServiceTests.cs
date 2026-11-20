@@ -22,7 +22,6 @@ public sealed class StateAndServiceTests
         {
             Endpoint = "http://localhost:9999",
             Model = "test-model",
-            ApiKeyEnvironmentVariable = "TEST_KEY",
             PermissionMode = "按需确认",
             InteractionMode = "chat",
             IsAddProjectPinned = true,
@@ -170,25 +169,43 @@ public sealed class StateAndServiceTests
     }
 
     [Fact]
-    public void StateStoreKeepsApiKeyOutsideStateJson()
+    public void StateStoreNeverTouchesCredentialFiles()
     {
         using var temp = new TempDirectory();
         var statePath = Path.Combine(temp.Path, "gui", "state.json");
         var credentialPath = Path.Combine(temp.Path, "credentials", "deepseek.key");
-        var store = new StateStore(statePath, credentialPath: credentialPath);
-        var state = new AppState { ApiKey = "secret-key", CompressHistory = false };
+        Directory.CreateDirectory(Path.GetDirectoryName(credentialPath)!);
+        File.WriteAllText(credentialPath, "core-key\n");
+        var store = new StateStore(statePath);
 
+        var state = store.Load();
+        Assert.Equal("core-key\n", File.ReadAllText(credentialPath));
+
+        state.CompressHistory = false;
         store.Save(state);
 
-        Assert.True(File.Exists(credentialPath));
-        Assert.Equal("secret-key", File.ReadAllText(credentialPath));
-        Assert.DoesNotContain("secret-key", File.ReadAllText(statePath));
-        Assert.DoesNotContain("\"ApiKey\"", File.ReadAllText(statePath));
-        Assert.Equal("secret-key", store.Load().ApiKey);
+        Assert.Equal("core-key\n", File.ReadAllText(credentialPath));
+        var json = File.ReadAllText(statePath);
+        Assert.DoesNotContain("core-key", json);
+        Assert.DoesNotContain("\"ApiKey\"", json);
+    }
 
-        state.ApiKey = string.Empty;
+    [Fact]
+    public void StateStoreSaveDropsLegacyApiKey()
+    {
+        using var temp = new TempDirectory();
+        var statePath = Path.Combine(temp.Path, "gui", "state.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(statePath)!);
+        File.WriteAllText(statePath, """{"ApiKey":"legacy","Model":"kept"}""");
+        var store = new StateStore(statePath);
+
+        var state = store.Load();
+        state.CompressHistory = false;
         store.Save(state);
-        Assert.False(File.Exists(credentialPath));
+
+        var json = File.ReadAllText(statePath);
+        Assert.DoesNotContain("legacy", json);
+        Assert.Contains("kept", json);
     }
 
     [Fact]
@@ -255,7 +272,6 @@ public sealed class StateAndServiceTests
 
         Assert.Equal(Path.Combine(home, "gui"), paths.GuiDirectory);
         Assert.Equal(Path.Combine(home, "gui", "state.json"), paths.StateFilePath);
-        Assert.Equal(Path.Combine(home, "credentials", "deepseek.key"), paths.ApiKeyFilePath);
         Assert.Equal(Path.Combine(home, "plugins"), paths.PluginsDirectoryPath);
         Assert.Equal(paths.StateFilePath, new StateStore(dataPaths: paths).Path);
         Assert.Equal(paths.PluginsDirectoryPath, new LocalPluginCatalogService(dataPaths: paths).DirectoryPath);

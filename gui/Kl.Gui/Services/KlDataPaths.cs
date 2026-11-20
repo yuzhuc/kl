@@ -27,7 +27,6 @@ public sealed class KlDataPaths
         StateFilePath = Path.Combine(GuiDirectory, "state.json");
         PluginsDirectoryPath = Path.Combine(HomeDirectory, "plugins");
         CredentialsDirectoryPath = Path.Combine(HomeDirectory, "credentials");
-        ApiKeyFilePath = Path.Combine(CredentialsDirectoryPath, "deepseek.key");
         AgentsFilePath = Path.Combine(HomeDirectory, "AGENTS.md");
         RemoteTokenFilePath = Path.Combine(CredentialsDirectoryPath, "core.token");
         _legacyHarnessDirectory = Path.Combine(
@@ -43,7 +42,6 @@ public sealed class KlDataPaths
     public string StateFilePath { get; }
     public string PluginsDirectoryPath { get; }
     public string CredentialsDirectoryPath { get; }
-    public string ApiKeyFilePath { get; }
     public string AgentsFilePath { get; }
     public string RemoteTokenFilePath { get; }
 

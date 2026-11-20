@@ -64,6 +64,19 @@ def main() -> int:
     run(["cargo", cargo_command, "--release", "--target", args.rust_target, "-p", "kl-core"])
     run(
         [
+            "cargo",
+            cargo_command,
+            "--release",
+            "--target",
+            args.rust_target,
+            "-p",
+            "kl-sandbox",
+            "--bin",
+            "kl-sandbox-runner",
+        ]
+    )
+    run(
+        [
             "dotnet",
             "publish",
             "tui/Kl.Tui/Kl.Tui.csproj",
@@ -111,10 +124,16 @@ def main() -> int:
     core = cargo_target / args.rust_target / "release" / str(layout["core"])
     if not core.is_file():
         raise SystemExit(f"core binary not found: {core}")
+    runner_name = "kl-sandbox-runner.exe" if args.rid.startswith("win") else "kl-sandbox-runner"
+    runner = cargo_target / args.rust_target / "release" / runner_name
+    if not runner.is_file():
+        raise SystemExit(f"sandbox runner binary not found: {runner}")
     shutil.copy2(core, output / str(layout["core"]))
+    shutil.copy2(runner, output / runner_name)
     if args.gui:
         # The GUI discovers kl-core next to its own executable.
         shutil.copy2(core, gui_output / str(layout["core"]))
+        shutil.copy2(runner, gui_output / runner_name)
 
     schema_target = output / "schemas"
     if schema_target.exists():
@@ -136,6 +155,7 @@ def main() -> int:
 
     assert_binary_format(output / str(layout["exe"]), args.rid)
     assert_binary_format(output / str(layout["core"]), args.rid)
+    assert_binary_format(output / runner_name, args.rid)
 
     checksum = archive.with_name(archive.name + ".sha256")
     checksum.unlink(missing_ok=True)

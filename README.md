@@ -136,9 +136,10 @@ to the executable.
 - Persistent sessions with event projection, resume, fork and approval rules.
 - Optional local server with attach/replay, sequence de-duplication, reconnect,
   one-writer session leases and read-only observer clients.
-- Remote Core over TCP (`kl-core --serve --listen host:port --token ...`);
-  GUI, TUI and CLI clients connect with `KL_CORE_ENDPOINT` / `KL_CORE_TOKEN`
-  (see `docs/remote-core.md`).
+- Remote Core over TCP or TLS (`kl-core --serve --listen host:port --token ...`,
+  optional `--tls-cert` / `--tls-key` with a pinned fingerprint); GUI, TUI and
+  CLI clients connect with `KL_CORE_ENDPOINT` / `KL_CORE_TOKEN` /
+  `KL_CORE_TLS_FINGERPRINT` (see `docs/remote-core.md`).
 - Avalonia desktop GUI over `Kl.Client`: session list and rich history,
   streaming assistant/reasoning events, tool cards with diffs, `allow` /
   `allow_session` / `deny` approvals, cancel, Core status with retry, and
@@ -164,10 +165,11 @@ KL reads user configuration from `~/.kl/`:
   sessions, messages and events are owned by Core under `sessions/`.
 - `plugins/` — shared local plugin directory used by the GUI and Core.
 
-The GUI settings page shows Core runtime information (version, protocol,
-provider/model, API-key configured flag, Core path and KL home) read-only;
-provider, model and credential changes are made in the Core configuration. The
-GUI automatically migrates legacy `%LOCALAPPDATA%\DeepSeekHarnessGui` data into
+The GUI settings page reads Core runtime information (version, protocol,
+provider/model, API-key configured flag, Core path and KL home). Provider,
+model and credential changes are written through Core RPCs; the GUI never reads
+`credentials/*.key` and only shows whether a key is configured. The GUI
+automatically migrates legacy `%LOCALAPPDATA%\DeepSeekHarnessGui` data into
 `~/.kl/gui` and removes the old directory.
 
 Workspace-level `AGENTS.md`, `.kl/memory/` and project skills are discovered.
@@ -212,11 +214,14 @@ and the release matrix in
 ## Known gaps
 
 - Real Provider/MCP live smoke requires credentials or a local MCP server.
-- Windows release packaging still needs `kl-sandbox-runner.exe` included and a
-  packaged `kl serve` smoke test.
-- The GUI is a Core client in local development builds; release packaging for
-  the GUI and its automatic multi-window reconnect UX are Phase 2 work.
-- Provider prompt caching is not complete. Session rewind is available through `turn.start` (`rewind_from_seq`); tool side effects are audit-logged and are not undone.
+- A packaged `kl serve` smoke test is still pending; Windows bundles now include
+  `kl-sandbox-runner.exe`.
+- The GUI is a Core client and ships in release bundles; launching the packaged
+  app on real runners and the automatic multi-window reconnect UX are Phase 2.
+- Provider prompt caching is not complete. Session rewind is available through
+  `turn.start` (`rewind_from_seq`); it hides the old event interval from history
+  and attach replay, but does not undo tool side effects. Forked sessions copy
+  messages without their events, so rewind/regenerate is unavailable there.
 - MCP servers start in the Core startup workspace, not a per-session workspace.
 - PTY under Windows AppContainer fails closed because that backend cannot be
   wrapped by an external PTY runner.

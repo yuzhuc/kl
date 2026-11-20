@@ -60,7 +60,9 @@ tool, calls a provider or evaluates policy itself.
   skip the initial replay while still recording `last_seq`.
 - `session.lease` enforces one writer per session; a second client remains
   attached as a read-only observer. `session.detach` releases the subscription
-  and lease.
+  and lease. Rename, delete, archive and compact are rejected while another
+  client holds the lease; sessions nobody has leased can still be managed from
+  the history list. `session.fork` only reads its source and stays available.
 - Core events are notifications with `method: "event"` and a per-session,
   monotonically increasing `seq`. Clients de-duplicate by `session_id + seq`.
 - `schemas/protocol/v1` is the contract; Rust, schema and C# constants are
@@ -171,12 +173,13 @@ The GUI keeps this boundary in `gui/Kl.Gui/Services/CoreSessionService.cs`
 (session lifecycle and protocol requests), `CoreSessionPresenter.cs`
 (event/approval bridge), `CoreProtocolModels.cs` (protocol response parsing) and
 `ViewModels/MainWindowViewModel.Core.cs` (event-to-UI mapping). The GUI settings
-page shows Core runtime information read-only (version, protocol, provider and
-model, API-key configured flag, Core path and KL home); provider, model and
-credential changes belong to Core. Automation runs each task in a throwaway Core
-session and stores only the result. A GUI window that attaches to a session
-whose write lease is held elsewhere becomes a read-only observer and is rendered
-as such.
+page reads Core runtime information (version, protocol, provider and model,
+API-key configured flag, Core path and KL home); provider, model and credential
+changes are written through Core RPCs. The GUI never reads `credentials/*.key`
+and only shows whether a key is configured. Automation runs each task in a
+throwaway Core session and stores only the result. A GUI window that attaches to
+a session whose write lease is held elsewhere becomes a read-only observer and
+is rendered as such.
 
 ## Release
 
@@ -198,10 +201,13 @@ packaged binaries really match them. Adding or removing a RID requires an ADR
 - GUI packaging smoke on real Windows/macOS release runners: the bundle now
   includes the GUI with `kl-core` under `gui/`, but the packaged app has not
   been launched in CI.
-- Windows release bundle must include `kl-sandbox-runner.exe`; packaged
-  `kl serve` smoke coverage is still pending.
+- Packaged `kl serve` smoke coverage is still pending; Windows bundles include
+  `kl-sandbox-runner.exe`.
 - Real provider/MCP live smoke with credentials.
 - Provider prompt caching.
-- MCP resources/OAuth. Session rewind exists (`turn.start.rewind_from_seq`) as a marked event interval; it does not undo tool side effects.
+- MCP resources/OAuth. Session rewind exists (`turn.start.rewind_from_seq`) as a
+  marked event interval; it hides the old branch from history and attach replay
+  but does not undo tool side effects. Forked sessions copy messages without
+  events, so their history has no rewind targets.
 - Per-session MCP workspace.
 - Repository split.

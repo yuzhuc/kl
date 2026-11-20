@@ -81,6 +81,9 @@ public interface ICoreSessionService : IAsyncDisposable
     /// <summary>Deletes a session (and its attachments) from the session store.</summary>
     Task DeleteSessionAsync(string sessionId, CancellationToken cancellationToken);
 
+    /// <summary>Renames a session in Core.</summary>
+    Task RenameSessionAsync(string sessionId, string name, CancellationToken cancellationToken);
+
     /// <summary>Forks the open session in Core and returns the new session id.</summary>
     Task<string> ForkAsync(CancellationToken cancellationToken);
 
@@ -755,6 +758,23 @@ public sealed class CoreSessionService : ICoreSessionService
             .ConfigureAwait(false);
     }
 
+    public async Task RenameSessionAsync(string sessionId, string name, CancellationToken cancellationToken)
+    {
+        var parameters = new { session_id = sessionId, name };
+        if (_session is { } session)
+        {
+            await session.RequestAsync(Protocol.SessionRename, parameters, cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        await using var client = await KlCoreClient
+            .ConnectOrStartAsync(_catalogOptions, cancellationToken)
+            .ConfigureAwait(false);
+        await client.RequestAsync(Protocol.SessionRename, parameters, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task ArchiveAsync(string sessionId, bool archived, CancellationToken cancellationToken)
     {
         var parameters = new { session_id = sessionId, archived };
@@ -1106,6 +1126,9 @@ public sealed class UnavailableCoreSessionService : ICoreSessionService
         Task.CompletedTask;
 
     public Task DeleteSessionAsync(string sessionId, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+
+    public Task RenameSessionAsync(string sessionId, string name, CancellationToken cancellationToken) =>
         Task.CompletedTask;
 
     public Task<CoreCatalogSnapshot> LoadSnapshotAsync(CancellationToken cancellationToken) =>

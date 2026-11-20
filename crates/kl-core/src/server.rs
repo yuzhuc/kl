@@ -23,7 +23,7 @@ use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::{
     Arc, Mutex,
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     mpsc,
 };
 use std::thread;
@@ -33,6 +33,9 @@ const DEFAULT_ENDPOINT: &str = "kl-core";
 const DEFAULT_LEASE_MS: u64 = 300_000;
 const MAX_LEASE_MS: u64 = 86_400_000;
 const TLS_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
+const TLS_WRITE_TIMEOUT: Duration = Duration::from_secs(30);
+const MAX_PENDING_LINES: usize = 1024;
+const MAX_TCP_CONNECTIONS: usize = 64;
 
 /// Loads a certificate chain and private key, prints the leaf fingerprint and
 /// returns the server config used for `--listen --tls-cert/--tls-key`.
@@ -194,9 +197,17 @@ struct TlsWriter {
 
 impl Write for TlsWriter {
     fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        let deadline = Instant::now() + TLS_WRITE_TIMEOUT;
         loop {
             if self.state.closed.load(Ordering::SeqCst) {
                 return Err(TlsState::stream_closed());
+            }
+            if Instant::now() >= deadline {
+                self.state.close();
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "TLS write timed out",
+                ));
             }
             let mut guard = self
                 .state
@@ -226,9 +237,17 @@ impl Write for TlsWriter {
     }
 
     fn flush(&mut self) -> io::Result<()> {
+        let deadline = Instant::now() + TLS_WRITE_TIMEOUT;
         loop {
             if self.state.closed.load(Ordering::SeqCst) {
                 return Err(TlsState::stream_closed());
+            }
+            if Instant::now() >= deadline {
+                self.state.close();
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "TLS flush timed out",
+                ));
             }
             let mut guard = self
                 .state
@@ -294,7 +313,7 @@ fn accept_tls(
 #[derive(Clone)]
 struct Broadcaster {
     next_id: Arc<AtomicU64>,
-    subscribers: Arc<Mutex<HashMap<u64, mpsc::Sender<String>>>>,
+    subscribers: Arc<Mutex<HashMap<u64, mpsc::SyncSender<String>>>>,
 }
 
 impl Broadcaster {
@@ -305,9 +324,9 @@ impl Broadcaster {
         }
     }
 
-    fn subscribe(&self) -> (u64, mpsc::Sender<String>, mpsc::Receiver<String>) {
+    fn subscribe(&self) -> (u64, mpsc::SyncSender<String>, mpsc::Receiver<String>) {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let (sender, receiver) = mpsc::channel();
+        let (sender, receiver) = mpsc::sync_channel(MAX_PENDING_LINES);
         self.subscribers
             .lock()
             .unwrap_or_else(|error| error.into_inner())
@@ -323,7 +342,7 @@ impl Broadcaster {
     }
 
     fn broadcast(&self, line: String) {
-        let subscribers: Vec<(u64, mpsc::Sender<String>)> = self
+        let subscribers: Vec<(u64, mpsc::SyncSender<String>)> = self
             .subscribers
             .lock()
             .unwrap_or_else(|error| error.into_inner())
@@ -332,7 +351,8 @@ impl Broadcaster {
             .collect();
         let mut closed = Vec::new();
         for (id, sender) in subscribers {
-            if sender.send(line.clone()).is_err() {
+            if sender.try_send(line.clone()).is_err() {
+                eprintln!("kl-core removing slow client {id} from event broadcast");
                 closed.push(id);
             }
         }
@@ -414,6 +434,13 @@ impl LeaseTable {
             .is_some_and(|lease| lease.owner == owner)
     }
 
+    fn held_by_other(&mut self, session_id: &str, owner: u64) -> bool {
+        self.expire();
+        self.leases
+            .get(session_id)
+            .is_some_and(|lease| lease.owner != owner)
+    }
+
     fn release_owner(&mut self, owner: u64) {
         self.leases.retain(|_, lease| lease.owner != owner);
     }
@@ -456,7 +483,7 @@ pub fn run_server(
             }
         };
         let (reader, writer) = stream.split();
-        spawn_connection(&state, BufReader::new(reader), writer);
+        spawn_connection(&state, BufReader::new(reader), writer, None);
     }
     Ok(())
 }
@@ -485,6 +512,7 @@ pub fn run_tcp_server(
     };
     let endpoint = format!("{scheme}://{bound}");
     let state = start_server(context, transport.to_owned(), endpoint, token)?;
+    let active = Arc::new(AtomicUsize::new(0));
     for connection in listener.incoming() {
         let stream = match connection {
             Ok(stream) => stream,
@@ -493,24 +521,43 @@ pub fn run_tcp_server(
                 continue;
             }
         };
+        let peer = stream
+            .peer_addr()
+            .map(|address| address.to_string())
+            .unwrap_or_else(|_| "unknown".to_owned());
+        if active.fetch_add(1, Ordering::Relaxed) >= MAX_TCP_CONNECTIONS {
+            active.fetch_sub(1, Ordering::Relaxed);
+            eprintln!("kl-core connection limit ({MAX_TCP_CONNECTIONS}) reached; rejecting {peer}");
+            continue;
+        }
+        let slot = ConnectionSlot(Arc::clone(&active));
         if let Some(config) = tls_config.clone() {
             let connection_state = state.clone();
             thread::spawn(move || match accept_tls(config, stream) {
                 Ok((reader, writer)) => {
-                    spawn_connection(&connection_state, BufReader::new(reader), writer);
+                    spawn_connection(
+                        &connection_state,
+                        BufReader::new(reader),
+                        writer,
+                        Some(slot),
+                    );
                 }
-                Err(error) => eprintln!("kl-core TLS handshake failed: {error}"),
+                Err(error) => {
+                    eprintln!("kl-core TLS handshake failed for {peer}: {error}");
+                    drop(slot);
+                }
             });
             continue;
         }
         let writer = match stream.try_clone() {
             Ok(writer) => writer,
             Err(error) => {
-                eprintln!("kl-core server connection failed: {error}");
+                eprintln!("kl-core server connection failed for {peer}: {error}");
+                drop(slot);
                 continue;
             }
         };
-        spawn_connection(&state, BufReader::new(stream), writer);
+        spawn_connection(&state, BufReader::new(stream), writer, Some(slot));
     }
     Ok(())
 }
@@ -570,10 +617,19 @@ fn start_server(
     })
 }
 
+struct ConnectionSlot(Arc<AtomicUsize>);
+
+impl Drop for ConnectionSlot {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
 fn spawn_connection<R: BufRead + Send + 'static, W: Write + Send + 'static>(
     state: &ServerState,
     reader: R,
     writer: W,
+    slot: Option<ConnectionSlot>,
 ) {
     let (client_id, response_tx, receiver) = state.broadcaster.subscribe();
     let subscriptions = Arc::new(Mutex::new(HashSet::new()));
@@ -609,11 +665,12 @@ fn spawn_connection<R: BufRead + Send + 'static, W: Write + Send + 'static>(
         );
         broadcaster.unsubscribe(client_id);
         let _ = writer_task.join();
+        drop(slot);
     });
 }
 
 struct ClientConnection {
-    response_tx: mpsc::Sender<String>,
+    response_tx: mpsc::SyncSender<String>,
     core: Arc<Mutex<Core>>,
     leases: Arc<Mutex<LeaseTable>>,
     server_info: ServerInfoResult,
@@ -719,38 +776,71 @@ fn handle_client<R: BufRead>(receiver: R, connection: ClientConnection) {
                     handle_lease(id, &message.params, &core, &leases, client_id)
                 }
                 _ => {
-                    if let Some(session_id) = lease_required_session(&method, &message.params)
-                        && !leases
-                            .lock()
-                            .unwrap_or_else(|error| error.into_inner())
-                            .owns(&session_id, client_id)
-                    {
+                    let missing_compact_session = method == methods::SESSION_COMPACT
+                        && message
+                            .params
+                            .get("session_id")
+                            .and_then(Value::as_str)
+                            .is_none_or(|session_id| session_id.trim().is_empty())
+                        && current_session
+                            .as_deref()
+                            .is_none_or(|session_id| session_id.is_empty());
+                    if missing_compact_session {
                         failure(
                             Some(id),
-                            error_codes::LEASE_REQUIRED,
-                            format!("lease required for {session_id}"),
+                            error_codes::INVALID_PARAMS,
+                            "session_id is required for session.compact over the server",
                         )
                     } else {
-                        let response = {
-                            let mut core = core.lock().unwrap_or_else(|error| error.into_inner());
-                            let previous_handshaken = core.handshaken;
-                            let previous_session = core.current_session.clone();
-                            core.handshaken = handshaken;
-                            core.current_session = current_session.clone();
-                            let response = core.handle_request(&line);
-                            handshaken = core.handshaken;
-                            current_session = core.current_session.clone();
-                            core.handshaken = previous_handshaken;
-                            core.current_session = previous_session;
-                            response
+                        let requirement = lease_required_session(
+                            &method,
+                            &message.params,
+                            current_session.as_deref(),
+                        );
+                        let allowed = match &requirement {
+                            Some((session_id, must_own)) => {
+                                let mut leases =
+                                    leases.lock().unwrap_or_else(|error| error.into_inner());
+                                if *must_own {
+                                    leases.owns(session_id, client_id)
+                                } else {
+                                    !leases.held_by_other(session_id, client_id)
+                                }
+                            }
+                            None => true,
                         };
-                        response.unwrap_or_else(|| {
+                        if !allowed {
+                            let session_id = requirement
+                                .map(|(session_id, _)| session_id)
+                                .unwrap_or_default();
                             failure(
                                 Some(id),
-                                error_codes::INVALID_REQUEST,
-                                "request has no response",
+                                error_codes::LEASE_REQUIRED,
+                                format!("lease required for {session_id}"),
                             )
-                        })
+                        } else {
+                            let response = {
+                                let mut core =
+                                    core.lock().unwrap_or_else(|error| error.into_inner());
+                                let previous_handshaken = core.handshaken;
+                                let previous_session = core.current_session.clone();
+                                core.handshaken = handshaken;
+                                core.current_session = current_session.clone();
+                                let response = core.handle_request(&line);
+                                handshaken = core.handshaken;
+                                current_session = core.current_session.clone();
+                                core.handshaken = previous_handshaken;
+                                core.current_session = previous_session;
+                                response
+                            };
+                            response.unwrap_or_else(|| {
+                                failure(
+                                    Some(id),
+                                    error_codes::INVALID_REQUEST,
+                                    "request has no response",
+                                )
+                            })
+                        }
                     }
                 }
             }
@@ -789,7 +879,7 @@ fn handle_attach(
         Err(error) => return failure(Some(id), error_codes::INTERNAL_ERROR, error.to_string()),
     };
     let after_seq = params.after_seq.unwrap_or(0);
-    let last_seq = events.last().map(|event| event.seq).unwrap_or(0);
+    let last_seq = events.iter().map(|event| event.seq).max().unwrap_or(0);
     let rewinds: Vec<(u64, u64)> = events
         .iter()
         .filter_map(|event| match &event.event {
@@ -905,17 +995,35 @@ fn handle_lease(
     }
 }
 
-fn lease_required_session(method: &str, params: &Value) -> Option<String> {
-    if !matches!(
+/// Returns the session a request must be gated on, and whether the caller must
+/// own the lease (`true`) or merely must not be blocked by another owner.
+fn lease_required_session(
+    method: &str,
+    params: &Value,
+    current_session: Option<&str>,
+) -> Option<(String, bool)> {
+    let must_own = matches!(
         method,
         methods::TURN_START | methods::TURN_CANCEL | methods::APPROVAL_RESPOND
-    ) {
+    );
+    // session.fork only reads the source and creates a new session, so it is
+    // deliberately not gated here.
+    let session_id = if matches!(method, methods::SESSION_COMPACT) {
+        params
+            .get("session_id")
+            .and_then(Value::as_str)
+            .or(current_session)
+    } else if must_own
+        || matches!(
+            method,
+            methods::SESSION_RENAME | methods::SESSION_DELETE | methods::SESSION_ARCHIVE
+        )
+    {
+        params.get("session_id").and_then(Value::as_str)
+    } else {
         return None;
-    }
-    params
-        .get("session_id")
-        .and_then(Value::as_str)
-        .map(str::to_owned)
+    };
+    session_id.map(|session_id| (session_id.to_owned(), must_own))
 }
 
 fn should_forward(line: &str, subscriptions: &Arc<Mutex<HashSet<String>>>) -> bool {
@@ -937,7 +1045,7 @@ fn should_forward(line: &str, subscriptions: &Arc<Mutex<HashSet<String>>>) -> bo
         .unwrap_or_else(|error| error.into_inner())
         .contains(session_id)
 }
-fn send_response(tx: &mpsc::Sender<String>, value: Value) -> io::Result<()> {
+fn send_response(tx: &mpsc::SyncSender<String>, value: Value) -> io::Result<()> {
     let mut line = serde_json::to_vec(&value).map_err(io::Error::other)?;
     line.push(b'\n');
     tx.send(String::from_utf8_lossy(&line).into_owned())
@@ -973,5 +1081,20 @@ fn create_listener(
             // Existing endpoints fail closed; the server must not steal a live listener.
             .create_sync()?;
         Ok((listener, "unix-socket".to_owned(), text))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn slow_subscriber_is_removed_after_backlog() {
+        let broadcaster = Broadcaster::new();
+        let (id, _sender, _receiver) = broadcaster.subscribe();
+        for _ in 0..=MAX_PENDING_LINES {
+            broadcaster.broadcast("event\n".to_owned());
+        }
+        assert!(!broadcaster.subscribers.lock().unwrap().contains_key(&id));
     }
 }

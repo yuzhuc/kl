@@ -1665,6 +1665,28 @@ public sealed class MainWindowViewModelCoreTests
     }
 
     [Fact]
+    public async Task ConversationRewoundReloadsTheTranscript()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        var core = new FakeCoreSessionService();
+        var vm = CreateWithSession(temp, store, core, RewindHistoryJson);
+        await vm.OpenSessionAsync(Assert.Single(vm.Workspaces[0].Sessions));
+        Assert.Equal(4, vm.Messages.Count);
+
+        core.HistoryJson = """{"messages":[{"role":"user","text":"rewound","seq":1}]}""";
+        core.Raise(new SessionEvent(
+            SessionEventKind.ConversationRewound,
+            Seq: 9,
+            RewindFromSeq: 5));
+        await Task.Yield();
+
+        var only = Assert.Single(vm.Messages);
+        Assert.True(only.IsUser);
+        Assert.Equal("rewound", only.Text);
+    }
+
+    [Fact]
     public async Task OpenSessionFailureSurfacesTheCoreError()
     {
         using var temp = new TempDirectory();
@@ -2208,28 +2230,33 @@ public sealed class MainWindowViewModelCoreTests
     }
 
     [Fact]
-    public async Task ProviderDetailLoadsLocalApiKeyAndTogglesVisibility()
+    public async Task ProviderDetailNeverReadsLocalKeyAndSavesThroughCore()
     {
         using var temp = new TempDirectory();
         var store = temp.CreateStore();
         TestData.Seed(store, temp.Path);
         var credentials = Path.Combine(temp.Path, "credentials");
         Directory.CreateDirectory(credentials);
-        File.WriteAllText(Path.Combine(credentials, "deepseek.key"), "sk-local\n");
-        var (vm, _) = Create(temp, store, new FakeCoreSessionService { Snapshot = Snapshot("deepseek", "deepseek-chat") });
+        var keyPath = Path.Combine(credentials, "deepseek.key");
+        File.WriteAllText(keyPath, "sk-local\n");
+        var core = new FakeCoreSessionService { Snapshot = Snapshot("deepseek", "deepseek-chat") };
+        var (vm, _) = Create(temp, store, core);
         await vm.TestConnectionAsync();
 
         vm.OpenProviderDetail(Assert.Single(vm.ProviderCards));
 
-        Assert.Equal("sk-local", vm.ProviderDetailApiKey);
-        Assert.Equal('•', vm.ProviderApiKeyPasswordChar);
-        vm.IsProviderApiKeyVisible = true;
-        Assert.Equal((char)0, vm.ProviderApiKeyPasswordChar);
+        Assert.Empty(vm.ProviderDetailApiKey);
+        vm.ProviderDetailApiKey = "sk-new";
+        await vm.SaveProviderDetailApiKeyAsync();
+
+        var key = Assert.Single(core.Requests, request => request.Method == Protocol.ProviderSetApiKey);
+        Assert.Equal("deepseek", FakeCoreSessionService.ReadParameter(key.Parameters, "id"));
+        Assert.Equal("sk-new", FakeCoreSessionService.ReadParameter(key.Parameters, "key"));
+        Assert.Empty(vm.ProviderDetailApiKey);
+        Assert.Equal("sk-local\n", File.ReadAllText(keyPath));
 
         vm.CloseProviderDetail();
-
         Assert.Empty(vm.ProviderDetailApiKey);
-        Assert.False(vm.IsProviderApiKeyVisible);
     }
 
 }

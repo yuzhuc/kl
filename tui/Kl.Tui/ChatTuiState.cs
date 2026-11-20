@@ -682,6 +682,26 @@ public sealed class ChatTuiState
     {
         switch (sessionEvent.Kind)
         {
+            case SessionEventKind.UserMessage:
+                // Own sends call AddUserMessage first; only mirror another client.
+                if (!IsTurnActive && !string.IsNullOrWhiteSpace(sessionEvent.Text))
+                {
+                    Transcript.Add(new TranscriptEntry(
+                        TranscriptKind.User,
+                        sessionEvent.Text));
+                    TranscriptScroll = 0;
+                }
+                break;
+            case SessionEventKind.ContextCompacted:
+                Transcript.Add(new TranscriptEntry(
+                    TranscriptKind.Info,
+                    $"[context] {sessionEvent.Text}"));
+                break;
+            case SessionEventKind.SandboxViolation:
+                Transcript.Add(new TranscriptEntry(
+                    TranscriptKind.Info,
+                    $"[sandbox] {sessionEvent.Action} {sessionEvent.Resource}: {sessionEvent.Text}"));
+                break;
             case SessionEventKind.TurnStarted:
                 IsTurnActive = true;
                 TurnStartedAt ??= DateTimeOffset.Now;

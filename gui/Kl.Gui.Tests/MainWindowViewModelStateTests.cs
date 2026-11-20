@@ -315,11 +315,12 @@ public sealed class MainWindowViewModelStateTests
     }
 
     [Fact]
-    public void SessionSearchRenameAndDeleteStayLocal()
+    public async Task SessionSearchRenameAndDeleteUpdateStateAndCore()
     {
         using var temp = new TempDirectory();
         var store = temp.CreateStore();
-        var vm = CreateWithSessions(temp, store, new FakeCoreSessionService(), "标题A", "标题B");
+        var core = new FakeCoreSessionService();
+        var vm = CreateWithSessions(temp, store, core, "标题A", "标题B");
         var workspace = Assert.Single(vm.Workspaces);
         Assert.Equal(2, workspace.Sessions.Count);
 
@@ -333,16 +334,40 @@ public sealed class MainWindowViewModelStateTests
 
         vm.SearchText = string.Empty;
         var first = workspace.Sessions.Single(item => item.Title == "标题A");
+        var firstId = first.Id;
         vm.BeginRename(first);
         vm.RenameTitle = "重命名后的会话";
         vm.ConfirmRename();
+        await Task.Yield();
         Assert.Equal("重命名后的会话", first.Title);
+        Assert.Equal((firstId, "重命名后的会话"), Assert.Single(core.RenameCalls));
         Assert.Contains(store.Load().Workspaces[0].Sessions, item => item.Title == "重命名后的会话");
 
         vm.BeginDelete(first);
         vm.ConfirmDelete();
         Assert.Single(vm.Workspaces[0].Sessions);
         Assert.Single(store.Load().Workspaces[0].Sessions);
+    }
+
+    [Fact]
+    public async Task RenameFailureRestoresTheLocalTitle()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        var core = new FakeCoreSessionService
+        {
+            RenameFailure = new InvalidOperationException("core refused")
+        };
+        var vm = CreateWithSessions(temp, store, core, "标题A", "标题B");
+        var first = Assert.Single(vm.Workspaces).Sessions.Single(item => item.Title == "标题A");
+
+        vm.BeginRename(first);
+        vm.RenameTitle = "不会生效";
+        vm.ConfirmRename();
+        await Task.Yield();
+
+        Assert.Equal("标题A", first.Title);
+        Assert.Contains(store.Load().Workspaces[0].Sessions, item => item.Title == "标题A");
     }
 
     [Fact]

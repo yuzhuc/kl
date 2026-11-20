@@ -99,21 +99,13 @@ public sealed class KlSessionClient : IAsyncDisposable
         CancellationToken cancellationToken = default,
         Action<string>? progress = null)
     {
-        var endpoint = KlCoreClient.ResolveEndpoint(clientOptions);
-        var serverMode = endpoint is not null;
-        KlCoreClient client;
-        if (serverMode)
-        {
-            progress?.Invoke("connecting");
-            client = await KlCoreClient.ConnectAsync(clientOptions, cancellationToken)
+        // Reuse the catalog path so a stale discovered local pipe can fall back
+        // to stdio, while explicit or discovered TCP/TLS endpoints fail visibly.
+        progress?.Invoke("connecting");
+        var (client, connected) =
+            await KlCoreClient.ConnectOrStartWithModeAsync(clientOptions, cancellationToken)
                 .ConfigureAwait(false);
-        }
-        else
-        {
-            client = KlCoreClient.Start(clientOptions);
-            progress?.Invoke("handshaking");
-            await client.HandshakeAsync(cancellationToken).ConfigureAwait(false);
-        }
+        var serverMode = connected;
 
         KlSessionClient? session = null;
         try
@@ -745,6 +737,18 @@ public sealed class KlSessionClient : IAsyncDisposable
                         Seq: seq,
                         CallId: GetNullableString(data, "call_id"),
                         Output: toolOutput is null ? null : SanitizeToolOutput(toolOutput)),
+                    cancellationToken).ConfigureAwait(false);
+                break;
+            case "sandbox.violation":
+                await _presenter.OnEventAsync(
+                    new SessionEvent(
+                        SessionEventKind.SandboxViolation,
+                        Text: Sanitize(GetString(data, "message")),
+                        Action: GetString(data, "kind"),
+                        Resource: GetString(data, "resource"),
+                        TurnId: GetNullableString(data, "turn_id"),
+                        Seq: seq,
+                        CallId: GetNullableString(data, "call_id")),
                     cancellationToken).ConfigureAwait(false);
                 break;
             case "audit.recorded" when _sessionOptions.Verbose:

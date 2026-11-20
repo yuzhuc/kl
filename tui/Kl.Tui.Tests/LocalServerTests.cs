@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net.Sockets;
 using Xunit;
 
 namespace Kl.Tui.Tests;
@@ -241,6 +242,58 @@ public sealed class LocalServerTests
             }
         }
     }
+
+    [Fact]
+    public async Task DiscoveredTlsEndpointWithoutFingerprintDoesNotStartLocalCore()
+    {
+        var root = TempHome();
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "server.json"), """
+                {"endpoint":"tls://127.0.0.1:1","pid":%PID%}
+                """.Replace("%PID%", Environment.ProcessId.ToString()));
+
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                KlCoreClient.ConnectOrStartAsync(new KlClientOptions
+                {
+                    HomePath = root,
+                    CorePath = Path.Combine(root, "missing-kl-core.exe")
+                }));
+
+            Assert.Contains("fingerprint", error.Message, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DiscoveredTlsEndpointDoesNotFallBackWhenUnreachable()
+    {
+        var root = TempHome();
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "server.json"), """
+                {"endpoint":"tls://127.0.0.1:1","pid":%PID%}
+                """.Replace("%PID%", Environment.ProcessId.ToString()));
+
+            var error = await Assert.ThrowsAnyAsync<Exception>(() =>
+                KlCoreClient.ConnectOrStartAsync(new KlClientOptions
+                {
+                    HomePath = root,
+                    CorePath = Path.Combine(root, "missing-kl-core.exe"),
+                    TlsFingerprint = new string('A', 64)
+                }));
+
+            Assert.IsType<SocketException>(error);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static string TempHome()
     {
         var root = Path.Combine(

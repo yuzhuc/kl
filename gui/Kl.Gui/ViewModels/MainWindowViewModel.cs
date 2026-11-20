@@ -4955,7 +4955,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         RaiseEditState();
         if (item.Seq is null)
         {
-            ErrorMessage = "这条消息早于当前历史记录，只能作为新消息发送。";
+            ErrorMessage = "这条消息没有关联的事件记录（可能来自 fork 或导入），只能作为新消息发送。";
         }
     }
 
@@ -4989,7 +4989,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
         if (target?.Seq is null)
         {
-            ErrorMessage = "无法定位这条回复对应的用户消息（可能已被压缩）。";
+            ErrorMessage = "无法定位这条回复对应的用户记录（可能已被压缩、来自 fork 或导入）。";
             return;
         }
 
@@ -5019,7 +5019,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
         if (user.Seq is null)
         {
-            ErrorMessage = "无法定位这条消息（可能已被压缩）。";
+            ErrorMessage = "无法定位这条消息（可能已被压缩、来自 fork 或导入）。";
             return;
         }
 
@@ -5910,8 +5910,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         ProviderEditWebsite = provider.Website;
         ProviderEditStatus = string.Empty;
         ProviderDetailStatus = string.Empty;
-        ProviderDetailApiKey = ReadProviderApiKey(provider.Id);
-        IsProviderApiKeyVisible = false;
+        ProviderDetailApiKey = string.Empty;
         IsProviderDeleteConfirmOpen = false;
         ProviderModels.Clear();
         foreach (var model in provider.Models)
@@ -5946,7 +5945,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
         ProviderDetailStatus = string.Empty;
         ProviderConnectionStatus = string.Empty;
         ProviderDetailApiKey = string.Empty;
-        IsProviderApiKeyVisible = false;
         IsProviderDeleteConfirmOpen = false;
         ProviderModels.Clear();
         CloseProviderModelForm();
@@ -6909,21 +6907,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
         set => SetProperty(ref _providerDetailApiKey, value);
     }
 
-    private bool _isProviderApiKeyVisible;
-    public bool IsProviderApiKeyVisible
-    {
-        get => _isProviderApiKeyVisible;
-        set
-        {
-            if (SetProperty(ref _isProviderApiKeyVisible, value))
-            {
-                OnPropertyChanged(nameof(ProviderApiKeyPasswordChar));
-            }
-        }
-    }
-
-    public char ProviderApiKeyPasswordChar => IsProviderApiKeyVisible ? '\0' : '•';
-
     public async Task SaveProviderDetailApiKeyAsync()
     {
         var provider = _detailProvider;
@@ -6946,7 +6929,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             provider.SetKeyConfigured(true);
             if (ReferenceEquals(_detailProvider, provider))
             {
-                IsProviderApiKeyVisible = false;
+                ProviderDetailApiKey = string.Empty;
                 OnPropertyChanged(nameof(ProviderDetailKeyStatus));
             }
         }
@@ -6959,26 +6942,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
             {
                 ProviderDetailStatus = $"保存 API Key 失败：{error.Message}";
             }
-        }
-    }
-
-    private string ReadProviderApiKey(string id)
-    {
-        if (id.Length == 0
-            || id.Any(character => !(char.IsAsciiLetterOrDigit(character)
-                || character is '-' or '_' or '.')))
-        {
-            return string.Empty;
-        }
-
-        try
-        {
-            var path = Path.Combine(CredentialsDirectory, $"{id}.key");
-            return File.Exists(path) ? File.ReadAllText(path).Trim() : string.Empty;
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            return string.Empty;
         }
     }
 
@@ -8174,6 +8137,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(WorkspaceName));
         OnPropertyChanged(nameof(EmptyStateTitle));
         OnPropertyChanged(nameof(WorkspacePath));
+        OnPropertyChanged(nameof(CanRunReview));
 
         await CloseCoreSessionQuietlyAsync().ConfigureAwait(true);
         var recent = workspace.Sessions.FirstOrDefault();
@@ -8254,6 +8218,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 OnPropertyChanged(nameof(EmptyStateTitle));
         OnPropertyChanged(nameof(EmptyStateTitle));
                 OnPropertyChanged(nameof(WorkspacePath));
+                OnPropertyChanged(nameof(CanRunReview));
                 var recent = next.Sessions.FirstOrDefault();
                 if (recent is null)
                 {
@@ -8694,15 +8659,53 @@ public sealed partial class MainWindowViewModel : ObservableObject
             return;
         }
 
-        _dialogTarget.Title = title;
-        _dialogTarget.RefreshTime();
-        if (_dialogTarget.Id == _activeSession?.Id)
+        var target = _dialogTarget;
+        var sessionId = target.Id;
+        var oldTitle = target.Title;
+        target.Title = title;
+        target.RefreshTime();
+        if (target.Id == _activeSession?.Id)
         {
             SessionTitle = title;
         }
         CloseDialogs();
         UpdateSessionOrder();
         SaveState();
+        if (!string.IsNullOrWhiteSpace(sessionId))
+        {
+            _ = PushRenameAsync(target, sessionId, title, oldTitle);
+        }
+    }
+
+    /// <summary>Renames the session in Core and restores the local title if that fails.</summary>
+    private async Task PushRenameAsync(
+        SessionItemViewModel session,
+        string sessionId,
+        string title,
+        string oldTitle)
+    {
+        try
+        {
+            await _core.RenameSessionAsync(sessionId, title, CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is JsonRpcException
+            or IOException
+            or InvalidOperationException
+            or NotSupportedException)
+        {
+            _dispatch(() =>
+            {
+                session.Title = oldTitle;
+                if (session.Id == _activeSession?.Id)
+                {
+                    SessionTitle = oldTitle;
+                }
+                UpdateSessionOrder();
+                SaveState();
+                SetCoreStatus($"重命名失败：{error.Message}");
+            });
+        }
     }
 
     public void BeginDelete(SessionItemViewModel session)
@@ -10130,8 +10133,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
         var pinnedOrderSeed = 0;
         _state.Endpoint = string.IsNullOrWhiteSpace(_state.Endpoint) ? "https://api.deepseek.com" : _state.Endpoint.Trim();
         _state.Model = string.IsNullOrWhiteSpace(_state.Model) ? "deepseek-chat" : _state.Model.Trim();
-        _state.ApiKey ??= string.Empty;
-        _state.ApiKeyEnvironmentVariable = _state.ApiKeyEnvironmentVariable?.Trim() ?? string.Empty;
         if (string.Equals(_state.PermissionMode, "按需确认", StringComparison.Ordinal))
         {
             // The old two-mode label maps onto Codex's "请求批准".
@@ -10356,6 +10357,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(WorkspaceName));
         OnPropertyChanged(nameof(EmptyStateTitle));
         OnPropertyChanged(nameof(WorkspacePath));
+        OnPropertyChanged(nameof(CanRunReview));
         OnPropertyChanged(nameof(HeaderTitle));
         OnPropertyChanged(nameof(HasSessions));
         OnPropertyChanged(nameof(ShowNoSessions));
@@ -10387,6 +10389,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(WorkspaceName));
         OnPropertyChanged(nameof(EmptyStateTitle));
         OnPropertyChanged(nameof(WorkspacePath));
+        OnPropertyChanged(nameof(CanRunReview));
         OnPropertyChanged(nameof(HeaderTitle));
         OnPropertyChanged(nameof(UsageText));
         OnPropertyChanged(nameof(HasUsageText));

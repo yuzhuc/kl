@@ -24,15 +24,16 @@ Avalonia 桌面客户端，采用 kl 品牌和 Codex 风格界面。它是 **KL 
   （含 reasoning、工具 summary/output/diff）。
 - 流式聊天：`turn.started` / `turn.delta` / `turn.reasoning` / `turn.completed`，
   按 per-session `seq` 去重并可跟踪 `LastSeq`。
-- 工具卡片：参数、运行状态、有界输出、summary 与 diff（Phase 1 同一时刻展示一张活动卡片）。
+- 工具卡片：参数、运行状态、有界输出、summary 与 diff；按 `CallId` 路由，可同时展示多张工具卡片。
 - 审批：动作、资源、原因、参数与三决定（允许一次 / 本会话允许 / 拒绝；Esc 拒绝）。
 - 取消当前 Turn；按 use 统计 token（Core 报告 cost 时显示费用）。
 - 连接状态横幅与重试；另一客户端持有写租约时以只读观察者身份展示。
-- 设置 → 模型：只读显示 Core 运行时信息（连接状态、版本/协议、Provider/模型、
-  API Key 是否配置、Core 路径、KL Home）；Provider/模型/API Key 由 Core 配置管理。
+- 设置 → 模型：显示 Core 运行时信息（连接状态、版本/协议、Provider/模型、
+  API Key 是否配置、Core 路径、KL Home）；Provider/模型/API Key 的修改通过 Core RPC
+  完成，Key 始终掩码，GUI 不读取 `credentials/*.key`。
 - 设置 → 通用：权限模式（映射到 Core `permissions.set`）与内容字号。
 - 自动化：每个任务通过 `RunEphemeralTurnAsync` 在临时 Core 会话中执行，仅保存结果。
-- 插件页：继续扫描共享的 `~/.kl/plugins` 本地目录（Core `plugin.*` 管理属后续阶段）。
+- 插件页：插件、MCP 工具与技能通过 Core RPC/工作区读取；共享的 `~/.kl/plugins` 本地目录仍可使用。
 - 文本与代码附件会折叠进发给 Core 的 prompt；会话消息以 Core 为准。
 - 快捷键：Ctrl+N、Ctrl+Enter、Ctrl+F、Ctrl+,
 
@@ -62,8 +63,8 @@ GUI 自身状态（UI 缓存，不是会话真值）：
 - 旧版设置：`%USERPROFILE%\.kl\gui\gui-settings.json`。
 
 旧版 `%LOCALAPPDATA%\DeepSeekHarnessGui` 和 `%LOCALAPPDATA%\Kl\gui-settings.json`
-会在首次启动时自动迁移，随后删除旧目录。旧 state 中的 Endpoint/Model/ApiKey
-字段只用于迁移，不再驱动请求。
+会在首次启动时自动迁移，随后删除旧目录。旧 state 中的 `ApiKey` 字段会被忽略，
+并在首次保存 state 时清除；GUI 不读取或写入 `credentials/*.key`。
 
 环境变量覆盖：
 
@@ -87,7 +88,6 @@ dotnet test ..\Kl.Gui.Tests\Kl.Gui.Tests.csproj
 
 ## 已知限制（Phase 2）
 
-- 自动断线重连与观察者升级 UX 尚未接入（SDK 已支持 `LastSeq` 重连；当前为错误横幅 + 重试 + 重新打开会话）。
-- 并发工具卡片：SDK 的 `SessionEvent` 已提供 `Seq`/`CallId`，GUI Phase 1 仍按单活动卡片渲染。
-- GUI 发布尚未进入 release 归档（本地 build 已可用）。
-- Core `plugin.*` 管理、MCP/技能页面尚未接入 GUI。
+- 打包后的 GUI 尚未在真实 Windows/macOS release runner 上做启动冒烟；本地 `build.py` 已包含 GUI、`kl-core` 与 `kl-sandbox-runner`。
+- 多个 GUI 窗口共享同一份 `gui/state.json`，没有跨进程合并。
+- Provider 目录缓存与 MCP OAuth 仍留给后续阶段。

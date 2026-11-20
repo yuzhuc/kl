@@ -181,24 +181,40 @@ public sealed class KlCoreClient : IAsyncDisposable
     }
 
     /// <summary>
-    /// Connects to an explicit or discovered core endpoint; falls back to a
-    /// private stdio child when only a stale local server file is present.
+    /// Connects to an explicit or discovered core endpoint. Only a stale local
+    /// pipe/socket may fall back to a private stdio child; discovered TCP/TLS
+    /// endpoints fail visibly so a remote session never silently runs locally.
     /// </summary>
     public static async Task<KlCoreClient> ConnectOrStartAsync(
+        KlClientOptions options,
+        CancellationToken cancellationToken = default) =>
+        (await ConnectOrStartWithModeAsync(options, cancellationToken).ConfigureAwait(false)).Client;
+
+    /// <summary>
+    /// Same as <see cref="ConnectOrStartAsync"/> but reports whether the client
+    /// connected to a server endpoint (true) or started a stdio child (false).
+    /// </summary>
+    internal static async Task<(KlCoreClient Client, bool Connected)> ConnectOrStartWithModeAsync(
         KlClientOptions options,
         CancellationToken cancellationToken = default)
     {
         var explicitEndpoint = ResolveExplicitEndpoint(options);
         if (explicitEndpoint is not null)
         {
-            return await ConnectAsync(options, cancellationToken).ConfigureAwait(false);
+            return (await ConnectAsync(options, cancellationToken).ConfigureAwait(false), true);
         }
 
-        if (ResolveEndpoint(options) is not null)
+        var discoveredEndpoint = ResolveEndpoint(options);
+        if (discoveredEndpoint is not null)
         {
+            if (LocalSocketConnection.TryParseTcp(discoveredEndpoint, out _, out _))
+            {
+                return (await ConnectAsync(options, cancellationToken).ConfigureAwait(false), true);
+            }
+
             try
             {
-                return await ConnectAsync(options, cancellationToken).ConfigureAwait(false);
+                return (await ConnectAsync(options, cancellationToken).ConfigureAwait(false), true);
             }
             catch (Exception error) when (error is IOException
                 or SocketException
@@ -213,7 +229,7 @@ public sealed class KlCoreClient : IAsyncDisposable
         try
         {
             await client.HandshakeAsync(cancellationToken).ConfigureAwait(false);
-            return client;
+            return (client, false);
         }
         catch
         {

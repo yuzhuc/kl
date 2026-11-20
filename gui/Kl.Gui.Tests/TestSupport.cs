@@ -153,6 +153,8 @@ internal sealed class FakeCoreSessionService : ICoreSessionService
     public List<(string Method, object? Parameters)> Requests { get; } = [];
     public List<(string SessionId, bool Archived)> ArchiveCalls { get; } = [];
     public List<string> DeleteCalls { get; } = [];
+    public List<(string SessionId, string Name)> RenameCalls { get; } = [];
+    public Exception? RenameFailure { get; set; }
     public List<(string ApprovalId, string Decision)> ApprovalDecisions { get; } = [];
     public List<(string Workspace, string Prompt)> EphemeralRequests { get; } = [];
     public int SnapshotCalls { get; private set; }
@@ -207,6 +209,14 @@ internal sealed class FakeCoreSessionService : ICoreSessionService
     {
         DeleteCalls.Add(sessionId);
         return Task.CompletedTask;
+    }
+
+    public Task RenameSessionAsync(string sessionId, string name, CancellationToken cancellationToken)
+    {
+        RenameCalls.Add((sessionId, name));
+        return RenameFailure is { } failure
+            ? Task.FromException(failure)
+            : Task.CompletedTask;
     }
 
     public Task<JsonElement> HistoryAsync(int limit, CancellationToken cancellationToken)

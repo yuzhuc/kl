@@ -12,6 +12,7 @@ public enum SessionEventKind
     ApprovalRequested,
     ApprovalResolved,
     ToolCompleted,
+    SandboxViolation,
     AuditRecorded,
     ContextCompacted,
     TurnCompleted,

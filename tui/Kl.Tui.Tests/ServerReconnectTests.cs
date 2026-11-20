@@ -171,6 +171,43 @@ public sealed class ServerReconnectTests
         }
     }
 
+    [Fact]
+    public async Task SandboxViolationReachesThePresenter()
+    {
+        await using var server = new FakeCoreServer();
+        var presenter = new RecordingPresenter();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await using var session = await KlSessionClient.StartAsync(
+            new KlClientOptions { Endpoint = server.Endpoint },
+            new KlSessionOptions
+            {
+                SessionId = "session-1",
+                Workspace = Path.GetTempPath(),
+                SkipInitialReplay = true
+            },
+            presenter,
+            timeout.Token);
+
+        server.PushEvent(3, "sandbox.violation", new
+        {
+            turn_id = "turn-1",
+            call_id = "call-1",
+            kind = "network_denied",
+            resource = "api.example.com",
+            message = "blocked by policy"
+        });
+        await WaitForAsync(
+            () => presenter.Events.Any(item => item.Kind == SessionEventKind.SandboxViolation),
+            timeout.Token);
+
+        var violation = presenter.Events.Single(
+            item => item.Kind == SessionEventKind.SandboxViolation);
+        Assert.Equal("network_denied", violation.Action);
+        Assert.Equal("api.example.com", violation.Resource);
+        Assert.Equal("blocked by policy", violation.Text);
+        Assert.Equal("call-1", violation.CallId);
+    }
+
     private sealed class RecordingPresenter : ISessionPresenter
     {
         public List<SessionEvent> Events { get; } = [];

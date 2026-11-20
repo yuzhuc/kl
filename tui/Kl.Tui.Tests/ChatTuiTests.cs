@@ -631,6 +631,48 @@ public sealed class ChatTuiTests
     }
 
     [Fact]
+    public void MirrorsAnotherClientsUserMessageOnlyWhileIdle()
+    {
+        var state = new ChatTuiState();
+        state.Apply(new SessionEvent(
+            SessionEventKind.UserMessage,
+            Text: "from the other window",
+            Seq: 7));
+
+        var entry = Assert.Single(state.Transcript);
+        Assert.Equal(TranscriptKind.User, entry.Kind);
+        Assert.Equal("from the other window", entry.Text);
+
+        state.Apply(new SessionEvent(SessionEventKind.TurnStarted));
+        state.Apply(new SessionEvent(
+            SessionEventKind.UserMessage,
+            Text: "own send is already in the transcript",
+            Seq: 9));
+        Assert.Single(state.Transcript);
+    }
+
+    [Fact]
+    public void ShowsCompactionAndSandboxViolationEvents()
+    {
+        var state = new ChatTuiState();
+        state.Apply(new SessionEvent(
+            SessionEventKind.ContextCompacted,
+            Text: "auto",
+            Summary: "summary"));
+        state.Apply(new SessionEvent(
+            SessionEventKind.SandboxViolation,
+            Text: "network blocked",
+            Action: "network_denied",
+            Resource: "api.example.com"));
+
+        Assert.Contains(state.Transcript, entry =>
+            entry.Kind == TranscriptKind.Info && entry.Text.Contains("[context] auto"));
+        Assert.Contains(state.Transcript, entry =>
+            entry.Kind == TranscriptKind.Info
+            && entry.Text.Contains("[sandbox] network_denied api.example.com: network blocked"));
+    }
+
+    [Fact]
     public void RenderShowsWorkedDurationAfterTurn()
     {
         var state = new ChatTuiState();

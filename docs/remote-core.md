@@ -26,9 +26,9 @@ kl-core --serve --listen 0.0.0.0:8787 --token <secret> `
 Pass a certificate and private key to encrypt the TCP transport:
 
 ```powershell
-.\scripts\make-tls-cert.ps1 -OutDir .	ls   # self-signed cert.pem + key.pem
+.\scripts\make-tls-cert.ps1 -OutDir .\tls   # self-signed cert.pem + key.pem
 kl-core --serve --listen 0.0.0.0:8787 --token <secret> `
-  --tls-cert .	ls\cert.pem --tls-key .	ls\key.pem
+  --tls-cert .\tls\cert.pem --tls-key .\tls\key.pem
 ```
 
 - `--tls-cert` and `--tls-key` must be used together and only with `--listen`.
@@ -53,7 +53,7 @@ be PEM or DER.
 
 ## Clients
 
-Every `Kl.Client`-based client honours two environment variables:
+Every `Kl.Client`-based client honours three environment variables:
 
 ```powershell
 $env:KL_CORE_ENDPOINT = "tls://build-box:8787"
@@ -67,11 +67,12 @@ D:\kl\bin\run-gui.bat          # GUI
 
 `KL_CORE_ENDPOINT` may be `tcp://host:port`, `tls://host:port` or a bare
 `host:port`. A `tls://` endpoint requires `KL_CORE_TLS_FINGERPRINT` (colons and
-case are ignored). Without an endpoint,
-clients keep using `server.json`, stdio, or the local endpoint as before. When
-an explicit endpoint is set, a connection failure is reported instead of
-silently starting a local core, so a typo cannot run the agent on the wrong
-machine.
+case are ignored). Without `KL_CORE_ENDPOINT`,
+clients use `server.json`. A discovered `tcp://` or `tls://` endpoint is
+treated as remote: connection failures (including a missing TLS fingerprint)
+are reported instead of falling back to a local core. Only a stale local
+pipe/socket `server.json` falls back to stdio, so a typo or an unreachable
+build box cannot run the agent on the wrong machine.
 
 The GUI also has a saved setting: 设置 → 连接 → 控制其他设备 → 远程 KL Core.
 Fill in the address, token and (for `tls://`) the fingerprint and press 保存;
@@ -110,9 +111,16 @@ await using var client = await KlCoreClient.ConnectOrStartAsync(options);
 
 ## Limits
 
+- At most 64 concurrent TCP/TLS connections; extra connections are closed and
+  logged with the peer address.
+- Each client has a 1024-line outbound queue. A client that stops reading is
+  removed from the event broadcast to bound memory; reconnect and attach from
+  `LastSeq` to recover.
+- TLS writes and flushes time out after 30 seconds. Plain TCP has no write
+  timeout; use TLS for untrusted networks.
 - One core per home directory: two servers sharing a home would race on the
   session store.
-- The saved GUI endpoint applies after a restart; 重连 re-runs the local core
-  connection check. Environment variables still win for one-off sessions.
+- The saved GUI endpoint applies after a restart; 重连 re-runs the saved
+  connection. Environment variables still win for one-off sessions.
 - The remote endpoint is not advertised to other machines; clients need the
   address out of band.

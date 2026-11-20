@@ -70,7 +70,9 @@ than running unsandboxed.
 - `context.compacted` records `turn.auto` or `session.compact`, the omitted
   count, estimated tokens and summary status.
 - Local-server sessions have one writer lease; other clients may attach as
-  read-only observers and cannot start turns, cancel turns or answer approvals.
+  read-only observers. While another client holds the lease they cannot start
+  turns, cancel turns, answer approvals, or rename/archive/delete/compact the
+  session.
 
 ## Plugins
 
@@ -86,6 +88,12 @@ Every tool request produces an audit record and persisted session events.
 Policy denials emit `sandbox.violation`; approvals emit
 `tool.approval.requested` and `tool.approval.resolved`. Audit JSONL is the
 source of truth; SQLite is a query index.
+
+## Credentials
+
+Provider keys live only in `~/.kl/credentials/<provider>.key`, written and read
+by Core. GUI and TUI clients send a new key through `provider.set_api_key` and
+show only whether it is configured; they never read the file or echo the value.
 
 ## Known limits
 

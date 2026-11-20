@@ -4,8 +4,6 @@ public sealed class AppState
 {
     public string Endpoint { get; set; } = "https://api.deepseek.com";
     public string Model { get; set; } = "deepseek-chat";
-    public string ApiKey { get; set; } = string.Empty;
-    public string ApiKeyEnvironmentVariable { get; set; } = string.Empty;
     public string PermissionMode { get; set; } = "完全访问";
     /// <summary>User chose 不再显示 on the full-access warning card.</summary>
     public bool FullAccessWarningDismissed { get; set; }

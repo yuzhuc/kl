@@ -8,7 +8,7 @@
 >
 > Shared client: `sdk/Kl.Client`
 >
-> Verification: GUI test project `103 passed / 0 failed`
+> Verification: GUI test project `240 passed / 0 failed`
 
 ## 1. Goal
 
@@ -150,7 +150,8 @@ so overlapping tools keep independent cards, output and status.
 - Shortcuts: read-only table for Ctrl+N, Ctrl+Enter, Ctrl+F, Ctrl+, and Esc.
 - Model settings: choose the default model and write a provider API key through
   Core RPCs (`config.set_default_model`, `provider.set_api_key`); the key is
-  never displayed again. Runtime/provider/model status stays read-only below.
+  never displayed again, and the GUI never reads `credentials/*.key`.
+  Runtime/provider/model status stays read-only below.
 - Usage: completed turns add input/output tokens and cost to their session in
   GUI state; the page totals them across sessions and lists per-session usage
   (sessions that predate the change show nothing).
@@ -179,7 +180,7 @@ so overlapping tools keep independent cards, output and status.
 | G5 Approval/cancel/error | Done |
 | G6 Settings/status | Done for current Core-backed scope |
 | G7 Ruler, Markdown code, drag/drop and previews | Done |
-| G8 Tests/local build | Done: 103 GUI tests pass, `bin/gui` build available |
+| G8 Tests/local build | Done: 240 GUI tests pass, `bin/gui` build available |
 | G9 Release archive and automatic reconnect UX | Done: auto reconnect with backoff, observer takeover, `--gui` release packaging on win-x64, win-arm64 and osx-arm64 |
 | G10 Parallel tools, model/key settings, library and motion | Done: per-`CallId` tool routing, Core-backed model/API-key form, local library page, activity chevron rotation, panel/menu/dialog fades, page fades, pulsing run state, sidebar section height animation |
 | G11 Composer `/` and `@` menus | Done: slash commands with Core actions, workspace file mentions with prefix ranking, keyboard and click selection |

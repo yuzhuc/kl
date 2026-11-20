@@ -63,7 +63,9 @@ def publish_apps(
 ) -> Path:
     cargo_profile = "release" if configuration.lower() == "release" else "debug"
     core_name = "kl-core.exe" if runtime.startswith("win") else "kl-core"
+    runner_name = "kl-sandbox-runner.exe" if runtime.startswith("win") else "kl-sandbox-runner"
     core = ROOT / "target" / cargo_profile / core_name
+    runner = ROOT / "target" / cargo_profile / runner_name
 
     gui_output = output / "gui"
     tui_output = output / "tui"
@@ -85,8 +87,11 @@ def publish_apps(
 
     if not core.is_file():
         raise SystemExit(f"core binary not found: {core}")
+    if not runner.is_file():
+        raise SystemExit(f"sandbox runner binary not found: {runner}")
     for app_output in (tui_output, gui_output):
         shutil.copy2(core, app_output / core_name)
+        shutil.copy2(runner, app_output / runner_name)
 
     schema_target = tui_output / "schemas"
     if schema_target.exists():
@@ -136,6 +141,12 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    host = host_runtime()
+    if args.runtime != host:
+        raise SystemExit(
+            f"--runtime {args.runtime} does not match the host {host}; "
+            "use scripts/package.py for cross-RID builds"
+        )
     env = build_env()
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -146,10 +157,9 @@ def main() -> int:
         run(["cargo", "test", "--workspace"], env)
         run(["dotnet", "test", "kl.sln", "-c", args.configuration], env)
 
-    cargo_build = ["cargo", "build", "-p", "kl-core"]
-    if args.configuration.lower() == "release":
-        cargo_build.append("--release")
-    run(cargo_build, env)
+    profile = ["--release"] if args.configuration.lower() == "release" else []
+    run(["cargo", "build", "-p", "kl-core", *profile], env)
+    run(["cargo", "build", "-p", "kl-sandbox", "--bin", "kl-sandbox-runner", *profile], env)
 
     core = publish_apps(args.configuration, args.runtime, output, env)
     print(f"\nCaches: {ROOT / 'target'}")

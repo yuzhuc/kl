@@ -1024,6 +1024,9 @@ public sealed partial class MainWindowViewModel
                     _ = LoadHistoryAsync();
                 }
                 break;
+            case SessionEventKind.SandboxViolation:
+                ErrorMessage = $"沙箱阻止了操作：{sessionEvent.Text}";
+                break;
             case SessionEventKind.TurnStarted:
                 IsBusy = true;
                 CoreStatusText = "正在生成…";

@@ -370,9 +370,14 @@ impl SessionStore {
         Ok(project_messages(&events))
     }
 
-    pub fn event_count(&self, session_id: &str) -> Result<u64, StoreError> {
+    pub fn last_seq(&self, session_id: &str) -> Result<u64, StoreError> {
         match self.resolve_path(session_id) {
-            Some(path) => Ok(read_rollout(&path)?.events.len() as u64),
+            Some(path) => Ok(read_rollout(&path)?
+                .events
+                .iter()
+                .map(|event| event.seq)
+                .max()
+                .unwrap_or(0)),
             None => Ok(0),
         }
     }
@@ -912,7 +917,7 @@ mod tests {
     }
 
     #[test]
-    fn appends_events_and_counts_them() {
+    fn reports_last_event_sequence() {
         let temp = tempfile::tempdir().unwrap();
         let store = SessionStore::new(temp.path()).unwrap();
         let data = store
@@ -921,9 +926,10 @@ mod tests {
         let event = CoreEvent::TurnStarted {
             turn_id: "t".to_owned(),
         };
+        assert_eq!(store.last_seq(&data.meta.id).unwrap(), 0);
         store.append_event(&data.meta.id, 1, &event).unwrap();
-        store.append_event(&data.meta.id, 2, &event).unwrap();
-        assert_eq!(store.event_count(&data.meta.id).unwrap(), 2);
+        store.append_event(&data.meta.id, 4, &event).unwrap();
+        assert_eq!(store.last_seq(&data.meta.id).unwrap(), 4);
     }
 
     #[test]

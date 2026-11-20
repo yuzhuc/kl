@@ -28,7 +28,6 @@ public partial class MainWindow : Window
     private readonly MainWindowViewModel _viewModel;
     private readonly DispatcherTimer _automationTimer = new() { Interval = TimeSpan.FromSeconds(30) };
     private readonly DispatcherTimer _providerRefreshTimer = new() { Interval = TimeSpan.FromSeconds(30) };
-    private readonly DispatcherTimer _railHintOpenTimer = new() { Interval = TimeSpan.FromMilliseconds(80) };
     private readonly DispatcherTimer _moreMenuOpenTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
     private readonly DispatcherTimer _moreMenuCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
     private readonly DispatcherTimer _previewCloseTimer = new() { Interval = TimeSpan.FromMilliseconds(140) };
@@ -64,7 +63,6 @@ public partial class MainWindow : Window
     private WorkspaceItemViewModel? _previewPendingWorkspace;
     private bool _previewPendingIsWorkspace;
     private int _dragMode;
-    private Control? _railHintTarget;
     private long _lastRailPointerNavigation;
     private bool _moreMenuPinned;
     private bool _moreMenuHovered;
@@ -189,7 +187,6 @@ public partial class MainWindow : Window
             RoutingStrategies.Bubble, handledEventsToo: true);
         ComposerCard.AddHandler(DragDrop.DropEvent, OnComposerDrop,
             RoutingStrategies.Bubble, handledEventsToo: true);
-        _railHintOpenTimer.Tick += OnRailHintOpenTimerTick;
         _moreMenuOpenTimer.Tick += OnMoreMenuOpenTimerTick;
         _moreMenuCloseTimer.Tick += OnMoreMenuCloseTimerTick;
         _previewCloseTimer.Tick += OnPreviewCloseTimerTick;
@@ -735,64 +732,8 @@ public partial class MainWindow : Window
     }
 
 
-    private void OnRailHintPointerEntered(object? sender, PointerEventArgs eventArgs)
-    {
-        if (sender is not Control { Tag: string label } target)
-        {
-            return;
-        }
-
-        _railHintOpenTimer.Stop();
-        _railHintTarget = target;
-        RailHintText.Text = label;
-        _railHintOpenTimer.Start();
-    }
-
-    private void OnRailHintPointerExited(object? sender, PointerEventArgs eventArgs)
-    {
-        if (ReferenceEquals(sender, _railHintTarget))
-        {
-            HideRailHint();
-        }
-    }
-
-    private void OnRailHintOpenTimerTick(object? sender, EventArgs eventArgs)
-    {
-        _railHintOpenTimer.Stop();
-        if (_railHintTarget?.IsPointerOver != true)
-        {
-            return;
-        }
-
-        RailHintCard.Opacity = 0;
-        RailHintCard.IsVisible = true;
-        RailHintCard.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        var position = _railHintTarget.TranslatePoint(
-            new Point(_railHintTarget.Bounds.Width + 8, 0),
-            this);
-        if (position is null)
-        {
-            HideRailHint();
-            return;
-        }
-
-        var top = position.Value.Y + ((_railHintTarget.Bounds.Height - RailHintCard.DesiredSize.Height) / 2);
-        Canvas.SetLeft(RailHintCard, position.Value.X);
-        Canvas.SetTop(RailHintCard, top);
-        RailHintCard.Opacity = 1;
-    }
-
-    private void HideRailHint()
-    {
-        _railHintOpenTimer.Stop();
-        _railHintTarget = null;
-        RailHintCard.Opacity = 0;
-        RailHintCard.IsVisible = false;
-    }
-
     private void OnMoreButtonPointerEntered(object? sender, PointerEventArgs eventArgs)
     {
-        HideRailHint();
         _moreMenuHovered = true;
         _moreMenuCloseTimer.Stop();
         if (!_moreMenuPinned && !MorePopup.IsOpen)
@@ -840,7 +781,6 @@ public partial class MainWindow : Window
 
     private void OnMoreButtonClicked(object? sender, RoutedEventArgs eventArgs)
     {
-        HideRailHint();
         _moreMenuOpenTimer.Stop();
         _moreMenuCloseTimer.Stop();
         if (_moreMenuPinned)
@@ -873,15 +813,6 @@ public partial class MainWindow : Window
         _moreMenuCloseTimer.Stop();
         _moreMenuPinned = false;
         _moreMenuHovered = MoreButton.IsPointerOver;
-    }
-
-    private void OnMoreMenuRowPointerEntered(object? sender, PointerEventArgs eventArgs)
-    {
-        // Kept for the pre-Codex popup markup; the new popup rows do not use pins.
-    }
-
-    private void OnMoreMenuRowPointerExited(object? sender, PointerEventArgs eventArgs)
-    {
     }
 
     private void OnToggleAddProjectPinnedClicked(object? sender, RoutedEventArgs eventArgs)
@@ -976,9 +907,8 @@ public partial class MainWindow : Window
         MorePopup.IsOpen = false;
     }
 
-    private void HideRailHintAndMoreMenu()
+    private void HideMoreMenu()
     {
-        HideRailHint();
         CloseMoreMenu();
     }
 
@@ -1104,6 +1034,7 @@ public partial class MainWindow : Window
     {
         if (sender is Button { DataContext: WorkspaceItemViewModel workspace })
         {
+            WorkspaceMenuPopup.IsOpen = false;
             _viewModel.Navigate(AppSection.Chat);
             await _viewModel.SelectWorkspaceAsync(workspace);
             await _viewModel.NewSessionAsync();
@@ -1908,12 +1839,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnChatModeClicked(object? sender, RoutedEventArgs eventArgs) =>
-        _viewModel.SetInteractionMode(workMode: false);
-
-    private void OnWorkModeClicked(object? sender, RoutedEventArgs eventArgs) =>
-        _viewModel.SetInteractionMode(workMode: true);
-
     private void OnNavChatClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (SkipPointerGeneratedRailClick())
@@ -2286,9 +2211,6 @@ public partial class MainWindow : Window
     private async void OnSaveProviderModelClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.SaveProviderModelAsync();
 
-    private void OnToggleProviderApiKeyVisibilityClicked(object? sender, RoutedEventArgs eventArgs) =>
-        _viewModel.IsProviderApiKeyVisible = !_viewModel.IsProviderApiKeyVisible;
-
     private async void OnSaveProviderApiKeyClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.SaveProviderDetailApiKeyAsync();
 
@@ -2338,14 +2260,6 @@ public partial class MainWindow : Window
         if (sender is Control { Tag: string mode })
         {
             _viewModel.SetReduceMotionMode(mode);
-        }
-    }
-
-    private void OnThemeModeClicked(object? sender, RoutedEventArgs eventArgs)
-    {
-        if (sender is Control { Tag: string mode })
-        {
-            _viewModel.SetThemeMode(mode);
         }
     }
 
@@ -2860,31 +2774,6 @@ public partial class MainWindow : Window
         {
             _viewModel.AddWorkspace(path);
         }
-    }
-
-    /// <summary>Codex settings apply on change; only write when the draft
-    /// actually differs from the saved state so binding on open is a no-op.</summary>
-    private async void OnGeneralSettingsSelectionChanged(object? sender, SelectionChangedEventArgs eventArgs)
-    {
-        if (sender is not ComboBox { SelectedItem: { } selected })
-        {
-            return;
-        }
-        if (selected is int fontSize)
-        {
-            _viewModel.SettingsContentFontSize = fontSize;
-        }
-        else
-        {
-            _viewModel.SettingsPermissionMode = selected.ToString() ?? string.Empty;
-        }
-        if (_viewModel.SettingsPermissionMode == _viewModel.PermissionMode
-            && _viewModel.SettingsContentFontSize == _viewModel.ContentFontSize)
-        {
-            return;
-        }
-        await _viewModel.SaveSettingsAsync();
-        ApplyContentFontResources();
     }
 
     private async void OnTestConnectionClicked(object? sender, RoutedEventArgs eventArgs)
@@ -3770,7 +3659,6 @@ public partial class MainWindow : Window
 
     private void OnWindowPointerPressed(object? sender, PointerPressedEventArgs eventArgs)
     {
-        HideRailHint();
         HidePreviewCards();
         HideDropIndicator();
         if (ComposerMenuPopup.IsOpen
@@ -3794,7 +3682,7 @@ public partial class MainWindow : Window
     {
         _windowActive = false;
         HideDropIndicator();
-        HideRailHintAndMoreMenu();
+        HideMoreMenu();
         CloseComposerSuggestions();
     }
 
@@ -5185,9 +5073,6 @@ public partial class MainWindow : Window
             await OpenPaletteSessionAsync(notification.Session);
         }
     }
-
-    private void OnPaletteCloseClicked(object? sender, RoutedEventArgs eventArgs) =>
-        _viewModel.CloseSearchPalette();
 
     private void OnPaletteFilterClicked(object? sender, RoutedEventArgs eventArgs)
     {

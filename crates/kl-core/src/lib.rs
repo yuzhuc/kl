@@ -215,18 +215,23 @@ impl EventHub {
     }
 
     fn register(&self, session_id: &str, seq: u64) {
-        self.sequences
+        let mut sequences = self
+            .sequences
             .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .insert(session_id.to_owned(), seq);
+            .unwrap_or_else(|error| error.into_inner());
+        let entry = sequences.entry(session_id.to_owned()).or_insert(0);
+        *entry = (*entry).max(seq);
     }
 
+    // shortcut: the sequence lock also serializes append and stdout notify, so a
+    // concurrent SessionStore::save that rewrites the rollout can still reorder
+    // events; merging those write paths is deferred.
     fn emit(&self, session_id: &str, event: CoreEvent) -> Result<u64, String> {
+        let mut sequences = self
+            .sequences
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         let seq = {
-            let mut sequences = self
-                .sequences
-                .lock()
-                .unwrap_or_else(|error| error.into_inner());
             let entry = sequences.entry(session_id.to_owned()).or_insert(0);
             *entry += 1;
             *entry
@@ -1485,7 +1490,7 @@ impl Core {
             .collect::<Result<Vec<_>, _>>()?;
         let seq = self
             .store
-            .event_count(&params.session_id)
+            .last_seq(&params.session_id)
             .map_err(store_error)?;
         self.hub.register(&params.session_id, seq);
         let info = session_info(
@@ -1889,7 +1894,7 @@ impl Core {
             None => None,
         };
 
-        let (metadata, workspace, history, provider, rewound_messages) = {
+        let (metadata, workspace, history, provider, rewound_messages, before_rewind) = {
             let mut sessions = self
                 .sessions
                 .lock()
@@ -1922,6 +1927,9 @@ impl Core {
                 .map_err(provider_error)?;
             check_provider_available(provider.as_ref())?;
             let workspace = state.meta.workspace.clone();
+            let before_rewind = rewind
+                .as_ref()
+                .map(|_| (state.messages.clone(), state.meta.clone()));
             let rewound_messages = match &rewind {
                 Some(plan) => {
                     let (truncated, _) = plan.truncate(&state.messages)?;
@@ -1939,6 +1947,7 @@ impl Core {
                 state.messages.clone(),
                 provider,
                 rewound_messages,
+                before_rewind,
             )
         };
 
@@ -1970,15 +1979,66 @@ impl Core {
                     .unwrap_or_else(|error| error.into_inner());
                 if let Some(state) = sessions.get_mut(&params.session_id) {
                     state.active_turn = None;
+                    if let Some((messages, meta)) = before_rewind.clone() {
+                        state.messages = messages;
+                        state.meta = meta;
+                    }
                 }
                 return Err(store_error(error));
             }
+            let marker_before = self.store.last_seq(&params.session_id).ok();
             if let Err(error) = self.hub.emit(
                 &params.session_id,
                 CoreEvent::ConversationRewound {
                     from_seq: plan.from_seq,
                 },
             ) {
+                // Best-effort rollback: only undo the truncation when the marker
+                // did not reach disk. A failed last_seq probe is treated as
+                // "marker may be durable" so the rollout is never rewritten twice.
+                let marker_persisted =
+                    match (marker_before, self.store.last_seq(&params.session_id)) {
+                        (Some(before), Ok(after)) => after > before,
+                        _ => true,
+                    };
+                if !marker_persisted {
+                    if let Some((messages, meta)) = before_rewind.clone() {
+                        let approval_rules = self
+                            .sessions
+                            .lock()
+                            .unwrap_or_else(|error| error.into_inner())
+                            .get(&params.session_id)
+                            .map(|state| state.approval_rules.clone());
+                        if let Some(approval_rules) = approval_rules {
+                            let data = SessionData {
+                                meta: meta.clone(),
+                                messages: messages
+                                    .iter()
+                                    .map(|message| {
+                                        serde_json::to_value(message).unwrap_or(Value::Null)
+                                    })
+                                    .collect(),
+                                approval_rules,
+                            };
+                            match self.store.save(&data) {
+                                Ok(()) => {
+                                    let mut sessions = self
+                                        .sessions
+                                        .lock()
+                                        .unwrap_or_else(|error| error.into_inner());
+                                    if let Some(state) = sessions.get_mut(&params.session_id) {
+                                        state.messages = messages;
+                                        state.meta = meta;
+                                    }
+                                }
+                                Err(save_error) => eprintln!(
+                                    "rewind rollback failed for {}: {save_error}",
+                                    params.session_id
+                                ),
+                            }
+                        }
+                    }
+                }
                 let mut sessions = self
                     .sessions
                     .lock()
@@ -1987,6 +2047,20 @@ impl Core {
                     state.active_turn = None;
                 }
                 return Err(rpc_error(error_codes::INTERNAL_ERROR, error));
+            }
+            let mut audit = AuditRecord::new(
+                params.session_id.clone(),
+                turn_id.clone(),
+                turn_id.clone(),
+                "session",
+                "rewind",
+                plan.from_seq.to_string(),
+                "allow",
+            );
+            audit.actor = "client".to_owned();
+            audit.ok = true;
+            if let Err(error) = self.audit.record(&audit) {
+                eprintln!("rewind audit failed for {}: {error}", params.session_id);
             }
         }
 
@@ -5136,6 +5210,14 @@ auto_approve_plugins = true
             &stored.event,
             CoreEvent::UserMessage { text, .. } if text == "second"
         )));
+
+        let audit = core.audit_tail(json!({ "limit": 20 })).unwrap();
+        let expected = first_user_seq.to_string();
+        assert!(audit["records"].as_array().unwrap().iter().any(|record| {
+            record["tool"].as_str() == Some("session")
+                && record["action"].as_str() == Some("rewind")
+                && record["resource"].as_str() == Some(expected.as_str())
+        }));
     }
 
     #[test]
@@ -5177,6 +5259,46 @@ auto_approve_plugins = true
             }))
             .unwrap_err();
         assert_eq!(missing.code, error_codes::INVALID_PARAMS);
+    }
+
+    #[test]
+    fn rewind_validation_failure_writes_no_audit() {
+        let temp = tempfile::tempdir().unwrap();
+        let config = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let (mut core, _) = new_test_core(config, home.path());
+        core.handshaken = true;
+        let created = core
+            .session_create(json!({"workspace": temp.path().to_string_lossy()}))
+            .unwrap();
+        let session_id = created["session_id"].as_str().unwrap().to_owned();
+        core.turn_start(json!({"session_id": session_id, "prompt": "hello"}))
+            .unwrap();
+        wait_for_threads(&mut core);
+
+        let events = core.store.read_events(&session_id).unwrap();
+        let started_seq = events
+            .iter()
+            .find(|stored| matches!(stored.event, CoreEvent::TurnStarted { .. }))
+            .map(|stored| stored.seq)
+            .expect("turn.started event");
+        let error = core
+            .turn_start(json!({
+                "session_id": session_id,
+                "prompt": "rewrite",
+                "rewind_from_seq": started_seq,
+            }))
+            .unwrap_err();
+        assert_eq!(error.code, error_codes::INVALID_PARAMS);
+
+        let audit = core.audit_tail(json!({ "limit": 20 })).unwrap();
+        assert!(
+            !audit["records"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|record| record["action"].as_str() == Some("rewind"))
+        );
     }
 
     #[test]
@@ -6456,5 +6578,47 @@ auto_approve_plugins = true
                     .as_str()
                     .is_some_and(|text| text.contains("timed out"))
         }));
+    }
+
+    #[test]
+    fn concurrent_emit_keeps_sequence_and_file_order() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = temp.path().join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let config = command_config(temp.path());
+        let home = tempfile::tempdir().unwrap();
+        let (mut core, _) = new_test_core(config, home.path());
+        core.handshaken = true;
+        let created = core
+            .session_create(json!({"workspace": workspace.to_string_lossy()}))
+            .unwrap();
+        let session_id = created["session_id"].as_str().unwrap().to_owned();
+        let before = core.store.last_seq(&session_id).unwrap();
+        let hub = core.hub.clone();
+
+        let mut handles = Vec::new();
+        for thread in 0..8 {
+            let hub = hub.clone();
+            let session_id = session_id.clone();
+            handles.push(std::thread::spawn(move || {
+                for index in 0..50 {
+                    hub.emit(
+                        &session_id,
+                        CoreEvent::TurnDelta {
+                            turn_id: "concurrent".to_owned(),
+                            text: format!("{thread}-{index}"),
+                        },
+                    )
+                    .unwrap();
+                }
+            }));
+        }
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        let events = core.store.read_events(&session_id).unwrap();
+        let seqs: Vec<u64> = events.iter().map(|event| event.seq).collect();
+        assert_eq!(seqs, (1..=before + 400).collect::<Vec<_>>());
     }
 }

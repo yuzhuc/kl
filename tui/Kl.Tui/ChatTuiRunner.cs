@@ -173,6 +173,18 @@ public static class ChatTuiRunner
                 {
                     while (connection.Presenter.Events.TryRead(out var sessionEvent))
                     {
+                        if (sessionEvent.Kind == SessionEventKind.ConversationRewound)
+                        {
+                            // The core has already saved the truncated history.
+                            // Reload before draining the new turn so its deltas
+                            // are not overwritten by this refresh.
+                            await ReloadAfterRewindAsync(
+                                connection.Session,
+                                state,
+                                cancellationToken).ConfigureAwait(false);
+                            changed = true;
+                            continue;
+                        }
                         state.Apply(sessionEvent);
                         changed = true;
                     }
@@ -2467,6 +2479,16 @@ public static class ChatTuiRunner
         {
             // Home still works without environment warnings.
         }
+    }
+
+    private static async Task ReloadAfterRewindAsync(
+        KlSessionClient session,
+        ChatTuiState state,
+        CancellationToken cancellationToken)
+    {
+        state.ClearTranscript();
+        await LoadTranscriptAsync(session, state, cancellationToken).ConfigureAwait(false);
+        state.History = await LoadHistoryAsync(session, state).ConfigureAwait(false);
     }
 
     private static async Task LoadTranscriptAsync(
