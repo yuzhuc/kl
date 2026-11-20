@@ -126,15 +126,15 @@ public static class CoreProtocolParser
         foreach (var value in values.EnumerateArray())
         {
             sessions.Add(new CoreSessionSummary(
-                GetString(value, "session_id"),
-                GetString(value, "workspace"),
-                GetString(value, "provider"),
-                GetString(value, "model"),
-                GetString(value, "updated_at"),
+                JsonRead.GetString(value, "session_id"),
+                JsonRead.GetString(value, "workspace"),
+                JsonRead.GetString(value, "provider"),
+                JsonRead.GetString(value, "model"),
+                JsonRead.GetString(value, "updated_at"),
                 GetInt(value, "message_count"),
-                GetOptionalString(value, "task"),
-                GetOptionalString(value, "prompt"),
-                GetOptionalString(value, "last_message"),
+                JsonRead.GetOptionalString(value, "task"),
+                JsonRead.GetOptionalString(value, "prompt"),
+                JsonRead.GetOptionalString(value, "last_message"),
                 value.TryGetProperty("archived", out var archived)
                     && archived.ValueKind is JsonValueKind.True));
         }
@@ -161,24 +161,24 @@ public static class CoreProtocolParser
             string? toolDiff = null;
             if (value.TryGetProperty("tool", out var tool) && tool.ValueKind == JsonValueKind.Object)
             {
-                toolName = GetOptionalString(tool, "name");
+                toolName = JsonRead.GetOptionalString(tool, "name");
                 toolOk = tool.TryGetProperty("ok", out var ok)
                     && ok.ValueKind is JsonValueKind.True or JsonValueKind.False
                         ? ok.GetBoolean()
                         : null;
-                toolSummary = GetOptionalString(tool, "summary");
-                toolOutput = GetOptionalString(tool, "output");
-                toolDiff = GetOptionalString(tool, "diff");
+                toolSummary = JsonRead.GetOptionalString(tool, "summary");
+                toolOutput = JsonRead.GetOptionalString(tool, "output");
+                toolDiff = JsonRead.GetOptionalString(tool, "diff");
             }
 
             messages.Add(new CoreHistoryMessage(
-                GetString(value, "role"),
-                GetString(value, "text"),
-                GetOptionalString(value, "timestamp"),
+                JsonRead.GetString(value, "role"),
+                JsonRead.GetString(value, "text"),
+                JsonRead.GetOptionalString(value, "timestamp"),
                 value.TryGetProperty("seq", out var seq) && seq.TryGetInt64(out var parsedSeq)
                     ? parsedSeq
                     : null,
-                GetOptionalString(value, "reasoning"),
+                JsonRead.GetOptionalString(value, "reasoning"),
                 toolName,
                 toolOk,
                 toolSummary,
@@ -202,8 +202,8 @@ public static class CoreProtocolParser
 
     public static CoreCatalogSnapshot ParseProviderCatalog(JsonElement providerList)
     {
-        var activeProvider = GetString(providerList, "active_provider");
-        var activeModel = GetString(providerList, "active_model");
+        var activeProvider = JsonRead.GetString(providerList, "active_provider");
+        var activeModel = JsonRead.GetString(providerList, "active_model");
         var models = new List<string>();
         var options = new List<CoreModelOption>();
         var providerProtocols = new List<CoreProviderProtocols>();
@@ -214,7 +214,7 @@ public static class CoreProtocolParser
         {
             foreach (var entry in protocolArray.EnumerateArray())
             {
-                var provider = GetString(entry, "provider");
+                var provider = JsonRead.GetString(entry, "provider");
                 if (provider.Length == 0
                     || !entry.TryGetProperty("protocols", out var protocols)
                     || protocols.ValueKind != JsonValueKind.Object)
@@ -224,9 +224,9 @@ public static class CoreProtocolParser
 
                 providerProtocols.Add(new CoreProviderProtocols(
                     provider,
-                    GetString(protocols, "openai-chat"),
-                    GetString(protocols, "anthropic"),
-                    GetString(protocols, "openai-responses")));
+                    JsonRead.GetString(protocols, "openai-chat"),
+                    JsonRead.GetString(protocols, "anthropic"),
+                    JsonRead.GetString(protocols, "openai-responses")));
             }
         }
 
@@ -236,8 +236,8 @@ public static class CoreProtocolParser
         {
             foreach (var model in modelArray.EnumerateArray())
             {
-                var provider = GetString(model, "provider");
-                var name = GetString(model, "model");
+                var provider = JsonRead.GetString(model, "provider");
+                var name = JsonRead.GetString(model, "model");
                 if (name.Length > 0)
                 {
                     models.Add(name);
@@ -249,9 +249,9 @@ public static class CoreProtocolParser
                         model.TryGetProperty("key_configured", out var key)
                             && key.ValueKind == JsonValueKind.True)
                     {
-                        Name = GetString(model, "name"),
-                        Protocol = GetString(model, "protocol"),
-                        Url = GetString(model, "url"),
+                        Name = JsonRead.GetString(model, "name"),
+                        Protocol = JsonRead.GetString(model, "protocol"),
+                        Url = JsonRead.GetString(model, "url"),
                         ContextWindow = GetInt(model, "context_window"),
                         CompactThreshold = model.TryGetProperty("compact_threshold", out var threshold)
                             && threshold.TryGetDouble(out var parsedThreshold)
@@ -259,7 +259,7 @@ public static class CoreProtocolParser
                                 : 0.8,
                         MaxOutputTokens = GetInt(model, "max_output_tokens"),
                         ReasoningEffort = NormalizeReasoningEffort(
-                            GetString(model, "reasoning_effort")),
+                            JsonRead.GetString(model, "reasoning_effort")),
                         ReasoningEfforts = model.TryGetProperty("reasoning_efforts", out var efforts)
                             && efforts.ValueKind == JsonValueKind.Array
                                 ? efforts.EnumerateArray()
@@ -269,7 +269,7 @@ public static class CoreProtocolParser
                                     .Distinct(StringComparer.OrdinalIgnoreCase)
                                     .ToList()
                                 : Array.Empty<string>(),
-                        Detail = GetOptionalString(model, "detail")
+                        Detail = JsonRead.GetOptionalString(model, "detail")
                     });
                 }
 
@@ -339,20 +339,6 @@ public static class CoreProtocolParser
 
         return string.Empty;
     }
-
-    private static string GetString(JsonElement element, string name) =>
-        element.ValueKind == JsonValueKind.Object
-        && element.TryGetProperty(name, out var value)
-        && value.ValueKind == JsonValueKind.String
-            ? value.GetString() ?? string.Empty
-            : string.Empty;
-
-    private static string? GetOptionalString(JsonElement element, string name) =>
-        element.ValueKind == JsonValueKind.Object
-        && element.TryGetProperty(name, out var value)
-        && value.ValueKind == JsonValueKind.String
-            ? value.GetString()
-            : null;
 
     private static int GetInt(JsonElement element, string name) =>
         element.ValueKind == JsonValueKind.Object

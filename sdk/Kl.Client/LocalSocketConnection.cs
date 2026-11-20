@@ -14,9 +14,6 @@ namespace Kl.Client;
 /// </summary>
 public static class LocalSocketConnection
 {
-    public static Stream Connect(string endpoint, CancellationToken cancellationToken = default) =>
-        Connect(endpoint, tlsFingerprint: null, cancellationToken);
-
     /// <summary>
     /// Connects to <c>tcp://</c>, <c>tls://</c> or a local transport. A
     /// <c>tls://</c> endpoint requires <paramref name="tlsFingerprint"/>: the

@@ -572,7 +572,8 @@ fn extract_hosts(command: &str) -> Vec<String> {
     hosts
 }
 
-fn host_allowed(allowed: &[String], host: &str) -> bool {
+/// Matches a lowercased host against exact, `*.suffix` or `.suffix` entries.
+pub fn host_allowed(allowed: &[String], host: &str) -> bool {
     allowed.iter().any(|entry| {
         let entry = entry.trim().to_lowercase();
         if let Some(suffix) = entry.strip_prefix("*.") {

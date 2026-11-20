@@ -215,11 +215,13 @@ internal static class Program
                 {
                     continue;
                 }
-                if (ChatCommand.IsSettings(line))
+                var trimmed = line.Trim();
+                if (trimmed.Equals("/settings", StringComparison.OrdinalIgnoreCase)
+                    || trimmed.Equals("/设置", StringComparison.Ordinal))
                 {
                     ui.Line(
-                        "settings require an interactive terminal; " +
-                        "run kl in a terminal and enter /settings");
+                        "settings are managed by the CLI: kl provider|model|config|plugin; " +
+                        "run kl help");
                     continue;
                 }
 
@@ -242,7 +244,7 @@ internal static class Program
         try
         {
             var result = await session.HistoryAsync(20).ConfigureAwait(false);
-            foreach (var message in ChatTuiState.ParseHistory(result))
+            foreach (var message in SessionHistory.ParseHistory(result))
             {
                 switch (message.Role)
                 {

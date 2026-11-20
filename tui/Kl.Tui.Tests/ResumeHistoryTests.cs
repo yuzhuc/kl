@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Xunit;
 
 namespace Kl.Tui.Tests;
@@ -51,7 +52,7 @@ public sealed class ResumeHistoryTests
                 options.ToSessionOptions(),
                 new SilentPresenter());
             var history = await resumed.HistoryAsync(20);
-            var messages = ChatTuiState.ParseHistory(history);
+            var messages = SessionHistory.ParseHistory(history);
 
             Assert.Collection(
                 messages,
@@ -65,16 +66,6 @@ public sealed class ResumeHistoryTests
                     Assert.Equal("assistant", message.Role);
                     Assert.Equal("old answer", message.Text);
                 });
-
-            var state = new ChatTuiState();
-            state.AddHistory(messages);
-            state.Apply(new SessionEvent(SessionEventKind.TurnStarted));
-            state.Apply(new SessionEvent(SessionEventKind.AssistantDelta, Text: "new answer"));
-
-            Assert.Contains(state.Transcript, entry => entry.Text == "old prompt");
-            Assert.Contains(state.Transcript, entry => entry.Text == "old answer");
-            Assert.Equal(3, state.Transcript.Count);
-            Assert.Equal("new answer", state.Transcript[^1].Text);
         }
         finally
         {
@@ -86,80 +77,22 @@ public sealed class ResumeHistoryTests
     }
 
     [Fact]
-    public void PersistedReasoningIsRestoredWithItsTurn()
+    public void HistoryParsesToolOutputAndDiff()
     {
-        var messages = new List<HistoryMessage>
-        {
-            new("user", "old prompt", "", 2, null, null, null),
-            new(
-                "assistant",
-                "old answer",
-                "",
-                5,
-                null,
-                null,
-                null,
-                Reasoning: "Check files."),
-            new("user", "second prompt", "", 7, null, null, null),
-            new("assistant", "second answer", "", 9, null, null, null)
-        };
-        var events = ChatTuiState.BuildHistoryEvents(messages);
+        using var document = JsonDocument.Parse(
+            """
+            {"messages":[
+              {"role":"tool","text":"","seq":5,
+               "tool":{"name":"shell","ok":true,"summary":"exit 0","output":"line1\nline2\n","diff":"+new"}}
+            ]}
+            """);
+        var message = Assert.Single(SessionHistory.ParseHistory(document.RootElement));
 
-        var state = new ChatTuiState();
-        state.AddHistory(messages, events.Reasoning, events.Tools);
-
-        Assert.Collection(
-            state.Transcript,
-            entry => Assert.Equal(TranscriptKind.User, entry.Kind),
-            entry =>
-            {
-                Assert.Equal(TranscriptKind.Reasoning, entry.Kind);
-                Assert.Equal("Check files.", entry.Text);
-                Assert.True(entry.IsComplete);
-            },
-            entry => Assert.Equal(TranscriptKind.Assistant, entry.Kind),
-            entry => Assert.Equal(TranscriptKind.User, entry.Kind),
-            entry => Assert.Equal(TranscriptKind.Assistant, entry.Kind));
-
-        var plain = DiffRender.Ansi.Strip(ChatTuiRenderer.Render(100, 24, state));
-        Assert.Contains("▸ Done thinking", plain);
-        Assert.DoesNotContain("Ctrl+R to show", plain);
-    }
-
-    [Fact]
-    public void PersistedToolCallsAreRestoredWithOutputAndDiff()
-    {
-        var messages = new List<HistoryMessage>
-        {
-            new("user", "run it", "", 2, null, null, null),
-            new(
-                "tool",
-                "",
-                "",
-                5,
-                "shell",
-                true,
-                "exit 0",
-                ToolOutput: "line1\nline2\n",
-                ToolDiff: "+new"),
-            new("assistant", "done", "", 6, null, null, null)
-        };
-        var events = ChatTuiState.BuildHistoryEvents(messages);
-        var state = new ChatTuiState();
-        state.AddHistory(messages, events.Reasoning, events.Tools);
-
-        var tool = Assert.Single(
-            state.Transcript,
-            entry => entry.Kind == TranscriptKind.Tool);
-        Assert.Contains("[ok] shell: exit 0", tool.Text);
-        Assert.Contains("line2", tool.Text);
-        var diff = Assert.Single(
-            state.Transcript,
-            entry => entry.Kind == TranscriptKind.Diff);
-        Assert.Equal("+new", diff.Text);
-        Assert.Contains(
-            state.Transcript,
-            entry => entry.Kind == TranscriptKind.Assistant && entry.Text == "done");
+        Assert.Equal("tool", message.Role);
+        Assert.Equal(5, message.Seq);
+        Assert.Equal("[ok] shell: exit 0", message.ToolDisplay());
+        Assert.Equal("line1\nline2\n", message.ToolOutput);
+        Assert.Equal("+new", message.ToolDiff);
     }
 
     private sealed class SilentPresenter : ISessionPresenter

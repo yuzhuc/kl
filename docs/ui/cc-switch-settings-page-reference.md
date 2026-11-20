@@ -1,6 +1,6 @@
 # CC-Switch CLI 设置页与供应商页参考
 
-> Status: external settings-page reference, not a KL implementation specification. Current KL settings code lives in `tui/Kl.Tui/SettingsTui*.cs`.
+> Status: external settings-page reference, not a KL implementation specification. Current KL settings UI lives in `gui/Kl.Gui/MainWindow.axaml` and `ViewModels/MainWindowViewModel.Settings.cs`; the Terminal.Gui TUI edits configuration through CLI subcommands (`kl provider|model|config|plugin`).
 
 
 > 参考对象：`SaladDay/cc-switch-cli`  

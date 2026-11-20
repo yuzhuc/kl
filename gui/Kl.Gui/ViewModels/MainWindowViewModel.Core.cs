@@ -915,7 +915,6 @@ public sealed partial class MainWindowViewModel
         _activeToolItem = null;
         _activeReasoning = null;
         _activeAssistant = null;
-        _activeToolItem = null;
 
         foreach (var message in history)
         {

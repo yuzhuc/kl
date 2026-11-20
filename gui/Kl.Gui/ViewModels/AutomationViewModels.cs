@@ -47,8 +47,6 @@ public sealed class AutomationItemViewModel : ObservableObject
             if (SetProperty(ref _isRunning, value))
             {
                 OnPropertyChanged(nameof(StateLabel));
-        OnPropertyChanged(nameof(CanRun));
-        OnPropertyChanged(nameof(CanEdit));
                 OnPropertyChanged(nameof(ToggleLabel));
                 OnPropertyChanged(nameof(RunButtonLabel));
                 OnPropertyChanged(nameof(CanRun));

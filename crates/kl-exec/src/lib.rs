@@ -145,7 +145,8 @@ pub fn run(spec: &CommandSpec, cancel: &AtomicBool) -> Result<CommandOutput, Exe
     })
 }
 
-fn read_limited(mut reader: impl Read, limit: usize) -> (String, bool) {
+/// Reads at most `limit` bytes, reporting whether the stream was truncated.
+pub fn read_limited(mut reader: impl Read, limit: usize) -> (String, bool) {
     let mut buffer = Vec::new();
     let mut chunk = [0u8; 8192];
     let mut truncated = false;

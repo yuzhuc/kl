@@ -11,7 +11,7 @@ mod macos;
 #[cfg(windows)]
 mod windows;
 
-use kl_exec::{CommandOutput, CommandSpec};
+use kl_exec::{CommandOutput, CommandSpec, read_limited};
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
 use std::io::{Read, Write};
@@ -1118,28 +1118,6 @@ fn is_sensitive_path(path: &Path) -> bool {
             )
             || name.ends_with(".key")
     })
-}
-fn read_limited(mut reader: Box<dyn Read + Send>, limit: usize) -> (String, bool) {
-    let mut buffer = Vec::new();
-    let mut chunk = [0u8; 8192];
-    let mut truncated = false;
-    loop {
-        match reader.read(&mut chunk) {
-            Ok(0) => break,
-            Ok(count) => {
-                let remaining = limit.saturating_sub(buffer.len());
-                if count > remaining {
-                    buffer.extend_from_slice(&chunk[..remaining]);
-                    truncated = true;
-                } else {
-                    buffer.extend_from_slice(&chunk[..count]);
-                }
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(_) => break,
-        }
-    }
-    (String::from_utf8_lossy(&buffer).into_owned(), truncated)
 }
 
 fn stable_path_hash(path: &Path) -> u64 {

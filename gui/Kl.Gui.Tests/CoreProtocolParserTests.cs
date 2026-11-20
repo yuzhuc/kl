@@ -107,7 +107,7 @@ public sealed class CoreProtocolParserTests
     [Fact]
     public void ParseCatalogMapsHandshakeProvidersModelsAndSessions()
     {
-        var handshake = new HandshakeInfo("kl-core", "0.9.1", 1, 1);
+        var handshake = new HandshakeInfo("kl-core", "0.9.1", 1);
         var providers = TestData.Json(
             """
             {"active_provider":"deepseek","active_model":"deepseek-chat",
@@ -147,7 +147,7 @@ public sealed class CoreProtocolParserTests
     public void ParseCatalogWithoutProviderCatalogKeepsUnknownKeyAndEmptyModels()
     {
         var snapshot = CoreProtocolParser.ParseCatalog(
-            new HandshakeInfo("kl-core", "0.9.1", 1, 1),
+            new HandshakeInfo("kl-core", "0.9.1", 1),
             TestData.Json("{}"),
             TestData.Json("""{"sessions":[]}"""));
 

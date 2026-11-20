@@ -31,17 +31,17 @@ Avalonia 桌面客户端，采用 kl 品牌和 Codex 风格界面。它是 **KL 
 - 设置 → 模型：显示 Core 运行时信息（连接状态、版本/协议、Provider/模型、
   API Key 是否配置、Core 路径、KL Home）；Provider/模型/API Key 的修改通过 Core RPC
   完成，Key 始终掩码，GUI 不读取 `credentials/*.key`。
-- 设置 → 通用：权限模式（映射到 Core `permissions.set`）与内容字号。
+- 设置：22 个分页（常规/通知/外观/配置/模型/提供商/记忆/插件/MCP/存储/导入/代码审查/Git/Worktrees 等）；权限模式映射到 Core `permissions.set`，Provider/模型/Key 全部经 Core RPC。
 - 自动化：每个任务通过 `RunEphemeralTurnAsync` 在临时 Core 会话中执行，仅保存结果。
 - 插件页：插件、MCP 工具与技能通过 Core RPC/工作区读取；共享的 `~/.kl/plugins` 本地目录仍可使用。
 - 文本与代码附件会折叠进发给 Core 的 prompt；会话消息以 Core 为准。
-- 快捷键：Ctrl+N、Ctrl+Enter、Ctrl+F、Ctrl+,
+- 快捷键：9 个动作可在设置 → 键盘快捷键中改键（新建/归档/复制代码块/未读/置顶/搜索/设置/终端/关窗），其余为固定快捷键。
 
 ## 界面（对齐 Codex 桌面端）
 
-- 无边框窗口 + 40px 自绘标题栏：←/→、侧栏开关、文件/编辑/视图/帮助菜单、最小化/最大化/关闭。
-- 52px 图标 rail：首页、自动化、插件（自定义）、更多、代码审查；底部只有一个设置按钮。
-- 280px 侧栏按页面切换：聊天（项目列表 + 最近会话 + 搜索）、自定义（插件）、自动化、项目。
+- 无边框窗口 + 44px 自绘标题栏：←/→、侧栏开关、文件/编辑/视图/帮助菜单、最小化/最大化/关闭。
+- 52px 图标 rail：首页、项目、自动化、插件、更多；代码审查是可置顶的 rail 项；底部只有一个设置按钮。
+- 238px 侧栏（可拖到 468px）按页面切换：聊天（项目列表 + 最近会话 + 搜索）、自定义（插件）、自动化、项目。
 - 对话视图：用户右侧气泡（时间/复制/编辑）、assistant 纯 Markdown、思考与工具为可展开活动行、错误红卡；composer 常驻底部（项目 pill、权限、Provider/模型、发送/停止）。
 - 左栏交互对齐 Codex：rail/侧栏的悬浮、选中、按下态与配色按 Codex 实测值（`#0D0D0F` rail、`#0F0F10` 侧栏、`#1D1D1F` 悬浮/选中行、`#1C1C1E` rail 悬浮/选中块、图标 `#727274`→`#E3E4E6`），120ms 颜色过渡、200ms 侧栏收起动画、最近分组 chevron 旋转、rail 悬浮提示延迟 450ms。
 - 更多菜单的「置顶」会把项目/代码审查快捷键添加到 rail 分隔线下方（再次点击取消，状态持久化到 GUI 本地状态），点击快捷键跳到对应页面。
@@ -57,7 +57,7 @@ KL Core 配置（由 Core 读取，GUI 只读展示）：
 
 GUI 自身状态（UI 缓存，不是会话真值）：
 
-- 状态文件：`%USERPROFILE%\.kl\gui\state.json`（工作区、布局、自动化、权限模式）。
+- 状态文件：`%USERPROFILE%\.kl\gui\state.json`（工作区、布局、主题/字体、终端、Worktree、快捷键、自动化、权限模式、Provider 展示缓存；不含任何 Key）。
 - 会话/消息/事件：`%USERPROFILE%\.kl\sessions\`（由 Core 管理）。
 - 插件目录：`%USERPROFILE%\.kl\plugins`。
 - 旧版设置：`%USERPROFILE%\.kl\gui\gui-settings.json`。
@@ -90,4 +90,4 @@ dotnet test ..\Kl.Gui.Tests\Kl.Gui.Tests.csproj
 
 - 打包后的 GUI 尚未在真实 Windows/macOS release runner 上做启动冒烟；本地 `build.py` 已包含 GUI、`kl-core` 与 `kl-sandbox-runner`。
 - 多个 GUI 窗口共享同一份 `gui/state.json`，没有跨进程合并。
-- Provider 目录缓存与 MCP OAuth 仍留给后续阶段。
+- MCP OAuth 仍留给后续阶段。

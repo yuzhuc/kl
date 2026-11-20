@@ -45,9 +45,9 @@ public sealed class LocalPluginCatalogService : IPluginCatalogService
                 using var document = JsonDocument.Parse(File.ReadAllText(manifestPath));
                 var root = document.RootElement;
                 var fallbackName = new DirectoryInfo(Path.GetDirectoryName(manifestPath)!).Name;
-                var name = GetString(root, "name") ?? GetString(root, "id") ?? fallbackName;
-                var version = GetString(root, "version") ?? "未标注版本";
-                var description = GetString(root, "description") ?? "未提供说明";
+                var name = JsonRead.GetOptionalString(root, "name")?.Trim() ?? JsonRead.GetOptionalString(root, "id")?.Trim() ?? fallbackName;
+                var version = JsonRead.GetOptionalString(root, "version")?.Trim() ?? "未标注版本";
+                var description = JsonRead.GetOptionalString(root, "description")?.Trim() ?? "未提供说明";
                 plugins.Add(new LocalPluginInfo(name, version, description, manifestPath));
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
@@ -58,9 +58,5 @@ public sealed class LocalPluginCatalogService : IPluginCatalogService
         return plugins.OrderBy(plugin => plugin.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
     }
 
-    private static string? GetString(JsonElement root, string propertyName) =>
-        root.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String
-            ? value.GetString()?.Trim()
-            : null;
 }
 

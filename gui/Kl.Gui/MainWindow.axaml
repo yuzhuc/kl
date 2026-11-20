@@ -4493,7 +4493,7 @@
                                         <Path Width="14" Height="14" Data="{DynamicResource PanelIcon}" Stretch="Uniform" />
                                         <TextBlock Grid.Column="1" Text="整理侧边栏" VerticalAlignment="Center" />
                                         <Path Grid.Column="2" Width="9" Height="9"
-                                              Data="{DynamicResource ChevronRightSmallIcon}" Stretch="Uniform"
+                                              Data="{DynamicResource ChevronRightIcon}" Stretch="Uniform"
                                               StrokeThickness="1.4" VerticalAlignment="Center" />
                                     </Grid>
                                 </Button>
@@ -4505,7 +4505,7 @@
                                               StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round" />
                                         <TextBlock Grid.Column="1" Text="聊天排序方式" VerticalAlignment="Center" />
                                         <Path Grid.Column="2" Width="9" Height="9"
-                                              Data="{DynamicResource ChevronRightSmallIcon}" Stretch="Uniform"
+                                              Data="{DynamicResource ChevronRightIcon}" Stretch="Uniform"
                                               StrokeThickness="1.4" VerticalAlignment="Center" />
                                     </Grid>
                                 </Button>

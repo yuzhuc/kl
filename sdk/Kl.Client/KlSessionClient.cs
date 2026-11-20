@@ -60,9 +60,6 @@ public sealed class KlSessionClient : IAsyncDisposable
         Workspace = session.GetProperty("workspace").GetString() ?? string.Empty;
         Provider = session.GetProperty("provider").GetString() ?? string.Empty;
         Model = session.GetProperty("model").GetString() ?? string.Empty;
-        ReasoningEffort = session.TryGetProperty("reasoning_effort", out var effort)
-            ? effort.GetString() ?? string.Empty
-            : string.Empty;
         MessageCount = session.TryGetProperty("message_count", out var count)
             ? count.GetInt32()
             : 0;
@@ -74,7 +71,6 @@ public sealed class KlSessionClient : IAsyncDisposable
     public string Workspace { get; }
     public string Provider { get; }
     public string Model { get; }
-    public string ReasoningEffort { get; }
     public int MessageCount { get; }
     public bool IsWriter => _isWriter;
 
@@ -89,8 +85,6 @@ public sealed class KlSessionClient : IAsyncDisposable
             }
         }
     }
-
-    public void SetAgent(string? agent) => _sessionOptions.Agent = agent;
 
     public static async Task<KlSessionClient> StartAsync(
         KlClientOptions clientOptions,
@@ -138,13 +132,7 @@ public sealed class KlSessionClient : IAsyncDisposable
 
             if (serverMode)
             {
-                // The server only forwards events for attached sessions and only
-                // accepts turn traffic from the lease holder.
-                var attach = await client.AttachSessionAsync(
-                    session.SessionId,
-                    null,
-                    cancellationToken).ConfigureAwait(false);
-                await session.TryAcquireLeaseAsync(client, cancellationToken)
+                var attach = await session.AttachAndLeaseAsync(client, null, cancellationToken)
                     .ConfigureAwait(false);
                 if (sessionOptions.SkipInitialReplay)
                 {
@@ -228,11 +216,8 @@ public sealed class KlSessionClient : IAsyncDisposable
                 // de-duplication by LastSeq is unaffected.
                 await next.ResumeSessionAsync(SessionId, cancellationToken)
                     .ConfigureAwait(false);
-                var attach = await next.AttachSessionAsync(
-                    SessionId,
-                    LastSeq,
-                    cancellationToken).ConfigureAwait(false);
-                await TryAcquireLeaseAsync(next, cancellationToken).ConfigureAwait(false);
+                var attach = await AttachAndLeaseAsync(next, LastSeq, cancellationToken)
+                    .ConfigureAwait(false);
                 lock (_clientLock)
                 {
                     _client = next;
@@ -278,17 +263,6 @@ public sealed class KlSessionClient : IAsyncDisposable
             ? id.GetString() ?? string.Empty
             : throw new JsonRpcException(-32603, "session.fork returned no session_id");
     }
-
-    public Task<JsonElement> RenameSessionAsync(
-        string sessionId,
-        string name,
-        CancellationToken cancellationToken = default) =>
-        Client.RenameSessionAsync(sessionId, name, cancellationToken);
-
-    public Task<JsonElement> DeleteSessionAsync(
-        string sessionId,
-        CancellationToken cancellationToken = default) =>
-        Client.DeleteSessionAsync(sessionId, cancellationToken);
 
     public Task<JsonElement> ListMemoryAsync(
         string? scope = null,
@@ -428,6 +402,22 @@ public sealed class KlSessionClient : IAsyncDisposable
     /// Takes the write lease for turn traffic, or reports a read-only observer
     /// without sending an RPC that the server will reject.
     /// </summary>
+    /// <summary>
+    /// Attaches to the session, then takes the write lease. The server only
+    /// forwards events for attached sessions and only accepts turn traffic
+    /// from the lease holder.
+    /// </summary>
+    private async Task<JsonElement> AttachAndLeaseAsync(
+        KlCoreClient client,
+        long? afterSeq,
+        CancellationToken cancellationToken)
+    {
+        var attach = await client.AttachSessionAsync(SessionId, afterSeq, cancellationToken)
+            .ConfigureAwait(false);
+        await TryAcquireLeaseAsync(client, cancellationToken).ConfigureAwait(false);
+        return attach;
+    }
+
     private async Task<KlCoreClient> EnsureWriterAsync(
         CancellationToken cancellationToken)
     {

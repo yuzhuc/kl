@@ -45,7 +45,7 @@ public static class TerminalGuiRunner
     private static string FormatHistory(JsonElement history)
     {
         var builder = new StringBuilder();
-        foreach (var message in ChatTuiState.ParseHistory(history))
+        foreach (var message in SessionHistory.ParseHistory(history))
         {
             if (string.IsNullOrWhiteSpace(message.Text))
             {
