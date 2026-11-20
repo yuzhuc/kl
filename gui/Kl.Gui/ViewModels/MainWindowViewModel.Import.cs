@@ -15,6 +15,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
 {
     public async Task DiscoverImportsAsync()
     {
+        if (IsRemoteCore)
+        {
+            ImportStatusText = RemoteDisabled("导入扫描");
+            return;
+        }
         if (IsImportScanning)
         {
             return;
@@ -50,6 +55,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public async Task ImportSelectedAsync()
     {
+        if (IsRemoteCore)
+        {
+            ImportStatusText = RemoteDisabled("导入");
+            return;
+        }
         var selected = ImportCandidates.Where(item => item.IsSelected).ToList();
         if (selected.Count == 0)
         {

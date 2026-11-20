@@ -15,6 +15,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
 {
     public async Task InstallPluginAsync(string path)
     {
+        if (IsRemoteCore)
+        {
+            PluginStatus = RemoteDisabled("插件安装");
+            return;
+        }
         try
         {
             await _core.InstallPluginAsync(path, CancellationToken.None).ConfigureAwait(true);

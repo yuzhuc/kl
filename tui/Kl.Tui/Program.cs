@@ -225,6 +225,12 @@ internal static class Program
                     continue;
                 }
 
+                if (trimmed.StartsWith('/'))
+                {
+                    ui.Line("available commands: /exit, /quit, /settings");
+                    continue;
+                }
+
                 var outcome = await session.RunTurnAsync(line).ConfigureAwait(false);
                 if (outcome.Status == "failed")
                 {

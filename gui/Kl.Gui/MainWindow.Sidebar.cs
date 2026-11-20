@@ -305,7 +305,7 @@ public partial class MainWindow : Window
         FocusComposer();
     }
 
-    private async void OnSessionClicked(object? sender, RoutedEventArgs eventArgs)
+    internal async void OnSessionClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (_pinnedDragSkipClick)
         {
@@ -372,7 +372,7 @@ public partial class MainWindow : Window
         eventArgs.Handled = true;
     }
 
-    private void OnWorkspaceEditClicked(object? sender, RoutedEventArgs eventArgs)
+    internal void OnWorkspaceEditClicked(object? sender, RoutedEventArgs eventArgs)
     {
         HidePreviewCards();
         if (GetWorkspace(sender) is not { } workspace)

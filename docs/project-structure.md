@@ -45,6 +45,8 @@ sibling `bin/` directory, while benchmark workspaces are disposable.
 | `tui/Kl.Tui.Tests` | TUI, protocol, server and core integration tests |
 | `gui/Kl.Gui` | Avalonia desktop client over `Kl.Client` |
 | `gui/Kl.Gui.Tests` | GUI view-model and service tests |
+| `gui/Kl.Gui.HeadlessTests` | Avalonia headless layout tests for the shell and settings panes |
+| `gui/Kl.Gui/Views` | Settings pane UserControls split out of `MainWindow.axaml` |
 | `sdk/Kl.Client` | JSON-RPC connection, session client, DTOs and endpoint discovery |
 
 The TUI and the GUI both use `Kl.Client` and do not own an agent loop.

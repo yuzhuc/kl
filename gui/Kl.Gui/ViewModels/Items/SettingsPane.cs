@@ -35,4 +35,5 @@ public enum SettingsPane
     Worktrees,
     Memory,
     Models,
+    Audit,
 }

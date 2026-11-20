@@ -80,25 +80,25 @@ public partial class MainWindow : Window
         flyout.ShowAt(anchor);
     }
 
-    private void OnMemoryScopeWorkspaceClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal void OnMemoryScopeWorkspaceClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.SetMemoryScope("workspace");
 
-    private void OnMemoryScopeUserClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal void OnMemoryScopeUserClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.SetMemoryScope("user");
 
-    private void OnRefreshMemoryClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal void OnRefreshMemoryClicked(object? sender, RoutedEventArgs eventArgs) =>
         _ = _viewModel.RefreshMemoryAsync();
 
-    private void OnNewMemoryClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal void OnNewMemoryClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.StartNewMemory();
 
-    private async void OnSaveMemoryClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal async void OnSaveMemoryClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.SaveMemoryAsync();
 
-    private async void OnDeleteMemoryClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal async void OnDeleteMemoryClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.DeleteMemoryAsync();
 
-    private async void OnMemoryEntryClicked(object? sender, RoutedEventArgs eventArgs)
+    internal async void OnMemoryEntryClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (sender is Control { Tag: string name })
         {
@@ -106,25 +106,25 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnRefreshConfigClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal void OnRefreshConfigClicked(object? sender, RoutedEventArgs eventArgs) =>
         _ = _viewModel.RefreshConfigAsync();
 
-    private void OnRefreshHooksClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal void OnRefreshHooksClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.RefreshHooks();
 
-    private async void OnRefreshGitClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal async void OnRefreshGitClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.RefreshGitAsync();
 
-    private async void OnRefreshWorktreesClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal async void OnRefreshWorktreesClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.RefreshWorktreesAsync();
 
-    private async void OnRunReviewClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal async void OnRunReviewClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.RunReviewAsync();
 
-    private async void OnCreateWorktreeClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal async void OnCreateWorktreeClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.CreateWorktreeAsync();
 
-    private void OnDeleteWorktreeClicked(object? sender, RoutedEventArgs eventArgs)
+    internal void OnDeleteWorktreeClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (sender is Control { DataContext: WorktreeRow row })
         {
@@ -138,7 +138,7 @@ public partial class MainWindow : Window
     private async void OnConfirmWorktreeDeleteClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.ConfirmDeleteWorktreeAsync();
 
-    private void OnOpenWorktreeClicked(object? sender, RoutedEventArgs eventArgs)
+    internal void OnOpenWorktreeClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (sender is Control { DataContext: WorktreeRow row } && Directory.Exists(row.Path))
         {
@@ -146,8 +146,12 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnOpenHooksClicked(object? sender, RoutedEventArgs eventArgs)
+    internal void OnOpenHooksClicked(object? sender, RoutedEventArgs eventArgs)
     {
+        if (BlockRemoteLocalPath("打开 hooks.toml"))
+        {
+            return;
+        }
         var path = _viewModel.HooksFilePath;
         if (File.Exists(path))
         {
@@ -164,25 +168,25 @@ public partial class MainWindow : Window
         });
     }
 
-    private void OnOpenMemorySettingsClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal void OnOpenMemorySettingsClicked(object? sender, RoutedEventArgs eventArgs) =>
         SwitchSettingsPane(SettingsPane.Memory);
 
-    private void OnOpenWorktreesSettingsClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal void OnOpenWorktreesSettingsClicked(object? sender, RoutedEventArgs eventArgs) =>
         SwitchSettingsPane(SettingsPane.Worktrees);
 
-    private void OnOpenModelsSettingsClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal void OnOpenModelsSettingsClicked(object? sender, RoutedEventArgs eventArgs) =>
         SwitchSettingsPane(SettingsPane.Models);
 
-    private void OnAddProviderClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal void OnAddProviderClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.OpenProviderForm();
 
-    private void OnCancelProviderClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal void OnCancelProviderClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.CloseProviderForm();
 
-    private async void OnSaveProviderClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal async void OnSaveProviderClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.SaveProviderAsync();
 
-    private void OnEditProviderClicked(object? sender, RoutedEventArgs eventArgs)
+    internal void OnEditProviderClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (sender is Control { DataContext: ProviderCardRow provider })
         {
@@ -190,31 +194,31 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnCloseProviderDetailClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal void OnCloseProviderDetailClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.CloseProviderDetail();
 
-    private void OnSaveProviderProfileClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal void OnSaveProviderProfileClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.SaveProviderProfile();
 
-    private async void OnSaveProviderConnectionClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal async void OnSaveProviderConnectionClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.SaveProviderConnectionAsync();
 
-    private void OnDeleteProviderClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal void OnDeleteProviderClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.OpenProviderDeleteConfirm();
 
-    private void OnCancelDeleteProviderClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal void OnCancelDeleteProviderClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.CancelProviderDeleteConfirm();
 
-    private async void OnConfirmDeleteProviderClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal async void OnConfirmDeleteProviderClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.ConfirmDeleteProviderAsync();
 
-    private void OnAddProviderModelClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal void OnAddProviderModelClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.OpenAddProviderModel();
 
-    private async void OnFetchProviderModelsClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal async void OnFetchProviderModelsClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.FetchProviderModelsAsync();
 
-    private void OnEditProviderModelClicked(object? sender, RoutedEventArgs eventArgs)
+    internal void OnEditProviderModelClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (sender is Control { DataContext: ProviderModelRow model })
         {
@@ -222,7 +226,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OnDeleteProviderModelClicked(object? sender, RoutedEventArgs eventArgs)
+    internal async void OnDeleteProviderModelClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (sender is Control { DataContext: ProviderModelRow model })
         {
@@ -230,16 +234,16 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnCancelProviderModelClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal void OnCancelProviderModelClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.CloseProviderModelForm();
 
-    private async void OnSaveProviderModelClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal async void OnSaveProviderModelClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.SaveProviderModelAsync();
 
-    private async void OnSaveProviderApiKeyClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal async void OnSaveProviderApiKeyClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.SaveProviderDetailApiKeyAsync();
 
-    private async void OnProviderEnabledChanged(object? sender, RoutedEventArgs eventArgs)
+    internal async void OnProviderEnabledChanged(object? sender, RoutedEventArgs eventArgs)
     {
         if (sender is ToggleSwitch { DataContext: ProviderCardRow provider } toggle)
         {
@@ -247,7 +251,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OnProviderModelEnabledChanged(object? sender, RoutedEventArgs eventArgs)
+    internal async void OnProviderModelEnabledChanged(object? sender, RoutedEventArgs eventArgs)
     {
         if (sender is ToggleSwitch { DataContext: ProviderModelRow model } toggle)
         {
@@ -255,7 +259,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnOpenProviderWebsiteClicked(object? sender, RoutedEventArgs eventArgs)
+    internal void OnOpenProviderWebsiteClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (sender is Control { Tag: string url }
             && Uri.TryCreate(url, UriKind.Absolute, out var uri)
@@ -272,7 +276,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnFollowUpModeClicked(object? sender, RoutedEventArgs eventArgs)
+    internal void OnFollowUpModeClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (sender is Control { Tag: string mode })
         {
@@ -280,7 +284,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnMotionModeClicked(object? sender, RoutedEventArgs eventArgs)
+    internal void OnMotionModeClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (sender is Control { Tag: string mode })
         {
@@ -288,7 +292,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnDiffMarkerModeClicked(object? sender, RoutedEventArgs eventArgs)
+    internal void OnDiffMarkerModeClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (sender is Control { Tag: string mode })
         {
@@ -316,7 +320,7 @@ public partial class MainWindow : Window
         _viewModel.ToggleTerminalPanel();
     }
 
-    private void OnTerminalPositionClicked(object? sender, RoutedEventArgs eventArgs)
+    internal void OnTerminalPositionClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (sender is Control { Tag: string position })
         {
@@ -447,10 +451,10 @@ public partial class MainWindow : Window
         eventArgs.Pointer.Capture(null);
     }
 
-    private void OnRefreshCredentialsClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal void OnRefreshCredentialsClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.RefreshCredentials();
 
-    private void OnOpenCredentialsClicked(object? sender, RoutedEventArgs eventArgs)
+    internal void OnOpenCredentialsClicked(object? sender, RoutedEventArgs eventArgs)
     {
         var directory = _viewModel.CredentialsDirectory;
         Directory.CreateDirectory(directory);
@@ -462,17 +466,21 @@ public partial class MainWindow : Window
         });
     }
 
-    private async void OnDeleteAllMemoriesClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal async void OnDeleteAllMemoriesClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.DeleteAllMemoriesAsync();
 
-    private async void OnScanImportsClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal async void OnScanImportsClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.DiscoverImportsAsync();
 
-    private async void OnImportSelectedClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal async void OnImportSelectedClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.ImportSelectedAsync();
 
-    private void OnOpenImportSourceClicked(object? sender, RoutedEventArgs eventArgs)
+    internal void OnOpenImportSourceClicked(object? sender, RoutedEventArgs eventArgs)
     {
+        if (BlockRemoteLocalPath("打开导入源目录"))
+        {
+            return;
+        }
         var path = Directory.Exists(_viewModel.ImportCodexHome)
             ? _viewModel.ImportCodexHome
             : _viewModel.ImportClaudeHome;
@@ -485,10 +493,10 @@ public partial class MainWindow : Window
         OpenDirectory(path, "导入来源");
     }
 
-    private void OnRefreshMcpToolsClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal void OnRefreshMcpToolsClicked(object? sender, RoutedEventArgs eventArgs) =>
         _ = _viewModel.RefreshMcpToolsAsync();
 
-    private void OnShortcutEditClicked(object? sender, RoutedEventArgs eventArgs)
+    internal void OnShortcutEditClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (sender is Control { DataContext: ShortcutRowViewModel row })
         {
@@ -497,7 +505,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnShortcutResetClicked(object? sender, RoutedEventArgs eventArgs)
+    internal void OnShortcutResetClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (sender is Control { DataContext: ShortcutRowViewModel row })
         {
@@ -505,10 +513,10 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnCancelShortcutCaptureClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal void OnCancelShortcutCaptureClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.CancelShortcutCapture();
 
-    private void OnSettingsNavClicked(object? sender, RoutedEventArgs eventArgs)
+    internal void OnSettingsNavClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (sender is Control { Tag: string name }
             && Enum.TryParse<SettingsPane>(name, out var pane))
@@ -532,7 +540,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Clicking blank space drops the text focus, as Codex does.</summary>
-    private void OnOpenRemoteCoreSettingsClicked(object? sender, RoutedEventArgs eventArgs)
+    internal void OnOpenRemoteCoreSettingsClicked(object? sender, RoutedEventArgs eventArgs)
     {
         SwitchSettingsPane(SettingsPane.Connections);
         var tab = SettingsPanesPanel.GetLogicalDescendants().OfType<Button>()
@@ -549,7 +557,7 @@ public partial class MainWindow : Window
         FocusManager?.Focus(null, NavigationMethod.Unspecified, KeyModifiers.None);
 
     /// <summary>Codex keeps the appearance pane's advanced card collapsed until asked for.</summary>
-    private void OnAppearanceAdvancedClicked(object? sender, RoutedEventArgs eventArgs)
+    internal void OnAppearanceAdvancedClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (this.FindControl<StackPanel>("AppearanceAdvancedPanel") is not { } panel
             || this.FindControl<Avalonia.Controls.Shapes.Path>("AppearanceAdvancedChevronRight") is not { } right
@@ -594,7 +602,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnSettingsTabClicked(object? sender, RoutedEventArgs eventArgs)
+    internal void OnSettingsTabClicked(object? sender, RoutedEventArgs eventArgs)
     {
         if (sender is not Button { Tag: string tag } current)
         {
@@ -635,7 +643,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnEditAgentsClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal void OnEditAgentsClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.OpenAgentsEditor();
 
     private void OnCloseAgentsEditorClicked(object? sender, RoutedEventArgs eventArgs) =>
@@ -647,11 +655,6 @@ public partial class MainWindow : Window
     /// <summary>Chevron rows without a destination become clickable and open the detail sheet.</summary>
     private void OnSettingsPaneChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(MainWindowViewModel.StorageBarColumns))
-        {
-            StorageBar.ColumnDefinitions = _viewModel.StorageBarColumns;
-            return;
-        }
         if (e.PropertyName is null || !e.PropertyName.StartsWith("IsSettings", StringComparison.Ordinal))
             return;
         if (e.PropertyName is nameof(MainWindowViewModel.IsSettingsProviders)
@@ -739,7 +742,8 @@ public partial class MainWindow : Window
     {
         var query = SettingsSearchBox.Text?.Trim() ?? string.Empty;
         var paneHasMatch = false;
-        foreach (var pane in SettingsPanesPanel.Children.OfType<StackPanel>())
+        foreach (var pane in SettingsPanesPanel.GetLogicalDescendants().OfType<StackPanel>()
+                     .Where(pane => pane.Classes.Contains("settings-pane")))
         {
             if (!pane.IsVisible)
             {
@@ -761,7 +765,7 @@ public partial class MainWindow : Window
         SettingsNoMatch.IsVisible = query.Length > 0 && !paneHasMatch;
     }
 
-    private void OnAddWorkspaceClicked(object? sender, RoutedEventArgs eventArgs)
+    internal void OnAddWorkspaceClicked(object? sender, RoutedEventArgs eventArgs)
     {
         _viewModel.OpenCreateProjectDialog();
         Dispatcher.UIThread.Post(() => ProjectNameBox.Focus(), DispatcherPriority.Background);
@@ -801,7 +805,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OnTestConnectionClicked(object? sender, RoutedEventArgs eventArgs)
+    internal async void OnTestConnectionClicked(object? sender, RoutedEventArgs eventArgs)
     {
         await _viewModel.TestConnectionAsync();
     }
@@ -1000,13 +1004,13 @@ public partial class MainWindow : Window
             _ => "high"
         };
 
-    private async void OnSaveModelClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal async void OnSaveModelClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.SaveModelAsync();
 
-    private async void OnSaveApiKeyClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal async void OnSaveApiKeyClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.SaveApiKeyAsync();
 
-    private async void OnSaveCustomInstructionsClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal async void OnSaveCustomInstructionsClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.SaveCustomInstructionsAsync();
 
     private async void OnExportConversationClicked(object? sender, RoutedEventArgs eventArgs)
@@ -1050,7 +1054,7 @@ public partial class MainWindow : Window
     private async void OnCompactSessionClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.CompactActiveSessionAsync();
 
-    private async void OnRunDoctorClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal async void OnRunDoctorClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.RunDoctorAsync();
 
     private async void OnRetryCoreClicked(object? sender, RoutedEventArgs eventArgs)
@@ -1073,20 +1077,44 @@ public partial class MainWindow : Window
     private async void OnApprovalDenyClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.RespondApprovalAsync("deny");
 
-    private void OnResetSettingsClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal void OnResetSettingsClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.ResetSettingsDefaults();
 
-    private void OnRefreshStorageClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal void OnRefreshStorageClicked(object? sender, RoutedEventArgs eventArgs) =>
         _ = _viewModel.RefreshStorageAsync();
 
-    private void OnOpenStateDirectoryClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal void OnRefreshAuditClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _ = _viewModel.RefreshAuditAsync();
+
+    private void OnSkillRowClicked(object? sender, PointerPressedEventArgs eventArgs)
+    {
+        if (sender is Control { DataContext: SkillRow row })
+        {
+            _ = _viewModel.OpenSkillAsync(row.Name);
+        }
+    }
+
+    private void OnCloseSkillDetailClicked(object? sender, RoutedEventArgs eventArgs) =>
+        _viewModel.CloseSkillDetail();
+
+    internal void OnOpenStateDirectoryClicked(object? sender, RoutedEventArgs eventArgs) =>
         OpenDirectory(_viewModel.StateDirectory, "数据目录");
 
-    private void OnOpenKlHomeClicked(object? sender, RoutedEventArgs eventArgs) =>
-        OpenDirectory(_viewModel.KlHomeDirectory, "KL Home");
-
-    private void OnOpenCoreConfigClicked(object? sender, RoutedEventArgs eventArgs)
+    internal void OnOpenKlHomeClicked(object? sender, RoutedEventArgs eventArgs)
     {
+        if (BlockRemoteLocalPath("打开 KL Home"))
+        {
+            return;
+        }
+        OpenDirectory(_viewModel.KlHomeDirectory, "KL Home");
+    }
+
+    internal void OnOpenCoreConfigClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (BlockRemoteLocalPath("打开 config.toml"))
+        {
+            return;
+        }
         var path = _viewModel.ConfigFilePath;
         if (File.Exists(path))
         {
@@ -1124,7 +1152,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OnExportStateBackupClicked(object? sender, RoutedEventArgs eventArgs)
+    internal async void OnExportStateBackupClicked(object? sender, RoutedEventArgs eventArgs)
     {
         var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
@@ -1140,7 +1168,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OnImportStateBackupClicked(object? sender, RoutedEventArgs eventArgs)
+    internal async void OnImportStateBackupClicked(object? sender, RoutedEventArgs eventArgs)
     {
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
@@ -1155,8 +1183,24 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnOpenPluginDirectoryClicked(object? sender, RoutedEventArgs eventArgs) =>
+    private void OnOpenPluginDirectoryClicked(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (BlockRemoteLocalPath("打开插件目录"))
+        {
+            return;
+        }
         OpenDirectory(_viewModel.PluginDirectoryPath, "插件目录");
+    }
+
+    private bool BlockRemoteLocalPath(string label)
+    {
+        if (!_viewModel.IsRemoteCore)
+        {
+            return false;
+        }
+        _viewModel.ReportError(MainWindowViewModel.RemoteDisabled(label));
+        return true;
+    }
 
     private async void OnRefreshPluginsClicked(object? sender, RoutedEventArgs eventArgs)
     {
@@ -1164,7 +1208,7 @@ public partial class MainWindow : Window
         await _viewModel.RefreshPluginsAsync();
     }
 
-    private async void OnPluginToggled(object? sender, RoutedEventArgs eventArgs)
+    internal async void OnPluginToggled(object? sender, RoutedEventArgs eventArgs)
     {
         if (sender is ToggleSwitch { DataContext: PluginItemViewModel plugin } toggle)
         {
@@ -1209,7 +1253,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OnCopyStatePathClicked(object? sender, RoutedEventArgs eventArgs)
+    internal async void OnCopyStatePathClicked(object? sender, RoutedEventArgs eventArgs)
     {
         var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
         if (clipboard is null)
@@ -1271,19 +1315,19 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnSaveRemoteCoreClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal void OnSaveRemoteCoreClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.SaveRemoteCoreSettings();
 
-    private void OnClearRemoteCoreClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal void OnClearRemoteCoreClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.ClearRemoteCoreSettings();
 
-    private async void OnTestRemoteCoreClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal async void OnTestRemoteCoreClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.TestRemoteCoreConnectionAsync();
 
-    private async void OnReconnectCoreClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal async void OnReconnectCoreClicked(object? sender, RoutedEventArgs eventArgs) =>
         await _viewModel.RetryCoreAsync();
 
-    private void OnOpenCleanupClicked(object? sender, RoutedEventArgs eventArgs) =>
+    internal void OnOpenCleanupClicked(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.OpenCleanupDialog();
 
     private void OnCloseCleanupDialogClicked(object? sender, RoutedEventArgs eventArgs) =>

@@ -1,0 +1,455 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kl.Gui.ViewModels"
+             xmlns:controls="using:Kl.Gui.Controls"
+             x:Class="Kl.Gui.Views.SettingsModelsView"
+             x:DataType="vm:MainWindowViewModel">
+    <StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsModels}" Spacing="50" Classes="settings-pane">
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="模型" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="默认模型" />
+                            <TextBlock Classes="settings-desc" Text="新聊天使用的 Provider 和模型，由 KL Core 执行。" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <ComboBox Width="250" Classes="settings-select" ItemsSource="{Binding SettingsModelChoices}"
+                                      SelectedItem="{Binding SettingsSelectedModel, Mode=TwoWay}" />
+                            <Button Classes="secondary settings-button" Content="保存" Click="OnSaveModelClicked" />
+                            </StackPanel>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="推理强度" />
+                            <TextBlock Classes="settings-desc" Text="KL Core 默认使用的推理强度；模型控件仍可临时覆盖。" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" Classes="settings-select" VerticalAlignment="Center"
+                                      SelectedIndex="{Binding ReasoningEffortIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="默认" />
+                            <ComboBoxItem Content="低" />
+                            <ComboBoxItem Content="中" />
+                            <ComboBoxItem Content="高" />
+                            </ComboBox>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="质量模式" />
+                            <TextBlock Classes="settings-desc" Text="每回合传给 Core 的质量模式；跟随默认时由 Core 配置决定。" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" Classes="settings-select" VerticalAlignment="Center"
+                                      SelectedIndex="{Binding QualityModeIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="跟随 Core 默认" />
+                            <ComboBoxItem Content="fast" />
+                            <ComboBoxItem Content="balanced" />
+                            <ComboBoxItem Content="deep" />
+                            </ComboBox>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="智能体预设" />
+                            <TextBlock Classes="settings-desc" Text="由 Core 的 agent.list 提供；对后续回合生效。" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" Classes="settings-select" Width="220" VerticalAlignment="Center"
+                                      ItemsSource="{Binding AgentPresetOptions}"
+                                      SelectedIndex="{Binding AgentPresetIndex, Mode=TwoWay}" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="API Key" />
+                            <TextBlock Text="{Binding CoreKeyStatusText}" Classes="settings-desc" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <TextBox Width="220" Classes="settings-input" PasswordChar="•"
+                                     Text="{Binding SettingsApiKeyDraft, Mode=TwoWay}"
+                                     PlaceholderText="输入新的 API Key" />
+                            <Button Classes="secondary settings-button" Content="保存 Key" Click="OnSaveApiKeyClicked" />
+                            </StackPanel>
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="连接状态" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="KL Core" />
+                            <TextBlock Classes="settings-desc" Text="{Binding CoreStatusText}" HorizontalAlignment="Left" MaxWidth="650" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding SettingsStatus}" IsVisible="{Binding HasSettingsStatus}"
+                                       FontSize="11.5" TextWrapping="Wrap" Foreground="{DynamicResource TextCaption}" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="secondary settings-button" VerticalAlignment="Center"
+                                    Content="{Binding TestConnectionButtonText}" IsEnabled="{Binding CanTestConnection}"
+                                    Click="OnTestConnectionClicked" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="版本" />
+                            <TextBlock Classes="settings-desc" Text="{Binding CoreVersionText}" HorizontalAlignment="Left" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="secondary settings-button" Content="诊断" Click="OnRunDoctorClicked" />
+                            </Grid>
+                            <StackPanel IsVisible="{Binding HasDoctorSummary}" Margin="16,2,16,12" Spacing="4">
+                            <TextBlock Text="{Binding DoctorSummary}" FontSize="12.5"
+                                       Foreground="{DynamicResource TextPrimary}" TextWrapping="Wrap" />
+                            <ItemsControl ItemsSource="{Binding DoctorChecks}" IsVisible="{Binding HasDoctorChecks}">
+                            <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                            <TextBlock Text="{Binding}" FontSize="11.5"
+                                       Foreground="{DynamicResource TextCaption}" TextWrapping="Wrap" />
+                            </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            </StackPanel>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="配置文件" />
+                            <TextBlock Classes="settings-desc" Text="{Binding ConfigFilePath}" HorizontalAlignment="Left" TextTrimming="CharacterEllipsis" MaxWidth="520" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="secondary settings-button" Content="打开 config.toml" Click="OnOpenCoreConfigClicked" />
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            </StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsProviders}" Spacing="50" Classes="settings-pane">
+                            <StackPanel Spacing="0">
+                            <StackPanel Spacing="0" IsVisible="{Binding IsProviderListOpen}">
+                            <TextBlock Classes="settings-heading" Text="模型提供商" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="提供商连接" />
+                            <TextBlock Text="{Binding ProviderSummaryText}" Classes="settings-desc" HorizontalAlignment="Left" MaxWidth="620" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Button Classes="secondary settings-button" Content="添加提供商" Click="OnAddProviderClicked" />
+                            </StackPanel>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Border IsVisible="{Binding IsProviderFormOpen}" Background="#1B1B1E" BorderBrush="#34343A" BorderThickness="1" CornerRadius="10" Margin="16,12,16,6" Padding="14">
+<StackPanel Spacing="11">
+<Grid ColumnDefinitions="*,Auto">
+<StackPanel Spacing="2">
+<TextBlock Text="接入新的模型提供商" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource TextPrimary}" />
+<TextBlock Text="填写基础请求地址并选择后缀；保存时会为三种协议自动生成完整地址。" FontSize="11.5" Foreground="{DynamicResource TextCaption}" TextWrapping="Wrap" MaxWidth="560" HorizontalAlignment="Left" />
+</StackPanel>
+<Button Grid.Column="1" Classes="subtle" Content="取消" Click="OnCancelProviderClicked" VerticalAlignment="Top" />
+</Grid>
+<Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+<StackPanel Spacing="4">
+<TextBlock Text="名称" Classes="settings-desc" />
+<TextBox Classes="settings-input" Text="{Binding ProviderDraftName, Mode=TwoWay}" PlaceholderText="DeepSeek" />
+</StackPanel>
+<StackPanel Grid.Column="1" Spacing="4">
+<TextBlock Text="备注（可选）" Classes="settings-desc" />
+<TextBox Classes="settings-input" Text="{Binding ProviderDraftNote, Mode=TwoWay}" PlaceholderText="例如：团队共享额度" />
+</StackPanel>
+</Grid>
+<StackPanel Spacing="4">
+<TextBlock Text="官网链接（可选）" Classes="settings-desc" />
+<TextBox Classes="settings-input" Text="{Binding ProviderDraftWebsite, Mode=TwoWay}" PlaceholderText="https://www.deepseek.com" />
+</StackPanel>
+<StackPanel Spacing="6">
+<TextBlock Text="请求地址" Classes="settings-desc" />
+<Grid ColumnDefinitions="*,140" ColumnSpacing="8">
+<TextBox Classes="settings-input" Text="{Binding ProviderDraftChatUrl, Mode=TwoWay}" PlaceholderText="https://api.deepseek.com" />
+<ComboBox Grid.Column="1" Classes="settings-select" Height="32" Padding="8,2" HorizontalAlignment="Stretch" SelectedIndex="{Binding ProviderChatSuffixIndex, Mode=TwoWay}">
+<ComboBoxItem Content="null" />
+<ComboBoxItem Content="/xxx" />
+<ComboBoxItem Content="/v1/xxx" />
+</ComboBox>
+</Grid>
+<TextBlock Text="null 原样保存；/xxx 和 /v1/xxx 会按协议自动补全三种地址。" FontSize="11" Foreground="{DynamicResource TextCaption}" />
+</StackPanel>
+<Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+<StackPanel Spacing="4">
+<TextBlock Text="API Key（可选）" Classes="settings-desc" />
+<TextBox Classes="settings-input" PasswordChar="•" Text="{Binding ProviderDraftApiKey, Mode=TwoWay}" PlaceholderText="只保存在本机凭据目录" />
+</StackPanel>
+<Button Grid.Column="1" Classes="primary" Content="接入提供商" Click="OnSaveProviderClicked" VerticalAlignment="Bottom" />
+</Grid>
+<TextBlock Text="{Binding ProviderFormStatus}" IsVisible="{Binding HasProviderFormStatus}" FontSize="11.5" Foreground="#E36B6B" TextWrapping="Wrap" />
+</StackPanel>
+</Border>
+<TextBlock Text="{Binding ProviderStatusText}" IsVisible="{Binding HasProviderStatus}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" Margin="16,0,16,10" TextWrapping="Wrap" />
+                            <ItemsControl ItemsSource="{Binding ProviderCards}" IsVisible="{Binding HasProviderCards}">
+                            <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ProviderCardRow">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="18" Margin="16,11,16,11">
+                            <StackPanel Spacing="4" VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="Medium" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding Note}" IsVisible="{Binding HasNote}" FontSize="13.5" Foreground="#A3A5AB" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320" />
+                            </StackPanel>
+                            <Button Classes="link" IsVisible="{Binding HasWebsite}" Tag="{Binding Website}" Click="OnOpenProviderWebsiteClicked" HorizontalAlignment="Left" Padding="0">
+                            <TextBlock Text="{Binding Website}" FontSize="11.5" Foreground="#79A6DB" TextDecorations="Underline" TextTrimming="CharacterEllipsis" MaxWidth="520" />
+                            </Button>
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="secondary settings-button" Content="编辑" Click="OnEditProviderClicked" VerticalAlignment="Center" />
+                            <ToggleSwitch Grid.Column="2" Classes="setting" IsChecked="{Binding Enabled, Mode=TwoWay}" Click="OnProviderEnabledChanged" VerticalAlignment="Center" ToolTip.Tip="启用或停用此提供商" />
+                            </Grid>
+                            <Border Classes="settings-divider" Margin="16,0,16,0" />
+                            </StackPanel>
+                            </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <StackPanel IsVisible="{Binding ShowNoProviderCards}" Margin="16,6,16,14" Spacing="7">
+                            <TextBlock Text="尚未接入模型提供商" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource TextPrimary}" />
+                            <TextBlock Text="添加任意兼容的模型提供商，保存后会自动出现在这里。" FontSize="11.5" Foreground="{DynamicResource TextCaption}" TextWrapping="Wrap" MaxWidth="620" HorizontalAlignment="Left" />
+                            </StackPanel>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+
+                            <StackPanel Spacing="0" IsVisible="{Binding IsProviderDetailOpen}">
+                            <Button Classes="link" Content="← 返回提供商列表" Click="OnCloseProviderDetailClicked" HorizontalAlignment="Left" Margin="0,0,0,14" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,20">
+                            <StackPanel Spacing="4">
+                            <TextBlock Text="{Binding ProviderDetailName}" FontSize="24" FontWeight="Medium" LetterSpacing="-0.3" Foreground="{DynamicResource TextPrimary}" />
+                            <TextBlock Text="{Binding ProviderDetailId}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" />
+                            <Button Classes="link" IsVisible="{Binding HasProviderDetailWebsite}" Tag="{Binding ProviderDetailWebsite}" Click="OnOpenProviderWebsiteClicked" HorizontalAlignment="Left" Padding="0">
+                            <TextBlock Text="{Binding ProviderDetailWebsite}" FontSize="11.5" Foreground="#7EA7E8" TextDecorations="Underline" />
+                            </Button>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Top">
+                            <Button Classes="danger" Content="删除提供商" Click="OnDeleteProviderClicked" IsVisible="{Binding !IsProviderDeleteConfirmOpen}" />
+                            <Button Classes="secondary settings-button" Content="返回列表" Click="OnCloseProviderDetailClicked" />
+                            </StackPanel>
+                            </Grid>
+
+                            <Border IsVisible="{Binding IsProviderDeleteConfirmOpen}" Background="#2A1C1F" BorderBrush="#4A2A2E" BorderThickness="1" CornerRadius="12" Padding="14,12" Margin="0,0,0,18">
+                            <StackPanel Spacing="10">
+                            <TextBlock Text="删除后无法恢复。确定要删除此提供商吗？" FontSize="12.5" Foreground="#E5837C" TextWrapping="Wrap" />
+                            <TextBlock Text="会从 KL Core 配置中移除该提供商，并删除本机保存的 API Key。" FontSize="11.5" Foreground="{DynamicResource TextCaption}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding ProviderDetailStatus}" IsVisible="{Binding HasProviderDetailStatus}" FontSize="11.5" Foreground="#E36B6B" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                            <Button Classes="subtle" Content="取消" Click="OnCancelDeleteProviderClicked" />
+                            <Button Classes="danger" Content="确认删除" Click="OnConfirmDeleteProviderClicked" />
+                            </StackPanel>
+                            </StackPanel>
+                            </Border>
+
+                            <TextBlock Classes="settings-heading" Text="提供商信息" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel Margin="16,12,16,12" Spacing="10">
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                            <StackPanel Spacing="4">
+                            <TextBlock Text="供应商名称" Classes="settings-desc" />
+                            <TextBox Classes="settings-input" Text="{Binding ProviderEditName, Mode=TwoWay}" PlaceholderText="DeepSeek" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="4">
+                            <TextBlock Text="备注" Classes="settings-desc" />
+                            <TextBox Classes="settings-input" Text="{Binding ProviderEditNote, Mode=TwoWay}" PlaceholderText="例如：团队共享额度" />
+                            </StackPanel>
+                            </Grid>
+                            <StackPanel Spacing="4">
+                            <TextBlock Text="官网链接" Classes="settings-desc" />
+                            <TextBox Classes="settings-input" Text="{Binding ProviderEditWebsite, Mode=TwoWay}" PlaceholderText="https://www.deepseek.com" />
+                            </StackPanel>
+                            <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="名称、备注和官网链接只保存在本机。" FontSize="11.5" Foreground="{DynamicResource TextCaption}" VerticalAlignment="Center" />
+                            <Button Grid.Column="1" Classes="primary" Content="保存信息" Click="OnSaveProviderProfileClicked" />
+                            </Grid>
+                            <TextBlock Text="{Binding ProviderEditStatus}" IsVisible="{Binding HasProviderEditStatus}" FontSize="11.5" Foreground="#E36B6B" TextWrapping="Wrap" />
+                            </StackPanel>
+                            </Border>
+
+                            <TextBlock Classes="settings-heading" Text="连接配置" Margin="0,30,0,0" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel Margin="16,12,16,12" Spacing="11">
+                            <TextBlock Text="为每种协议填写完整请求地址，打开右侧开关后启用；保存只更新协议地址，已有模型保持不变。" FontSize="11.5" Foreground="{DynamicResource TextCaption}" TextWrapping="Wrap" />
+                            <StackPanel Spacing="6">
+                            <Grid ColumnDefinitions="110,*,Auto" ColumnSpacing="8">
+                            <TextBlock Text="OpenAI Chat" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="1" Classes="settings-input" Text="{Binding ProviderDraftChatUrl, Mode=TwoWay}" PlaceholderText="https://api.deepseek.com/chat/completions" />
+                            <ToggleSwitch Grid.Column="2" Classes="setting" IsChecked="{Binding ProviderChatProtocolEnabled, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            <Grid ColumnDefinitions="110,*,Auto" ColumnSpacing="8">
+                            <TextBlock Text="Anthropic" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="1" Classes="settings-input" Text="{Binding ProviderDraftAnthropicUrl, Mode=TwoWay}" PlaceholderText="https://api.deepseek.com/messages" />
+                            <ToggleSwitch Grid.Column="2" Classes="setting" IsChecked="{Binding ProviderAnthropicProtocolEnabled, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            <Grid ColumnDefinitions="110,*,Auto" ColumnSpacing="8">
+                            <TextBlock Text="OpenAI Responses" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="1" Classes="settings-input" Text="{Binding ProviderDraftResponsesUrl, Mode=TwoWay}" PlaceholderText="https://api.deepseek.com/responses" />
+                            <ToggleSwitch Grid.Column="2" Classes="setting" IsChecked="{Binding ProviderResponsesProtocolEnabled, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            </StackPanel>
+                            <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="地址原样写入；打开右侧开关后启用对应协议。" FontSize="11.5" Foreground="{DynamicResource TextCaption}" VerticalAlignment="Center" />
+                            <Button Grid.Column="1" Classes="primary" Content="保存连接" Click="OnSaveProviderConnectionClicked" />
+                            </Grid>
+                            <TextBlock Text="{Binding ProviderConnectionStatus}" IsVisible="{Binding HasProviderConnectionStatus}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            </Border>
+
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,30,0,17">
+                            <TextBlock Classes="settings-heading" Text="模型" VerticalAlignment="Center" />
+                            <Button Grid.Column="1" Classes="secondary settings-button" Content="添加模型" Click="OnAddProviderModelClicked" />
+                            </Grid>
+                            <Border Classes="settings-card">
+                            <StackPanel>
+                            <ItemsControl ItemsSource="{Binding ProviderModels}" IsVisible="{Binding HasProviderModels}">
+                            <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ProviderModelRow">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="12" Margin="16,10,16,10">
+                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Id}" FontSize="13.5" FontWeight="Medium" Foreground="{DynamicResource TextPrimary}" />
+                            <TextBlock Text="{Binding Summary}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="{Binding Enabled, Mode=TwoWay}"
+                                          Click="OnProviderModelEnabledChanged" VerticalAlignment="Center"
+                                          ToolTip.Tip="启用或停用此模型" />
+                            <Button Grid.Column="2" Classes="secondary settings-button" Content="编辑" Click="OnEditProviderModelClicked" VerticalAlignment="Center" />
+                            <Button Grid.Column="3" Classes="danger" Content="删除" Click="OnDeleteProviderModelClicked" VerticalAlignment="Center" />
+                            </Grid>
+                            <Border Classes="settings-divider" Margin="16,0,16,0" />
+                            </StackPanel>
+                            </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <StackPanel IsVisible="{Binding ShowNoProviderModels}" Margin="16,6,16,14" Spacing="4">
+                            <TextBlock Text="这个提供商还没有模型" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource TextPrimary}" />
+                            <TextBlock Text="添加模型后，KL 才能在聊天中选择它。" FontSize="11.5" Foreground="{DynamicResource TextCaption}" />
+                            </StackPanel>
+                            <Border IsVisible="{Binding IsProviderModelFormOpen}" Background="#1B1B1E" BorderBrush="#34343A" BorderThickness="1" CornerRadius="10" Margin="16,12,16,14" Padding="14">
+                            <StackPanel Spacing="11">
+                            <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Spacing="2">
+                            <TextBlock Text="{Binding ProviderModelFormTitle}" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource TextPrimary}" />
+                            <TextBlock Text="模型 URL 使用完整的 chat/completions、messages 或 responses 地址。" FontSize="11.5" Foreground="{DynamicResource TextCaption}" TextWrapping="Wrap" MaxWidth="560" HorizontalAlignment="Left" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="subtle" Content="取消" Click="OnCancelProviderModelClicked" VerticalAlignment="Top" />
+                            </Grid>
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                            <StackPanel Spacing="4">
+                            <TextBlock Text="模型 ID" Classes="settings-desc" />
+                            <TextBox Classes="settings-input" Text="{Binding ProviderModelDraftId, Mode=TwoWay}" PlaceholderText="deepseek-chat" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="4">
+                            <TextBlock Text="接口协议" Classes="settings-desc" />
+                            <ComboBox Classes="settings-select" HorizontalAlignment="Stretch" SelectedIndex="{Binding ProviderModelProtocolIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="OpenAI Chat" />
+                            <ComboBoxItem Content="Anthropic" />
+                            <ComboBoxItem Content="OpenAI Responses" />
+                            </ComboBox>
+                            </StackPanel>
+                            </Grid>
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                            <TextBlock Text="从提供商支持的 /models 地址读取可用模型（失败时会尝试 /modul）。" FontSize="11.5" Foreground="{DynamicResource TextCaption}" VerticalAlignment="Center" TextWrapping="Wrap" />
+                            <Button Grid.Column="1" Classes="secondary settings-button" Content="从 /models 获取" Click="OnFetchProviderModelsClicked" IsEnabled="{Binding CanFetchProviderModels}" />
+                            </Grid>
+                            <StackPanel Spacing="4" IsVisible="{Binding HasProviderFetchedModels}">
+                            <TextBlock Text="获取到的模型" Classes="settings-desc" />
+                            <ComboBox Classes="settings-select" HorizontalAlignment="Stretch" ItemsSource="{Binding ProviderFetchedModels}" SelectedItem="{Binding SelectedProviderFetchedModel, Mode=TwoWay}" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding ProviderModelFetchStatus}" IsVisible="{Binding HasProviderModelFetchStatus}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" TextWrapping="Wrap" />
+                            <StackPanel Spacing="4">
+                            <TextBlock Text="模型 URL" Classes="settings-desc" />
+                            <TextBox Classes="settings-input" Text="{Binding ProviderModelDraftUrl, Mode=TwoWay}" PlaceholderText="https://api.deepseek.com/chat/completions" />
+                            </StackPanel>
+                            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="10">
+                            <StackPanel Spacing="4">
+                            <TextBlock Text="上下文窗口" Classes="settings-desc" />
+                            <TextBox Classes="settings-input" Text="{Binding ProviderModelDraftContextWindow, Mode=TwoWay}" PlaceholderText="128000" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="4">
+                            <TextBlock Text="压缩阈值" Classes="settings-desc" />
+                            <TextBox Classes="settings-input" Text="{Binding ProviderModelDraftCompactThreshold, Mode=TwoWay}" PlaceholderText="0.8" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Spacing="4">
+                            <TextBlock Text="最大输出 tokens" Classes="settings-desc" />
+                            <TextBox Classes="settings-input" Text="{Binding ProviderModelDraftMaxOutput, Mode=TwoWay}" PlaceholderText="8192" />
+                            </StackPanel>
+                            </Grid>
+                            <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="保存会写入 KL Core 配置。" FontSize="11.5" Foreground="{DynamicResource TextCaption}" VerticalAlignment="Center" />
+                            <Button Grid.Column="1" Classes="primary" Content="保存模型" Click="OnSaveProviderModelClicked" />
+                            </Grid>
+                            <TextBlock Text="{Binding ProviderModelFormStatus}" IsVisible="{Binding HasProviderModelFormStatus}" FontSize="11.5" Foreground="#E36B6B" TextWrapping="Wrap" />
+                            </StackPanel>
+                            </Border>
+                            <TextBlock Text="{Binding ProviderDetailStatus}" IsVisible="{Binding HasProviderDetailStatus}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" Margin="16,0,16,12" TextWrapping="Wrap" />
+                            </StackPanel>
+                            </Border>
+
+                            <TextBlock Classes="settings-heading" Text="API Key" Margin="0,30,0,0" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel Margin="16,12,16,12" Spacing="9">
+                            <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Spacing="2">
+                            <TextBlock Text="供应商凭据" FontSize="13.5" FontWeight="Medium" Foreground="{DynamicResource TextPrimary}" />
+                            <TextBlock Text="{Binding ProviderDetailKeyStatus}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" />
+                            </StackPanel>
+                            </Grid>
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                            <TextBox Classes="settings-input" PasswordChar="•"
+                                     Text="{Binding ProviderDetailApiKey, Mode=TwoWay}" PlaceholderText="输入新的 API Key" />
+                            <Button Grid.Column="1" Classes="secondary settings-button" Content="保存 Key" Click="OnSaveProviderApiKeyClicked" />
+                            </Grid>
+                            <TextBlock Text="密钥由 Core 保存在本机凭据目录，GUI 不读取；不会写入 config.toml。" FontSize="11.5" Foreground="{DynamicResource TextCaption}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            </StackPanel>
+                            </StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsUsage}" Spacing="50" Classes="settings-pane">
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="用量趋势" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel Spacing="14" Margin="16,12,16,11">
+                            <TextBlock Classes="settings-desc" Text="本地已记录的 token 用量；最近的 12 个会话。" />
+                            <ItemsControl ItemsSource="{Binding UsageBars}" IsVisible="{Binding HasUsageBars}"
+                                          Height="120" VerticalAlignment="Bottom">
+                            <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                            <UniformGrid Columns="12" />
+                            </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:UsageBarRow">
+                            <Border Width="26" Height="{Binding Height}" CornerRadius="4" Background="#2F6BFF"
+                                    HorizontalAlignment="Center" VerticalAlignment="Bottom" />
+                            </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="还没有本地用量记录" IsVisible="{Binding !HasUsageBars}"
+                                       FontSize="12.5" Foreground="{DynamicResource TextCaption}" />
+                            <TextBlock Text="过去 12 个会话" FontSize="11.5" Foreground="{DynamicResource TextCaption}" />
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="本地用量" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="已记录用量" />
+                            <TextBlock Classes="settings-desc" Text="只统计本版本之后完成的回合；更早的会话没有用量数据。" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="28" VerticalAlignment="Center"><StackPanel Spacing="2"><TextBlock Classes="settings-value" Text="{Binding UsageTokensText}" /><TextBlock Classes="settings-desc" Text="输入 / 输出 tokens" /></StackPanel><StackPanel Spacing="2"><TextBlock Classes="settings-value" Text="{Binding UsageCostText}" /><TextBlock Classes="settings-desc" Text="费用（USD）" /></StackPanel></StackPanel>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <StackPanel Margin="8,6"><ItemsControl ItemsSource="{Binding UsageRows}"><ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:UsageSessionRow"><Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="20" Margin="12,9"><TextBlock Text="{Binding Title}" FontSize="13" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" /><TextBlock Grid.Column="1" Classes="settings-key" Text="{Binding Tokens}" VerticalAlignment="Center" /><TextBlock Grid.Column="2" MinWidth="72" TextAlignment="Right" Classes="settings-key" Text="{Binding Cost}" VerticalAlignment="Center" /></Grid></DataTemplate></ItemsControl.ItemTemplate></ItemsControl><TextBlock Text="还没有记录到用量" IsVisible="{Binding !ShowUsageRows}" FontSize="12.5" Foreground="{DynamicResource TextCaption}" Margin="12,10" /></StackPanel>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            </StackPanel>
+    </StackPanel>
+</UserControl>

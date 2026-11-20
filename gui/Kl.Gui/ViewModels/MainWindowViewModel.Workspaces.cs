@@ -37,6 +37,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// <summary>Reads the active workspace's branch and dirty count with the git CLI.</summary>
     public async Task RefreshGitAsync()
     {
+        if (IsRemoteCore)
+        {
+            GitBranchText = "—";
+            GitStatusText = RemoteDisabled("Git 状态");
+            return;
+        }
+
         var workspace = WorkspacePath;
         if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace))
         {
@@ -75,6 +82,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// <summary>Lists real git worktrees for the active project.</summary>
     public async Task RefreshWorktreesAsync()
     {
+        if (IsRemoteCore)
+        {
+            Worktrees.Clear();
+            WorktreesStatusText = RemoteDisabled("worktree 列表");
+            NotifyWorktrees();
+            return;
+        }
+
         var workspace = WorkspacePath;
         if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace))
         {
@@ -219,6 +234,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public async Task CreateWorktreeAsync()
     {
+        if (IsRemoteCore)
+        {
+            WorktreesStatusText = RemoteDisabled("创建 worktree");
+            NotifyWorktrees();
+            return;
+        }
+
         var workspace = WorkspacePath;
         var name = _newWorktreeName.Trim();
         if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace))
@@ -332,6 +354,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     private async Task DeleteWorktreeAsync(WorktreeRow row)
     {
+        if (IsRemoteCore)
+        {
+            WorktreesStatusText = RemoteDisabled("删除 worktree");
+            NotifyWorktrees();
+            return;
+        }
+
         var workspace = WorkspacePath;
         if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace))
         {

@@ -1,4 +1,5 @@
 using Kl.Client;
+using Kl.Gui.Services;
 
 namespace Kl.Gui.Tests;
 
@@ -41,6 +42,18 @@ public sealed class RemoteEndpointTests
     public void FingerprintsIgnoreSeparatorsAndCase(string fingerprint)
     {
         Assert.Equal("ABCDEF", LocalSocketConnection.NormalizeFingerprint(fingerprint));
+    }
+
+    [Theory]
+    [InlineData("tcp://build-box:7000", true)]
+    [InlineData("tls://192.168.1.10:8787", true)]
+    [InlineData("tcp://127.0.0.1:8787", false)]
+    [InlineData("tls://localhost:8787", false)]
+    [InlineData("tcp://[::1]:8787", false)]
+    [InlineData(@"\\.\pipe\kl-core", false)]
+    public void OnlyNonLoopbackTcpOrTlsEndpointsAreRemote(string endpoint, bool remote)
+    {
+        Assert.Equal(remote, CoreSessionService.IsRemoteEndpoint(endpoint));
     }
 
     [Theory]

@@ -13,7 +13,8 @@
 Current `dev` state: GUI is a Core-backed Avalonia desktop client with a
 Codex-style rail, resizable session/project sidebar, activity rows, Shell
 panels, Markdown code blocks, conversation ruler, full settings/project pages
-and shared `~/.kl` data. The GUI test project is green at 91 tests.
+and shared `~/.kl` data. The GUI test projects are green at 252 tests
+(250 view-model/service, 2 Avalonia headless) and the TUI project at 55.
 
 Product-level plans are maintained outside the repository:
 

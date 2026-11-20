@@ -210,7 +210,7 @@ public sealed class TerminalGuiMainWindow : Runnable
         if (prompt.Equals("/help", StringComparison.OrdinalIgnoreCase))
         {
             _input.Text = string.Empty;
-            Append("\nCommands: /exit, /help, /cost, /status");
+            Append("\nCommands: /exit, /help, /cost, /status, /memory");
             return;
         }
         if (prompt.Equals("/cost", StringComparison.OrdinalIgnoreCase))

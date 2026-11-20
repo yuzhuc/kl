@@ -25,10 +25,10 @@ namespace Kl.Gui;
 
 public partial class MainWindow : Window
 {
-    private async void OnAppearanceFontSizeCommitted(object? sender, RoutedEventArgs eventArgs) =>
+    internal async void OnAppearanceFontSizeCommitted(object? sender, RoutedEventArgs eventArgs) =>
         await CommitAppearanceFontSizeAsync();
 
-    private async void OnAppearanceFontSizeKeyDown(object? sender, KeyEventArgs eventArgs)
+    internal async void OnAppearanceFontSizeKeyDown(object? sender, KeyEventArgs eventArgs)
     {
         if (eventArgs.Key != Key.Enter)
         {
@@ -39,13 +39,13 @@ public partial class MainWindow : Window
         await CommitAppearanceFontSizeAsync();
     }
 
-    private void OnContrastCommitted(object? sender, PointerReleasedEventArgs eventArgs) =>
+    internal void OnContrastCommitted(object? sender, PointerReleasedEventArgs eventArgs) =>
         _viewModel.SaveAppearanceSettings();
 
-    private void OnContrastKeyUp(object? sender, KeyEventArgs eventArgs) =>
+    internal void OnContrastKeyUp(object? sender, KeyEventArgs eventArgs) =>
         _viewModel.SaveAppearanceSettings();
 
-    private void OnContrastLostFocus(object? sender, RoutedEventArgs eventArgs) =>
+    internal void OnContrastLostFocus(object? sender, RoutedEventArgs eventArgs) =>
         _viewModel.SaveAppearanceSettings();
 
     private async Task CommitAppearanceFontSizeAsync()

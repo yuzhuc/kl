@@ -32,7 +32,7 @@ public sealed class KlSessionOptions
     public string? Workspace { get; init; }
     public string? Provider { get; init; }
     public string? Model { get; init; }
-    public string? Quality { get; init; }
+    public string? Quality { get; set; }
     public string? Agent { get; set; }
     public bool Verbose { get; init; }
 }

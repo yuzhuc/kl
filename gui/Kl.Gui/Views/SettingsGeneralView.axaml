@@ -1,0 +1,971 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kl.Gui.ViewModels"
+             xmlns:controls="using:Kl.Gui.Controls"
+             x:Class="Kl.Gui.Views.SettingsGeneralView"
+             x:DataType="vm:MainWindowViewModel">
+    <StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsGeneral}" Spacing="50" Classes="settings-pane">
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="权限" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="完整访问权限" />
+                            <TextBlock Classes="settings-desc" HorizontalAlignment="Left" MaxWidth="600"><Run Text="当 "/><Run Text="KL" Foreground="#E3E4E6"/><Run Text=" 以完整访问权限运行时，它无需你的批准即可编辑你电脑上的任何文件，并运行可访问网络的命令。这会显著增加数据丢失、泄露或意外行为的风险。了解更多关于风险升高的信息。"/></TextBlock>
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="{Binding SettingsFullAccess, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="常规" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="项目外聊天文件夹" />
+                            <TextBlock Classes="settings-desc" Text="在项目外发起的聊天，其数据的默认存储位置。" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding KlHomeDirectory}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" MaxWidth="300" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                            <Button Classes="secondary settings-button" Content="打开" Click="OnOpenKlHomeClicked" />
+                            </StackPanel>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="默认文件打开位置" />
+                            <TextBlock Classes="settings-desc" Text="默认打开文件和文件夹的位置" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" Classes="settings-select" VerticalAlignment="Center" SelectedIndex="{Binding FileOpenTargetIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="系统默认" />
+                            <ComboBoxItem Content="VS Code" />
+                            </ComboBox>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="集成终端 Shell" />
+                            <TextBlock Classes="settings-desc" Text="选择要在集成终端中打开的 Shell。" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" Classes="settings-select" VerticalAlignment="Center" SelectedIndex="{Binding TerminalShellIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="PowerShell" />
+                            <ComboBoxItem Content="命令提示符" />
+                            <ComboBoxItem Content="Git Bash" />
+                            </ComboBox>
+                            </Grid>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="关闭窗口前确认" />
+                            <TextBlock Classes="settings-desc" Text="使用关闭标签页的快捷键会导致窗口关闭时，显示警告" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" Classes="settings-select" VerticalAlignment="Center" SelectedIndex="{Binding CloseWindowActionIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="仅在使用“关闭”快捷键时" />
+                            <ComboBoxItem Content="始终" />
+                            <ComboBoxItem Content="从不" />
+                            </ComboBox>
+                            </Grid>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="登录时启动" />
+                            <TextBlock Classes="settings-desc" Text="登录 Windows 后自动打开 KL" HorizontalAlignment="Left" MaxWidth="650" />
+                            <TextBlock Text="{Binding LaunchAtLoginStatus}" IsVisible="{Binding HasLaunchAtLoginStatus}"
+                                       FontSize="11.5" Foreground="{DynamicResource TextCaption}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="{Binding LaunchAtLogin, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="恢复上次会话" />
+                            <TextBlock Classes="settings-desc" Text="启动时重新打开上次退出时所在的聊天" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="{Binding RestoreLastSession, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="底部面板" />
+                            <TextBlock Classes="settings-desc" Text="在应用标题栏中显示底部面板控件" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="{Binding ShowTerminalPanelControl, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="默认终端位置" />
+                            <TextBlock Classes="settings-desc" Text="选择终端快捷键和环境操作在何处打开终端面板" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+                            <Button Classes="segment" Classes.active="{Binding IsTerminalBottom}" Content="底部" Tag="bottom" Click="OnTerminalPositionClicked" />
+                            <Button Classes="segment" Classes.active="{Binding IsTerminalRight}" Content="右侧" Tag="right" Click="OnTerminalPositionClicked" />
+                            </StackPanel>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="自动归档不活跃的聊天" />
+                            <TextBlock Classes="settings-desc" Text="将一段时间未活动的本地聊天归档" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" Classes="settings-select" VerticalAlignment="Center" SelectedIndex="{Binding AutoArchiveIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="永不" />
+                            <ComboBoxItem Content="7 天" />
+                            <ComboBoxItem Content="30 天" />
+                            </ComboBox>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="压缩本地保存的聊天历史记录" />
+                            <TextBlock Classes="settings-desc" Text="以压缩格式保存 GUI 聊天记录和设置，以节省磁盘空间。" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="{Binding CompressHistory, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="可用推理强度" />
+                            <TextBlock Classes="settings-desc" Text="选择在模型控件中显示哪些推理强度级别。可用性因模型而异。" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="secondary settings-button" Content="管理" VerticalAlignment="Center" Click="OnOpenModelsSettingsClicked" />
+                            </Grid>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="插件" />
+                            <TextBlock Classes="settings-desc" Text="允许 KL 使用已安装的插件" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="{Binding PluginsEnabled, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="编辑器" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="显示上下文窗口使用情况" />
+                            <TextBlock Classes="settings-desc" Text="在会话标题栏显示本会话的 token 用量" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="{Binding ShowContextUsage, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="发送快捷键" />
+                            <TextBlock Classes="settings-desc" Text="选择按 Enter 时是发送提示词还是换行" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" Classes="settings-select" VerticalAlignment="Center" SelectedIndex="{Binding SendShortcutIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="按 Enter 键" />
+                            <ComboBoxItem Content="Ctrl+Enter" />
+                            </ComboBox>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="后续消息处理方式" />
+                            <TextBlock Classes="settings-desc" Text="在 KL 运行时将后续消息加入队列，或引导当前运行。" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+                            <Button Classes="segment" Classes.active="{Binding IsFollowUpQueue}" Content="排队" Tag="queue" Click="OnFollowUpModeClicked" />
+                            <Button Classes="segment" Classes.active="{Binding IsFollowUpSteer}" Content="引导" Tag="steer"
+                                    Click="OnFollowUpModeClicked" IsEnabled="False" ToolTip.Tip="KL Core 暂不支持在回合运行中引导" />
+                            </StackPanel>
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            </StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsNotifications}" Spacing="50" Classes="settings-pane">
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="通知" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="轮次完成通知" />
+                            <TextBlock Classes="settings-desc" Text="设置 KL 完成后何时提醒你" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" Classes="settings-select" VerticalAlignment="Center" SelectedIndex="{Binding TurnNotificationIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="仅在未聚焦时" />
+                            <ComboBoxItem Content="始终" />
+                            <ComboBoxItem Content="从不" />
+                            </ComboBox>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="启用权限通知" />
+                            <TextBlock Classes="settings-desc" Text="当对话需要你批准时显示提醒" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="{Binding ApprovalNotifications, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="启用问题通知" />
+                            <TextBlock Classes="settings-desc" Text="当对话中有人提问时显示提醒" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="{Binding QuestionNotifications, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="通知提示音" />
+                            <TextBlock Classes="settings-desc" Text="任务完成、请求权限和提问时的提示音" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" Classes="settings-select" VerticalAlignment="Center" SelectedIndex="{Binding NotificationSoundIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="默认" />
+                            <ComboBoxItem Content="关闭" />
+                            </ComboBox>
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            </StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsImport}" Spacing="50" Classes="settings-pane">
+                            <Border IsVisible="{Binding IsRemoteCore}" Classes="settings-card" Margin="0,0,0,0">
+                            <TextBlock Text="{Binding RemoteCoreNotice}" FontSize="12"
+                                       Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap"
+                                       Margin="16,12" />
+                            </Border>
+                                                        <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="从其他 AI 应用导入" />
+                            <TextBlock Classes="settings-desc" Text="扫描 Codex 和 Claude 的说明文件与技能，合并到 KL 的 AGENTS.md 和 skills 目录。" HorizontalAlignment="Left" MaxWidth="650" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <TextBlock Text="{Binding ImportStatusText}" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" TextWrapping="Wrap" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Button Classes="secondary settings-button" Content="打开源目录" Click="OnOpenImportSourceClicked" />
+                            <Button Classes="secondary settings-button" Content="重新扫描" Click="OnScanImportsClicked" IsEnabled="{Binding !IsRemoteCore}" />
+                            <Button Classes="primary settings-button" Content="导入所选" Click="OnImportSelectedClicked" IsEnabled="{Binding CanImportSelected}" />
+                            </StackPanel>
+                            </Grid>
+                            <Border Classes="settings-divider" IsVisible="{Binding HasImportCandidates}" />
+                            <ItemsControl ItemsSource="{Binding ImportCandidates}" IsVisible="{Binding HasImportCandidates}">
+                            <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ImportCandidateRow">
+                            <Grid ColumnDefinitions="Auto,*,Auto" Margin="16,7,16,7">
+                            <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Spacing="2" Margin="8,0,12,0">
+                            <TextBlock Text="{Binding Name}" FontSize="12.5" Foreground="{DynamicResource TextPrimary}" />
+                            <TextBlock Text="{Binding Description}" FontSize="11" Foreground="{DynamicResource TextCaption}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding Status}" FontSize="11" Foreground="{DynamicResource TextSecondary}" IsVisible="{Binding HasStatus}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="2" Text="{Binding KindLabel}" FontSize="11" Foreground="{DynamicResource TextCaption}" VerticalAlignment="Center" />
+                            </Grid>
+                            </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            </StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsAppearance}" Spacing="50" Classes="settings-pane">
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="视觉风格" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,9,16,10">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="模式" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+<Border Width="80" Height="58" CornerRadius="8" Classes="settings-mode-card" Tag="system" BorderBrush="#606ACC" BorderThickness="2" ClipToBounds="True" Background="#1A1A1D">
+                            <Grid ColumnDefinitions="24,56"><Border Background="#F1F1F3"><StackPanel Margin="4,5,0,0" Spacing="4"><Ellipse Width="6" Height="6" Fill="#C6C6CA" HorizontalAlignment="Left"/><Border Height="2" Width="12" Background="#D4D4D8" CornerRadius="1" HorizontalAlignment="Left"/><Border Height="2" Width="9" Background="#D4D4D8" CornerRadius="1" HorizontalAlignment="Left"/><Border Height="2" Width="11" Background="#D4D4D8" CornerRadius="1" HorizontalAlignment="Left"/><Border Height="2" Width="14" Background="#4C8DF6" CornerRadius="1" HorizontalAlignment="Left" Margin="0,2,0,0"/></StackPanel></Border><StackPanel Grid.Column="1" Margin="5,5,0,0" Spacing="3"><Ellipse Width="6" Height="6" Fill="#5A5A5E" HorizontalAlignment="Left"/><Border Height="2" Width="26" Background="#3C3C40" CornerRadius="1" HorizontalAlignment="Left"/><Border Height="2" Width="20" Background="#3C3C40" CornerRadius="1" HorizontalAlignment="Left"/><Border Height="2" Width="24" Background="#3C3C40" CornerRadius="1" HorizontalAlignment="Left"/><Border Height="2" Width="18" Background="#4C8DF6" CornerRadius="1" HorizontalAlignment="Left" Margin="0,1,0,0"/><Border Height="8" Width="34" CornerRadius="4" BorderBrush="#38383C" BorderThickness="1" HorizontalAlignment="Left" Margin="0,2,0,0"/></StackPanel></Grid>
+                            </Border>
+<Border Width="80" Height="58" CornerRadius="8" Classes="settings-mode-card" Tag="light" BorderBrush="#2E2E31" BorderThickness="1" ClipToBounds="True" Background="#F3F3F5">
+                            <Grid ColumnDefinitions="24,56"><StackPanel Margin="4,5,0,0" Spacing="4"><Ellipse Width="6" Height="6" Fill="#C6C6CA" HorizontalAlignment="Left"/><Border Height="2" Width="10" Background="#D4D4D8" CornerRadius="1" HorizontalAlignment="Left"/><Border Height="2" Width="12" Background="#D4D4D8" CornerRadius="1" HorizontalAlignment="Left"/><Border Height="2" Width="9" Background="#D4D4D8" CornerRadius="1" HorizontalAlignment="Left"/><Border Height="2" Width="12" Background="#4C8DF6" CornerRadius="1" HorizontalAlignment="Left" Margin="0,2,0,0"/></StackPanel><StackPanel Grid.Column="1" Margin="4,5,4,0" Spacing="2"><Border Height="2" Width="30" Background="#4C8DF6" CornerRadius="1" HorizontalAlignment="Left"/><Border Height="2" Width="26" Background="#D4D4D8" CornerRadius="1" HorizontalAlignment="Left"/><Border Height="2" Width="24" Background="#D4D4D8" CornerRadius="1" HorizontalAlignment="Left"/><Border Height="2" Width="22" Background="#D4D4D8" CornerRadius="1" HorizontalAlignment="Left"/><Border Height="2" Width="28" Background="#4C8DF6" CornerRadius="1" HorizontalAlignment="Left"/><Border Height="2" Width="22" Background="#4C8DF6" CornerRadius="1" HorizontalAlignment="Left"/><Grid Height="9" Margin="0,2,0,0"><Border CornerRadius="4" BorderBrush="#DADADE" BorderThickness="1" Background="#FFFFFF"/><Ellipse Width="3" Height="3" Fill="#4C8DF6" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,5,0"/></Grid></StackPanel></Grid>
+                            </Border>
+<Border Width="80" Height="58" CornerRadius="8" Classes="settings-mode-card" Tag="dark" BorderBrush="#2E2E31" BorderThickness="1" ClipToBounds="True" Background="#19191C">
+                            <Grid ColumnDefinitions="24,56"><StackPanel Margin="4,5,0,0" Spacing="4"><Ellipse Width="6" Height="6" Fill="#5A5A5E" HorizontalAlignment="Left"/><Border Height="2" Width="10" Background="#3C3C40" CornerRadius="1" HorizontalAlignment="Left"/><Border Height="2" Width="12" Background="#3C3C40" CornerRadius="1" HorizontalAlignment="Left"/><Border Height="2" Width="9" Background="#3C3C40" CornerRadius="1" HorizontalAlignment="Left"/><Border Height="2" Width="12" Background="#4C8DF6" CornerRadius="1" HorizontalAlignment="Left" Margin="0,2,0,0"/></StackPanel><StackPanel Grid.Column="1" Margin="4,5,4,0" Spacing="2"><Border Height="2" Width="30" Background="#4C8DF6" CornerRadius="1" HorizontalAlignment="Left"/><Border Height="2" Width="26" Background="#3C3C40" CornerRadius="1" HorizontalAlignment="Left"/><Border Height="2" Width="24" Background="#3C3C40" CornerRadius="1" HorizontalAlignment="Left"/><Border Height="2" Width="22" Background="#3C3C40" CornerRadius="1" HorizontalAlignment="Left"/><Border Height="2" Width="28" Background="#4C8DF6" CornerRadius="1" HorizontalAlignment="Left"/><Border Height="2" Width="22" Background="#4C8DF6" CornerRadius="1" HorizontalAlignment="Left"/><Grid Height="9" Margin="0,2,0,0"><Border CornerRadius="4" BorderBrush="#38383C" BorderThickness="1" Background="#141417"/><Ellipse Width="3" Height="3" Fill="#4C8DF6" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,5,0"/></Grid></StackPanel></Grid>
+                            </Border>
+                            </StackPanel>
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            <Border Classes="settings-card" Margin="0,16,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Height="43" Margin="16,0,16,0">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="强调色" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center" Margin="0,0,16,0"><ComboBox MinWidth="80" Classes="settings-select flat-select recessed-select settings-pill" SelectedIndex="{Binding AccentColorIndex, Mode=TwoWay}"><ComboBoxItem><StackPanel Orientation="Horizontal" Spacing="8"><Border Width="13" Height="13" CornerRadius="6.5" Background="#4D9FFF" /><TextBlock Text="默认" VerticalAlignment="Center" /></StackPanel></ComboBoxItem><ComboBoxItem><StackPanel Orientation="Horizontal" Spacing="8"><Border Width="13" Height="13" CornerRadius="6.5" Background="#3566F0" /><TextBlock Text="蓝色" VerticalAlignment="Center" /></StackPanel></ComboBoxItem><ComboBoxItem><StackPanel Orientation="Horizontal" Spacing="8"><Border Width="13" Height="13" CornerRadius="6.5" Background="#179E8A" /><TextBlock Text="绿色" VerticalAlignment="Center" /></StackPanel></ComboBoxItem><ComboBoxItem><StackPanel Orientation="Horizontal" Spacing="8"><Border Width="13" Height="13" CornerRadius="6.5" Background="#FFCC38" /><TextBlock Text="黄色" VerticalAlignment="Center" /></StackPanel></ComboBoxItem><ComboBoxItem><StackPanel Orientation="Horizontal" Spacing="8"><Border Width="13" Height="13" CornerRadius="6.5" Background="#FA70AB" /><TextBlock Text="粉色" VerticalAlignment="Center" /></StackPanel></ComboBoxItem><ComboBoxItem><StackPanel Orientation="Horizontal" Spacing="8"><Border Width="13" Height="13" CornerRadius="6.5" Background="#FF8066" /><TextBlock Text="橙色" VerticalAlignment="Center" /></StackPanel></ComboBoxItem><ComboBoxItem><StackPanel Orientation="Horizontal" Spacing="8"><Border Width="13" Height="13" CornerRadius="6.5" Background="#A25BFF" /><TextBlock Text="紫色" VerticalAlignment="Center" /></StackPanel></ComboBoxItem><ComboBoxItem><StackPanel Orientation="Horizontal" Spacing="8"><Border Width="13" Height="13" CornerRadius="6.5" Background="#FFFFFF" /><TextBlock Text="白色" VerticalAlignment="Center" /></StackPanel></ComboBoxItem></ComboBox><Border Classes="color-value"><StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"><Border Width="14" Height="14" CornerRadius="7" Background="{Binding AccentColorBrush}" /><TextBlock Text="{Binding AccentColorHex}" FontSize="12" Foreground="#C6C7C9" VerticalAlignment="Center" /></StackPanel></Border></StackPanel>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Height="43" Margin="16,0,16,0">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="背景" />
+                            </StackPanel>
+                            <Border Grid.Column="1" Classes="color-value" Margin="0,0,16,0"><StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"><Border Width="14" Height="14" CornerRadius="7" Background="{DynamicResource BgBase}" BorderBrush="{DynamicResource Line}" BorderThickness="1" /><TextBlock Classes="settings-value" Text="{Binding ThemeBackgroundHex}" Foreground="#C6C7C9" VerticalAlignment="Center" /></StackPanel></Border>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Height="43" Margin="16,0,16,0">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="前景" />
+                            </StackPanel>
+                            <Border Grid.Column="1" Classes="color-value" Margin="0,0,16,0"><StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"><Border Width="14" Height="14" CornerRadius="7" Background="{DynamicResource TextPrimary}" BorderBrush="{DynamicResource Line}" BorderThickness="1" /><TextBlock Classes="settings-value" Text="{Binding ThemeForegroundHex}" Foreground="#C6C7C9" VerticalAlignment="Center" /></StackPanel></Border>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Height="44" Margin="16,0,16,0">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="字体" />
+                            </StackPanel>
+                            <ComboBox Width="66" MinWidth="0" MinHeight="26" Padding="6,2,2,2" Grid.Column="1" Classes="settings-select settings-pill" VerticalAlignment="Center" SelectedIndex="{Binding UiFontIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="Inter" />
+                            <ComboBoxItem Content="系统" />
+                            </ComboBox>
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            <StackPanel Spacing="0" Margin="0,0,0,35">
+                            <Grid ColumnDefinitions="*,Auto">
+                            <Button Classes="subtle" Click="OnAppearanceAdvancedClicked" Padding="6,2" Margin="-6,0,0,0" HorizontalAlignment="Left">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="高级" FontSize="12.5" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+                            <Path x:Name="AppearanceAdvancedChevronRight" Width="11" Height="11" Data="{DynamicResource ChevronRightIcon}" Stretch="Uniform" Stroke="{DynamicResource TextSecondary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" VerticalAlignment="Center" />
+                            <Path x:Name="AppearanceAdvancedChevronDown" Width="11" Height="11" Data="{DynamicResource ChevronDownIcon}" Stretch="Uniform" Stroke="{DynamicResource TextSecondary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" VerticalAlignment="Center" IsVisible="False" />
+                            </StackPanel>
+                            </Button>
+                            <Button Grid.Column="1" Classes="subtle" Padding="6,2" Margin="0,0,-6,0" Click="OnResetSettingsClicked" ToolTip.Tip="将所有外观设置恢复为默认值"><TextBlock Text="重置为默认设置" FontSize="12.5" Foreground="{DynamicResource TextCaption}" VerticalAlignment="Center" /></Button>
+                            </Grid>
+                            <StackPanel x:Name="AppearanceAdvancedPanel" IsVisible="False" Spacing="16" Margin="0,14,0,0">
+                            <Border Classes="settings-card">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,10,16,9">
+                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="界面字号" />
+                            <TextBlock Classes="settings-desc" Text="调整 KL 聊天内容的字号" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <TextBox Classes="settings-number" Text="{Binding SettingsContentFontSize, Mode=TwoWay}"
+                                     LostFocus="OnAppearanceFontSizeCommitted" KeyDown="OnAppearanceFontSizeKeyDown" />
+                            <TextBlock Classes="settings-value" Text="px" VerticalAlignment="Center" />
+                            </StackPanel>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,10,16,9">
+                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="代码字体大小" />
+                            <TextBlock Classes="settings-desc" Text="调整聊天和差异视图中代码使用的基础字号" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <TextBox Classes="settings-number" Text="{Binding CodeFontSize, Mode=TwoWay}"
+                                     LostFocus="OnAppearanceFontSizeCommitted" KeyDown="OnAppearanceFontSizeKeyDown" />
+                            <TextBlock Classes="settings-value" Text="px" VerticalAlignment="Center" />
+                            </StackPanel>
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            <Border Classes="settings-card">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,10,16,9">
+                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="减少动态效果" />
+                            <TextBlock Classes="settings-desc" Text="减少动画效果或匹配系统设置" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                            <Button Classes="filter" Classes.active="{Binding IsReduceMotionSystem}" Content="系统" Tag="system" Click="OnMotionModeClicked" />
+                            <Button Classes="filter" Classes.active="{Binding IsReduceMotionOn}" Content="开启" Tag="on" Click="OnMotionModeClicked" />
+                            <Button Classes="filter" Classes.active="{Binding IsReduceMotionOff}" Content="关闭" Tag="off" Click="OnMotionModeClicked" />
+                            </StackPanel>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,10,16,9">
+                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="分别设置浅色和深色模式" />
+                            <TextBlock Classes="settings-desc" Text="分别选择各自的主题、颜色和字体" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="{Binding SeparateThemeSettings, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            <Border Classes="settings-card">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Height="34" Margin="16,0,16,0">
+                            <TextBlock Classes="settings-title" Text="界面字体样式" VerticalAlignment="Center" />
+                            <ComboBox Grid.Column="1" Width="84" Classes="settings-select flat-select settings-pill" VerticalAlignment="Center" SelectedIndex="{Binding UiFontWeightIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="常规" />
+                            <ComboBoxItem Content="中等" />
+                            <ComboBoxItem Content="粗体" />
+                            </ComboBox>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Height="34" Margin="16,0,16,0">
+                            <TextBlock Classes="settings-title" Text="内容字体" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <ComboBox Classes="settings-select flat-select settings-pill" VerticalAlignment="Center" SelectedIndex="{Binding ContentFontIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="与界面字体相同" />
+                            <ComboBoxItem Content="Inter" />
+                            <ComboBoxItem Content="系统" />
+                            </ComboBox>
+                            <ComboBox Width="84" Classes="settings-select flat-select settings-pill" VerticalAlignment="Center" SelectedIndex="{Binding ContentFontWeightIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="常规" />
+                            <ComboBoxItem Content="中等" />
+                            <ComboBoxItem Content="粗体" />
+                            </ComboBox>
+                            </StackPanel>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Height="34" Margin="16,0,16,0">
+                            <TextBlock Classes="settings-title" Text="代码字体" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <ComboBox Classes="settings-select flat-select settings-pill" VerticalAlignment="Center" SelectedIndex="{Binding CodeFontIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="Geist Mono" />
+                            <ComboBoxItem Content="JetBrains Mono" />
+                            <ComboBoxItem Content="系统等宽" />
+                            </ComboBox>
+                            <ComboBox Width="84" Classes="settings-select flat-select settings-pill" VerticalAlignment="Center" SelectedIndex="{Binding CodeFontWeightIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="常规" />
+                            <ComboBoxItem Content="中等" />
+                            <ComboBoxItem Content="粗体" />
+                            </ComboBox>
+                            </StackPanel>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Height="34" Margin="16,0,16,0">
+                            <TextBlock Classes="settings-title" Text="半透明侧边栏" VerticalAlignment="Center" />
+                            <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="{Binding TranslucentSidebar, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Height="44" Margin="16,0,16,0">
+                            <TextBlock Classes="settings-title" Text="对比度" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <Slider x:Name="ContrastSlider" Width="140" Minimum="0" Maximum="100" Value="{Binding Contrast, Mode=TwoWay}"
+                                     PointerReleased="OnContrastCommitted" KeyUp="OnContrastKeyUp" LostFocus="OnContrastLostFocus" IsSnapToTickEnabled="True" TickFrequency="1" VerticalAlignment="Center" />
+                            <TextBlock Classes="settings-value" Text="{Binding #ContrastSlider.Value, StringFormat={}{0:0}}" Width="26" TextAlignment="Right" TextWrapping="NoWrap" VerticalAlignment="Center" />
+                            </StackPanel>
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            <Border Classes="settings-card">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,10,16,9">
+                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="差异标记" />
+                            <TextBlock Classes="settings-desc" Text="使用颜色或 +/- 标记显示更改" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                            <Button Classes="filter" Classes.active="{Binding IsDiffColorMode}" Content="颜色" Tag="color" Click="OnDiffMarkerModeClicked" />
+                            <Button Classes="filter" Classes.active="{Binding IsDiffMarkers}" Content="+/-" Tag="markers" Click="OnDiffMarkerModeClicked" />
+                            </StackPanel>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,10,16,9">
+                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="使用指针光标" />
+                            <TextBlock Classes="settings-desc" Text="悬停交互元素时切换为指针光标" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="{Binding UsePointerCursor, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            </StackPanel>
+                            </StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsArchived}" Spacing="50" Classes="settings-pane">
+                                                                                                                                                                                                                                                                                            <StackPanel Spacing="0">
+                                                                                                                                                                                                                                                                                                <TextBlock Classes="settings-heading" Text="已归档的聊天" />
+                                                                                                                                                                                                                                                                                                <TextBlock Classes="settings-desc" Margin="0,6,0,10"
+                                                                                                                                                                                                                                                                                                           Text="归档的聊天不会出现在侧边栏；点击右侧按钮可恢复。" />
+                                                                                                                                                                                                                                                                                                <Border Classes="settings-card">
+                                                                                                                                                                                                                                                                                                    <StackPanel Margin="8,6">
+                                                                                                                                                                                                                                                                                                        <ItemsControl ItemsSource="{Binding ArchivedSessions}">
+                                                                                                                                                                                                                                                                                                            <ItemsControl.ItemTemplate>
+                                                                                                                                                                                                                                                                                                                <DataTemplate x:DataType="vm:SessionItemViewModel">
+                                                                                                                                                                                                                                                                                                                    <Grid Classes="session-row-container"
+                                                                                                                                                                                                                                                                                                                          ColumnDefinitions="*,Auto" Margin="8,2">
+                                                                                                                                                                                                                                                                                                                        <Button Classes="nav" Height="NaN" Padding="10,6"
+                                                                                                                                                                                                                                                                                                                                Click="OnSessionClicked"
+                                                                                                                                                                                                                                                                                                                                ToolTip.Tip="{Binding Workspace.Path}">
+                                                                                                                                                                                                                                                                                                                            <StackPanel Spacing="2">
+                                                                                                                                                                                                                                                                                                                                <TextBlock Text="{Binding Title}" FontSize="13"
+                                                                                                                                                                                                                                                                                                                                           TextTrimming="CharacterEllipsis"
+                                                                                                                                                                                                                                                                                                                                           VerticalAlignment="Center" />
+                                                                                                                                                                                                                                                                                                                                <TextBlock Text="{Binding UpdatedLabel}"
+                                                                                                                                                                                                                                                                                                                                           FontSize="11"
+                                                                                                                                                                                                                                                                                                                                           Foreground="{DynamicResource TextCaption}" />
+                                                                                                                                                                                                                                                                                                                            </StackPanel>
+                                                                                                                                                                                                                                                                                                                        </Button>
+                                                                                                                                                                                                                                                                                                                        <Button Grid.Column="1" Classes="row-action"
+                                                                                                                                                                                                                                                                                                                                Opacity="1"
+                                                                                                                                                                                                                                                                                                                                VerticalAlignment="Center"
+                                                                                                                                                                                                                                                                                                                                Click="OnUnarchiveSessionClicked"
+                                                                                                                                                                                                                                                                                                                                ToolTip.Tip="取消归档">
+                                                                                                                                                                                                                                                                                                                            <Path Width="13" Height="13"
+                                                                                                                                                                                                                                                                                                                                  Data="{DynamicResource RefreshIcon}"
+                                                                                                                                                                                                                                                                                                                                  Stretch="Uniform" />
+                                                                                                                                                                                                                                                                                                                        </Button>
+                                                                                                                                                                                                                                                                                                                    </Grid>
+                                                                                                                                                                                                                                                                                                                </DataTemplate>
+                                                                                                                                                                                                                                                                                                            </ItemsControl.ItemTemplate>
+                                                                                                                                                                                                                                                                                                        </ItemsControl>
+                                                                                                                                                                                                                                                                                                        <TextBlock Text="没有已归档的聊天"
+                                                                                                                                                                                                                                                                                                                   IsVisible="{Binding !ShowArchivedSessions}"
+                                                                                                                                                                                                                                                                                                                   FontSize="12.5"
+                                                                                                                                                                                                                                                                                                                   Foreground="{DynamicResource TextCaption}"
+                                                                                                                                                                                                                                                                                                                   Margin="12,10" />
+                                                                                                                                                                                                                                                                                                    </StackPanel>
+                                                                                                                                                                                                                                                                                                </Border>
+                                                                                                                                                                                                                                                                                            </StackPanel>
+                                                                                                                                                                                                                                                                                        </StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsStorage}" Spacing="50" Classes="settings-pane">
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="此设备" />
+                            <TextBlock Classes="settings-desc" Text="管理存储在此电脑上的聊天和工作树" HorizontalAlignment="Left" Margin="0,6,0,0" MaxWidth="620" />
+                            <StackPanel Spacing="0" Margin="0,12,0,-14">
+                            <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{Binding StorageTotalLabel}" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource TextPrimary}" /><Button Grid.Column="1" Classes="secondary settings-button" Height="26" Content="刷新" Click="OnRefreshStorageClicked" /></Grid>
+                            <Border Height="18" CornerRadius="9" ClipToBounds="True" Margin="0,12,0,0">
+                            <Grid x:Name="StorageBar" ColumnDefinitions="1*,1*,1*,1*" IsVisible="{Binding HasStorageUsage}"><Border Background="#E3C63B" /><Border Grid.Column="1" Background="#4CD07D" /><Border Grid.Column="2" Background="#4C9FE8" /><Border Grid.Column="3" Background="#6B6B70" /></Grid>
+                            </Border>
+                            <Grid ColumnDefinitions="*,*,*,*" Margin="0,12,0,0">
+                            <StackPanel Spacing="4"><StackPanel Orientation="Horizontal" Spacing="7"><Border Width="9" Height="9" CornerRadius="5" Background="#E3C63B" VerticalAlignment="Center" /><TextBlock Text="聊天存储空间" FontSize="12.5" Foreground="{DynamicResource TextSecondary}" /></StackPanel><TextBlock Text="{Binding StorageChatSizeLabel}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" Margin="0,-3,0,0" /></StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="4"><StackPanel Orientation="Horizontal" Spacing="7"><Border Width="9" Height="9" CornerRadius="5" Background="#4CD07D" VerticalAlignment="Center" /><TextBlock Text="附件" FontSize="12.5" Foreground="{DynamicResource TextSecondary}" /></StackPanel><TextBlock Text="{Binding StorageAttachmentSizeLabel}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" Margin="0,-3,0,0" /></StackPanel>
+                            <StackPanel Grid.Column="2" Spacing="4"><StackPanel Orientation="Horizontal" Spacing="7"><Border Width="9" Height="9" CornerRadius="5" Background="#4C9FE8" VerticalAlignment="Center" /><TextBlock Text="插件" FontSize="12.5" Foreground="{DynamicResource TextSecondary}" /></StackPanel><TextBlock Text="{Binding StoragePluginSizeLabel}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" Margin="0,-3,0,0" /></StackPanel>
+                            <StackPanel Grid.Column="3" Spacing="4"><StackPanel Orientation="Horizontal" Spacing="7"><Border Width="9" Height="9" CornerRadius="5" Background="#6B6B70" VerticalAlignment="Center" /><TextBlock Text="其他" FontSize="12.5" Foreground="{DynamicResource TextSecondary}" /></StackPanel><TextBlock Text="{Binding StorageOtherSizeLabel}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" Margin="0,-3,0,0" /></StackPanel>
+                            </Grid>
+                            </StackPanel>
+                            </StackPanel>
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="各文件夹的存储用量" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11"><StackPanel Spacing="3"><TextBlock Classes="settings-title" Text="应用数据文件夹" /><SelectableTextBlock Text="{Binding StateDirectory}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" HorizontalAlignment="Left" /></StackPanel><StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center"><TextBlock Text="{Binding StorageStatusText}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" /><Button Classes="secondary settings-button" Click="OnCopyStatePathClicked" Content="复制" /><Button Classes="secondary settings-button" Click="OnOpenStateDirectoryClicked" Content="浏览" /></StackPanel></Grid>
+                            <Border Classes="settings-divider" />
+                            <ItemsControl ItemsSource="{Binding StorageFolders}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:StorageFolderViewModel">
+                                        <Grid ColumnDefinitions="*,Auto" Margin="16,7,16,7">
+                                            <StackPanel Spacing="2">
+                                                <TextBlock Text="{Binding Name}" FontSize="12.5" Foreground="{DynamicResource TextPrimary}" />
+                                                <TextBlock Text="{Binding Path}" FontSize="11" Foreground="{DynamicResource TextCaption}" TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="1" Text="{Binding SizeLabel}" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="12,0,0,0" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11"><StackPanel Spacing="3"><TextBlock Classes="settings-title" Text="清理旧聊天" /><TextBlock Classes="settings-desc" Text="永久删除前，请先查看聊天及其子智能体" /></StackPanel><Button Grid.Column="1" Classes="secondary settings-button" Content="查看" Click="OnOpenCleanupClicked" /></Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11"><StackPanel Spacing="3"><TextBlock Classes="settings-title" Text="管理工作树" /><TextBlock Classes="settings-desc" Text="查看工作副本，并选择要保留的旧工作树数量" /></StackPanel><Button Grid.Column="1" Classes="secondary settings-button" Content="管理" Click="OnOpenWorktreesSettingsClicked" /></Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11"><StackPanel Spacing="3"><TextBlock Classes="settings-title" Text="已归档的聊天" /><TextBlock Classes="settings-desc" Text="恢复或删除单个已归档的聊天" /></StackPanel><Button Grid.Column="1" Classes="secondary settings-button" Click="OnSettingsNavClicked" Tag="Archived" Content="管理" /></Grid>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="备份与恢复" />
+                            <TextBlock Classes="settings-desc" Text="导出 GUI 设置、工作区、聊天记录和本地提示词；导入会先自动备份当前设置" HorizontalAlignment="Left" Margin="0,6,0,0" MaxWidth="620" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center"><TextBlock Classes="settings-title" Text="设置文件" /><TextBlock Classes="settings-desc" Text="备份不包含 API 密钥；导入后重启 KL 生效" /></StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"><Button Classes="secondary settings-button" Click="OnExportStateBackupClicked" Content="导出设置…" /><Button Classes="secondary settings-button" Click="OnImportStateBackupClicked" Content="导入设置…" /></StackPanel>
+                            </Grid>
+                            <Border Classes="settings-divider" IsVisible="{Binding HasBackupStatus}" />
+                            <TextBlock Text="{Binding BackupStatusText}" IsVisible="{Binding HasBackupStatus}" Margin="16,10,16,12" FontSize="11.5" Foreground="{DynamicResource TextCaption}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            </StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsConfig}" Spacing="50" Classes="settings-pane">
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="智能体默认设置" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,17,0,24">
+                            <TextBlock Text="{Binding ActiveWorkspace.Name}" FontSize="12.5" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+                            <Button Grid.Column="1" Classes="subtle" Click="OnOpenCoreConfigClicked" Content="打开 config.toml ↗" />
+                            </Grid>
+                            <Border Classes="settings-card" Margin="0,0,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="批准策略" />
+                            <TextBlock Classes="settings-desc" HorizontalAlignment="Left" MaxWidth="650"><Run Text="选择 "/><Run Text="KL" Foreground="#E3E4E6"/><Run Text=" 何时请求批准"/></TextBlock>
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" Classes="settings-select" VerticalAlignment="Center"
+                                      SelectedIndex="{Binding ApprovalModeIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="请求批准" />
+                            <ComboBoxItem Content="帮我批准" />
+                            <ComboBoxItem Content="完全访问" />
+                            </ComboBox>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="沙盒设置" />
+                            <TextBlock Classes="settings-desc" HorizontalAlignment="Left" MaxWidth="650"><Run Text="选择 "/><Run Text="KL" Foreground="#E3E4E6"/><Run Text=" 运行命令时的权限范围"/></TextBlock>
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Classes="settings-value" VerticalAlignment="Center"
+                                       Text="{Binding CoreSandboxText}" ToolTip.Tip="由 KL Core 的 config.toml 决定" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="允许网络访问" />
+                            <TextBlock Classes="settings-desc" Text="当沙盒设为工作空间写入时允许网络访问" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="{Binding NetworkAccess, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="网页搜索" />
+                            <TextBlock Classes="settings-desc" HorizontalAlignment="Left" MaxWidth="650"><Run Text="选择 "/><Run Text="KL" Foreground="#E3E4E6"/><Run Text=" 访问网络的方式"/></TextBlock>
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="{Binding WebSearch, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="输出详细程度" />
+                            <TextBlock Classes="settings-desc" HorizontalAlignment="Left" MaxWidth="650"><Run Text="选择 "/><Run Text="KL" Foreground="#E3E4E6"/><Run Text=" 回复包含细节的详细程度"/></TextBlock>
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" Classes="settings-select" VerticalAlignment="Center" SelectedIndex="{Binding OutputVerbosityIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="模型默认" />
+                            <ComboBoxItem Content="简洁" />
+                            <ComboBoxItem Content="详细" />
+                            </ComboBox>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="推理摘要" />
+                            <TextBlock Classes="settings-desc" HorizontalAlignment="Left" MaxWidth="650"><Run Text="选择 "/><Run Text="KL" Foreground="#E3E4E6"/><Run Text=" 总结其推理的方式"/></TextBlock>
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" Classes="settings-select" VerticalAlignment="Center" SelectedIndex="{Binding ReasoningSummaryIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="自动" />
+                            <ComboBoxItem Content="关闭" />
+                            <ComboBoxItem Content="详细" />
+                            </ComboBox>
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="工作空间依赖项" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="诊断工作空间中的问题" />
+                            <TextBlock Classes="settings-desc" Text="检查当前捆绑包并记录诊断日志" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="secondary settings-button" Content="诊断" VerticalAlignment="Center" Click="OnRunDoctorClicked" />
+                            </Grid>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="当前版本" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Classes="settings-value" Text="{Binding CoreVersionText}" MaxWidth="420" TextAlignment="Right" VerticalAlignment="Center" />
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            <StackPanel Spacing="0">
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+                            <TextBlock Classes="settings-heading" Text="KL Core 配置" />
+                            <Button Grid.Column="1" Classes="secondary settings-button" Content="刷新" Click="OnRefreshConfigClicked" />
+                            </Grid>
+                            <TextBlock Text="{Binding ConfigStatusText}" Classes="settings-desc" HorizontalAlignment="Left" MaxWidth="650" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="Auto,*" Margin="16,12,16,11" ColumnSpacing="16">
+                            <TextBlock Classes="settings-title" Text="配置文件" />
+                            <TextBlock Grid.Column="1" Text="{Binding ConfigPathText}" Classes="settings-value"
+                                       TextAlignment="Right" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <ItemsControl ItemsSource="{Binding ConfigRows}">
+                            <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ConfigValueRow">
+                            <Grid ColumnDefinitions="Auto,*" Margin="16,8" ColumnSpacing="16">
+                            <TextBlock Text="{Binding Label}" FontSize="13" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding Value}" FontSize="12" Foreground="{DynamicResource TextCaption}"
+                                       TextAlignment="Right" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                            </Grid>
+                            </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="点击刷新，从 KL Core 读取配置。" IsVisible="{Binding !ShowConfigRows}"
+                                       FontSize="12.5" Foreground="{DynamicResource TextCaption}" Margin="16,10,16,14" />
+                            <StackPanel IsVisible="{Binding HasDoctorSummary}" Margin="16,4,16,14" Spacing="4">
+                            <TextBlock Text="{Binding DoctorSummary}" FontSize="12.5"
+                                       Foreground="{DynamicResource TextPrimary}" TextWrapping="Wrap" />
+                            <ItemsControl ItemsSource="{Binding DoctorChecks}" IsVisible="{Binding HasDoctorChecks}">
+                            <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                            <TextBlock Text="{Binding}" FontSize="11.5"
+                                       Foreground="{DynamicResource TextCaption}" TextWrapping="Wrap" />
+                            </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            </StackPanel>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            </StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsPersonalization}" Spacing="50" Classes="settings-pane">
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="KL 记忆" />
+                            <TextBlock Classes="settings-desc" Text="配置 KL 如何管理记忆" Margin="0,6,0,0" HorizontalAlignment="Left" MaxWidth="650" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="记忆摘要" />
+                            <TextBlock Classes="settings-desc" Text="查看 KL 对你的了解概览。对于希望它始终记住的信息，可以使用自定义指令。" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="secondary settings-button" Content="管理" VerticalAlignment="Center" Click="OnOpenMemorySettingsClicked" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <StackPanel Margin="16,0,16,12"><TextBlock Classes="settings-desc" Text="KL 可能会使用记忆功能，对发送给搜索服务的查询进行个性化处理。" /></StackPanel>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-desc" Text="配置 KL 在本机管理记忆的方式" Margin="0,6,0,0" HorizontalAlignment="Left" MaxWidth="650" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="启用 KL 记忆功能" />
+                            <TextBlock Classes="settings-desc" Text="根据本机上的聊天创建记忆，并使用这些记忆为此后的本地聊天提供个性化体验" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="{Binding MemoryEnabled, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="删除 KL 记忆" />
+                            <TextBlock Classes="settings-desc" Text="删除本机上的全部 KL 记忆" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="danger" Content="删除" Click="OnDeleteAllMemoriesClicked" />
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="基础风格和语气" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="基础风格和语气" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" Classes="settings-select" VerticalAlignment="Center" SelectedIndex="{Binding PersonalStyleIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="默认" />
+                            <ComboBoxItem Content="亲切" />
+                            <ComboBoxItem Content="专业" />
+                            </ComboBox>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="亲切程度" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" Classes="settings-select" VerticalAlignment="Center" SelectedIndex="{Binding WarmthIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="默认" />
+                            <ComboBoxItem Content="低" />
+                            <ComboBoxItem Content="高" />
+                            </ComboBox>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="热情程度" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" Classes="settings-select" VerticalAlignment="Center" SelectedIndex="{Binding EnthusiasmIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="默认" />
+                            <ComboBoxItem Content="低" />
+                            <ComboBoxItem Content="高" />
+                            </ComboBox>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="表情符号" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" Classes="settings-select" VerticalAlignment="Center" SelectedIndex="{Binding EmojiIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="默认" />
+                            <ComboBoxItem Content="少用" />
+                            <ComboBoxItem Content="多用" />
+                            </ComboBox>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="可视化回答" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" Classes="settings-select" VerticalAlignment="Center" SelectedIndex="{Binding VisualAnswersIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="默认" />
+                            <ComboBoxItem Content="关闭" />
+                            <ComboBoxItem Content="开启" />
+                            </ComboBox>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="标题和列表" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" Classes="settings-select" VerticalAlignment="Center" SelectedIndex="{Binding HeadingStyleIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="默认" />
+                            <ComboBoxItem Content="简洁" />
+                            <ComboBoxItem Content="详细" />
+                            </ComboBox>
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="自定义指令" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="AGENTS.md" />
+                            <TextBlock Classes="settings-desc" Text="编辑所选机器上的 AGENTS.md 文件。代码仓库的说明也可能适用。" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnEditAgentsClicked" ToolTip.Tip="编辑 AGENTS.md">
+                            <Path Classes="row-chevron" Width="10" Height="10" Data="{DynamicResource ChevronRightIcon}" Stretch="Uniform" Stroke="{DynamicResource TextTertiary}" StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round" VerticalAlignment="Center" />
+                            </Button>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <StackPanel Margin="16,12,16,12" Spacing="8">
+                            <TextBox Classes="settings-textarea" Height="90" AcceptsReturn="True" TextWrapping="Wrap" Text="{Binding CustomInstructionsDraft, Mode=TwoWay}" PlaceholderText="为 KL 提供适用于所有聊天的额外指令" />
+                            <Button Classes="secondary settings-button" Content="保存指令" HorizontalAlignment="Right" Click="OnSaveCustomInstructionsClicked" />
+                            </StackPanel>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            </StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsMemory}" Spacing="50" Classes="settings-pane">
+                            <StackPanel Spacing="0">
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+                            <TextBlock Classes="settings-heading" Text="记忆条目" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                            <Button Classes="segment" Classes.active="{Binding IsMemoryScopeUser}" Click="OnMemoryScopeUserClicked" Content="用户" />
+                            <Button Classes="segment" Classes.active="{Binding IsMemoryScopeWorkspace}" Click="OnMemoryScopeWorkspaceClicked" Content="工作区" />
+                            </StackPanel>
+                            </Grid>
+                            <TextBlock Text="{Binding MemoryScopeHint}" Classes="settings-desc" HorizontalAlignment="Left" MaxWidth="650" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11" ColumnSpacing="10">
+                            <TextBlock Text="{Binding MemoryStatus}" Classes="settings-desc" VerticalAlignment="Center" TextWrapping="Wrap" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                            <Button Classes="secondary settings-button" Content="刷新" Click="OnRefreshMemoryClicked" />
+                            <Button Classes="secondary settings-button" Content="新建" Click="OnNewMemoryClicked" />
+                            </StackPanel>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <ItemsControl ItemsSource="{Binding MemoryEntries}">
+                            <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:MemoryEntryRow">
+                            <Button Classes="more-menu-item" Height="36" Click="OnMemoryEntryClicked" Tag="{Binding Name}">
+                            <Grid ColumnDefinitions="*,Auto" Margin="6,0" ColumnSpacing="12">
+                            <TextBlock Text="{Binding Name}" FontSize="13" Foreground="{DynamicResource TextPrimary}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding SizeLabel}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" VerticalAlignment="Center" />
+                            </Grid>
+                            </Button>
+                            </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="还没有记忆条目" IsVisible="{Binding !ShowMemoryEntries}"
+                                       FontSize="12.5" Foreground="{DynamicResource TextCaption}" Margin="16,10,16,14" />
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="编辑条目" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel Spacing="10" Margin="16,12,16,11">
+                            <TextBox Classes="settings-input" Text="{Binding MemoryName, Mode=TwoWay}" PlaceholderText="条目名称" />
+                            <TextBox Classes="settings-input" Text="{Binding MemoryContent, Mode=TwoWay}"
+                                     AcceptsReturn="True" Height="170" TextWrapping="Wrap"
+                                     PlaceholderText="记忆内容" />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                            <Button Classes="danger" Content="删除条目" Click="OnDeleteMemoryClicked" />
+                            <Button Classes="primary" Content="保存" Click="OnSaveMemoryClicked" IsEnabled="{Binding CanSaveMemory}" />
+                            </StackPanel>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            </StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsShortcuts}" Spacing="50" Classes="settings-pane">
+                            <Border Classes="search-field" Margin="0,6,0,0">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                            <Path Width="13" Height="13" Data="{DynamicResource SearchIcon}" Stretch="Uniform" Stroke="{DynamicResource TextTertiary}" StrokeThickness="1.35" StrokeLineCap="Round" StrokeJoin="Round" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="1" Classes="search" PlaceholderText="搜索快捷键" Text="{Binding ShortcutSearch, Mode=TwoWay}" />
+                            </Grid>
+                            </Border>
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="数字快捷键" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="数字快捷键" />
+                            <TextBlock Classes="settings-desc" Text="使用 Ctrl+1-9 切换页面，使用 Alt+1-9 切换聊天" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" Classes="settings-select" SelectedIndex="{Binding NumberShortcutsIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="Ctrl+1-9 切换页面" />
+                            <ComboBoxItem Content="关闭" />
+                            </ComboBox>
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            <Border IsVisible="{Binding IsShortcutCapturing}" Classes="settings-card settings-tab-page" Background="#1B1B1E" BorderBrush="#3A3A40" BorderThickness="1">
+                            <StackPanel Margin="16,12,16,12" Spacing="6">
+                            <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Spacing="3">
+                            <TextBlock Text="{Binding ShortcutCaptureTitle}" Classes="settings-title" />
+                            <TextBlock Text="按下新的组合键；需要包含 Ctrl、Alt、Shift 或 Win。按 Esc 取消。" Classes="settings-desc" HorizontalAlignment="Left" MaxWidth="600" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="subtle" Content="取消" Click="OnCancelShortcutCaptureClicked" VerticalAlignment="Top" />
+                            </Grid>
+                            <TextBlock Text="{Binding ShortcutCaptureStatus}" IsVisible="{Binding HasShortcutCaptureStatus}" FontSize="11.5" Foreground="#E36B6B" TextWrapping="Wrap" />
+                            </StackPanel>
+                            </Border>
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="快捷键列表" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <ItemsControl ItemsSource="{Binding ShortcutRows}">
+                            <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ShortcutRowViewModel">
+                            <StackPanel IsVisible="{Binding IsVisible}">
+                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="16,12,16,11" ColumnSpacing="10">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="{Binding Title}" />
+                            <TextBlock Classes="settings-desc" Text="{Binding Description}" HorizontalAlignment="Left" MaxWidth="620" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Border Grid.Column="1" Background="#2A2A2D" CornerRadius="6" Padding="7,2" VerticalAlignment="Center" IsVisible="{Binding HasGesture}">
+                            <TextBlock Text="{Binding Gesture}" FontSize="11" FontFamily="Cascadia Mono, Consolas" Foreground="{DynamicResource TextSecondary}" />
+                            </Border>
+                            <TextBlock Grid.Column="1" Text="未分配" IsVisible="{Binding !HasGesture}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" VerticalAlignment="Center" />
+                            <Button Grid.Column="2" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnShortcutEditClicked" ToolTip.Tip="更改快捷键">
+                            <Path Width="13" Height="13" Data="{DynamicResource EditIcon}" Stretch="Uniform" Stroke="{DynamicResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
+                            </Button>
+                            <Button Grid.Column="3" Classes="subtle" Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Click="OnShortcutResetClicked" ToolTip.Tip="恢复默认快捷键">
+                            <Path Width="13" Height="13" Data="{DynamicResource TrashIcon}" Stretch="Uniform" Stroke="{DynamicResource TextTertiary}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" />
+                            </Button>
+                            </Grid>
+                            <Border Classes="settings-divider" Margin="16,0,16,0" />
+                            </StackPanel>
+                            </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="没有匹配的快捷键" IsVisible="{Binding ShowNoShortcutMatches}" FontSize="12.5" Foreground="{DynamicResource TextCaption}" Margin="16,14,16,16" />
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            </StackPanel>
+    </StackPanel>
+</UserControl>

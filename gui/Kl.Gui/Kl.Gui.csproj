@@ -33,4 +33,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\sdk\Kl.Client\Kl.Client.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Kl.Gui.Tests" />
+    <InternalsVisibleTo Include="Kl.Gui.HeadlessTests" />
+  </ItemGroup>
+
 </Project>

@@ -107,6 +107,7 @@ internal sealed class FakeCoreSessionService : ICoreSessionService
 {
     public bool IsSessionOpen { get; private set; }
     public bool IsWriter { get; private set; } = true;
+    public bool IsRemoteCore { get; set; }
     public string SessionId { get; private set; } = string.Empty;
     public string Provider { get; private set; } = string.Empty;
     public string Model { get; private set; } = string.Empty;
@@ -420,6 +421,31 @@ internal sealed class FakeCoreSessionService : ICoreSessionService
         SkillWorkspaces.Add(workspace);
         return Task.FromResult(TestData.Json(SkillsJson));
     }
+
+    public Task<JsonElement> GetSkillBodyAsync(string name, CancellationToken cancellationToken)
+    {
+        RequestedSkillBodies.Add(name);
+        return Task.FromResult(TestData.Json(
+            """{"name":"demo","content":"# Demo skill body text"}"""));
+    }
+
+    public Task<JsonElement> ListAgentsAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(TestData.Json(
+            """{"agents":[{"id":"build","name":"Build","description":"","policy":"full","source":"builtin","built_in":true},{"id":"plan","name":"Plan","description":"","policy":"read-only","source":"builtin","built_in":true}]}"""));
+
+    public void SetTurnPreferences(string? agent, string? quality) =>
+        TurnPreferences = (agent, quality);
+
+    public Task<JsonElement> AuditTailAsync(int limit, CancellationToken cancellationToken)
+    {
+        AuditLimit = limit;
+        return Task.FromResult(TestData.Json(
+            """{"records":[{"timestamp":"2026-01-02T03:04:05Z","session_id":"abcdef123456","tool":"shell","action":"execute","decision":"allow","ok":true,"resource":"echo hi","error":null}]}"""));
+    }
+
+    public List<string> RequestedSkillBodies { get; } = [];
+    public (string? Agent, string? Quality) TurnPreferences { get; private set; }
+    public int AuditLimit { get; private set; }
 
     public TaskCompletionSource<bool>? ProviderUpsertGate { get; set; }
 

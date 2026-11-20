@@ -1395,6 +1395,113 @@ public sealed class MainWindowViewModelStateTests
         Assert.DoesNotContain(vm.Worktrees, row => row.Path.EndsWith("demo", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task RemoteCoreDisablesLocalGitWorktreeAndImport()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var core = new FakeCoreSessionService { IsRemoteCore = true };
+        var vm = TestData.CreateViewModel(temp, store, core);
+
+        Assert.True(vm.IsRemoteCore);
+        Assert.Contains("远程", vm.RemoteCoreNotice);
+
+        await vm.RefreshGitAsync();
+        Assert.Contains("远程", vm.GitStatusText);
+        Assert.Equal("—", vm.GitBranchText);
+
+        await vm.RefreshWorktreesAsync();
+        Assert.Contains("远程", vm.WorktreesStatusText);
+        Assert.Empty(vm.Worktrees);
+
+        vm.NewWorktreeName = "demo";
+        await vm.CreateWorktreeAsync();
+        Assert.Contains("远程", vm.WorktreesStatusText);
+
+        await vm.DiscoverImportsAsync();
+        Assert.Contains("远程", vm.ImportStatusText);
+
+        Assert.False(vm.ImportPlugin(temp.Path));
+        Assert.Contains("远程", vm.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task AgentPresetsAndQualityAreReadFromCoreAndApplied()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var core = new FakeCoreSessionService();
+        var vm = TestData.CreateViewModel(temp, store, core);
+
+        await vm.RefreshAgentPresetsAsync();
+
+        Assert.Equal(3, vm.AgentPresetOptions.Count);
+        Assert.Equal(0, vm.AgentPresetIndex);
+
+        vm.AgentPresetIndex = 2;
+        Assert.Equal(("plan", string.Empty), core.TurnPreferences);
+
+        vm.QualityModeIndex = 3;
+        Assert.Equal(("plan", "deep"), core.TurnPreferences);
+
+        var saved = store.Load();
+        Assert.Equal("plan", saved.AgentPreset);
+        Assert.Equal("deep", saved.QualityMode);
+    }
+
+    [Fact]
+    public async Task AuditPageReadsTailRecords()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path);
+        var core = new FakeCoreSessionService();
+        var vm = TestData.CreateViewModel(temp, store, core);
+
+        await vm.RefreshAuditAsync();
+
+        Assert.Equal(200, core.AuditLimit);
+        var row = Assert.Single(vm.AuditRecords);
+        Assert.Equal("shell · execute · allow", row.Summary);
+        Assert.Equal("成功", row.OkLabel);
+        Assert.True(vm.ShowAuditRecords);
+    }
+
+    [Fact]
+    public async Task SkillBodyLoadsThroughCore()
+    {
+        using var temp = new TempDirectory();
+        var store = temp.CreateStore();
+        TestData.Seed(store, temp.Path, TestData.StoredSession("s1", "会话"));
+        var core = new FakeCoreSessionService
+        {
+            Snapshot = new CoreCatalogSnapshot(
+                true,
+                string.Empty,
+                "test-core",
+                1,
+                "fake",
+                "fake-model",
+                ["fake-model"],
+                true,
+                [TestData.Summary("s1", temp.Path, "会话")])
+        };
+        var vm = TestData.CreateViewModel(temp, store, core);
+
+        await vm.OpenSessionAsync(Assert.Single(vm.Workspaces[0].Sessions));
+        await vm.OpenSkillAsync("demo");
+
+        Assert.Equal(["demo"], core.RequestedSkillBodies);
+        Assert.True(vm.ShowSkillDetail);
+        Assert.Equal("demo", vm.SelectedSkillName);
+        Assert.Contains("Demo skill", vm.SelectedSkillContent);
+
+        vm.CloseSkillDetail();
+        Assert.False(vm.ShowSkillDetail);
+    }
+
     private static void RunGitTestCommand(string workspace, string arguments)
     {
         using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo

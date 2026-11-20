@@ -2,13 +2,13 @@
 
 > Status: implemented Core client and Codex-style desktop shell
 >
-> Baseline: `dev` `450ef38`
+> Baseline: `dev` `7d511fb`
 >
 > Stack: Avalonia 12.1.4, .NET 10
 >
 > Shared client: `sdk/Kl.Client`
 >
-> Verification: GUI test project `240 passed / 0 failed`
+> Verification: GUI projects `252 passed / 0 failed` (250 view-model/service + 2 headless)
 
 ## 1. Goal
 
@@ -180,18 +180,18 @@ so overlapping tools keep independent cards, output and status.
 | G5 Approval/cancel/error | Done |
 | G6 Settings/status | Done for current Core-backed scope |
 | G7 Ruler, Markdown code, drag/drop and previews | Done |
-| G8 Tests/local build | Done: 240 GUI tests pass, `bin/gui` build available |
+| G8 Tests/local build | Done: 252 GUI tests pass (including Avalonia headless layout), `bin/gui` build available |
 | G9 Release archive and automatic reconnect UX | Done: auto reconnect with backoff, observer takeover, `--gui` release packaging on win-x64, win-arm64 and osx-arm64 |
 | G10 Parallel tools, model/key settings, library and motion | Done: per-`CallId` tool routing, Core-backed model/API-key form, local library page, activity chevron rotation, panel/menu/dialog fades, page fades, pulsing run state, sidebar section height animation |
 | G11 Composer `/` and `@` menus | Done: slash commands with Core actions, workspace file mentions with prefix ranking, keyboard and click selection |
 | G12 Palette file/text search | Done: live chat filtering, file-name matches, content matches grouped by file with line numbers, shared cached file index |
 | G13 Composer permission/model menus | Done: quick approval menu, reasoning-effort menu written through Core, effort shown in the chip |
 | G14 Search and drop polish | Done: live plugin search, settings card filter, palette hit highlighting, dropping files on the composer adds attachments |
-| G15 Codex-style settings | Done: grouped nav with 30 pages, sectioned hairline cards, inline row controls, section-filtered settings search, settings apply on change |
+| G15 Codex-style settings | Done: grouped nav with 23 panes, sectioned hairline cards, inline row controls, section-filtered settings search, settings apply on change |
 | G16 Usage and MCP integration | Done: per-session token/cost persistence with totals page, one-shot `mcp.list` probe on the integration page |
 | G17 Memory editor | Done: workspace/user memory list, read, write, delete and new-entry flow through Core |
 | G18 Config, data management and skills | Done: redacted `config.get` rows with config-file open, state JSON export via save picker, skills tab backed by one-shot `skill.list`, Codex-style toggle for restoring the last session |
-| G19 Codex settings parity | Done: captures of every Codex settings page were used to rebuild the nav and all 30 panes (import, profile, account, ads, parental, trusted contacts, voice, storage, personalization, mini companions, shortcut editor, usage/plan, data management, plugins/MCP, passwords, computer use, browser, cloud PC, hooks, connections, code review, Git, environments, worktrees). New surfaces are UI-only; existing Core-backed controls stay wired |
+| G19 Codex settings parity | Done: captures of every Codex settings page were used to rebuild the nav and all 22 panes plus the Core-backed audit pane (import, profile, account, ads, parental, trusted contacts, voice, storage, personalization, mini companions, shortcut editor, usage/plan, data management, plugins/MCP, passwords, computer use, browser, cloud PC, hooks, connections, code review, Git, environments, worktrees). Some surfaces remain UI-only; Core-backed controls (providers, models, memory, skills, MCP, plugins, review, Git settings) stay wired |
 | G20 Settings interactions and motion | Done: segmented groups select, usage/plugins/connections/code-review tabs switch content, every inert button opens a shared detail sheet, chevron rows are clickable with hover feedback, appearance mode cards select, pane switches fade and slide with scroll reset, toggle thumbs animate, nav tightened to 32px rows |
 | G21 Settings usability | Done: the settings pane is remembered across launches and the active nav row scrolls into view; Ctrl+F focuses settings search, Esc clears the filter before closing; the detail sheet dismisses on backdrop click; profile stats and popular plugins use real workspace/session/plugin counts |
 

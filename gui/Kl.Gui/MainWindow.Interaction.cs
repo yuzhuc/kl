@@ -599,7 +599,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnUnarchiveSessionClicked(object? sender, RoutedEventArgs eventArgs)
+    internal void OnUnarchiveSessionClicked(object? sender, RoutedEventArgs eventArgs)
     {
         eventArgs.Handled = true;
         if (GetSession(sender) is { } session)

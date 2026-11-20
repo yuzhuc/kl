@@ -12,6 +12,7 @@ public sealed record CoreSessionRequest
     public string? Provider { get; init; }
     public string? Model { get; init; }
     public string? Quality { get; init; }
+    public string? Agent { get; init; }
     public string? HomePath { get; init; }
     public string? ConfigPath { get; init; }
     public string? CorePath { get; init; }
@@ -49,6 +50,8 @@ public interface ICoreSessionService : IAsyncDisposable
 {
     bool IsSessionOpen { get; }
     bool IsWriter { get; }
+    /// <summary>True when the resolved transport points at another machine.</summary>
+    bool IsRemoteCore { get; }
     string SessionId { get; }
     string Provider { get; }
     string Model { get; }
@@ -136,6 +139,18 @@ public interface ICoreSessionService : IAsyncDisposable
     /// <summary>Reads <c>skill.list</c> for one workspace from a fresh connection.</summary>
     Task<JsonElement> ListSkillsAsync(string workspace, CancellationToken cancellationToken);
 
+    /// <summary>Reads a skill's markdown body for the open session.</summary>
+    Task<JsonElement> GetSkillBodyAsync(string name, CancellationToken cancellationToken);
+
+    /// <summary>Lists the agent presets Core knows about.</summary>
+    Task<JsonElement> ListAgentsAsync(CancellationToken cancellationToken);
+
+    /// <summary>Overrides the agent preset and quality mode for subsequent turns.</summary>
+    void SetTurnPreferences(string? agent, string? quality);
+
+    /// <summary>Reads the newest audit records from Core.</summary>
+    Task<JsonElement> AuditTailAsync(int limit, CancellationToken cancellationToken);
+
     /// <summary>Reads Core's global reasoning effort (default/low/medium/high).</summary>
     Task<string> GetReasoningEffortAsync(CancellationToken cancellationToken);
 
@@ -185,6 +200,8 @@ public sealed class CoreSessionService : ICoreSessionService
     private CoreSessionPresenter? _presenter;
     private CoreSessionRequest? _lastRequest;
     private CancellationTokenSource? _pumpCancellation;
+    private string? _agent;
+    private string? _quality;
 
     public CoreSessionService(KlClientOptions? options = null)
     {
@@ -193,6 +210,22 @@ public sealed class CoreSessionService : ICoreSessionService
 
     public bool IsSessionOpen => _session is not null;
     public bool IsWriter => _session?.IsWriter ?? false;
+    public bool IsRemoteCore => IsRemoteEndpoint(KlCoreClient.ResolveEndpoint(_catalogOptions));
+
+    /// <summary>
+    /// TCP/TLS endpoints on another host run the core elsewhere. Loopback TCP is
+    /// treated as local because the workspace paths are on this machine.
+    /// </summary>
+    public static bool IsRemoteEndpoint(string? endpoint)
+    {
+        if (string.IsNullOrWhiteSpace(endpoint)
+            || !Uri.TryCreate(endpoint.Trim(), UriKind.Absolute, out var uri)
+            || (uri.Scheme is not "tcp" and not "tls"))
+        {
+            return false;
+        }
+        return !uri.IsLoopback && !uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase);
+    }
     public string SessionId => _session?.SessionId ?? string.Empty;
     public string Provider => _session?.Provider ?? string.Empty;
     public string Model => _session?.Model ?? string.Empty;
@@ -235,13 +268,16 @@ public sealed class CoreSessionService : ICoreSessionService
             Token = _catalogOptions.Token,
             TlsFingerprint = _catalogOptions.TlsFingerprint
         };
+        var agent = string.IsNullOrWhiteSpace(request.Agent) ? _agent : request.Agent;
+        var quality = string.IsNullOrWhiteSpace(request.Quality) ? _quality : request.Quality;
         var sessionOptions = new KlSessionOptions
         {
             SessionId = string.IsNullOrWhiteSpace(request.SessionId) ? null : request.SessionId,
             Workspace = string.IsNullOrWhiteSpace(request.Workspace) ? null : request.Workspace,
             Provider = string.IsNullOrWhiteSpace(request.Provider) ? null : request.Provider,
             Model = string.IsNullOrWhiteSpace(request.Model) ? null : request.Model,
-            Quality = string.IsNullOrWhiteSpace(request.Quality) ? null : request.Quality
+            Quality = string.IsNullOrWhiteSpace(quality) ? null : quality,
+            Agent = string.IsNullOrWhiteSpace(agent) ? null : agent
         };
 
         try
@@ -256,6 +292,8 @@ public sealed class CoreSessionService : ICoreSessionService
             _presenter = presenter;
             _session = session;
             _lastRequest = request;
+            _agent = string.IsNullOrWhiteSpace(agent) ? null : agent;
+            _quality = string.IsNullOrWhiteSpace(quality) ? null : quality;
             _pumpCancellation = new CancellationTokenSource();
             _ = PumpEventsAsync(presenter, _pumpCancellation.Token);
             return new CoreConnectResult(
@@ -591,6 +629,28 @@ public sealed class CoreSessionService : ICoreSessionService
 
     public Task<JsonElement> ListSkillsAsync(string workspace, CancellationToken cancellationToken) =>
         OneShotRequestAsync("skill.list", new { workspace }, cancellationToken);
+
+    public Task<JsonElement> GetSkillBodyAsync(string name, CancellationToken cancellationToken)
+    {
+        var session = _session ?? throw new InvalidOperationException("KL Core 会话尚未建立。");
+        return session.RequestAsync(
+            Protocol.SkillGet,
+            new { session_id = session.SessionId, name },
+            cancellationToken);
+    }
+
+    public Task<JsonElement> ListAgentsAsync(CancellationToken cancellationToken) =>
+        OneShotRequestAsync(Protocol.AgentList, null, cancellationToken);
+
+    public void SetTurnPreferences(string? agent, string? quality)
+    {
+        _agent = string.IsNullOrWhiteSpace(agent) ? null : agent;
+        _quality = string.IsNullOrWhiteSpace(quality) ? null : quality;
+        _session?.SetTurnPreferences(_agent, _quality);
+    }
+
+    public Task<JsonElement> AuditTailAsync(int limit, CancellationToken cancellationToken) =>
+        OneShotRequestAsync(Protocol.AuditTail, new { limit }, cancellationToken);
 
     /// <summary>Runs one request over the shared provider Core connection.</summary>
     private Task<JsonElement> OneShotRequestAsync(
@@ -1001,6 +1061,7 @@ public sealed class UnavailableCoreSessionService : ICoreSessionService
 {
     public bool IsSessionOpen => false;
     public bool IsWriter => false;
+    public bool IsRemoteCore => false;
     public string SessionId => string.Empty;
     public string Provider => string.Empty;
     public string Model => string.Empty;
@@ -1080,6 +1141,19 @@ public sealed class UnavailableCoreSessionService : ICoreSessionService
         throw new InvalidOperationException("KL Core 不可用。");
 
     public Task<JsonElement> ListSkillsAsync(string workspace, CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("KL Core 不可用。");
+
+    public Task<JsonElement> GetSkillBodyAsync(string name, CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("KL Core 不可用。");
+
+    public Task<JsonElement> ListAgentsAsync(CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("KL Core 不可用。");
+
+    public void SetTurnPreferences(string? agent, string? quality)
+    {
+    }
+
+    public Task<JsonElement> AuditTailAsync(int limit, CancellationToken cancellationToken) =>
         throw new InvalidOperationException("KL Core 不可用。");
 
     public Task<string> GetReasoningEffortAsync(CancellationToken cancellationToken) =>

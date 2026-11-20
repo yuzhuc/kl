@@ -107,6 +107,15 @@ public sealed partial class MainWindowViewModel
 
     public bool ShowObserverNotice => IsCoreReadOnly;
 
+    /// <summary>True when KL Core runs on another machine.</summary>
+    public bool IsRemoteCore => _core.IsRemoteCore;
+
+    public string RemoteCoreNotice =>
+        "远程 KL Core：Git、worktree、导入和插件导入只会在本机执行，已禁用；请在 Core 所在机器上操作。";
+
+    internal static string RemoteDisabled(string feature) =>
+        $"远程 KL Core 模式下{feature}不可用（该操作只能作用于 Core 所在机器）。";
+
     /// <summary>The banner button retries the connection, or takes the write lease.</summary>
     public string CoreBannerActionText => IsCoreReadOnly ? "接管写入" : "重试";
 
@@ -755,7 +764,9 @@ public sealed partial class MainWindowViewModel
                 new CoreSessionRequest
                 {
                     Workspace = session.Workspace.Path,
-                    SessionId = session.Id
+                    SessionId = session.Id,
+                    Agent = _state.AgentPreset,
+                    Quality = _state.QualityMode
                 },
                 progress => _dispatch(() => CoreStatusText = DescribeProgress(progress)),
                 CancellationToken.None).ConfigureAwait(false);
@@ -836,7 +847,9 @@ public sealed partial class MainWindowViewModel
                 new CoreSessionRequest
                 {
                     Workspace = _activeWorkspace.Path,
-                    SessionId = string.IsNullOrWhiteSpace(sessionId) ? null : sessionId
+                    SessionId = string.IsNullOrWhiteSpace(sessionId) ? null : sessionId,
+                    Agent = _state.AgentPreset,
+                    Quality = _state.QualityMode
                 },
                 progress => _dispatch(() => CoreStatusText = DescribeProgress(progress)),
                 cancellationToken).ConfigureAwait(false);
@@ -875,6 +888,8 @@ public sealed partial class MainWindowViewModel
     private void ApplyCoreSessionInfo(CoreConnectResult result)
     {
         IsCoreReadOnly = !result.IsWriter;
+        OnPropertyChanged(nameof(IsRemoteCore));
+        OnPropertyChanged(nameof(RemoteCoreNotice));
         OnPropertyChanged(nameof(ModelName));
         OnPropertyChanged(nameof(ProviderModelLabel));
         OnPropertyChanged(nameof(WorkspaceName));
@@ -1134,6 +1149,7 @@ public sealed partial class MainWindowViewModel
                 }
                 break;
             case SessionEventKind.AuditRecorded:
+                OnAuditRecorded();
                 break;
         }
     }

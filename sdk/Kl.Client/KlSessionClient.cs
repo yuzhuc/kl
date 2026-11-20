@@ -239,6 +239,16 @@ public sealed class KlSessionClient : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Applies the agent preset and quality mode used by the next turn.
+    /// Empty or null values fall back to the Core defaults.
+    /// </summary>
+    public void SetTurnPreferences(string? agent, string? quality)
+    {
+        _sessionOptions.Agent = string.IsNullOrWhiteSpace(agent) ? null : agent;
+        _sessionOptions.Quality = string.IsNullOrWhiteSpace(quality) ? null : quality;
+    }
+
     public Task<JsonElement> HistoryAsync(
         int limit = 20,
         CancellationToken cancellationToken = default) =>

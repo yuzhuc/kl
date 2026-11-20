@@ -46,6 +46,53 @@ public sealed partial class MainWindowViewModel : ObservableObject
         });
     }
 
+    public string SelectedSkillName { get; private set; } = string.Empty;
+    public string SelectedSkillContent { get; private set; } = string.Empty;
+    public bool ShowSkillDetail { get; private set; }
+
+    /// <summary>Loads a skill's markdown body through <c>skill.get</c>.</summary>
+    public async Task OpenSkillAsync(string name)
+    {
+        if (_activeSession is null)
+        {
+            SkillsStatusText = "先打开一个会话再查看技能正文。";
+            OnPropertyChanged(nameof(SkillsStatusText));
+            return;
+        }
+
+        try
+        {
+            var result = await _core.GetSkillBodyAsync(name, CancellationToken.None)
+                .ConfigureAwait(true);
+            var content = JsonRead.GetOptionalString(result, "content") ?? string.Empty;
+            _dispatch(() =>
+            {
+                SelectedSkillName = name;
+                SelectedSkillContent = content;
+                ShowSkillDetail = true;
+                OnPropertyChanged(nameof(SelectedSkillName));
+                OnPropertyChanged(nameof(SelectedSkillContent));
+                OnPropertyChanged(nameof(ShowSkillDetail));
+            });
+        }
+        catch (Exception error) when (error is JsonRpcException
+            or IOException
+            or InvalidOperationException)
+        {
+            _dispatch(() =>
+            {
+                SkillsStatusText = $"无法读取技能正文：{error.Message}";
+                OnPropertyChanged(nameof(SkillsStatusText));
+            });
+        }
+    }
+
+    public void CloseSkillDetail()
+    {
+        ShowSkillDetail = false;
+        OnPropertyChanged(nameof(ShowSkillDetail));
+    }
+
     private static List<SkillRow> ParseSkills(JsonElement result)
     {
         var rows = new List<SkillRow>();

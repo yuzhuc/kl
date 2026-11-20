@@ -89,6 +89,116 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public bool ShowConfigRows => ConfigRows.Count > 0;
     public string KlHomeDirectory => ResolveCoreHomeText();
     public string ConfigFilePath => Path.Combine(KlHomeDirectory, "config.toml");
+
+    public ObservableCollection<string> AgentPresetOptions { get; } = [];
+    private readonly List<string> _agentPresetIds = [];
+
+    /// <summary>0 = follow Core, 1 = fast, 2 = balanced, 3 = deep.</summary>
+    public int QualityModeIndex
+    {
+        get => _state.QualityMode switch
+        {
+            "fast" => 1,
+            "balanced" => 2,
+            "deep" => 3,
+            _ => 0
+        };
+        set
+        {
+            if (_loadingAgentSettings)
+            {
+                return;
+            }
+            var quality = value switch
+            {
+                1 => "fast",
+                2 => "balanced",
+                3 => "deep",
+                _ => ""
+            };
+            if (_state.QualityMode == quality)
+            {
+                return;
+            }
+            _state.QualityMode = quality;
+            SaveState();
+            OnPropertyChanged();
+            _core.SetTurnPreferences(_state.AgentPreset, _state.QualityMode);
+        }
+    }
+
+    /// <summary>0 = follow Core, otherwise an entry from <c>agent.list</c>.</summary>
+    public int AgentPresetIndex
+    {
+        get
+        {
+            var index = _agentPresetIds.IndexOf(_state.AgentPreset);
+            return index < 0 ? 0 : index + 1;
+        }
+        set
+        {
+            if (_loadingAgentSettings)
+            {
+                return;
+            }
+            var id = value >= 1 && value <= _agentPresetIds.Count
+                ? _agentPresetIds[value - 1]
+                : string.Empty;
+            if (_state.AgentPreset == id)
+            {
+                return;
+            }
+            _state.AgentPreset = id;
+            SaveState();
+            OnPropertyChanged();
+            _core.SetTurnPreferences(_state.AgentPreset, _state.QualityMode);
+        }
+    }
+
+    /// <summary>Reads <c>agent.list</c> so the preset picker reflects Core.</summary>
+    public async Task RefreshAgentPresetsAsync()
+    {
+        _loadingAgentSettings = true;
+        try
+        {
+            var result = await _core.ListAgentsAsync(CancellationToken.None).ConfigureAwait(true);
+            var options = new List<string> { "跟随 Core 默认" };
+            _agentPresetIds.Clear();
+            if (result.ValueKind == JsonValueKind.Object
+                && result.TryGetProperty("agents", out var agents)
+                && agents.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var agent in agents.EnumerateArray())
+                {
+                    var id = JsonRead.GetOptionalString(agent, "id")?.Trim() ?? string.Empty;
+                    if (id.Length == 0)
+                    {
+                        continue;
+                    }
+                    var name = JsonRead.GetOptionalString(agent, "name")?.Trim() ?? id;
+                    _agentPresetIds.Add(id);
+                    options.Add(name == id ? id : $"{name} ({id})");
+                }
+            }
+            AgentPresetOptions.Clear();
+            foreach (var option in options)
+            {
+                AgentPresetOptions.Add(option);
+            }
+        }
+        catch (Exception error) when (error is JsonRpcException
+            or IOException
+            or InvalidOperationException
+            or FileNotFoundException)
+        {
+            // Agent presets are optional metadata; the default entry stays selected.
+        }
+        finally
+        {
+            _loadingAgentSettings = false;
+            OnPropertyChanged(nameof(AgentPresetIndex));
+        }
+    }
     public bool RestoreLastSession
     {
         get => _state.RestoreLastSession;
@@ -439,5 +549,96 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
 
         _ = RefreshSkillsAsync();
+    }
+
+    public ObservableCollection<AuditRow> AuditRecords { get; } = [];
+    public string AuditStatusText { get; private set; } = "打开此页时从 KL Core 读取。";
+    public bool ShowAuditRecords => AuditRecords.Count > 0;
+
+    private DateTimeOffset _lastAuditEventRefresh;
+
+    /// <summary>Reads <c>audit.tail</c>; refreshing is also triggered by audit events.</summary>
+    public async Task RefreshAuditAsync()
+    {
+        AuditStatusText = "正在读取…";
+        OnPropertyChanged(nameof(AuditStatusText));
+        try
+        {
+            var result = await _core.AuditTailAsync(200, CancellationToken.None).ConfigureAwait(true);
+            var rows = ParseAuditRecords(result);
+            _dispatch(() =>
+            {
+                AuditRecords.Clear();
+                foreach (var row in rows)
+                {
+                    AuditRecords.Add(row);
+                }
+                AuditStatusText = rows.Count == 0 ? "还没有审计记录。" : $"共 {rows.Count} 条记录";
+                OnPropertyChanged(nameof(AuditStatusText));
+                OnPropertyChanged(nameof(ShowAuditRecords));
+            });
+        }
+        catch (Exception error) when (error is JsonRpcException
+            or IOException
+            or InvalidOperationException)
+        {
+            _dispatch(() =>
+            {
+                AuditStatusText = $"无法读取审计记录：{error.Message}";
+                OnPropertyChanged(nameof(AuditStatusText));
+            });
+        }
+    }
+
+    private static List<AuditRow> ParseAuditRecords(JsonElement result)
+    {
+        var rows = new List<AuditRow>();
+        if (result.ValueKind != JsonValueKind.Object
+            || !result.TryGetProperty("records", out var records)
+            || records.ValueKind != JsonValueKind.Array)
+        {
+            return rows;
+        }
+
+        foreach (var record in records.EnumerateArray())
+        {
+            var timestamp = JsonRead.GetOptionalString(record, "timestamp") ?? string.Empty;
+            var time = DateTimeOffset.TryParse(timestamp, out var parsed)
+                ? parsed.ToLocalTime().ToString("HH:mm:ss")
+                : timestamp;
+            var session = JsonRead.GetOptionalString(record, "session_id") ?? string.Empty;
+            if (session.Length > 8)
+            {
+                session = session[..8];
+            }
+            var ok = record.TryGetProperty("ok", out var okValue)
+                && okValue.ValueKind == JsonValueKind.True;
+            rows.Add(new AuditRow(
+                time,
+                JsonRead.GetOptionalString(record, "tool") ?? string.Empty,
+                JsonRead.GetOptionalString(record, "action") ?? string.Empty,
+                JsonRead.GetOptionalString(record, "decision") ?? string.Empty,
+                session,
+                JsonRead.GetOptionalString(record, "resource") ?? string.Empty,
+                JsonRead.GetOptionalString(record, "error") ?? string.Empty,
+                ok));
+        }
+
+        return rows;
+    }
+
+    /// <summary>Coalesces bursts of audit events into one tail refresh.</summary>
+    private void OnAuditRecorded()
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (now - _lastAuditEventRefresh < TimeSpan.FromMilliseconds(500))
+        {
+            return;
+        }
+        _lastAuditEventRefresh = now;
+        if (IsSettingsOpen && IsSettingsAudit)
+        {
+            _ = RefreshAuditAsync();
+        }
     }
 }

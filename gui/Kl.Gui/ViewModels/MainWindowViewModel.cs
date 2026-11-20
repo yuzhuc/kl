@@ -768,6 +768,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public bool IsSettingsGit => _settingsPane == SettingsPane.Git;
     public bool IsSettingsEnvironments => _settingsPane == SettingsPane.Environments;
     public bool IsSettingsWorktrees => _settingsPane == SettingsPane.Worktrees;
+    public bool IsSettingsAudit => _settingsPane == SettingsPane.Audit;
     public string SettingsPaneTitle => _settingsPane switch
     {
         SettingsPane.Notifications => "通知",
@@ -791,6 +792,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         SettingsPane.Worktrees => "Worktrees",
         SettingsPane.Memory => "记忆",
         SettingsPane.Models => "模型与连接",
+        SettingsPane.Audit => "审计日志",
         _ => "常规"
     };
     public string SettingsPaneSubtitle => _settingsPane switch
@@ -804,6 +806,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         SettingsPane.Memory => "用户记忆对所有项目生效；工作区记忆只属于当前项目。",
         SettingsPane.Providers => "连接你使用的模型提供商；请求地址、协议和密钥由 KL Core 管理。",
         SettingsPane.Models => "KL Core 执行所有模型调用；这里只保存默认选择和凭据。",
+        SettingsPane.Audit => "KL Core 记录的最近工具调用与审批决策。",
         _ => string.Empty
     };
 
@@ -3784,6 +3787,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(IsSettingsGit));
         OnPropertyChanged(nameof(IsSettingsEnvironments));
         OnPropertyChanged(nameof(IsSettingsWorktrees));
+        OnPropertyChanged(nameof(IsSettingsAudit));
         OnPropertyChanged(nameof(SettingsPaneTitle));
         OnPropertyChanged(nameof(SettingsPaneSubtitle));
         OnPropertyChanged(nameof(HasSettingsPaneSubtitle));
@@ -3845,6 +3849,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
         else if (pane == SettingsPane.Storage)
         {
             _ = RefreshStorageAsync();
+        }
+        else if (pane == SettingsPane.Audit)
+        {
+            _ = RefreshAuditAsync();
         }
     }
 
@@ -4842,6 +4850,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// <summary>Reads Core's global agent settings for the settings panes.</summary>
     public async Task RefreshAgentSettingsAsync()
     {
+        await RefreshAgentPresetsAsync().ConfigureAwait(true);
         try
         {
             var result = await _core.GetAgentConfigAsync(CancellationToken.None).ConfigureAwait(true);
@@ -5308,6 +5317,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public bool ImportPlugin(string sourceDirectory)
     {
         LastImportedPluginPath = null;
+        if (IsRemoteCore)
+        {
+            ErrorMessage = RemoteDisabled("插件导入");
+            return false;
+        }
         try
         {
             var source = Path.GetFullPath(sourceDirectory)

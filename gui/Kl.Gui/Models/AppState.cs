@@ -31,6 +31,10 @@ public sealed class AppState
     public bool IsSidebarGrouped { get; set; } = true;
     public string SessionSort { get; set; } = "updated";
     public string PinnedSort { get; set; } = "manual";
+    /// <summary>Agent preset id for new sessions; empty uses the Core default.</summary>
+    public string AgentPreset { get; set; } = "";
+    /// <summary>Quality mode override: empty follows Core, otherwise fast/balanced/deep.</summary>
+    public string QualityMode { get; set; } = "";
     public string NotificationFilter { get; set; } = "priority";
 
     /// <summary>Remote Core endpoint (tcp:// or tls://host:port); null means local.</summary>

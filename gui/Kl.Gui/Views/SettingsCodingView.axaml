@@ -1,0 +1,349 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kl.Gui.ViewModels"
+             xmlns:controls="using:Kl.Gui.Controls"
+             x:Class="Kl.Gui.Views.SettingsCodingView"
+             x:DataType="vm:MainWindowViewModel">
+    <StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsHooks}" Spacing="50" Classes="settings-pane">
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,2,0,0">
+                            <TextBlock Text="KL Core 在启动时读取 hooks.toml；工具执行前后会运行匹配的钩子。" FontSize="12.5" Foreground="{DynamicResource TextCaption}" VerticalAlignment="Center" TextWrapping="Wrap" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                            <Button Classes="secondary settings-button" Content="打开 hooks.toml" Click="OnOpenHooksClicked" />
+                            <Button Classes="subtle" Width="28" Height="28" Padding="0" HorizontalContentAlignment="Center" Click="OnRefreshHooksClicked"><Path Width="14" Height="14" Data="{DynamicResource RefreshIcon}" Stretch="Uniform" Stroke="{DynamicResource TextSecondary}" StrokeThickness="1.3" /></Button>
+                            </StackPanel>
+                            </Grid>
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="配置状态" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Margin="16,12,16,11"><Border Width="30" Height="30" CornerRadius="8" Background="#232326"><Path Width="15" Height="15" Data="{DynamicResource CodeIcon}" Stretch="Uniform" Stroke="{DynamicResource TextSecondary}" StrokeThickness="1.2" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border><StackPanel Grid.Column="1" Spacing="2"><TextBlock Text="hooks.toml" FontSize="13.5" FontWeight="Medium" Foreground="{DynamicResource TextPrimary}" /><TextBlock Text="{Binding HooksStatusText}" FontSize="12" Foreground="{DynamicResource TextCaption}" TextWrapping="Wrap" /></StackPanel><TextBlock Grid.Column="2" Text="{Binding HooksFilePath}" FontSize="11" FontFamily="Cascadia Mono, Consolas" Foreground="{DynamicResource TextCaption}" VerticalAlignment="Center" MaxWidth="260" TextTrimming="CharacterEllipsis" /></Grid>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            </StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsConnections}" Spacing="50" Classes="settings-pane">
+                            <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,-8,0,-20">
+                            <Button Classes="filter" Classes.active="True" Content="控制此电脑" Tag="connect:this" Click="OnSettingsTabClicked" />
+                            <Button Classes="filter" Content="控制其他设备" Tag="connect:other" Click="OnSettingsTabClicked" />
+                            <Button Classes="filter" Content="SSH" Tag="connect:ssh" Click="OnSettingsTabClicked" />
+                            </StackPanel>
+                            <StackPanel Spacing="0" Classes="settings-tab-page" Tag="connect:this">
+                            <TextBlock Classes="settings-heading" Text="可控制此电脑的设备" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <StackPanel Spacing="10" HorizontalAlignment="Center" Margin="16,34"><StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center"><Path Width="24" Height="30" Data="{DynamicResource PanelIcon}" Stretch="Uniform" Stroke="{DynamicResource TextTertiary}" StrokeThickness="1.2" Fill="Transparent" /><Path Width="34" Height="26" Data="{DynamicResource PanelIcon}" Stretch="Uniform" Stroke="{DynamicResource TextTertiary}" StrokeThickness="1.2" Fill="Transparent" /></StackPanel><TextBlock Text="添加设备以远程控制此电脑" FontSize="12.5" Foreground="{DynamicResource TextSecondary}" HorizontalAlignment="Center" /><Button Classes="secondary settings-button" Content="添加" HorizontalAlignment="Center" Click="OnOpenRemoteCoreSettingsClicked" /></StackPanel>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            <StackPanel Spacing="0" Classes="settings-tab-page" Tag="connect:other"
+                                        IsVisible="False">
+                            <TextBlock Classes="settings-heading" Text="远程 KL Core" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="地址" />
+                            <TextBlock Classes="settings-desc" Text="另一台电脑上通过 --listen 暴露的地址" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <TextBox x:Name="RemoteEndpointBox" Grid.Column="1" Classes="settings-input" Width="260" VerticalAlignment="Center"
+                                     PlaceholderText="tcp://192.168.1.20:8787"
+                                     Text="{Binding RemoteCoreEndpointDraft, Mode=TwoWay}" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="访问令牌" />
+                            <TextBlock Classes="settings-desc" Text="与服务器 --token 的值一致；本机地址可留空" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <TextBox Grid.Column="1" Classes="settings-input" Width="260" VerticalAlignment="Center"
+                                     PasswordChar="●"
+                                     Text="{Binding RemoteCoreTokenDraft, Mode=TwoWay}" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="TLS 指纹" />
+                            <TextBlock Classes="settings-desc" Text="使用 tls:// 时必填：KL Core 启动时打印的证书 SHA-256。tcp:// 地址请留空。" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <TextBox Grid.Column="1" Classes="settings-input" Width="260" VerticalAlignment="Center"
+                                     PlaceholderText="SHA-256（可带冒号）"
+                                     Text="{Binding RemoteCoreTlsFingerprintDraft, Mode=TwoWay}" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <TextBlock Text="{Binding RemoteCoreStatus}" IsVisible="{Binding HasRemoteCoreStatus}"
+                                       FontSize="12" Foreground="{DynamicResource TextSecondary}"
+                                       TextWrapping="Wrap" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
+                                        HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <Button Classes="subtle" Click="OnClearRemoteCoreClicked" Content="清除" />
+                            <Button Classes="secondary settings-button" Click="OnTestRemoteCoreClicked" Content="测试连接" IsEnabled="{Binding CanTestRemoteCore}" />
+                            <Button Classes="secondary settings-button" Click="OnSaveRemoteCoreClicked" Content="保存" />
+                            </StackPanel>
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            <TextBlock Classes="settings-desc" Margin="0,10,0,0"
+                                       Text="保存后重启 KL 生效；配置后不再启动本机 Core。" />
+                            </StackPanel>
+                            <StackPanel Spacing="0" Classes="settings-tab-page" Tag="connect:ssh"
+                                        IsVisible="False">
+                            <TextBlock Classes="settings-heading" Text="SSH" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <TextBlock Text="通过 SSH 连接远程主机时会话将显示在此处" FontSize="12.5"
+                                       Foreground="{DynamicResource TextCaption}" Margin="16,18" />
+                            </Border>
+                            </StackPanel>
+                            </StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsCodeReview}" Spacing="50" Classes="settings-pane">
+                            <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,-8,0,-20">
+                            <Button Classes="filter" Classes.active="True" Content="偏好设置" Tag="review:prefs" Click="OnSettingsTabClicked" />
+                            <Button Classes="filter" Content="审查智能体" Tag="review:agent" Click="OnSettingsTabClicked" />
+                            </StackPanel>
+                            <StackPanel Spacing="0" Classes="settings-tab-page" Tag="review:prefs">
+                            <TextBlock Classes="settings-heading" Text="个人偏好" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="审查强度" />
+                            <TextBlock Classes="settings-desc" Text="选择审查发现问题的严格程度" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" Classes="settings-select" VerticalAlignment="Center" SelectedIndex="{Binding ReviewModeIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="快速" />
+                            <ComboBoxItem Content="标准" />
+                            <ComboBoxItem Content="严格" />
+                            </ComboBox>
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            <StackPanel Spacing="0" Margin="0,50,0,0">
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+                            <TextBlock Classes="settings-heading" Text="审查结果" VerticalAlignment="Center" />
+                            <Button Grid.Column="1" Classes="secondary settings-button" Content="运行审查"
+                                    Click="OnRunReviewClicked" IsEnabled="{Binding CanRunReview}" />
+                            </Grid>
+                            <TextBlock Text="{Binding ReviewStatusText}" FontSize="11.5"
+                                       Foreground="{DynamicResource TextCaption}" Margin="0,4,0,0"
+                                       TextWrapping="Wrap" HorizontalAlignment="Left" />
+                            <Border Classes="settings-card" Margin="0,11,0,0">
+                            <StackPanel>
+                            <ItemsControl ItemsSource="{Binding ReviewFindings}" IsVisible="{Binding HasReviewFindings}">
+                            <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ReviewFindingRow">
+                            <StackPanel Margin="16,10,16,10" Spacing="4">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
+                            <TextBlock Text="{Binding Severity}" FontSize="11.5" FontWeight="SemiBold"
+                                       Foreground="#E5837C" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding Location}" FontSize="12.5"
+                                       Foreground="{DynamicResource TextPrimary}" TextTrimming="CharacterEllipsis" />
+                            </Grid>
+                            <TextBlock Text="{Binding Rule}" FontSize="11.5"
+                                       Foreground="{DynamicResource TextCaption}" />
+                            <TextBlock Text="{Binding Evidence}" FontSize="12"
+                                       Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding Recommendation}" FontSize="12"
+                                       Foreground="{DynamicResource TextPrimary}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="运行审查后在此显示结果。" IsVisible="{Binding ShowNoReviewFindings}"
+                                       FontSize="12" Foreground="{DynamicResource TextCaption}" Margin="16,14,16,14" />
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            </StackPanel>
+                            <StackPanel Spacing="0" Classes="settings-tab-page" Tag="review:agent"
+                                        IsVisible="False">
+                            <TextBlock Classes="settings-heading" Text="审查智能体" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="发送完整文件" />
+                            <TextBlock Classes="settings-desc" Text="发送完整文件内容，而不是只发送差异" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="{Binding ReviewFullFiles, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            <StackPanel Spacing="0" Margin="0,50,0,0">
+                            <TextBlock Classes="settings-heading" Text="审查指令" />
+                            <TextBlock Classes="settings-desc" Text="将添加到审查智能体的提示中" Margin="0,8,0,0" HorizontalAlignment="Left" />
+                            <TextBox Classes="settings-textarea" Margin="0,10,0,0" PlaceholderText="添加审查智能体指引..." Text="{Binding ReviewInstructions, Mode=TwoWay}" AcceptsReturn="True" />
+                            </StackPanel>
+                            </StackPanel>
+                            </StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsGit}" Spacing="50" Classes="settings-pane">
+                            <Border IsVisible="{Binding IsRemoteCore}" Classes="settings-card" Margin="0,0,0,0">
+                            <TextBlock Text="{Binding RemoteCoreNotice}" FontSize="12"
+                                       Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap"
+                                       Margin="16,12" />
+                            </Border>
+                                                        <StackPanel Spacing="0">
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+                            <TextBlock Classes="settings-heading" Text="当前项目" />
+                            <Button Grid.Column="1" Classes="secondary settings-button" Content="刷新" Click="OnRefreshGitClicked" IsEnabled="{Binding !IsRemoteCore}" />
+                            </Grid>
+                            <Border Classes="settings-card" Margin="0,11,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="分支" />
+                            <TextBlock Text="{Binding GitBranchText}" Classes="settings-desc"
+                                       FontFamily="Cascadia Mono, Consolas" HorizontalAlignment="Left" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Text="{Binding WorkspacePath}" FontSize="11.5"
+                                       Foreground="{DynamicResource TextCaption}" MaxWidth="320"
+                                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <TextBlock Classes="settings-title" Text="状态" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding GitStatusText}" FontSize="12"
+                                       Foreground="{DynamicResource TextCaption}" TextWrapping="Wrap"
+                                       TextAlignment="Right" MaxWidth="480" />
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="分支前缀" />
+                            <TextBlock Classes="settings-desc" Text="KL 创建新分支时使用的前缀" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <TextBox Grid.Column="1" Classes="settings-input" Width="260" VerticalAlignment="Center" PlaceholderText="kl/" Text="{Binding GitBranchPrefix, Mode=TwoWay}" />
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsEnvironments}" Spacing="50" Classes="settings-pane">
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="选择项目" />
+                            <StackPanel Spacing="10" Margin="0,10,0,0"><Grid ColumnDefinitions="*,Auto"><Button Grid.Column="1" Classes="secondary settings-button" Click="OnAddWorkspaceClicked" Content="添加项目" /></Grid>
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <ItemsControl ItemsSource="{Binding Workspaces}"><ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:WorkspaceItemViewModel"><Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Margin="16,12,16,11"><Path Width="16" Height="16" Data="{DynamicResource FolderIcon}" Stretch="Uniform" Stroke="{DynamicResource TextSecondary}" StrokeThickness="1.2" VerticalAlignment="Center" /><StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center"><TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="Medium" Foreground="{DynamicResource TextPrimary}" /><TextBlock Text="{Binding Path}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" TextTrimming="CharacterEllipsis" /></StackPanel><Button Grid.Column="2" Classes="subtle" Width="28" Height="28" Padding="0" HorizontalContentAlignment="Center" Click="OnWorkspaceEditClicked"><Path Width="13" Height="13" Data="{DynamicResource SquarePenIcon}" Stretch="Uniform" Stroke="{DynamicResource TextSecondary}" StrokeThickness="1.3" /></Button></Grid></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                            </StackPanel>
+                            </Border></StackPanel>
+                            </StackPanel>
+                            </StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsWorktrees}" Spacing="50" Classes="settings-pane">
+                            <Border IsVisible="{Binding IsRemoteCore}" Classes="settings-card" Margin="0,0,0,0">
+                            <TextBlock Text="{Binding RemoteCoreNotice}" FontSize="12"
+                                       Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap"
+                                       Margin="16,12" />
+                            </Border>
+                                                        <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="创建与清理" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="工作树根目录" />
+                            <TextBlock Classes="settings-desc" Text="留空以使用默认位置" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <TextBox Grid.Column="1" Classes="settings-input" Width="300" VerticalAlignment="Center" PlaceholderText="使用默认位置" Text="{Binding WorktreeRoot, Mode=TwoWay}" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="创建工作树前始终获取上游更新" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="{Binding WorktreeFetchBeforeCreate, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="删除工作树前询问" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="{Binding WorktreeConfirmDelete, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            <StackPanel Spacing="0">
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+                            <TextBlock Classes="settings-heading" Text="托管的工作树" />
+                            <Button Grid.Column="1" Classes="secondary settings-button" Content="刷新" Click="OnRefreshWorktreesClicked" IsEnabled="{Binding !IsRemoteCore}" />
+                            </Grid>
+                            <TextBlock Text="{Binding WorktreesStatusText}" FontSize="12" Foreground="{DynamicResource TextCaption}" Margin="0,0,0,10" />
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,10">
+                            <TextBox Classes="settings-input" Width="260" Text="{Binding NewWorktreeName, Mode=TwoWay}" PlaceholderText="新工作树名称，如 feature/login" />
+                            <Button Classes="primary settings-button" Content="创建工作树" Click="OnCreateWorktreeClicked" IsEnabled="{Binding CanCreateWorktree}" />
+                            </StackPanel>
+                            <Border Classes="settings-card" Margin="0,7,0,0">
+                            <StackPanel>
+                            <ItemsControl ItemsSource="{Binding Worktrees}">
+                            <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:WorktreeRow">
+                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="12" Margin="16,10">
+                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Branch}" FontSize="13" FontWeight="Medium"
+                                       Foreground="{DynamicResource TextPrimary}" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding Path}" FontSize="11.5" FontFamily="Cascadia Mono, Consolas"
+                                       Foreground="{DynamicResource TextCaption}" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Text="{Binding CurrentLabel}" FontSize="11"
+                                       Foreground="{DynamicResource TextCaption}" VerticalAlignment="Center" />
+                            <Button Grid.Column="2" Classes="subtle" Width="28" Height="28" Padding="0"
+                                    HorizontalContentAlignment="Center" Click="OnOpenWorktreeClicked"
+                                    ToolTip.Tip="在资源管理器中打开">
+                            <Path Width="13" Height="13" Data="{DynamicResource FolderIcon}" Stretch="Uniform"
+                                  Stroke="{DynamicResource TextSecondary}" StrokeThickness="1.3" />
+                            </Button>
+                            <Button Grid.Column="3" Classes="subtle" Width="28" Height="28" Padding="0"
+                                    HorizontalContentAlignment="Center" Click="OnDeleteWorktreeClicked"
+                                    ToolTip.Tip="删除工作树">
+                            <Path Width="13" Height="13" Data="{DynamicResource TrashIcon}" Stretch="Uniform"
+                                  Stroke="{DynamicResource TextSecondary}" StrokeThickness="1.3" />
+                            </Button>
+                            </Grid>
+                            </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="尚无工作树" IsVisible="{Binding !HasWorktrees}"
+                                       FontSize="12.5" Foreground="{DynamicResource TextCaption}" Margin="16,12,16,11" />
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            </StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsAudit}" Spacing="50" Classes="settings-pane">
+                            <StackPanel Spacing="0">
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+                            <TextBlock Classes="settings-heading" Text="最近的审计记录" />
+                            <Button Grid.Column="1" Classes="secondary settings-button" Content="刷新" Click="OnRefreshAuditClicked" />
+                            </Grid>
+                            <TextBlock Text="{Binding AuditStatusText}" FontSize="12" Foreground="{DynamicResource TextCaption}" Margin="0,0,0,10" />
+                            <Border Classes="settings-card">
+                            <StackPanel>
+                            <ItemsControl ItemsSource="{Binding AuditRecords}">
+                            <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:AuditRow">
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" Margin="16,8">
+                            <TextBlock Text="{Binding Time}" FontSize="11" FontFamily="Cascadia Mono, Consolas"
+                                       Foreground="{DynamicResource TextCaption}" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Spacing="2">
+                            <TextBlock Text="{Binding Summary}" FontSize="12.5" Foreground="{DynamicResource TextPrimary}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding Resource}" FontSize="11" Foreground="{DynamicResource TextCaption}"
+                                       TextTrimming="CharacterEllipsis" IsVisible="{Binding HasResource}" />
+                            <TextBlock Text="{Binding Error}" FontSize="11" Foreground="{DynamicResource ErrorText}"
+                                       TextWrapping="Wrap" IsVisible="{Binding HasError}" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="2" Text="{Binding OkLabel}" FontSize="11"
+                                       Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+                            </Grid>
+                            </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="还没有审计记录。" IsVisible="{Binding !ShowAuditRecords}" FontSize="12.5"
+                                       Foreground="{DynamicResource TextCaption}" Margin="16,12" />
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            </StackPanel>
+    </StackPanel>
+</UserControl>

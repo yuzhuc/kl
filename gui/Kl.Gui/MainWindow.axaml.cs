@@ -70,14 +70,14 @@ public partial class MainWindow : Window
     private bool _forceClose;
     private bool _closeRequestedByShortcut;
 
-    public MainWindow()
+    private static MainWindowViewModel CreateDefaultViewModel()
     {
         var stateStore = new StateStore();
         var state = stateStore.Load();
         var remoteEndpoint = string.IsNullOrWhiteSpace(state.RemoteCoreEndpoint)
             ? null
             : state.RemoteCoreEndpoint.Trim();
-        _viewModel = new MainWindowViewModel(
+        return new MainWindowViewModel(
             stateStore,
             coreSessionService: new CoreSessionService(new KlClientOptions
             {
@@ -88,6 +88,17 @@ public partial class MainWindow : Window
                     : state.RemoteCoreTlsFingerprint.Trim()
             }),
             dispatcher: action => Dispatcher.UIThread.Post(action));
+    }
+
+    public MainWindow()
+        : this(CreateDefaultViewModel())
+    {
+    }
+
+    /// <summary>Test seam: builds the shell around an injected view-model.</summary>
+    internal MainWindow(MainWindowViewModel viewModel)
+    {
+        _viewModel = viewModel;
         ApplyThemeVariant();
         InitializeComponent();
         ApplyStartupWindowSize();
