@@ -3523,19 +3523,25 @@ fn build_session_history(
     events: &[StoredSessionEvent],
 ) -> Vec<SessionHistoryEntry> {
     let mut entries = Vec::new();
-    let mut cursor = 0;
     let mut turn_id = None;
-    // Compaction drops whole rounds but keeps their events; pair the retained
-    // user messages with the newest user.message events so seqs stay correct.
-    let user_events: Vec<&StoredSessionEvent> = events
+    // Compaction drops whole rounds from the front but keeps their events; pair
+    // the retained user messages with the newest user.message events and start
+    // assistant/tool matching at the first retained turn so seqs stay correct.
+    let user_event_indices: Vec<usize> = events
         .iter()
-        .filter(|stored| matches!(stored.event, CoreEvent::UserMessage { .. }))
+        .enumerate()
+        .filter(|(_, stored)| matches!(stored.event, CoreEvent::UserMessage { .. }))
+        .map(|(index, _)| index)
         .collect();
     let user_message_count = messages
         .iter()
         .filter(|message| message.get("role").and_then(Value::as_str) == Some("user"))
         .count();
-    let first_user_event = user_events.len().saturating_sub(user_message_count);
+    let first_user_event = user_event_indices.len().saturating_sub(user_message_count);
+    let mut cursor = user_event_indices
+        .get(first_user_event)
+        .copied()
+        .unwrap_or(0);
     let mut user_index = 0;
     for message in messages {
         let role = message
@@ -3544,8 +3550,10 @@ fn build_session_history(
             .unwrap_or_default();
         match role {
             "user" => {
-                let event = if user_events.len() >= user_message_count {
-                    let event = user_events.get(first_user_event + user_index).copied();
+                let event = if user_event_indices.len() >= user_message_count {
+                    let event = user_event_indices
+                        .get(first_user_event + user_index)
+                        .and_then(|index| events.get(*index));
                     user_index += 1;
                     event
                 } else {
@@ -5574,6 +5582,144 @@ auto_approve_plugins = true
         assert_eq!(history[2].role, "assistant");
         assert_eq!(history[2].seq, Some(7));
         assert_eq!(history[2].reasoning.as_deref(), Some("Check files."));
+    }
+
+    #[test]
+    fn history_pairs_the_retained_turn_after_compaction() {
+        let messages = vec![
+            json!({"role":"user","content":[{"type":"text","data":"kept prompt"}]}),
+            json!({"role":"assistant","content":[{"type":"text","data":"kept answer"}]}),
+        ];
+        let event = |seq, event| StoredSessionEvent {
+            seq,
+            at: format!("2026-10-26T00:00:{seq:02}.000Z"),
+            event,
+        };
+        let events = vec![
+            event(
+                1,
+                CoreEvent::UserMessage {
+                    turn_id: "dropped".to_owned(),
+                    text: "dropped prompt".to_owned(),
+                },
+            ),
+            event(
+                2,
+                CoreEvent::TurnDelta {
+                    turn_id: "dropped".to_owned(),
+                    text: "dropped answer".to_owned(),
+                },
+            ),
+            event(
+                3,
+                CoreEvent::UserMessage {
+                    turn_id: "kept".to_owned(),
+                    text: "kept prompt".to_owned(),
+                },
+            ),
+            event(
+                4,
+                CoreEvent::TurnDelta {
+                    turn_id: "kept".to_owned(),
+                    text: "kept answer".to_owned(),
+                },
+            ),
+        ];
+
+        let history = build_session_history(&messages, &events);
+
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].seq, Some(3));
+        assert_eq!(history[0].text, "kept prompt");
+        assert_eq!(history[1].seq, Some(4));
+        assert_eq!(history[1].text, "kept answer");
+    }
+
+    #[test]
+    fn history_pairs_the_retained_tool_after_compaction() {
+        let messages = vec![
+            json!({"role":"user","content":[{"type":"text","data":"kept prompt"}]}),
+            json!({
+                "role": "assistant",
+                "content": [],
+                "tool_calls": [{"id": "kept-call", "name": "read_file", "arguments": "{}"}]
+            }),
+            json!({
+                "role": "tool",
+                "tool_call_id": "kept-call",
+                "content": [{"type":"text","data":"file text"}]
+            }),
+            json!({"role":"assistant","content":[{"type":"text","data":"kept answer"}]}),
+        ];
+        let event = |seq, event| StoredSessionEvent {
+            seq,
+            at: format!("2026-10-26T00:00:{seq:02}.000Z"),
+            event,
+        };
+        let events = vec![
+            event(
+                1,
+                CoreEvent::UserMessage {
+                    turn_id: "dropped".to_owned(),
+                    text: "dropped prompt".to_owned(),
+                },
+            ),
+            event(
+                2,
+                CoreEvent::ToolCompleted {
+                    turn_id: "dropped".to_owned(),
+                    call_id: "dropped-call".to_owned(),
+                    name: "read_file".to_owned(),
+                    ok: true,
+                    summary: "dropped tool".to_owned(),
+                    output: None,
+                    diff: None,
+                },
+            ),
+            event(
+                3,
+                CoreEvent::UserMessage {
+                    turn_id: "kept".to_owned(),
+                    text: "kept prompt".to_owned(),
+                },
+            ),
+            event(
+                4,
+                CoreEvent::TurnDelta {
+                    turn_id: "kept".to_owned(),
+                    text: String::new(),
+                },
+            ),
+            event(
+                5,
+                CoreEvent::ToolCompleted {
+                    turn_id: "kept".to_owned(),
+                    call_id: "kept-call".to_owned(),
+                    name: "read_file".to_owned(),
+                    ok: true,
+                    summary: "kept tool".to_owned(),
+                    output: Some("file text".to_owned()),
+                    diff: None,
+                },
+            ),
+            event(
+                6,
+                CoreEvent::TurnDelta {
+                    turn_id: "kept".to_owned(),
+                    text: "kept answer".to_owned(),
+                },
+            ),
+        ];
+
+        let history = build_session_history(&messages, &events);
+
+        assert_eq!(history.len(), 3);
+        assert_eq!(history[0].seq, Some(3));
+        assert_eq!(history[1].role, "tool");
+        assert_eq!(history[1].seq, Some(5));
+        assert_eq!(history[1].tool.as_ref().unwrap().summary, "kept tool");
+        assert_eq!(history[2].seq, Some(6));
+        assert_eq!(history[2].text, "kept answer");
     }
 
     #[test]
