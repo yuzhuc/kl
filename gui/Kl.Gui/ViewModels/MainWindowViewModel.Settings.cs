@@ -224,7 +224,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public string BackupStatusText { get; private set; } = string.Empty;
     public bool HasBackupStatus => BackupStatusText.Length > 0;
-    public string DataDirectoryPath => StateDirectory;
 
     public ObservableCollection<StorageFolderViewModel> StorageFolders { get; } = [];
     public string StorageTotalLabel { get; private set; } = "KL 占用 —";

@@ -11,16 +11,6 @@ public static class StartupRegistration
     private const string RunKey = @"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
     private const string ValueName = "KL";
 
-    public static bool IsEnabled()
-    {
-        if (!OperatingSystem.IsWindows())
-        {
-            return false;
-        }
-
-        return Run("query", $"\"{RunKey}\" /v {ValueName}").ExitCode == 0;
-    }
-
     /// <summary>Turns the Run entry on or off; throws when Windows rejects the update.</summary>
     public static void SetEnabled(bool enabled, string? executablePath = null)
     {

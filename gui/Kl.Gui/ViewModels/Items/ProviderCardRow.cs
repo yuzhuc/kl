@@ -60,7 +60,6 @@ public sealed class ProviderCardRow : ObservableObject
         {
             if (SetProperty(ref _name, value))
             {
-                OnPropertyChanged(nameof(HasName));
             }
         }
     }
@@ -89,7 +88,6 @@ public sealed class ProviderCardRow : ObservableObject
         }
     }
 
-    public bool HasName => Name.Length > 0;
     public bool HasNote => Note.Length > 0;
     public bool HasWebsite => Website.Length > 0;
 

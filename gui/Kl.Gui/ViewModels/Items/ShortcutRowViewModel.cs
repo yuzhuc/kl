@@ -44,13 +44,11 @@ public sealed class ShortcutRowViewModel : ObservableObject
             if (SetProperty(ref _gesture, value))
             {
                 OnPropertyChanged(nameof(HasGesture));
-                OnPropertyChanged(nameof(GestureLabel));
             }
         }
     }
 
     public bool HasGesture => Gesture.Length > 0;
-    public string GestureLabel => HasGesture ? Gesture : "未分配";
 
     public bool IsVisible
     {

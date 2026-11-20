@@ -78,12 +78,9 @@ public sealed class ChatItemViewModel : ObservableObject
         {
             if (SetProperty(ref _seq, value))
             {
-                OnPropertyChanged(nameof(HasSeq));
             }
         }
     }
-
-    public bool HasSeq => _seq is not null;
 
     /// <summary>Short local time label shown under user messages (Codex-style).</summary>
     public string TimestampLabel
@@ -254,17 +251,11 @@ public sealed class ChatItemViewModel : ObservableObject
             if (SetProperty(ref _isExpanded, value))
             {
                 OnPropertyChanged(nameof(ShowExpanded));
-                OnPropertyChanged(nameof(ShowCollapsed));
-                OnPropertyChanged(nameof(ShowChevronDown));
-                OnPropertyChanged(nameof(ShowChevronUp));
             }
         }
     }
 
     public bool ShowExpanded => IsActivity && IsExpanded;
-    public bool ShowCollapsed => IsActivity && !IsExpanded;
-    public bool ShowChevronDown => ShowCollapsed;
-    public bool ShowChevronUp => ShowExpanded;
 
     public string CollapsedText
     {

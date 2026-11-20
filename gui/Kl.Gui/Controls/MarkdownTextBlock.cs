@@ -300,7 +300,7 @@ public sealed class MarkdownTextBlock : UserControl
         var headerIcon = new Avalonia.Controls.Shapes.Path
         {
             Data = Geometry.Parse("M10 4V20 M4 12H20 M16 8L20 12L16 16"),
-            Stroke = ThemeBrushes.Get("CodeIcon", "#7E7F82"),
+            Stroke = ThemeBrushes.Get("CodeIconBrush", "#7E7F82"),
             StrokeThickness = 1.3,
             StrokeLineCap = PenLineCap.Round,
             StrokeJoin = PenLineJoin.Round,
@@ -491,7 +491,7 @@ public sealed class MarkdownTextBlock : UserControl
             Content = new Avalonia.Controls.Shapes.Path
             {
                 Data = Geometry.Parse(geometry),
-                Stroke = ThemeBrushes.Get("CodeIcon", "#7E7F82"),
+                Stroke = ThemeBrushes.Get("CodeIconBrush", "#7E7F82"),
                 StrokeThickness = 1.3,
                 StrokeLineCap = PenLineCap.Round,
                 StrokeJoin = PenLineJoin.Round,

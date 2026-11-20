@@ -160,12 +160,6 @@ public sealed class TerminalView : Control
         CopySelection();
     }
 
-    public void ShowError(string message)
-    {
-        _buffer.Feed($"\r\n\x1b[31m{message}\x1b[0m\r\n");
-        InvalidateVisual();
-    }
-
     public void Dispose()
     {
         Stop();

@@ -14,8 +14,6 @@ namespace Kl.Gui.ViewModels;
 public sealed partial class MainWindowViewModel : ObservableObject
 {
     /// <summary>Codex-style transcript ruler ticks down the left edge of the chat column.</summary>
-    public IReadOnlyList<int> RulerTicks { get; } = Enumerable.Range(0, 200).ToArray();
-
     private static readonly string[] SupportedPermissionModes = ["完全访问", "帮我批准", "请求批准"];
     private static readonly HashSet<string> SupportedAttachmentExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -180,8 +178,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
         new(360, "每 6 小时"),
         new(1440, "每天")
     ];
-    public IReadOnlyList<string> PermissionModes => SupportedPermissionModes;
-
     public IReadOnlyList<ReasoningEffortOption> ReasoningEffortOptions { get; } =
     [
         new("default", "默认"),
@@ -559,8 +555,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
         OnPropertyChanged(nameof(ShowFullAccessWarning));
     }
-    public IReadOnlyList<int> ContentFontSizes { get; } = [13, 14, 15, 16];
-    public string VersionLabel => "0.3.0-gui.1";
     public AppState State => _state;
     public SessionItemViewModel? ActiveSessionItem => _activeSessionItem;
 
@@ -735,8 +729,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
             return string.IsNullOrWhiteSpace(name) ? "本地用户" : name;
         }
     }
-
-    public string AccountPlanLabel => "Local";
 
     public string ComposerPlaceholder => HasQueuedTurns
         ? $"已排队 {QueuedTurnCount} 条；回复完成后自动发送"
@@ -1362,7 +1354,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public string StateDirectory => Path.GetDirectoryName(_stateStore.Path) ?? string.Empty;
     public int WorkspaceCount => Workspaces.Count;
     public int SavedSessionCount => Workspaces.Sum(workspace => workspace.Sessions.Count);
-    public int AutomationCount => Automations.Count;
     public bool HasAutomations => Automations.Count > 0;
     public bool ShowNoAutomations => !Automations.Any(item => item.IsVisible);
     public string AutomationSearch
@@ -1490,11 +1481,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     /// <summary>Chat mode puts project/plugin chips below the composer instead.</summary>
     public bool ShowChatComposerChips => IsEmpty && IsChatMode;
-    public bool CanSwitchSession => !IsBusy;
     public bool HasSessions => Workspaces.Any(workspace => workspace.Sessions.Count > 0);
     public bool ShowNoSessions => !HasSessions && string.IsNullOrWhiteSpace(SearchText);
     public bool ShowNoSearchResults => !string.IsNullOrWhiteSpace(SearchText) && !Workspaces.Any(workspace => workspace.IsVisible);
-    public string ProductLabel => "kl";
 
     public string ActiveModeLabel => IsWorkMode ? "Work" : "Chat";
     public string SessionTitle
@@ -1974,7 +1963,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public string ThemeMode => _state.ThemeMode;
 
-    public bool IsThemeSystem => _state.ThemeMode == "system";
     public bool IsThemeLight => _state.ThemeMode == "light";
     public bool IsThemeDark => _state.ThemeMode == "dark";
 
@@ -1989,7 +1977,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _state.ThemeMode = value;
         SaveState();
         OnPropertyChanged(nameof(ThemeMode));
-        OnPropertyChanged(nameof(IsThemeSystem));
         OnPropertyChanged(nameof(IsThemeLight));
         OnPropertyChanged(nameof(IsThemeDark));
     }
@@ -2217,8 +2204,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(TerminalPanelSize));
     }
 
-    public string ReduceMotionMode => _state.ReduceMotion;
-
     public bool IsReduceMotionSystem => _state.ReduceMotion == "system";
     public bool IsReduceMotionOn => _state.ReduceMotion == "on";
     public bool IsReduceMotionOff => _state.ReduceMotion == "off";
@@ -2236,7 +2221,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         _state.ReduceMotion = value;
         SaveState();
-        OnPropertyChanged(nameof(ReduceMotionMode));
         OnPropertyChanged(nameof(IsReduceMotionSystem));
         OnPropertyChanged(nameof(IsReduceMotionOn));
         OnPropertyChanged(nameof(IsReduceMotionOff));
@@ -2637,8 +2621,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
             {
                 OnPropertyChanged(nameof(CanSend));
                 OnPropertyChanged(nameof(CanQueueSend));
-                OnPropertyChanged(nameof(CanSwitchSession));
-                OnPropertyChanged(nameof(CanCancel));
             }
         }
     }
@@ -2653,8 +2635,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
         && !IsCoreRetrying
         && (!string.IsNullOrWhiteSpace(Composer) || HasPendingAttachments);
     public bool HasPendingAttachments => PendingAttachments.Count > 0;
-    public bool CanCancel => IsBusy;
-
     public string ErrorMessage
     {
         get => _errorMessage;
@@ -2850,8 +2830,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
             item.IsActive = item.IsProject ? IsProjectsPage : _isCodeReviewDraftActive;
         }
     }
-
-    public void ToggleSidebar() => IsSidebarVisible = !IsSidebarVisible;
 
     public void ToggleSearch() => IsSearchVisible = !IsSearchVisible;
 
@@ -3957,12 +3935,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
             await OpenSessionAsync(recent, save: false).ConfigureAwait(true);
         }
 
-        SaveState();
-    }
-
-    public void ToggleWorkspace(WorkspaceItemViewModel workspace)
-    {
-        workspace.IsExpanded = !workspace.IsExpanded;
         SaveState();
     }
 
@@ -5311,7 +5283,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
         ApplyAutomationFilter();
         OnPropertyChanged(nameof(HasAutomations));
         OnPropertyChanged(nameof(AutomationPageSummary));
-        OnPropertyChanged(nameof(AutomationCount));
         OnPropertyChanged(nameof(AutomationEmptyTitle));
         OnPropertyChanged(nameof(AutomationEmptyDescription));
     }

@@ -12,7 +12,4 @@ using Kl.Gui.Services;
 namespace Kl.Gui.ViewModels;
 
 /// <summary>One row in the Worktrees settings page.</summary>
-public sealed record WorktreeRow(string Path, string Branch, string CurrentLabel)
-{
-    public bool IsCurrent => CurrentLabel.Length > 0;
-}
+public sealed record WorktreeRow(string Path, string Branch, string CurrentLabel);

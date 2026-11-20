@@ -689,12 +689,6 @@ public sealed class TerminalBuffer
         SelectionEnd = (Math.Max(0, endRow), Math.Max(0, endColumn));
     }
 
-    public void ClearSelection()
-    {
-        SelectionStart = null;
-        SelectionEnd = null;
-    }
-
     public string GetSelectedText()
     {
         if (SelectionStart is not { } start || SelectionEnd is not { } end)

@@ -139,11 +139,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>Shown as the placeholder when the root is left blank.</summary>
-    public string DefaultWorktreeRoot => string.IsNullOrWhiteSpace(WorkspacePath)
-        ? ".kl/worktrees"
-        : Path.Combine(WorkspacePath, ".kl", "worktrees");
-
     public bool WorktreeFetchBeforeCreate
     {
         get => _state.WorktreeFetchBeforeCreate;

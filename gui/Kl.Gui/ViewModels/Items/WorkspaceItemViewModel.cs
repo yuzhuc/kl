@@ -15,7 +15,6 @@ public sealed class WorkspaceItemViewModel : ObservableObject
 {
     private bool _isSelected;
     private bool _isVisible = true;
-    private bool _hasVisibleSessions = true;
     private bool _isSearchActive;
     private string _pathLabel = string.Empty;
 
@@ -32,8 +31,7 @@ public sealed class WorkspaceItemViewModel : ObservableObject
             {
                 if (args.PropertyName == nameof(SessionItemViewModel.IsVisible))
                 {
-                    RefreshVisibility();
-                }
+                            }
             };
         }
 
@@ -143,12 +141,6 @@ public sealed class WorkspaceItemViewModel : ObservableObject
         set => SetProperty(ref _isVisible, value);
     }
 
-    public bool HasVisibleSessions
-    {
-        get => _hasVisibleSessions;
-        private set => SetProperty(ref _hasVisibleSessions, value);
-    }
-
     public bool IsSearchActive
     {
         get => _isSearchActive;
@@ -189,11 +181,5 @@ public sealed class WorkspaceItemViewModel : ObservableObject
             session.IsVisible = workspaceMatches || session.Matches(query);
         }
         IsVisible = workspaceMatches || Sessions.Any(session => session.IsVisible);
-        RefreshVisibility();
-    }
-
-    private void RefreshVisibility()
-    {
-        HasVisibleSessions = Sessions.Any(session => session.IsVisible);
     }
 }
