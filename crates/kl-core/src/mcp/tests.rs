@@ -4,20 +4,27 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::thread::JoinHandle;
 
 fn fake_server_binary() -> PathBuf {
-    option_env!("CARGO_BIN_EXE_fake_mcp_server")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            let exe = std::env::current_exe().expect("test executable path");
-            let debug = exe
-                .parent()
-                .and_then(Path::parent)
-                .expect("debug directory");
-            debug.join(if cfg!(windows) {
-                "fake_mcp_server.exe"
-            } else {
-                "fake_mcp_server"
-            })
-        })
+    if let Some(path) = option_env!("CARGO_BIN_EXE_fake_mcp_server") {
+        return PathBuf::from(path);
+    }
+    let exe = std::env::current_exe().expect("test executable path");
+    let name = if cfg!(windows) {
+        "fake_mcp_server.exe"
+    } else {
+        "fake_mcp_server"
+    };
+    for ancestor in exe.ancestors() {
+        if matches!(
+            ancestor.file_name().and_then(|name| name.to_str()),
+            Some("debug" | "release")
+        ) {
+            let candidate = ancestor.join(name);
+            if candidate.is_file() {
+                return candidate;
+            }
+        }
+    }
+    panic!("could not find {name}; run `cargo build -p kl-core --bins` first");
 }
 
 fn fake_server_config() -> McpServerConfig {

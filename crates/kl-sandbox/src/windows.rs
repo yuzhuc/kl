@@ -848,21 +848,20 @@ fn runner_path() -> Result<PathBuf, SandboxError> {
     let current = std::env::current_exe().map_err(|error| {
         SandboxError::Spawn(format!("cannot locate current executable: {error}"))
     })?;
-    let mut candidates = Vec::new();
-    if let Some(parent) = current.parent() {
-        candidates.push(parent.join("kl-sandbox-runner.exe"));
-        if let Some(grandparent) = parent.parent() {
-            candidates.push(grandparent.join("kl-sandbox-runner.exe"));
+    let mut directory = current.parent();
+    for _ in 0..6 {
+        let Some(parent) = directory else {
+            break;
+        };
+        let candidate = parent.join("kl-sandbox-runner.exe");
+        if candidate.exists() {
+            return Ok(candidate);
         }
+        directory = parent.parent();
     }
-    candidates
-        .into_iter()
-        .find(|path| path.exists())
-        .ok_or_else(|| {
-            SandboxError::Spawn(
-                "kl-sandbox-runner.exe is missing next to the current executable".to_owned(),
-            )
-        })
+    Err(SandboxError::Spawn(
+        "kl-sandbox-runner.exe is missing next to the current executable".to_owned(),
+    ))
 }
 
 fn write_runner_config(spec: &CommandSpec) -> Result<(PathBuf, PathBuf), SandboxError> {
