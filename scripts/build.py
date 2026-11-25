@@ -71,6 +71,7 @@ def publish_apps(
     output: Path,
     env: dict[str, str],
     self_contained: bool,
+    single_file: bool,
 ) -> Path:
     cargo_profile = "release" if configuration.lower() == "release" else "debug"
     core_name = "kl-core.exe" if runtime.startswith("win") else "kl-core"
@@ -93,6 +94,11 @@ def publish_apps(
         "-p:DebugType=None",
         "-p:DebugSymbols=false",
     ]
+    if single_file:
+        common.extend([
+            "-p:PublishSingleFile=true",
+            "-p:IncludeNativeLibrariesForSelfExtract=true",
+        ])
     run(["dotnet", "publish", "gui/Kl.Gui/Kl.Gui.csproj", *common, "-o", str(gui_output)], env)
     run(["dotnet", "publish", "tui/Kl.Tui/Kl.Tui.csproj", *common, "-o", str(tui_output)], env)
 
@@ -156,6 +162,10 @@ def parse_args() -> argparse.Namespace:
         "--framework-dependent", dest="self_contained", action="store_false",
         help="omit the .NET runtime for a smaller output",
     )
+    deployment.add_argument(
+        "--single-file", action="store_true",
+        help="bundle the app, dependencies and runtime into one executable",
+    )
     return parser.parse_args()
 
 
@@ -181,13 +191,20 @@ def main() -> int:
     run(["cargo", "build", "-p", "kl-core", *profile], env)
     run(["cargo", "build", "-p", "kl-sandbox", "--bin", "kl-sandbox-runner", *profile], env)
 
-    core = publish_apps(args.configuration, args.runtime, output, env, args.self_contained)
+    core = publish_apps(
+        args.configuration, args.runtime, output, env, args.self_contained, args.single_file,
+    )
     print(f"\nCaches: {ROOT / 'target'}")
     print(f"Final outputs: {output}")
     print(f"GUI: {output / 'gui'}")
     print(f"TUI: {output / 'tui'}")
     print(f"Core source: {core}")
-    deployment = "self-contained" if args.self_contained else "framework-dependent (lean local build)"
+    if args.single_file:
+        deployment = "self-contained single-file"
+    elif args.self_contained:
+        deployment = "self-contained"
+    else:
+        deployment = "framework-dependent (lean local build)"
     print(f"Deployment: {deployment}")
     return 0
 

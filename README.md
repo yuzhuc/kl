@@ -90,9 +90,11 @@ Final outputs: D:\kl\kl\bin\gui, D:\kl\kl\bin\tui
 Local builds are self-contained by default and include the .NET 10 runtime, so
 the output runs without a separate runtime install. Pass `--framework-dependent`
 for a smaller lean build that requires the .NET 10 Runtime on the target machine
-(on Windows, the .NET 10 Desktop Runtime includes it). The script detects the
-current OS/architecture automatically and creates `.bat` launchers on Windows or
-`.sh` launchers on Linux/macOS.
+(on Windows, the .NET 10 Desktop Runtime includes it). Pass `--single-file` to
+embed the runtime and dependencies into `kl.exe`, leaving only `kl.exe`,
+`kl-core.exe` and `kl-sandbox-runner.exe` in each output directory. The script
+detects the current OS/architecture automatically and creates `.bat` launchers
+on Windows or `.sh` launchers on Linux/macOS.
 
 For component-level development:
 
