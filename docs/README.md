@@ -17,9 +17,10 @@ model/reasoning-effort selection, full settings/project pages and shared `~/.kl`
 data. The GUI test projects are green at 267 tests
 (260 view-model/service, 7 Avalonia headless) and the TUI project at 55.
 
-Product-level plans are maintained outside the repository:
+Product-level plans live with the repository:
 
-- `D:\kl\KL方案.md` — product, phase, release and risk plan
-- `D:\kl\UI方案.md` — visual system, layout, interaction and UI acceptance plan
+- `plan/KL方案.md` — product, phase, release and risk plan
+- `plan/UI方案.md` — visual system, layout, interaction and UI acceptance plan
+- `plan/up.md` — hot-update plan (incremental download, core hot restart, plugin reload)
 
 Real Provider/MCP live smoke remains open (it needs credentials or a running local MCP server).

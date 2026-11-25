@@ -60,6 +60,7 @@ never execute tools or call providers directly. See
 | `benchmarks/` | acceptance tasks and fixtures |
 | `scripts/` | Python build, package, validation, benchmark and demo scripts |
 | `docs/` | architecture, security, ADR and API docs |
+| `plan/` | product, UI and hot-update plans |
 
 Cargo and .NET intermediates remain in repository cache directories. Final local builds are staged to `D:\kl\kl\bin`.
 
@@ -249,3 +250,6 @@ and the release matrix in
 - [`docs/plugin-api/README.md`](docs/plugin-api/README.md)
 - [`docs/gui/mvp-spec.md`](docs/gui/mvp-spec.md)
 - [`docs/adr/`](docs/adr/)
+- [`plan/KL方案.md`](plan/KL方案.md)
+- [`plan/UI方案.md`](plan/UI方案.md)
+- [`plan/up.md`](plan/up.md)

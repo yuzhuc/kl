@@ -69,6 +69,7 @@ TUI (tui/Kl.Tui)     Headless/CI          GUI (gui/Kl.Gui)
 | `benchmarks/` | 验收任务与工作区 |
 | `scripts/` | 构建、打包、协议/i18n 校验、基准、演示/冒烟 |
 | `docs/` | 架构、安全、插件、GUI、ADR 文档 |
+| `plan/` | 产品、UI 与热更新计划 |
 
 ## 主要能力
 
@@ -107,7 +108,7 @@ python scripts/check_protocol.py
 
 - 输出：`D:\kl\kl\bin\gui`、`D:\kl\kl\bin\tui`；`kl-core.exe` 与 `kl-sandbox-runner.exe` 放在两个客户端旁边。
 - 本地构建默认 self-contained，包含 .NET 10 Runtime；加 `--framework-dependent` 可生成精简版（目标机需安装 .NET 10 Runtime）；加 `--single-file` 会把运行时和依赖打进 `kl.exe`，目录只剩 `kl.exe`、`kl-core.exe`、`kl-sandbox-runner.exe`。
-- Windows 的 Rust 二进制静态链接 CRT，`core\` 目录不依赖 VC++ Redistributable。
+- Windows 的 Rust 二进制静态链接 CRT，`kl-core.exe` 和 `kl-sandbox-runner.exe` 不依赖 VC++ Redistributable。
 - GUI 启动：`D:\kl\kl\bin\run-gui.bat`（或直接 `D:\kl\kl\bin\gui\kl.exe`）。
 - 组件运行时可用 `KL_CORE_PATH` 指向自编译的 `kl-core`。
 
@@ -150,12 +151,11 @@ GUI 状态路径可被 `KL_GUI_STATE` 覆盖；`KL_HOME` 可覆盖整个 home。
 
 ## 当前状态（2026-11-25）
 
-- 分支：`dev`；最近提交：见 `git log`（历史已于 2026-11-25 压缩）。
-- **工作区有未提交改动**（约 25 个已修改文件，另有本文件未跟踪）；新对话开始前先
-  `git status` / `git diff` 确认，不要覆盖。
+- 分支：`dev`，基线 `960d760`；历史已于 2026-11-25 压缩。
+- 在 `960d760` 时工作区干净；开始改动前仍先 `git status` 确认。
 - 测试：`dotnet test kl.sln` = 260 GUI + 7 headless + 55 TUI 全绿；
   `cargo test --workspace` 全绿。
-- 最近完成（未提交）：
+- 最近完成：
   - `turn.start` 新增 `reasoning_effort`，按模型 `reasoning_efforts` 校验，
     只影响本回合，不写配置；SDK / `CoreSessionService` / Composer 全链路。
   - 输入框强度滑条按当前模型的支持级别动态生成档位；选择按 `provider/model`
@@ -176,7 +176,7 @@ GUI 状态路径可被 `KL_GUI_STATE` 覆盖；`KL_HOME` 可覆盖整个 home。
 - Windows AppContainer 下 PTY 会 fail closed。
 - GUI/SDK/插件拆仓尚未开始。
 
-## 文档与外部计划
+## 文档与计划
 
 - `README.md`、`docs/README.md`
 - `docs/architecture/overview.md`
@@ -186,7 +186,8 @@ GUI 状态路径可被 `KL_GUI_STATE` 覆盖；`KL_HOME` 可覆盖整个 home。
 - `docs/gui/mvp-spec.md`
 - `docs/remote-core.md`
 - `docs/adr/`
-- 产品/UI 计划在仓库外：`D:\kl\KL方案.md`、`D:\kl\UI方案.md`。
+- 产品/UI 计划：`plan/KL方案.md`、`plan/UI方案.md`。
+- 热更新计划：`plan/up.md`。
 
 ## 开发约定
 

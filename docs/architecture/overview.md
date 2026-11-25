@@ -187,7 +187,9 @@ is rendered as such.
 
 ## Release
 
-Releases are built only from pushes to `main` and are tagged `v<version>-rcN`.
+Releases run only from a manual `workflow_dispatch` of the `release` workflow and
+are tagged `v<version>-rcN`. Windows and macOS bundles include the GUI under
+`gui/`; Linux bundles ship the TUI and core only.
 The runtime identifier matrix is final:
 
 | Platform | RIDs |

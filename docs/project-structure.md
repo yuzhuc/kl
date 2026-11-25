@@ -11,6 +11,7 @@ schemas/      protocol and plugin schemas
 benchmarks/   acceptance tasks and fixtures
 scripts/      Python build, validation, benchmark and demo tooling
 docs/         architecture, security, plugin and ADR docs
+plan/         product, UI and hot-update plans
 tests/        cross-language contract and provider fixtures
 plugins/      plugin examples
 ```
