@@ -95,7 +95,9 @@ for a smaller lean build that requires the .NET 10 Runtime on the target machine
 embed the runtime and dependencies into `kl.exe`, leaving only `kl.exe` in
 each app directory; `kl-core.exe` and `kl-sandbox-runner.exe` live in its `core/`
 subdirectory. The script detects the current OS/architecture automatically and
-creates `.bat` launchers on Windows or `.sh` launchers on Linux/macOS.
+creates `.bat` launchers on Windows or `.sh` launchers on Linux/macOS. On
+Windows, Rust binaries link the C runtime statically, so `core/` does not need
+the Visual C++ Redistributable.
 
 For component-level development:
 

@@ -1,0 +1,7 @@
+# Link the MSVC CRT statically so kl-core and kl-sandbox-runner do not
+# require VCRUNTIME140.dll on a clean Windows install.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
