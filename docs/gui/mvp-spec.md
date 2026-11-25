@@ -222,7 +222,7 @@ so overlapping tools keep independent cards, output and status.
 ```powershell
 dotnet test D:\kl\kl\kl.sln -c Release --nologo
 python D:\kl\kl\scripts\build.py
-D:\kl\bin\gui\kl.exe
+D:\kl\kl\bin\gui\kl.exe
 ```
 
 Required checks before release:

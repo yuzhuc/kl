@@ -62,7 +62,7 @@ $env:KL_CORE_TLS_FINGERPRINT = "9546C9C10A006F9C...DCBD"
 
 kl chat --workspace .          # TUI
 kl run "fix the failing test"  # TUI one-shot
-D:\kl\bin\run-gui.bat          # GUI
+D:\kl\kl\bin\run-gui.bat          # GUI
 ```
 
 `KL_CORE_ENDPOINT` may be `tcp://host:port`, `tls://host:port` or a bare

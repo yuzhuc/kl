@@ -17,7 +17,7 @@ plugins/      plugin examples
 
 Cargo caches stay in `target/`; .NET intermediates stay in project `bin/` and
 `obj/` directories. `python scripts/build.py` stages final GUI/TUI files in the
-sibling `bin/` directory, while benchmark workspaces are disposable.
+`bin/` directory under the repository root, while benchmark workspaces are disposable.
 
 ## Rust crates
 
@@ -71,8 +71,8 @@ execution inside Core.
 - Rust: `cargo build --release -p kl-core`.
 - TUI: `dotnet build tui/Kl.Tui/Kl.Tui.csproj`.
 - GUI: `dotnet build gui/Kl.Gui/Kl.Gui.csproj`.
-- Build: `python scripts/build.py` publishes final GUI/TUI files to the sibling
-  `bin` directory and stages `kl-core.exe` next to both clients.
+- Build: `python scripts/build.py` publishes final GUI/TUI files to the `bin`
+  directory under the repository root and stages `kl-core.exe` next to both clients.
 - Packaging: `python scripts/package.py` builds a self-contained release archive
   (`--gui` adds the Avalonia client under `gui/` on Windows and macOS RIDs).
-- Release: only `main` pushes, tag `v<version>-rcN`, archives only.
+- Release: manual `workflow_dispatch` only, tag `v<version>-rcN`, archives only.

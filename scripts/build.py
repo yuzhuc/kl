@@ -12,7 +12,7 @@ from package_format import is_diagnostic_file
 
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_OUTPUT = ROOT.parent / "bin"
+DEFAULT_OUTPUT = ROOT / "bin"
 
 
 def host_runtime() -> str:

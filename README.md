@@ -61,7 +61,7 @@ never execute tools or call providers directly. See
 | `scripts/` | Python build, package, validation, benchmark and demo scripts |
 | `docs/` | architecture, security, ADR and API docs |
 
-Cargo and .NET intermediates remain in repository cache directories. Final local builds are staged to `D:\kl\bin`.
+Cargo and .NET intermediates remain in repository cache directories. Final local builds are staged to `D:\kl\kl\bin`.
 
 ## Prerequisites
 
@@ -80,11 +80,11 @@ python scripts/build.py
 ```
 
 The build script keeps Cargo and .NET caches inside the repository and publishes
-the final GUI/TUI files to the sibling `bin` directory:
+the final GUI/TUI files to the `bin` directory under the repository root:
 
 ```text
 Caches:        D:\kl\kl\target, project bin/obj directories
-Final outputs: D:\kl\bin\gui, D:\kl\bin\tui
+Final outputs: D:\kl\kl\bin\gui, D:\kl\kl\bin\tui
 ```
 
 Local builds are intentionally framework-dependent and require the .NET 10
@@ -117,7 +117,7 @@ dotnet run --project tui/Kl.Tui -- serve
 After `python scripts/build.py`, the desktop GUI can be started with:
 
 ```powershell
-D:\kl\bin\run-gui.bat
+D:\kl\kl\bin\run-gui.bat
 ```
 
 The build stages `kl-core.exe` next to both `bin/gui` and `bin/tui`, so the GUI

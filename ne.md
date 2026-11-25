@@ -105,9 +105,9 @@ python scripts/check_i18n.py
 python scripts/check_protocol.py
 ```
 
-- 输出：`D:\kl\bin\gui`、`D:\kl\bin\tui`，`kl-core.exe` 会放在两个客户端旁边。
+- 输出：`D:\kl\kl\bin\gui`、`D:\kl\kl\bin\tui`，`kl-core.exe` 会放在两个客户端旁边。
 - 本地构建是 framework-dependent，目标机需要 .NET 10 Runtime（Windows 为 Desktop Runtime）。
-- GUI 启动：`D:\kl\bin\run-gui.bat`（或直接 `D:\kl\bin\gui\kl.exe`）。
+- GUI 启动：`D:\kl\kl\bin\run-gui.bat`（或直接 `D:\kl\kl\bin\gui\kl.exe`）。
 - 组件运行时可用 `KL_CORE_PATH` 指向自编译的 `kl-core`。
 
 ## 配置与数据
@@ -194,4 +194,4 @@ GUI 状态路径可被 `KL_GUI_STATE` 覆盖；`KL_HOME` 可覆盖整个 home。
 - 改 provider 配置必须通过 Core RPC 或明确的配置编辑，并保留用户已有设置。
 - 新依赖需先确认；能用现有实现就不要加抽象。
 - 非平凡逻辑要有测试；改完跑对应测试和 `check_i18n.py` / `check_protocol.py`。
-- GUI 的体验类改动优先在真实应用里验证（`D:\kl\bin\gui\kl.exe`）。
+- GUI 的体验类改动优先在真实应用里验证（`D:\kl\kl\bin\gui\kl.exe`）。
