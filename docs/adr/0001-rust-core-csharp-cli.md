@@ -7,8 +7,8 @@
 
 KL needs one trusted execution core that owns agent state, tools, policy and
 audit, plus a terminal client that is good at interactive rendering and
-approval workflows. The project must not depend on a Python runtime or Python
-build scripts.
+approval workflows. Python is allowed for development tooling, but product
+binaries and runtime must not depend on Python.
 
 ## Decision
 
@@ -19,6 +19,8 @@ build scripts.
   decisions. It never calls a model or executes a tool directly.
 - The shared wire types live in `crates/kl-protocol`; both Rust and .NET tests
   consume the same fixtures under `tests/fixtures/protocol`.
+- Build, packaging, documentation and protocol checks may use Python scripts, but
+  those scripts are not shipped and are never invoked by the product runtime.
 
 ## Consequences
 

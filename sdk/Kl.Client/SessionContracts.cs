@@ -2,6 +2,8 @@ namespace Kl.Client;
 
 public enum SessionEventKind
 {
+    UserMessage,
+    ConversationRewound,
     TurnStarted,
     AssistantDelta,
     ReasoningDelta,
@@ -10,6 +12,7 @@ public enum SessionEventKind
     ApprovalRequested,
     ApprovalResolved,
     ToolCompleted,
+    SandboxViolation,
     AuditRecorded,
     ContextCompacted,
     TurnCompleted,
@@ -17,6 +20,10 @@ public enum SessionEventKind
     Error
 }
 
+/// <summary>
+/// One presenter-facing session event. All correlation and ordering fields are
+/// additive and optional, so existing consumers keep compiling unchanged.
+/// </summary>
 public sealed record SessionEvent(
     SessionEventKind Kind,
     string Text = "",
@@ -34,7 +41,12 @@ public sealed record SessionEvent(
     string? TurnId = null,
     long InputTokens = 0,
     long OutputTokens = 0,
-    double? CostUsd = null);
+    double? CostUsd = null,
+    long Seq = 0,
+    string? CallId = null,
+    long? RewindFromSeq = null,
+    string? Output = null,
+    bool ConnectionLost = false);
 
 public sealed record ApprovalRequestEvent(
     string ApprovalId,

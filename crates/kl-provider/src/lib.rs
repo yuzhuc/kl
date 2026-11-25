@@ -82,11 +82,19 @@ impl Protocol {
 pub struct ModelMetadata {
     pub provider: String,
     pub model: String,
+    #[serde(default)]
+    pub name: String,
     pub protocol: Protocol,
     pub url: String,
     pub context_window: u32,
     pub compact_threshold: f32,
     pub max_output_tokens: u32,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reasoning_efforts: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub catalog: Option<ModelCatalogEntry>,
 }
@@ -104,19 +112,47 @@ impl ModelMetadata {
         Self {
             provider: provider.into(),
             model: model.into(),
+            name: String::new(),
             protocol,
             url: url.into(),
             context_window,
             compact_threshold,
             max_output_tokens,
+            enabled: true,
+            reasoning_effort: None,
+            reasoning_efforts: Vec::new(),
             catalog: None,
         }
+    }
+
+    pub fn with_name(mut self, name: String) -> Self {
+        self.name = name;
+        self
+    }
+
+    pub fn with_enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+
+    pub fn with_reasoning_effort(mut self, reasoning_effort: Option<String>) -> Self {
+        self.reasoning_effort = reasoning_effort;
+        self
+    }
+
+    pub fn with_reasoning_efforts(mut self, reasoning_efforts: Vec<String>) -> Self {
+        self.reasoning_efforts = reasoning_efforts;
+        self
     }
 
     pub fn with_catalog(mut self, catalog: Option<ModelCatalogEntry>) -> Self {
         self.catalog = catalog;
         self
     }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -242,6 +278,8 @@ pub struct ChatRequest {
     pub tools: Vec<ToolDefinition>,
     pub max_tokens: u32,
     pub temperature: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
 }
 
 impl ChatRequest {
@@ -253,6 +291,7 @@ impl ChatRequest {
             tools: Vec::new(),
             max_tokens: 4096,
             temperature: 0.2,
+            reasoning_effort: None,
         }
     }
 }
@@ -440,12 +479,15 @@ pub trait Provider: Send + Sync {
 pub struct ProviderModelInfo {
     pub provider: String,
     pub model: String,
+    pub name: String,
     pub protocol: Protocol,
     pub url: String,
     pub context_window: u32,
     pub compact_threshold: f32,
     pub max_output_tokens: u32,
     pub enabled: bool,
+    pub reasoning_effort: Option<String>,
+    pub reasoning_efforts: Vec<String>,
     pub key_configured: bool,
     pub available: bool,
     pub detail: String,
@@ -571,34 +613,55 @@ impl ProviderRouter {
             )));
         }
 
+        let enabled_routes: Vec<&RouteEntry> = provider_routes
+            .iter()
+            .copied()
+            .filter(|route| route.metadata.enabled)
+            .collect();
+        if enabled_routes.is_empty() {
+            return Err(ProviderError::config(format!(
+                "provider `{provider_id}` has no enabled models"
+            )));
+        }
+
         let requested_model = model
             .filter(|model| !model.is_empty())
             .map(str::to_owned)
             .or_else(|| {
-                (provider_id == self.default_provider && !self.default_model.is_empty())
-                    .then(|| self.default_model.clone())
+                (provider_id == self.default_provider
+                    && !self.default_model.is_empty()
+                    && enabled_routes
+                        .iter()
+                        .any(|route| route.metadata.model == self.default_model))
+                .then(|| self.default_model.clone())
             })
             .or_else(|| {
-                provider_routes
+                enabled_routes
                     .first()
                     .map(|route| route.metadata.model.clone())
             })
             .unwrap_or_default();
 
-        provider_routes
+        if let Some(route) = provider_routes
             .iter()
             .find(|route| route.metadata.model == requested_model)
-            .map(|route| (route.provider.clone(), route.metadata.clone()))
-            .ok_or_else(|| {
-                let available = provider_routes
-                    .iter()
-                    .map(|route| route.metadata.model.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                ProviderError::config(format!(
-                    "unknown model `{requested_model}` for provider `{provider_id}`; available models: {available}"
-                ))
-            })
+        {
+            if !route.metadata.enabled {
+                return Err(ProviderError::config(format!(
+                    "model `{requested_model}` is disabled for provider `{provider_id}`"
+                )));
+            }
+            return Ok((route.provider.clone(), route.metadata.clone()));
+        }
+
+        let available = enabled_routes
+            .iter()
+            .map(|route| route.metadata.model.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        Err(ProviderError::config(format!(
+            "unknown model `{requested_model}` for provider `{provider_id}`; available models: {available}"
+        )))
     }
 
     pub fn list(&self) -> Vec<ProviderModelInfo> {
@@ -611,12 +674,15 @@ impl ProviderRouter {
                 ProviderModelInfo {
                     provider: route.metadata.provider.clone(),
                     model: route.metadata.model.clone(),
+                    name: route.metadata.name.clone(),
                     protocol: route.metadata.protocol,
                     url: route.metadata.url.clone(),
                     context_window: route.metadata.context_window,
                     compact_threshold: route.metadata.compact_threshold,
                     max_output_tokens: route.metadata.max_output_tokens,
-                    enabled: true,
+                    enabled: route.metadata.enabled,
+                    reasoning_effort: route.metadata.reasoning_effort.clone(),
+                    reasoning_efforts: route.metadata.reasoning_efforts.clone(),
                     key_configured: available,
                     available,
                     detail,
@@ -700,6 +766,79 @@ pub fn read_sse<R: BufRead>(
     Ok(())
 }
 
+/// Fetches an OpenAI-compatible model list from `url`.
+pub fn fetch_model_ids(
+    url: &str,
+    api_key: Option<&str>,
+    protocol: Protocol,
+) -> Result<Vec<String>, ProviderError> {
+    let agent = ureq::AgentBuilder::new()
+        .timeout_connect(Duration::from_secs(10))
+        .timeout_read(Duration::from_secs(10))
+        .timeout_write(Duration::from_secs(10))
+        .build();
+    let mut request = agent.get(url).set("accept", "application/json");
+    if let Some(key) = api_key.filter(|key| !key.trim().is_empty()) {
+        request = if protocol == Protocol::Anthropic {
+            request
+                .set("x-api-key", key)
+                .set("anthropic-version", "2023-06-01")
+        } else {
+            request.set("authorization", &format!("Bearer {key}"))
+        };
+    }
+
+    let response = match request.call() {
+        Ok(response) => response,
+        Err(ureq::Error::Status(status, response)) => {
+            let text = response.into_string().unwrap_or_default();
+            return Err(normalize_http_error(status, &text));
+        }
+        Err(ureq::Error::Transport(error)) => {
+            let message = error.to_string();
+            let kind = if message.to_ascii_lowercase().contains("timed out") {
+                ProviderErrorKind::Timeout
+            } else {
+                ProviderErrorKind::Transport
+            };
+            return Err(ProviderError::new(kind, message));
+        }
+    };
+
+    let value: Value = serde_json::from_reader(response.into_reader())
+        .map_err(|error| ProviderError::invalid(format!("bad model list JSON: {error}")))?;
+    Ok(parse_model_ids(&value))
+}
+
+/// Reads IDs from OpenAI (`data`) and common gateway (`models`) response shapes.
+pub fn parse_model_ids(value: &Value) -> Vec<String> {
+    let array = value
+        .get("data")
+        .and_then(Value::as_array)
+        .or_else(|| value.get("models").and_then(Value::as_array))
+        .or_else(|| value.as_array());
+    let Some(array) = array else {
+        return Vec::new();
+    };
+
+    let mut models = Vec::new();
+    for item in array {
+        let id = item
+            .as_str()
+            .or_else(|| item.get("id").and_then(Value::as_str))
+            .or_else(|| item.get("name").and_then(Value::as_str))
+            .unwrap_or_default()
+            .trim();
+        if !id.is_empty() {
+            models.push(id.to_owned());
+        }
+    }
+
+    let mut seen = HashSet::new();
+    models.retain(|id| seen.insert(id.to_ascii_lowercase()));
+    models
+}
+
 pub(crate) fn http_post_stream(
     url: &str,
     headers: &[(&str, String)],
@@ -759,131 +898,4 @@ fn normalize_http_error(status: u16, body: &str) -> ProviderError {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::io::Cursor;
-
-    struct TestAdapter(Protocol);
-
-    impl ProtocolAdapter for TestAdapter {
-        fn protocol(&self) -> Protocol {
-            self.0
-        }
-
-        fn stream_chat(
-            &self,
-            _request: &ChatRequest,
-            _cancel: &CancellationToken,
-            _on_event: &mut dyn FnMut(ChatEvent),
-        ) -> Result<ChatOutcome, ProviderError> {
-            Err(ProviderError::invalid("test adapter is not called"))
-        }
-    }
-
-    fn route(
-        provider: &str,
-        model: &str,
-        protocol: Protocol,
-        url: &str,
-    ) -> (ModelMetadata, Arc<dyn Provider>) {
-        let metadata = ModelMetadata::new(provider, model, protocol, url, 1000, 0.5, 100);
-        let bound = BoundProvider::new(metadata.clone(), Arc::new(TestAdapter(protocol)));
-        (metadata, Arc::new(bound) as Arc<dyn Provider>)
-    }
-
-    #[test]
-    fn sse_joins_multiline_data() {
-        let stream = "event: message\n: comment\ndata: {\"a\":\ndata: 1}\n\n";
-        let mut payloads = Vec::new();
-        read_sse(
-            Cursor::new(stream),
-            &CancellationToken::new(),
-            &mut |data| {
-                payloads.push(data.to_owned());
-                Ok(())
-            },
-        )
-        .unwrap();
-        assert_eq!(payloads, vec!["{\"a\":\n1}"]);
-    }
-
-    #[test]
-    fn read_sse_checks_cancellation() {
-        let token = CancellationToken::new();
-        token.cancel();
-        let result = read_sse(Cursor::new("data: {}\n\n"), &token, &mut |_| Ok(()));
-        assert_eq!(result.unwrap_err().kind, ProviderErrorKind::Cancelled);
-    }
-
-    #[test]
-    fn chat_message_text_concatenates_parts() {
-        let message = ChatMessage::assistant_with_text("hello", Vec::new());
-        assert_eq!(message.text(), "hello");
-    }
-
-    #[test]
-    fn routes_by_provider_and_model_to_bound_protocol() {
-        let router = ProviderRouter::new(
-            vec![
-                route(
-                    "opencode",
-                    "gpt-5-chat",
-                    Protocol::OpenAiChat,
-                    "https://gateway.example/v1/chat/completions",
-                ),
-                route(
-                    "opencode",
-                    "claude-native",
-                    Protocol::Anthropic,
-                    "https://gateway.example/v1/messages",
-                ),
-                route(
-                    "opencode",
-                    "gpt-5-responses",
-                    Protocol::OpenAiResponses,
-                    "https://gateway.example/custom/responses",
-                ),
-            ],
-            "opencode",
-            "gpt-5-responses",
-        );
-
-        let (provider, metadata) = router
-            .get(Some("opencode"), Some("gpt-5-responses"))
-            .unwrap();
-        assert_eq!(provider.kind(), "openai-responses");
-        assert_eq!(metadata.protocol, Protocol::OpenAiResponses);
-        assert_eq!(metadata.url, "https://gateway.example/custom/responses");
-        assert_eq!(router.list().len(), 3);
-    }
-
-    #[test]
-    fn disabled_provider_has_no_routes_and_reports_a_config_error() {
-        let router = ProviderRouter::new(
-            vec![route(
-                "opencode",
-                "gpt-5-chat",
-                Protocol::OpenAiChat,
-                "https://gateway.example/v1/chat/completions",
-            )],
-            "opencode",
-            "gpt-5-chat",
-        );
-        router.disable_provider("opencode");
-
-        assert!(router.list().is_empty());
-        let error = match router.get(Some("opencode"), Some("gpt-5-chat")) {
-            Ok(_) => panic!("disabled provider route unexpectedly resolved"),
-            Err(error) => error,
-        };
-        assert_eq!(error.kind, ProviderErrorKind::Config);
-        assert!(error.message.contains("disabled"));
-    }
-
-    #[test]
-    fn protocol_names_are_stable() {
-        assert_eq!(Protocol::OpenAiChat.as_str(), "openai-chat");
-        assert_eq!(Protocol::Anthropic.as_str(), "anthropic");
-        assert_eq!(Protocol::OpenAiResponses.as_str(), "openai-responses");
-    }
-}
+mod tests;

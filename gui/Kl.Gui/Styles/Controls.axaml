@@ -1,0 +1,1715 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+        <Style Selector="ToolTip">
+            <Setter Property="Background" Value="{DynamicResource TooltipFill}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderSoft}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="12,5" />
+            <Setter Property="Foreground" Value="{DynamicResource TooltipText}" />
+            <Setter Property="FontSize" Value="13.5" />
+        </Style>
+
+        <Style Selector="Button">
+            <Setter Property="FontFamily" Value="{DynamicResource UiFont}" />
+            <Setter Property="Transitions" Value="{x:Null}" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template" Value="{StaticResource FlatButtonTemplate}" />
+        </Style>
+
+        <Style Selector="Button.mode-card">
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="Button.mode-card:pointerover">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="Border.settings-mode-card">
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderMedium}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style Selector="Border.settings-mode-card.active">
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBlue}" />
+            <Setter Property="BorderThickness" Value="2" />
+        </Style>
+
+        <!-- Title bar -->
+        <Style Selector="Button.titlebar-icon">
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Background" Value="{DynamicResource MenuFillZero}" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="Button.titlebar-icon:pointerover">
+            <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
+        </Style>
+        <Style Selector="Button.titlebar-icon:disabled">
+            <Setter Property="Opacity" Value="0.3" />
+        </Style>
+        <Style Selector="Button.titlebar-icon Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextSubtle}" />
+            <Setter Property="StrokeThickness" Value="1.4" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Fill" Value="Transparent" />
+            <Setter Property="Stretch" Value="Uniform" />
+        </Style>
+        <Style Selector="Button.titlebar-icon:pointerover Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextPrimary}" />
+        </Style>
+        <Style Selector="Button.titlebar-icon:disabled Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextSecondary}" />
+        </Style>
+
+        <Style Selector="Button.titlebar-menu">
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Padding" Value="12,4" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Background" Value="{DynamicResource MenuFillZero}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource RailIcon}" />
+            <Setter Property="FontSize" Value="14" />
+        </Style>
+        <Style Selector="Button.titlebar-menu:pointerover">
+            <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+
+        <Style Selector="Button.caption">
+            <Setter Property="Width" Value="46" />
+            <Setter Property="Height" Value="35" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Background" Value="{DynamicResource MenuFillZero}" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="Button.caption:pointerover">
+            <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
+        </Style>
+        <Style Selector="Button.caption.close:pointerover">
+            <Setter Property="Background" Value="{DynamicResource DangerRed}" />
+        </Style>
+        <Style Selector="Button.caption.close:pointerover Path">
+            <Setter Property="Stroke" Value="White" />
+        </Style>
+        <Style Selector="Button.caption Path">
+            <Setter Property="Stroke" Value="White" />
+            <Setter Property="StrokeThickness" Value="1" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Fill" Value="Transparent" />
+            <Setter Property="Stretch" Value="Uniform" />
+        </Style>
+
+        <!-- Rail -->
+        <Style Selector="Button.rail">
+            <Setter Property="Width" Value="36" />
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="{DynamicResource RailHoverFillZero}" />
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.rail Path">
+            <Setter Property="Stroke" Value="{DynamicResource RailIcon}" />
+            <Setter Property="Fill" Value="Transparent" />
+            <Setter Property="StrokeThickness" Value="1.5" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.rail Ellipse">
+            <Setter Property="Fill" Value="{DynamicResource RailIcon}" />
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.rail:pointerover">
+            <Setter Property="Background" Value="{DynamicResource RailActiveFill}" />
+        </Style>
+        <Style Selector="Button.rail:pointerover Path">
+            <Setter Property="Stroke" Value="{DynamicResource RailIconHover}" />
+        </Style>
+        <Style Selector="Button.rail:pointerover Ellipse">
+            <Setter Property="Fill" Value="{DynamicResource RailIconHover}" />
+        </Style>
+        <Style Selector="Button.rail:pressed">
+            <Setter Property="Background" Value="{DynamicResource RailActiveFill}" />
+        </Style>
+        <Style Selector="Button.rail.active">
+            <Setter Property="Background" Value="{DynamicResource RailActiveFill}" />
+        </Style>
+        <Style Selector="Button.rail.active Path">
+            <Setter Property="Stroke" Value="{DynamicResource RailIconActive}" />
+        </Style>
+        <Style Selector="Button.rail.active Path.rail-fill">
+            <Setter Property="Fill" Value="{DynamicResource RailIconActive}" />
+        </Style>
+        <Style Selector="Button.rail.active Ellipse">
+            <Setter Property="Fill" Value="{DynamicResource RailIconActive}" />
+        </Style>
+        <Style Selector="Button.rail.pinned Path">
+            <Setter Property="Stroke" Value="{DynamicResource SidebarText}" />
+        </Style>
+        <Style Selector="Button.rail.pinned.active Path">
+            <Setter Property="Stroke" Value="{DynamicResource RailIconActive}" />
+        </Style>
+
+        <!-- filled icon shown when the rail section is active (Codex style) -->
+        <Style Selector="Button.rail Path.rail-solid">
+            <Setter Property="IsVisible" Value="False" />
+            <Setter Property="Fill" Value="{DynamicResource RailIconActive}" />
+            <Setter Property="Stroke" Value="{DynamicResource RailIconActive}" />
+            <Setter Property="StrokeThickness" Value="0" />
+        </Style>
+        <Style Selector="Button.rail.active Path.rail-solid">
+            <Setter Property="IsVisible" Value="True" />
+        </Style>
+        <Style Selector="Button.rail.active Path.rail-line">
+            <Setter Property="IsVisible" Value="False" />
+        </Style>
+        <Style Selector="Button.rail Path.rail-seam">
+            <Setter Property="IsVisible" Value="False" />
+            <Setter Property="Stroke" Value="{DynamicResource RailActiveFill}" />
+            <Setter Property="StrokeThickness" Value="1.6" />
+        </Style>
+        <Style Selector="Button.rail.active Path.rail-seam">
+            <Setter Property="IsVisible" Value="True" />
+        </Style>
+        <Style Selector="Button.rail Path.rail-cut">
+            <Setter Property="IsVisible" Value="False" />
+            <Setter Property="Stroke" Value="{DynamicResource RailActiveFill}" />
+            <Setter Property="StrokeThickness" Value="1.7" />
+        </Style>
+        <Style Selector="Button.rail.active Path.rail-cut">
+            <Setter Property="IsVisible" Value="True" />
+        </Style>
+
+        <!-- Small icon buttons -->
+        <Style Selector="Button.icon">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Background" Value="{DynamicResource MenuFillZero}" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="Button.icon:pointerover">
+            <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
+        </Style>
+        <Style Selector="Button.icon Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextTertiary}" />
+            <Setter Property="StrokeThickness" Value="1.4" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Fill" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.icon:pointerover Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextPrimary}" />
+        </Style>
+
+        <!-- Sidebar icon buttons (bell / search) -->
+        <Style Selector="Button.sidebar-icon">
+            <Setter Property="Background" Value="{DynamicResource SidebarIconHoverFillZero}" />
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.sidebar-icon Path">
+            <Setter Property="Stroke" Value="{DynamicResource SidebarIconIdle}" />
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.sidebar-icon:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SidebarIconButtonHover}" />
+        </Style>
+        <Style Selector="Button.sidebar-icon:pointerover Path">
+            <Setter Property="Stroke" Value="{DynamicResource RailIconHover}" />
+        </Style>
+        <!-- Bell while the notifications pane is open, as Codex tints it blue. -->
+        <Style Selector="Button.sidebar-icon.active">
+            <Setter Property="Background" Value="{DynamicResource ActiveTintFill}" />
+        </Style>
+        <Style Selector="Button.sidebar-icon.active Path">
+            <Setter Property="Stroke" Value="{DynamicResource ActiveTintIcon}" />
+        </Style>
+        <Style Selector="Button.sidebar-icon.active:pointerover">
+            <Setter Property="Background" Value="{DynamicResource ActiveTintHoverFill}" />
+        </Style>
+
+        <Style Selector="Button.session-actions">
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Grid.session-row-container:pointerover Button.session-actions">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="Button.session-actions Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextTertiary}" />
+            <Setter Property="StrokeThickness" Value="1.3" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Fill" Value="Transparent" />
+        </Style>
+
+        <!-- Codex-style row hover actions (pin / archive) -->
+        <Style Selector="Button.row-action">
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Background" Value="{DynamicResource SidebarIconHoverFillZero}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Grid.session-row-container:pointerover Button.row-action">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="Button.row-action:pointerover">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.row-action Path">
+            <Setter Property="Stroke" Value="{DynamicResource SidebarLabel}" />
+            <Setter Property="StrokeThickness" Value="1.25" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Fill" Value="Transparent" />
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.row-action:pointerover Path">
+            <Setter Property="Stroke" Value="{DynamicResource SidebarText}" />
+        </Style>
+        <Style Selector="Button.row-action.pinned Path">
+            <Setter Property="Stroke" Value="{DynamicResource SidebarTextHover}" />
+            <Setter Property="Fill" Value="{DynamicResource SidebarTextHover}" />
+        </Style>
+
+        <!-- Collapsible sidebar section headers (项目 / 最近 / 已归档) -->
+        <Style Selector="Button.section-header">
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Padding" Value="16,0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+        </Style>
+        <Style Selector="Button.section-header Path.section-chevron">
+            <Setter Property="Stroke" Value="{DynamicResource SidebarLabel}" />
+            <Setter Property="StrokeThickness" Value="1.4" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Fill" Value="Transparent" />
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="RenderTransform" Value="rotate(0deg)" />
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.section-header:pointerover Path.section-chevron">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="Button.section-header Path.section-chevron.always">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="Stroke" Value="{DynamicResource SidebarLabel}" />
+        </Style>
+        <Style Selector="Button.section-header Path.section-chevron.collapsed">
+            <Setter Property="RenderTransform" Value="rotate(-90deg)" />
+        </Style>
+
+        <!-- Product / interaction-mode switcher (Codex-style header menu) -->
+        <Style Selector="Button.product-menu-toggle">
+            <Setter Property="Padding" Value="6,2" />
+            <Setter Property="Margin" Value="-6,0,0,0" />
+            <Setter Property="Background" Value="{DynamicResource SidebarHoverFillZero}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.product-menu-toggle:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SidebarHoverFill}" />
+        </Style>
+        <Style Selector="Button.chat-title">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="{DynamicResource SidebarHoverFillZero}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.header-action Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextPrimary}" />
+        </Style>
+        <Style Selector="Button.mode-menu-item">
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="Background" Value="{DynamicResource HoverFillZero}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.mode-menu-item:pointerover">
+            <Setter Property="Background" Value="{DynamicResource ProductMenuHoverFill}" />
+        </Style>
+
+        <!-- Rows / navigation -->
+        <Style Selector="Button.row">
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Background" Value="{DynamicResource SidebarHoverFillZero}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Foreground" Value="{DynamicResource SidebarText}" />
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.row TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource SidebarText}" />
+        </Style>
+        <Style Selector="Button.row Path">
+            <Setter Property="Stroke" Value="{DynamicResource SidebarText}" />
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.row:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SidebarHoverFill}" />
+        </Style>
+        <Style Selector="Button.row:pointerover Path">
+            <Setter Property="Stroke" Value="{DynamicResource SidebarTextHover}" />
+        </Style>
+        <Style Selector="Button.row.active">
+            <Setter Property="Background" Value="{DynamicResource SidebarActiveFill}" />
+        </Style>
+        <Style Selector="Button.row.active TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource SidebarTextHover}" />
+        </Style>
+        <Style Selector="Button.row.active Path">
+            <Setter Property="Stroke" Value="{DynamicResource SidebarTextHover}" />
+        </Style>
+
+        <Style Selector="Button.session-row">
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Padding" Value="8,0,6,0" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Background" Value="{DynamicResource SidebarHoverFillZero}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.session-row TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource SidebarText}" />
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.session-row:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SidebarHoverFill}" />
+        </Style>
+        <Style Selector="Button.session-row.active">
+            <Setter Property="Background" Value="{DynamicResource SidebarActiveFill}" />
+        </Style>
+        <Style Selector="Button.session-row.active TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource SidebarText}" />
+        </Style>
+
+        <Style Selector="Button.session-row.nested">
+            <Setter Property="Padding" Value="32,0,6,0" />
+        </Style>
+
+        <!-- Recent section chevron: rotates while the section collapses -->
+        <Style Selector="Button.recent-toggle Path">
+            <Setter Property="Stroke" Value="{DynamicResource SidebarLabel}" />
+            <Setter Property="RenderTransform" Value="rotate(0deg)" />
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.recent-toggle.collapsed Path">
+            <Setter Property="RenderTransform" Value="rotate(-90deg)" />
+        </Style>
+
+        <Style Selector="Button.nav">
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Background" Value="{DynamicResource HoverFillZero}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        </Style>
+        <Style Selector="Button.nav:pointerover">
+            <Setter Property="Background" Value="{DynamicResource HoverFill}" />
+        </Style>
+        <Style Selector="Button.nav.active">
+            <Setter Property="Background" Value="{DynamicResource ActiveFill}" />
+        </Style>
+        <Style Selector="Button.nav.active TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+        <Style Selector="Border.sidebar-resize Border.resize-line">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border.sidebar-resize:pointerover Border.resize-line">
+            <Setter Property="Background" Value="{DynamicResource ResizeHandleFill}" />
+        </Style>
+
+        <Style Selector="Button.nav.settings-nav">
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Foreground" Value="{DynamicResource TextStrong}" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+        <Style Selector="Button.nav.settings-nav:pointerover">
+            <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
+        </Style>
+        <Style Selector="Button.nav.settings-nav.active">
+            <Setter Property="Background" Value="{DynamicResource SidebarDivider}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+        <Style Selector="Button.nav.settings-nav Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="Fill" Value="Transparent" />
+            <Setter Property="StrokeThickness" Value="1.4" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+        </Style>
+        <Style Selector="Button.nav.settings-nav.active Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextPrimary}" />
+        </Style>
+
+        <Style Selector="Button.nav.active Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextSecondary}" />
+        </Style>
+        <!-- Keep settings icons at full strength on the selected row. -->
+        <Style Selector="Button.nav.settings-nav.active Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextPrimary}" />
+        </Style>
+
+        <!-- Pills / chips -->
+        <Style Selector="Button.chip">
+            <Setter Property="MinHeight" Value="26" />
+            <Setter Property="Padding" Value="7,3" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Background" Value="{DynamicResource MenuFillZero}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+        <Style Selector="Button.chip:pointerover">
+            <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
+        </Style>
+        <Style Selector="Button.reasoning-chip">
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Padding" Value="8,0" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Background" Value="{DynamicResource MenuFillZero}" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.15">
+                        <BrushTransition.Easing>
+                            <SplineEasing X1="0.4" Y1="0" X2="0.2" Y2="1" />
+                        </BrushTransition.Easing>
+                    </BrushTransition>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.reasoning-chip:pointerover, Button.reasoning-chip.open">
+            <Setter Property="Background" Value="{DynamicResource ChipGhostFill}" />
+        </Style>
+        <Style Selector="Grid.chip-states TextBlock.chip-open-label">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.2">
+                        <DoubleTransition.Easing>
+                            <SplineEasing X1="0.23" Y1="1" X2="0.32" Y2="1" />
+                        </DoubleTransition.Easing>
+                    </DoubleTransition>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Grid.chip-states StackPanel.chip-selection">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.2">
+                        <DoubleTransition.Easing>
+                            <SplineEasing X1="0.23" Y1="1" X2="0.32" Y2="1" />
+                        </DoubleTransition.Easing>
+                    </DoubleTransition>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Grid.chip-states.open TextBlock.chip-open-label">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="Grid.chip-states.open StackPanel.chip-selection">
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+
+        <Style Selector="Button.filter">
+            <Setter Property="Height" Value="26" />
+            <Setter Property="Padding" Value="10,3" />
+            <Setter Property="CornerRadius" Value="13" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="{DynamicResource HoverFillZero}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSubtle}" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+        <Style Selector="Button.filter:pointerover">
+            <Setter Property="Background" Value="{DynamicResource HoverFill}" />
+        </Style>
+        <Style Selector="Button.filter.active">
+            <Setter Property="Background" Value="{DynamicResource ActiveFill}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+
+        <!-- Text-only segmented choice, as the app draws "默认终端位置". -->
+        <Style Selector="Button.segment">
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Padding" Value="2,0" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSubtle}" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+        <Style Selector="Button.segment:pointerover">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+        <Style Selector="Button.segment:pressed">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.segment.active">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+
+        <Style Selector="Button.save-light">
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="15,6" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="{DynamicResource PrimaryButtonFill}" />
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryButtonText}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="Medium" />
+        </Style>
+        <Style Selector="Button.save-light:pointerover">
+            <Setter Property="Background" Value="{DynamicResource PrimaryButtonHoverFill}" />
+        </Style>
+        <Style Selector="Button.save-light:pressed">
+            <Setter Property="Background" Value="{DynamicResource PrimaryButtonPressedFill}" />
+        </Style>
+
+        <!-- context menus (Codex-like) -->
+        <Style Selector="ContextMenu">
+            <Setter Property="Background" Value="{DynamicResource SurfaceMenu}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderMedium}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="4" />
+        </Style>
+        <Style Selector="ContextMenu /template/ Border">
+            <Setter Property="Background" Value="{DynamicResource SurfaceMenu}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderMedium}" />
+            <Setter Property="CornerRadius" Value="10" />
+        </Style>
+        <Style Selector="MenuItem">
+            <Setter Property="Foreground" Value="{DynamicResource TextSubtle}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Height" Value="30" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="MenuItem:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
+        </Style>
+        <Style Selector="MenuItem:pointerover /template/ Border#PART_LayoutRoot">
+            <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
+        </Style>
+
+        <!-- Standard actions -->
+        <!-- Codex uses a light CTA button on the dark surfaces; blue stays for
+             links, live state and focus. -->
+        <Style Selector="Button.primary">
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="14,6" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="{DynamicResource PrimaryButtonFill}" />
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryButtonText}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="Medium" />
+        </Style>
+        <Style Selector="Button.primary:pointerover">
+            <Setter Property="Background" Value="{DynamicResource PrimaryButtonHoverFill}" />
+        </Style>
+        <Style Selector="Button.primary:pressed">
+            <Setter Property="Background" Value="{DynamicResource PrimaryButtonPressedFill}" />
+        </Style>
+        <Style Selector="Button.primary:disabled">
+            <Setter Property="Opacity" Value="0.4" />
+        </Style>
+
+        <Style Selector="Button.secondary">
+            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="Padding" Value="12,5" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderStrong}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Background" Value="{DynamicResource MenuFillZero}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="FontSize" Value="12.5" />
+        </Style>
+        <Style Selector="Button.secondary:pointerover">
+            <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
+        </Style>
+        <Style Selector="Button.secondary:disabled">
+            <Setter Property="Opacity" Value="0.45" />
+        </Style>
+
+        <Style Selector="Button.settings-button">
+            <Setter Property="MinHeight" Value="28" />
+            <Setter Property="Padding" Value="8,0" />
+            <Setter Property="CornerRadius" Value="12.5" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="{DynamicResource ActiveFill}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+        <Style Selector="Button.settings-button:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
+        </Style>
+        <Style Selector="Button.settings-button:disabled">
+            <Setter Property="Opacity" Value="0.45" />
+        </Style>
+
+        <Style Selector="Button.subtle">
+            <Setter Property="MinHeight" Value="28" />
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Background" Value="{DynamicResource MenuFillZero}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+            <Setter Property="FontSize" Value="12.5" />
+        </Style>
+        <Style Selector="Button.subtle:pointerover">
+            <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+
+        <Style Selector="Button.danger">
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="14,6" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="{DynamicResource DangerButtonFill}" />
+            <Setter Property="Foreground" Value="{DynamicResource ErrorText}" />
+            <Setter Property="FontSize" Value="12.5" />
+        </Style>
+        <Style Selector="Button.danger:pointerover">
+            <Setter Property="Background" Value="{DynamicResource DangerButtonHoverFill}" />
+        </Style>
+
+        <Style Selector="Button.send">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="{DynamicResource TextPrimary}" />
+        </Style>
+        <Style Selector="Button.send Path">
+            <Setter Property="Stroke" Value="{DynamicResource PrimaryButtonText}" />
+            <Setter Property="StrokeThickness" Value="1.9" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Fill" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.send:pointerover">
+            <Setter Property="Background" Value="{DynamicResource PrimaryButtonHoverFill}" />
+        </Style>
+        <Style Selector="Button.send:disabled">
+        <Setter Property="Background" Value="{DynamicResource TextSubtle}" />
+        <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="Button.send:disabled Path">
+        <Setter Property="Stroke" Value="{DynamicResource BorderSoft}" />
+    </Style>
+
+        <Style Selector="Button.stop">
+            <Setter Property="Width" Value="34" />
+            <Setter Property="Height" Value="34" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="17" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="{DynamicResource ControlBorderStrong}" />
+        </Style>
+        <Style Selector="Button.stop Path">
+            <Setter Property="Fill" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="Stroke" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="StrokeThickness" Value="1" />
+        </Style>
+        <Style Selector="Button.stop:pointerover">
+            <Setter Property="Background" Value="{DynamicResource IndicatorMuted}" />
+        </Style>
+
+        <Style Selector="Button.attach">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.attach Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="StrokeThickness" Value="1.5" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Fill" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.attach:pointerover">
+            <Setter Property="Background" Value="{DynamicResource BorderSoft}" />
+        </Style>
+
+        <Style Selector="StackPanel.chat-user-actions">
+        <Setter Property="Opacity" Value="0" />
+        <Setter Property="Transitions">
+            <Transitions>
+                <DoubleTransition Property="Opacity" Duration="0:0:0.12" />
+            </Transitions>
+        </Setter>
+    </Style>
+    <Style Selector="StackPanel.chat-user:pointerover StackPanel.chat-user-actions">
+        <Setter Property="Opacity" Value="1" />
+    </Style>
+    <!-- Codex keeps the assistant action row (copy / more / time) visible at rest. -->
+    <Style Selector="StackPanel.chat-assistant-actions">
+        <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="Border.ruler-preview">
+        <Setter Property="Transitions">
+            <Transitions>
+                <BrushTransition Property="BorderBrush" Duration="0:0:0.12" />
+            </Transitions>
+        </Setter>
+    </Style>
+    <Style Selector="Border.ruler-preview:pointerover">
+        <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderStrong}" />
+    </Style>
+    <Style Selector="Border.chat-user-bubble.jump-highlight">
+        <Setter Property="Background" Value="{DynamicResource SurfaceChip}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderStrong}" />
+        <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="Button.ruler-preview-icon.active Path">
+        <Setter Property="Fill" Value="{DynamicResource TextStrong}" />
+        <Setter Property="Stroke" Value="{DynamicResource TextStrong}" />
+    </Style>
+    <Style Selector="Button.message-action">
+            <Setter Property="MinHeight" Value="22" />
+            <Setter Property="Padding" Value="5,2" />
+            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="Background" Value="{DynamicResource HoverFillZero}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource TextCaption}" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="Opacity" Value="0.85" />
+        </Style>
+        <Style Selector="Button.message-action Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextCaption}" />
+            <Setter Property="StrokeThickness" Value="1.35" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Fill" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.message-action:pointerover">
+            <Setter Property="Background" Value="{DynamicResource HoverFill}" />
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+
+        <Style Selector="Button.activity-row">
+        <Setter Property="MinHeight" Value="27" />
+        <Setter Property="Padding" Value="6,2" />
+        <Setter Property="Margin" Value="-6,0" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Background" Value="{DynamicResource SidebarHoverFillZero}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSubtle}" />
+        <Setter Property="FontSize" Value="12.5" />
+    </Style>
+        <Style Selector="Button.activity-row:pointerover">
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <!-- Codex brightens only the label on hover; the row keeps the page background. -->
+    <Style Selector="TextBlock.activity-label">
+        <Setter Property="Foreground" Value="{DynamicResource TextTertiary}" />
+        <Setter Property="Transitions">
+            <Transitions>
+                <BrushTransition Property="Foreground" Duration="0:0:0.10" />
+            </Transitions>
+        </Setter>
+    </Style>
+    <Style Selector="Button.activity-row:pointerover TextBlock.activity-label">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+    </Style>
+    <Style Selector="Button.activity-row Path.activity-chevron">
+        <Setter Property="Opacity" Value="0" />
+        <Setter Property="Stroke" Value="{DynamicResource TextSubtle}" />
+        <Setter Property="RenderTransform" Value="rotate(-90deg)" />
+        <Setter Property="Transitions">
+            <Transitions>
+                <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.12" />
+                <DoubleTransition Property="Opacity" Duration="0:0:0.10" />
+                <BrushTransition Property="Stroke" Duration="0:0:0.10" />
+            </Transitions>
+        </Setter>
+    </Style>
+    <Style Selector="Button.activity-row:pointerover Path.activity-chevron">
+        <Setter Property="Opacity" Value="1" />
+        <Setter Property="Stroke" Value="{DynamicResource TextPrimary}" />
+    </Style>
+    <Style Selector="Button.activity-row.expanded">
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.activity-row.expanded Path.activity-chevron">
+        <Setter Property="Opacity" Value="1" />
+        <Setter Property="RenderTransform" Value="rotate(0deg)" />
+        <Setter Property="Stroke" Value="{DynamicResource TextSubtle}" />
+    </Style>
+    <!-- Group children: indented bare command rows, as Codex nests them. -->
+    <Style Selector="Button.activity-row.compact">
+        <Setter Property="MinHeight" Value="27" />
+        <Setter Property="Padding" Value="30,2,6,2" />
+        <Setter Property="Margin" Value="-6,0,-6,6" />
+        <Setter Property="CornerRadius" Value="8" />
+    </Style>
+    <Style Selector="Button.jump-bottom">
+        <Setter Property="Width" Value="32" />
+        <Setter Property="Height" Value="32" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="CornerRadius" Value="16" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderBrush" Value="{DynamicResource SurfaceMenu}" />
+        <Setter Property="Background" Value="{DynamicResource BgBase}" />
+        <Setter Property="Opacity" Value="0" />
+        <Setter Property="IsHitTestVisible" Value="False" />
+        <Setter Property="RenderTransform" Value="translate(0px,6px)" />
+        <Setter Property="Transitions">
+            <Transitions>
+                <DoubleTransition Property="Opacity" Duration="0:0:0.14" />
+                <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.14" />
+            </Transitions>
+        </Setter>
+    </Style>
+    <Style Selector="Button.jump-bottom:pointerover">
+        <Setter Property="Background" Value="{DynamicResource SidebarDivider}" />
+    </Style>
+    <Style Selector="Button.jump-bottom Path">
+        <Setter Property="Stroke" Value="{DynamicResource TextStrong}" />
+        <Setter Property="StrokeThickness" Value="1.6" />
+        <Setter Property="StrokeLineCap" Value="Round" />
+        <Setter Property="StrokeJoin" Value="Round" />
+        <Setter Property="Fill" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.activity-row Path.activity-icon">
+        <Setter Property="Stroke" Value="{DynamicResource TextTertiary}" />
+        <Setter Property="Transitions">
+            <Transitions>
+                <BrushTransition Property="Stroke" Duration="0:0:0.10" />
+            </Transitions>
+        </Setter>
+    </Style>
+    <Style Selector="Button.activity-row:pointerover Path.activity-icon">
+        <Setter Property="Stroke" Value="{DynamicResource TextSubtle}" />
+    </Style>
+        <Style Selector="Button.activity-row Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextTertiary}" />
+            <Setter Property="StrokeThickness" Value="1.35" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Fill" Value="Transparent" />
+        </Style>
+
+        <!-- More popup rows -->
+        <Style Selector="Button.more-menu-item">
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+            <Setter Property="FontSize" Value="13.5" />
+        </Style>
+        <Style Selector="Button.more-menu-pin">
+            <Setter Property="Width" Value="22" />
+            <Setter Property="Height" Value="22" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="Button.more-menu-pin Path">
+            <Setter Property="Stroke" Value="{DynamicResource SidebarIconIdle}" />
+            <Setter Property="StrokeThickness" Value="1.3" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Fill" Value="Transparent" />
+            <Setter Property="RenderTransform" Value="rotate(45deg)" />
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.more-menu-pin:pointerover">
+            <Setter Property="Background" Value="{DynamicResource ActiveFill}" />
+        </Style>
+        <Style Selector="Button.more-menu-pin:pointerover Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextPrimary}" />
+        </Style>
+        <Style Selector="Button.more-menu-pin.pinned Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextStrong}" />
+            <Setter Property="Fill" Value="{DynamicResource TextStrong}" />
+        </Style>
+        <Style Selector="Button.more-menu-item:pointerover">
+            <Setter Property="Background" Value="{DynamicResource MoreMenuHoverFill}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+        <Style Selector="Button.more-menu-item Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextTertiary}" />
+            <Setter Property="StrokeThickness" Value="1.9" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Fill" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.more-menu-item:pointerover Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextSecondary}" />
+        </Style>
+
+        <!-- Pressed feedback + glyph centering for every button -->
+        <Style Selector="Button.icon Path, Button.sidebar-icon Path, Button.row-action Path,
+                         Button.session-actions Path, Button.more-menu-pin Path,
+                         Button.message-action Path, Button.attach Path, Button.send Path,
+                         Button.stop Path, Button.activity-row Path, Button.titlebar-icon Path,
+                         Button.caption Path, Button.recent-toggle Path">
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.rail Viewbox, Button.rail StackPanel, Button.rail Path">
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.row Path, Button.session-row Path, Button.nav Path,
+                         Button.mode-menu-item Path, Button.more-menu-item Path,
+                         Button.product-menu-toggle Path, Button.section-header Path">
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style Selector="Button:pressed">
+            <Setter Property="Background" Value="{DynamicResource PressedFill}" />
+        </Style>
+        <Style Selector="Button.rail:pressed">
+            <Setter Property="Background" Value="{DynamicResource PressedFill}" />
+        </Style>
+        <Style Selector="Button.rail.active:pressed">
+            <Setter Property="Background" Value="{DynamicResource PressedFillStrong}" />
+        </Style>
+        <Style Selector="Button.primary:pressed">
+            <Setter Property="Background" Value="{DynamicResource AccentBlue}" />
+        </Style>
+        <Style Selector="Button.send:pressed">
+            <Setter Property="Background" Value="{DynamicResource LineStrong}" />
+        </Style>
+        <Style Selector="Button.row:pressed, Button.session-row:pressed, Button.nav:pressed,
+                         Button.more-menu-item:pressed, Button.mode-menu-item:pressed,
+                         Button.activity-row:pressed, Button.chip:pressed, Button.filter:pressed,
+                         Button.route-menu:pressed">
+            <Setter Property="Background" Value="{DynamicResource PressedFill}" />
+        </Style>
+        <Style Selector="Button.product-menu-toggle:pressed">
+            <Setter Property="Background" Value="{DynamicResource PressedFill}" />
+        </Style>
+        <Style Selector="Button.titlebar-menu:pressed, Button.titlebar-icon:pressed, Button.caption:pressed">
+            <Setter Property="Background" Value="{DynamicResource PressedFill}" />
+        </Style>
+        <Style Selector="Button.subtle:pressed, Button.secondary:pressed">
+            <Setter Property="Background" Value="{DynamicResource PressedFillStrong}" />
+        </Style>
+
+        <!-- Selection rows keep their resting fill while pressed. Flashing a
+             lighter fill on every click read as an animation, especially when
+             the already-selected row was clicked again. -->
+        <Style Selector="Button.nav:pressed, Button.row:pressed, Button.session-row:pressed">
+            <Setter Property="Background" Value="{DynamicResource HoverFill}" />
+        </Style>
+        <Style Selector="Button.nav.active:pressed">
+            <Setter Property="Background" Value="{DynamicResource ActiveFill}" />
+        </Style>
+        <Style Selector="Button.row.active:pressed, Button.session-row.active:pressed">
+            <Setter Property="Background" Value="{DynamicResource SidebarActiveFill}" />
+        </Style>
+        <Style Selector="Button.nav.settings-nav:pressed">
+            <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
+        </Style>
+        <Style Selector="Button.nav.settings-nav.active:pressed">
+            <Setter Property="Background" Value="{DynamicResource SidebarDivider}" />
+        </Style>
+        <Style Selector="Button.filter:pressed">
+            <Setter Property="Background" Value="{DynamicResource HoverFill}" />
+        </Style>
+        <!-- Fluent scales every button to 98% while pressed. The row visibly
+             shrank and sprang back on click, which read as an animation. -->
+        <Style Selector="Button:pressed">
+            <Setter Property="RenderTransform" Value="none" />
+        </Style>
+        <Style Selector="Button.filter.active:pressed">
+            <Setter Property="Background" Value="{DynamicResource ActiveFill}" />
+        </Style>
+
+        <!-- Notifications bell active state + command palette rows -->
+        <Style Selector="Button.icon.active, Button.sidebar-icon.active">
+            <Setter Property="Background" Value="{DynamicResource SidebarHoverFill}" />
+        </Style>
+        <Style Selector="Button.icon.active Path, Button.sidebar-icon.active Path">
+            <Setter Property="Stroke" Value="{DynamicResource SidebarTextHover}" />
+        </Style>
+        <Style Selector="Button.palette-row">
+            <Setter Property="Height" Value="34" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Background" Value="{DynamicResource MenuFillZero}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Foreground" Value="{DynamicResource SidebarText}" />
+            <Setter Property="FontSize" Value="13.5" />
+        </Style>
+        <Style Selector="Button.palette-row:pointerover">
+            <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
+        </Style>
+        <Style Selector="Button.palette-row Path">
+            <Setter Property="Stroke" Value="{DynamicResource SidebarLabel}" />
+            <Setter Property="StrokeThickness" Value="1.4" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Fill" Value="Transparent" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <!-- Codex-subtle scrollbars: 6px soft thumb, transparent track, no arrows -->
+        <Style Selector="ScrollBar:vertical">
+            <Setter Property="Width" Value="6" />
+            <Setter Property="MinWidth" Value="6" />
+        </Style>
+        <Style Selector="ScrollBar:vertical /template/ Rectangle#TrackRect">
+            <Setter Property="Fill" Value="Transparent" />
+        </Style>
+        <Style Selector="ScrollBar:vertical /template/ Thumb">
+            <Setter Property="Background" Value="{DynamicResource SurfaceMenu}" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="MinHeight" Value="24" />
+        </Style>
+        <!-- Codex brightens the slider when the scrolling surface is hovered, not
+             just the 6px bar itself. -->
+        <Style Selector="ScrollViewer:pointerover /template/ ScrollBar:vertical /template/ Thumb">
+            <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
+        </Style>
+        <Style Selector="ScrollBar:vertical:pointerover /template/ Thumb">
+            <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
+        </Style>
+        <Style Selector="ScrollBar:vertical /template/ RepeatButton">
+            <Setter Property="Height" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+        <Style Selector="ScrollBar:horizontal">
+            <Setter Property="Height" Value="6" />
+            <Setter Property="MinHeight" Value="6" />
+            <Setter Property="Margin" Value="0,0,0,3" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceMenu}" />
+        </Style>
+        <Style Selector="ScrollBar:horizontal /template/ Thumb">
+            <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="MinWidth" Value="24" />
+        </Style>
+        <Style Selector="ScrollBar:horizontal:pointerover /template/ Thumb">
+            <Setter Property="Background" Value="{DynamicResource ControlBorderStrong}" />
+        </Style>
+        <Style Selector="ScrollBar:horizontal /template/ RepeatButton">
+            <Setter Property="Width" Value="0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+
+        <!-- Inputs -->
+        <Style Selector="TextBox.composer">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="6,2" />
+        <Setter Property="CornerRadius" Value="0" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="PlaceholderForeground" Value="{DynamicResource TextCaption}" />
+        <Setter Property="CaretBrush" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FocusAdorner" Value="{x:Null}" />
+    </Style>
+        <Style Selector="TextBox.composer /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+
+        <!-- Codex search fields: 32px pill, raised fill with a hairline border. -->
+        <Style Selector="Border.search-field">
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceMenu}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderStrong}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="16" />
+            <Setter Property="Padding" Value="14,0" />
+        </Style>
+        <Style Selector="TextBox.search">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinHeight" Value="24" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="FontSize" Value="13.5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="PlaceholderForeground" Value="{DynamicResource TextSubtle}" />
+            <Setter Property="CaretBrush" Value="{DynamicResource PrimaryButtonFill}" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+        </Style>
+        <Style Selector="TextBox.search /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+
+        <Style Selector="TextBox.field">
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="Padding" Value="9,6" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="CaretBrush" Value="{DynamicResource AccentBlue}" />
+            <Setter Property="SelectionBrush" Value="{DynamicResource TextSelectionFill}" />
+            <Setter Property="SelectionForegroundBrush" Value="#FFFFFF" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+        </Style>
+        <Style Selector="TextBox.field /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="8" />
+        </Style>
+
+        <Style Selector="TextBox.dialog-plain">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="SelectionBrush" Value="{DynamicResource TextSelectionFill}" />
+            <Setter Property="SelectionForegroundBrush" Value="#FFFFFF" />
+            <Setter Property="CaretBrush" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+        </Style>
+        <Style Selector="TextBox.dialog-plain /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+
+        <Style Selector="ComboBox.field">
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="Background" Value="{DynamicResource ElevatedHover}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderStrong}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+        </Style>
+
+        <Style Selector="ScrollBar">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+
+        <!-- Common text / surface classes -->
+        <Style Selector="TextBlock.page-title">
+            <Setter Property="FontSize" Value="24" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+        <Style Selector="TextBlock.page-subtitle">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Foreground" Value="{DynamicResource TextTertiary}" />
+        </Style>
+        <Style Selector="TextBlock.section-label">
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextTertiary}" />
+        </Style>
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="{DynamicResource CardFill}" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="16,14" />
+        </Style>
+
+        <!-- Codex-style settings: raised cards, rows split by hairlines. -->
+        <Style Selector="Border.settings-card">
+            <Setter Property="Background" Value="{DynamicResource SettingsSurface}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource SettingsCardBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="16" />
+        </Style>
+        <Style Selector="Border.color-value">
+            <Setter Property="Height" Value="27" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="CornerRadius" Value="13.5" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderSoft}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Border.settings-divider">
+            <Setter Property="Height" Value="1" />
+            <Setter Property="Background" Value="{DynamicResource BorderSoft}" />
+            <Setter Property="Margin" Value="16,0" />
+        </Style>
+        <Style Selector="TextBlock.settings-heading">
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+        <Style Selector="TextBlock.settings-title">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="LineHeight" Value="18.5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+        <Style Selector="TextBlock.settings-desc">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{DynamicResource TextDim}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="LineHeight" Value="16" />
+        </Style>
+        <Style Selector="TextBlock.settings-value">
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style Selector="TextBlock.settings-key">
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextCaption}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBox.settings-textarea">
+            <Setter Property="MinHeight" Value="130" />
+            <Setter Property="Padding" Value="12,10" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceMenu}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderStrong}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="AcceptsReturn" Value="True" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="VerticalContentAlignment" Value="Top" />
+            <Setter Property="PlaceholderForeground" Value="{DynamicResource TextSubtle}" />
+            <Setter Property="SelectionBrush" Value="{DynamicResource TextSelectionFill}" />
+            <Setter Property="CaretBrush" Value="{DynamicResource PrimaryButtonFill}" />
+        </Style>
+        <Style Selector="TextBox.settings-textarea:pointerover /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="{DynamicResource BorderSoft}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderStrong}" />
+        </Style>
+        <Style Selector="TextBox.settings-textarea:focus /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="{DynamicResource SurfaceMenu}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource SliderTrackFill}" />
+        </Style>
+        <Style Selector="TextBox.settings-input">
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceMenu}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+        <Style Selector="ComboBox.settings-select">
+            <Setter Property="MinHeight" Value="28" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceMenu}" />
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryButtonFill}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderStrong}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12.5" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+            <Setter Property="HorizontalAlignment" Value="Right" />
+        </Style>
+
+        <Style Selector="TextBox.settings-number">
+            <Setter Property="Width" Value="66" />
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ComboBoxDropDownBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+        <Style Selector="ComboBox.flat-select">
+            <Setter Property="MinHeight" Value="26" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Padding" Value="12,2,12,2" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceMenu}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderStrong}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+
+        <!-- Fluent turns the pill border white on hover and shifts the fill on
+             press, which read as a flash while opening the menu. Keep one
+             border; the fill only lifts on hover and stays lifted while open. -->
+        <Style Selector="ComboBox.field /template/ Border#Background,
+                         ComboBox.settings-select /template/ Border#Background,
+                         ComboBox.flat-select /template/ Border#Background">
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderStrong}" />
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="ComboBox.field:pointerover /template/ Border#Background,
+                         ComboBox.settings-select:pointerover /template/ Border#Background,
+                         ComboBox.flat-select:pointerover /template/ Border#Background">
+            <Setter Property="Background" Value="{DynamicResource HoverFill}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderStrong}" />
+        </Style>
+        <Style Selector="ComboBox.field:pressed /template/ Border#Background,
+                         ComboBox.settings-select:pressed /template/ Border#Background,
+                         ComboBox.flat-select:pressed /template/ Border#Background,
+                         ComboBox.field:dropdownopen /template/ Border#Background,
+                         ComboBox.settings-select:dropdownopen /template/ Border#Background,
+                         ComboBox.flat-select:dropdownopen /template/ Border#Background">
+            <Setter Property="Background" Value="{DynamicResource HoverFill}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderStrong}" />
+        </Style>
+
+        <!-- Fluent flashes the pill label white while pressed. -->
+        <Style Selector="ComboBox.field:pressed ContentControl#ContentPresenter">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+        <Style Selector="ComboBox.flat-select:pressed ContentControl#ContentPresenter">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+        <Style Selector="ComboBox.settings-select:pressed ContentControl#ContentPresenter">
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryButtonFill}" />
+        </Style>
+
+        <!-- While the popup is open it owns pointerover, so closing the menu with
+             the pill would drop the hover fill for a frame and flash. Focus keeps
+             the same fill; it clears when focus moves elsewhere. -->
+        <Style Selector="ComboBox.field:focus /template/ Border#Background,
+                         ComboBox.settings-select:focus /template/ Border#Background,
+                         ComboBox.flat-select:focus /template/ Border#Background">
+            <Setter Property="Background" Value="{DynamicResource HoverFill}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderStrong}" />
+        </Style>
+        <Style Selector="ComboBox.recessed-select:focus /template/ Border#Background">
+            <Setter Property="Background" Value="{DynamicResource SurfaceSunken}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderSoft}" />
+        </Style>
+
+        <!-- Codex draws the theme/accent pickers as recessed wells, not raised pills. -->
+        <Style Selector="ComboBox.settings-pill">
+            <Setter Property="CornerRadius" Value="13" />
+        </Style>
+        <Style Selector="ComboBox.recessed-select">
+            <Setter Property="Background" Value="{DynamicResource BgBase}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderSoft}" />
+        </Style>
+        <Style Selector="ComboBox.recessed-select:pointerover /template/ Border#Background,
+                         ComboBox.recessed-select:pressed /template/ Border#Background,
+                         ComboBox.recessed-select:dropdownopen /template/ Border#Background">
+            <Setter Property="Background" Value="{DynamicResource SurfaceSunken}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderSoft}" />
+        </Style>
+
+        <!-- Dropdown lists reuse the context-menu card instead of Fluent's popup. -->
+        <Style Selector="Border#PopupBorder">
+            <Setter Property="BoxShadow" Value="0 16 40 0 #B3000000" />
+        </Style>
+
+        <!-- ============ Motion: Codex-style fast entrances, no layout jumps ============ -->
+
+        <!-- Colour transitions for controls whose hover/pressed states used to snap. -->
+        <!-- Buttons repaint instantly: hover/press fades read as click animations. -->
+        <Style Selector="Button.icon, Button.nav, Button.chip, Button.filter, Button.primary,
+                         Button.secondary, Button.subtle, Button.danger, Button.send, Button.stop,
+                         Button.attach, Button.titlebar-icon, Button.titlebar-menu, Button.caption,
+                         Button.activity-row, Button.palette-row">
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+
+        <!-- Selection rows switch state instantly. The 0.12s background fade
+             read as an animation on the clicked nav/session row itself. -->
+        <Style Selector="Button.nav.settings-nav">
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.session-row, Button.row, Button.filter">
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.session-row TextBlock, Button.row TextBlock, Button.row Path">
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+
+        <Style Selector="Button.message-action">
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="ScrollBar:vertical /template/ Thumb, ScrollBar:horizontal /template/ Thumb">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+
+        <!-- Tool / reasoning panel: fades in and rises 3px when it opens. -->
+        <Style Selector="Border.tool-panel">
+            <Setter Property="Background" Value="{DynamicResource MenuSurface}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ProductMenuLine}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="12,10" />
+        </Style>
+        <Style Selector="Border.tool-panel, ItemsControl.tool-panel">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="RenderTransform" Value="translate(0px,-3px)" />
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Border.tool-panel.open, ItemsControl.tool-panel.open">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="RenderTransform" Value="none" />
+        </Style>
+
+        <!-- Running tools: a slow pulse on the status label. -->
+        <Style Selector="TextBlock.running-pulse">
+            <Style.Animations>
+                <Animation Duration="0:0:1.4" IterationCount="Infinite" Easing="SineEaseInOut">
+                    <KeyFrame Cue="0%">
+                        <Setter Property="Opacity" Value="0.45" />
+                    </KeyFrame>
+                    <KeyFrame Cue="50%">
+                        <Setter Property="Opacity" Value="1" />
+                    </KeyFrame>
+                    <KeyFrame Cue="100%">
+                        <Setter Property="Opacity" Value="0.45" />
+                    </KeyFrame>
+                </Animation>
+            </Style.Animations>
+        </Style>
+
+        <!-- Composer permission chip + its Codex-style popover rows. -->
+        <Style Selector="Button.permission-chip">
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Padding" Value="8,0" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Background" Value="{DynamicResource MenuFillZero}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.composer-chip">
+            <Setter Property="Padding" Value="6,4" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+        <Style Selector="Button.composer-chip Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextPrimary}" />
+            <Setter Property="StrokeThickness" Value="1.35" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="Fill" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.composer-chip:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SidebarDivider}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+        <Style Selector="Button.composer-chip:pointerover Path">
+            <Setter Property="Stroke" Value="{DynamicResource TextPrimary}" />
+        </Style>
+        <Style Selector="Button.permission-chip:pointerover">
+            <Setter Property="Background" Value="{DynamicResource ControlBorderStrong}" />
+        </Style>
+        <Style Selector="Button.permission-row">
+            <Setter Property="Padding" Value="4,3" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceMenuZero}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.permission-row:pointerover">
+            <Setter Property="Background" Value="{DynamicResource ActiveFill}" />
+        </Style>
+        <Style Selector="Button.permission-row.selected TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource WarningAccent}" />
+        </Style>
+        <Style Selector="Button.permission-row.selected Path">
+            <Setter Property="Stroke" Value="{DynamicResource WarningAccent}" />
+        </Style>
+        <Style Selector="Button.model-row">
+            <Setter Property="MinHeight" Value="28" />
+            <Setter Property="Padding" Value="6,0" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.075">
+                        <BrushTransition.Easing>
+                            <SplineEasing X1="0.25" Y1="0.1" X2="0.25" Y2="1" />
+                        </BrushTransition.Easing>
+                    </BrushTransition>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.model-row:pointerover">
+            <Setter Property="Background" Value="{DynamicResource ChipGhostFill}" />
+        </Style>
+        <Style Selector="Button.link">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="{DynamicResource MenuFillZero}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+
+        <!-- Flyouts host their own card; the presenter must not add a second frame. -->
+        <Style Selector="FlyoutPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+
+        <!-- Composer "/" and "@" suggestion rows -->
+        <Style Selector="Button.composer-menu-row">
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Background" Value="{DynamicResource ActiveFillZero}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.composer-menu-row:pointerover, Button.composer-menu-row.selected">
+            <Setter Property="Background" Value="{DynamicResource ActiveFill}" />
+        </Style>
+
+        <!-- Page switches fade the content host instead of swapping hard. -->
+        <Style Selector="Grid.content-host, Grid.settings-host">
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+
+        <!-- Dialogs and the command palette: fade up 4px instead of popping. -->
+        <Style Selector="Border.overlay-card">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="RenderTransform" Value="translate(0px,4px)" />
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Border.overlay-card.open">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="RenderTransform" Value="none" />
+        </Style>
+
+        <!-- Chevron rows give hover feedback and open the detail sheet. -->
+        <Style Selector="Grid.settings-link-row">
+            <Setter Property="Background" Value="{DynamicResource SurfaceDeepZero}" />
+            <Setter Property="Transitions" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Grid.settings-link-row:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SurfaceDeep}" />
+        </Style>
+
+        <!-- Settings panes and tabs swap instantly: any fade read as an
+             animation on the clicked nav row. -->
+
+        <!-- Codex-style switch: 40x24 track with an 18px thumb. -->
+        <Style Selector="ToggleSwitch.setting">
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="20" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Grid Width="32" Height="20">
+                        <Border Name="Track" CornerRadius="10" Background="{DynamicResource SurfaceHover}" />
+                        <Panel Name="PART_MovingKnobs">
+                            <Ellipse Name="Thumb" Width="16" Height="16" Fill="#FFFFFF"
+                                     HorizontalAlignment="Left" VerticalAlignment="Center"
+                                     Margin="2,0,0,0" />
+                        </Panel>
+                    </Grid>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="ToggleSwitch.setting /template/ Border#Track">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="ToggleSwitch.setting:checked /template/ Border#Track">
+            <Setter Property="Background" Value="{DynamicResource SliderTrackFill}" />
+        </Style>
+        <Style Selector="ToggleSwitch.setting:checked /template/ Ellipse#Thumb">
+            <Setter Property="Fill" Value="#FFFFFF" />
+        </Style>
+        <Style Selector="ToggleSwitch.setting /template/ Ellipse#Thumb">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <ThicknessTransition Property="Margin" Duration="0:0:0.14" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="ToggleSwitch.setting:checked /template/ Ellipse#Thumb">
+            <Setter Property="Margin" Value="14,0,0,0" />
+        </Style>
+        <Style Selector="Window.pointer-cursor Button">
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Window.pointer-cursor ToggleSwitch">
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Window.pointer-cursor ComboBox">
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Window.pointer-cursor MenuItem">
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+</Styles>

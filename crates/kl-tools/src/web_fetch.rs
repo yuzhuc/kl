@@ -1,5 +1,5 @@
 use crate::{PolicyRequest, Tool, ToolContext, ToolError, ToolOutcome, string_arg};
-use kl_policy::Action;
+use kl_policy::{Action, host_allowed};
 use serde_json::{Value, json};
 use std::io::Read;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, ToSocketAddrs};
@@ -63,6 +63,9 @@ impl Tool for WebFetchTool {
     }
 
     fn execute(&self, context: &ToolContext<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
+        if context.policy.config().deny_network {
+            return Err(ToolError::Policy("network access is disabled".to_owned()));
+        }
         let allowlist = &context.policy.config().network_allowlist;
         if allowlist.is_empty() {
             return Err(ToolError::Policy(
@@ -166,19 +169,6 @@ fn validate_url(url: &Url, allowlist: &[String]) -> Result<(), ToolError> {
         )));
     }
     Ok(())
-}
-
-fn host_allowed(allowed: &[String], host: &str) -> bool {
-    allowed.iter().any(|entry| {
-        let entry = entry.trim().to_ascii_lowercase();
-        if let Some(suffix) = entry.strip_prefix("*.") {
-            host == suffix || host.ends_with(&format!(".{suffix}"))
-        } else if let Some(suffix) = entry.strip_prefix('.') {
-            host == suffix || host.ends_with(&format!(".{suffix}"))
-        } else {
-            host == entry
-        }
-    })
 }
 
 fn blocked_ip(ip: IpAddr) -> bool {

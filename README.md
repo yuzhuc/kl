@@ -3,37 +3,47 @@
 KL is a local-first AI coding agent with a Rust trusted core and C# clients.
 
 - **Core:** Rust, JSON-RPC 2.0 over stdio or a local named-pipe/UDS server.
-- **TUI:** C# Terminal.Gui v2 client in `tui/Kl.Tui`.
-- **GUI:** Avalonia 12.1.4 client shell in `gui/Kl.Gui`; chat integration is paused.
-- **Shared client:** `sdk/Kl.Client`, used by the TUI and intended for the GUI.
+- **TUI:** C# Terminal.Gui v2 client in `tui/Kl.Tui`; `kl` opens a Codex-style
+  single-screen chat (transcript, composer, status line) with slash commands
+  for status, approvals, memory and recent sessions.
+- **GUI:** Avalonia 12.1.4 desktop client in `gui/Kl.Gui`.
+- **Shared client:** `sdk/Kl.Client`, used by both the TUI and the GUI.
 
 The project is designed around local execution, explicit approvals, bounded
-context, auditable tool calls and provider neutrality. It does not use Python.
+context, auditable tool calls and provider neutrality. Python is allowed for
+development tooling, but product binaries and runtime do not depend on Python.
 
 ## Status
 
 Core, TUI, security, context/memory tools, local multi-client transport and
-release packaging are implemented. The GUI has a static Avalonia shell but is
-not yet connected to `Kl.Client`. Real provider/MCP live smoke still needs
-credentials or a configured local server.
+release packaging are implemented. The GUI is a `Kl.Client` protocol client:
+sessions, streaming events, tool activity, approvals, cancellation, history and
+automation all run inside `kl-core`, and provider/model/API-key configuration is
+managed by Core. The release bundle ships the GUI under `gui/` on Windows and
+macOS RIDs. Real provider/MCP live smoke is still open; it needs credentials or
+a configured local server.
 
 ## Architecture
 
 ```text
-TUI (tui/Kl.Tui)     GUI (gui/Kl.Gui)     Headless/CI
+TUI (tui/Kl.Tui)     Headless/CI          kl GUI (gui/Kl.Gui)
         \                  |                  /
-         \             Kl.Client             /
-          \                |                /
-           +-- JSON-RPC / stdio or local socket --+
-                            |
-                     Rust Core (kl-core)
+         \                 |                 /
+          +----------- Kl.Client -----------+
+                             |
+            JSON-RPC 2.0 / stdio or local socket
+                             |
+                      Rust Core (kl-core)
               Protocol / Session / Events / Audit
               Agent / Tools / Policy / Sandbox
-              Skills / Hooks / MCP / Plugins
+              Provider adapters / Skills / Hooks / MCP / Plugins
+                             |
+             Provider APIs (OpenAI-compatible, Anthropic, ...)
 ```
 
-The Core owns sessions, events, policy, sandboxing, audit and tool execution.
-Clients never call a model or execute a tool directly. See
+The Core owns sessions, events, policy, sandboxing, audit, provider calls and
+tool execution. TUI, GUI and headless clients access it through `Kl.Client` and
+never execute tools or call providers directly. See
 [`docs/architecture/overview.md`](docs/architecture/overview.md).
 
 ## Repository layout
@@ -43,20 +53,21 @@ Clients never call a model or execute a tool directly. See
 | `crates/` | Rust core and capability crates |
 | `tui/Kl.Tui` | C# terminal client |
 | `tui/Kl.Tui.Tests` | TUI, protocol and core integration tests |
-| `gui/Kl.Gui` | Avalonia GUI shell |
+| `gui/Kl.Gui` | Avalonia desktop client over `Kl.Client` |
+| `gui/Kl.Gui.Tests` | GUI view-model and service tests |
 | `sdk/Kl.Client` | reusable C# JSON-RPC/session client |
 | `schemas/` | protocol and plugin JSON schemas |
 | `benchmarks/` | acceptance tasks and fixtures |
-| `scripts/` | package, benchmark and live-smoke scripts |
+| `scripts/` | Python build, package, validation, benchmark and demo scripts |
 | `docs/` | architecture, security, ADR and API docs |
 
-Generated output such as `target/`, `bin/`, `obj/` and `dist/` is ignored.
+Cargo and .NET intermediates remain in repository cache directories. Final local builds are staged to `D:\kl\bin`.
 
 ## Prerequisites
 
 - Rust stable (see `rust-toolchain.toml`)
 - .NET 10 SDK
-- Node.js 22+ for repository scripts
+- Python 3.11+ for development tooling only
 - Git
 
 Release bundles are self-contained or use the bundled runtime; users do not
@@ -65,8 +76,31 @@ need a local Rust toolchain. Source builds need Rust and .NET.
 ## Build and run
 
 ```powershell
+python scripts/build.py
+```
+
+The build script keeps Cargo and .NET caches inside the repository and publishes
+the final GUI/TUI files to the sibling `bin` directory:
+
+```text
+Caches:        D:\kl\kl\target, project bin/obj directories
+Final outputs: D:\kl\bin\gui, D:\kl\bin\tui
+```
+
+Local builds are intentionally framework-dependent and require the .NET 10
+Runtime on the target machine (on Windows, the .NET 10 Desktop Runtime includes
+it). This removes the bundled `System.*` runtime DLLs and keeps only application
+dependencies. The script detects the current OS/architecture automatically and
+creates `.bat` launchers on Windows or `.sh` launchers on Linux/macOS.
+Self-contained bundles remain the responsibility of the release packaging
+workflow, not local development builds.
+
+For component-level development:
+
+```powershell
 cargo build --release -p kl-core
 dotnet build tui/Kl.Tui/Kl.Tui.csproj
+dotnet build gui/Kl.Gui/Kl.Gui.csproj
 ```
 
 Common TUI commands:
@@ -80,14 +114,16 @@ dotnet run --project tui/Kl.Tui -- review --workspace .
 dotnet run --project tui/Kl.Tui -- serve
 ```
 
-The GUI shell can be started with:
+After `python scripts/build.py`, the desktop GUI can be started with:
 
 ```powershell
-dotnet run --project gui/Kl.Gui
+D:\kl\bin\run-gui.bat
 ```
 
-It currently displays the shell layout only; session, streaming, tools,
-approvals, diff and settings are not connected yet.
+The build stages `kl-core.exe` next to both `bin/gui` and `bin/tui`, so the GUI
+finds Core automatically. When running from a component build, point
+`KL_CORE_PATH` at a built `kl-core` binary or keep the `target/` directory next
+to the executable.
 
 ## Main capabilities
 
@@ -100,9 +136,24 @@ approvals, diff and settings are not connected yet.
 - Windows AppContainer, Linux `bubblewrap` and macOS Seatbelt sandboxes.
 - MCP server processes start through the active `SandboxManager`.
 - Persistent sessions with event projection, resume, fork and approval rules.
-- Optional local server with attach/replay, sequence de-duplication, reconnect
-  and one-writer session leases.
-- Model-summary context compaction with mechanical fallback and a 23-task acceptance harness.
+- Optional local server with attach/replay, sequence de-duplication, reconnect,
+  one-writer session leases and read-only observer clients.
+- Remote Core over TCP or TLS (`kl-core --serve --listen host:port --token ...`,
+  optional `--tls-cert` / `--tls-key` with a pinned fingerprint); GUI, TUI and
+  CLI clients connect with `KL_CORE_ENDPOINT` / `KL_CORE_TOKEN` /
+  `KL_CORE_TLS_FINGERPRINT` (see `docs/remote-core.md`).
+- Avalonia desktop GUI over `Kl.Client`: session list and rich history,
+  streaming assistant/reasoning events, tool cards with diffs, `allow` /
+  `allow_session` / `deny` approvals, cancel, Core status with retry, and
+  read-only observer sessions when another client holds the write lease.
+- GUI surfaces backed by Core RPCs: per-turn agent preset, quality mode, model
+  and reasoning effort (tiers from the model's `reasoning_efforts`, choice
+  remembered per model), the audit log, skill bodies, approval-mode sync and
+  plugin reload.
+- Remote Core mode disables local-only Git/worktree/import actions and accepts
+  server-side workspace paths.
+- Automatic model-summary context compaction with mechanical fallback, explicit
+  `/compact`, and a 23-task acceptance harness.
 - Workspace and user memory injection with bounded prompt size and `/memory`.
 - Shell commands support `tty=true`; `tty=true` uses portable-pty where the
   sandbox backend supports it.
@@ -114,10 +165,21 @@ approvals, diff and settings are not connected yet.
 KL reads user configuration from `~/.kl/`:
 
 - `config.toml` — providers, models, agent, policy, sandbox and review settings.
-- `credentials/<provider>.key` — provider API keys.
+- `credentials/<provider>.key` — provider API keys, managed by Core.
 - `agents/*.toml` — custom agent presets.
 - `skills/` — user-level skills.
 - `mcp.toml` — enabled MCP stdio servers.
+- `gui/state.json` — desktop GUI UI state (workspaces, layout, automations,
+  per-model reasoning effort);
+  sessions, messages and events are owned by Core under `sessions/`.
+- `plugins/` — shared local plugin directory used by the GUI and Core.
+
+The GUI settings page reads Core runtime information (version, protocol,
+provider/model, API-key configured flag, Core path and KL home). Provider,
+model and credential changes are written through Core RPCs; the GUI never reads
+`credentials/*.key` and only shows whether a key is configured. The GUI
+automatically migrates legacy `%LOCALAPPDATA%\DeepSeekHarnessGui` data into
+`~/.kl/gui` and removes the old directory.
 
 Workspace-level `AGENTS.md`, `.kl/memory/` and project skills are discovered.
 See [`docs/security/policy.md`](docs/security/policy.md) for the permission
@@ -141,8 +203,9 @@ and `read-only`; unknown model prices are never invented.
 
 ## Release
 
-Releases are built only from pushes to `main`. The workflow reads the workspace
-version, creates `v<version>-rc1` and then `-rc2`, `-rc3`, and so on. It retains
+Releases run only when the `release` workflow is started manually from GitHub
+Actions (`workflow_dispatch`). It reads the workspace version, creates
+`v<version>-rc1` and then `-rc2`, `-rc3`, and so on. It retains
 only the current `v<major>.<minor>.` series and publishes archives without `.sha256` files.
 
 The current release matrix is:
@@ -161,9 +224,14 @@ and the release matrix in
 ## Known gaps
 
 - Real Provider/MCP live smoke requires credentials or a local MCP server.
-- GUI is a static Avalonia shell; `Kl.Client` integration and the full MVP
-  remain in progress.
-- Provider prompt caching and session rewind/revert are not complete.
+- A packaged `kl serve` smoke test is still pending; Windows bundles now include
+  `kl-sandbox-runner.exe`.
+- The GUI is a Core client and ships in release bundles; launching the packaged
+  app on real runners and the automatic multi-window reconnect UX are Phase 2.
+- Provider prompt caching is not complete. Session rewind is available through
+  `turn.start` (`rewind_from_seq`); it hides the old event interval from history
+  and attach replay, but does not undo tool side effects. Forked sessions copy
+  messages without their events, so rewind/regenerate is unavailable there.
 - MCP servers start in the Core startup workspace, not a per-session workspace.
 - PTY under Windows AppContainer fails closed because that backend cannot be
   wrapped by an external PTY runner.
@@ -174,6 +242,7 @@ and the release matrix in
 - [`docs/README.md`](docs/README.md)
 - [`docs/architecture/overview.md`](docs/architecture/overview.md)
 - [`docs/project-structure.md`](docs/project-structure.md)
+- [`docs/remote-core.md`](docs/remote-core.md)
 - [`docs/security/policy.md`](docs/security/policy.md)
 - [`docs/plugin-api/README.md`](docs/plugin-api/README.md)
 - [`docs/gui/mvp-spec.md`](docs/gui/mvp-spec.md)

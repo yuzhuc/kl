@@ -23,7 +23,7 @@ Ship exactly five runtime identifiers:
 
 `win-x86` and `osx-x64` are dropped. The matrix is recorded in
 `.github/workflows/release.yml`, `README.md` and
-`docs/architecture/overview.md`, and `scripts/package-format.mjs` accepts only
+`docs/architecture/overview.md`, and `scripts/package_format.py` accepts only
 these five RIDs.
 
 ## Consequences

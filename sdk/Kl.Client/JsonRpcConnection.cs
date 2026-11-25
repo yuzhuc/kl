@@ -59,7 +59,6 @@ public sealed class JsonRpcConnection : IAsyncDisposable
         _stderrTask = process is null ? null : Task.Run(ReadStderrAsync);
     }
 
-    public event Action<JsonElement>? NotificationReceived;
     public event Action<string>? Diagnostic;
 
     public ChannelReader<JsonElement> Notifications => _notifications.Reader;
@@ -154,7 +153,6 @@ public sealed class JsonRpcConnection : IAsyncDisposable
             && method.GetString() == Protocol.Event)
         {
             _notifications.Writer.TryWrite(message);
-            NotificationReceived?.Invoke(message);
             return;
         }
 

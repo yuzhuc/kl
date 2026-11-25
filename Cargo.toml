@@ -20,7 +20,7 @@ exclude = ["vendor/ureq"]
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-license = "MIT"
+license = "Apache-2.0"
 rust-version = "1.86"
 
 # ureq 2.12.1 only accepts vulnerable webpki-roots 0.26; keep its API

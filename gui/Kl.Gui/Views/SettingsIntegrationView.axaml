@@ -1,0 +1,94 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kl.Gui.ViewModels"
+             xmlns:controls="using:Kl.Gui.Controls"
+             x:Class="Kl.Gui.Views.SettingsIntegrationView"
+             x:DataType="vm:MainWindowViewModel">
+    <StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsPlugins}" Spacing="50" Classes="settings-pane">
+                            <Border IsVisible="{Binding IsRemoteCore}" Classes="settings-card" Margin="0,0,0,0">
+                            <TextBlock Text="{Binding RemoteCoreNotice}" FontSize="12"
+                                       Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap"
+                                       Margin="16,12" />
+                            </Border>
+                                                        <Grid ColumnDefinitions="*,Auto" Margin="0,-8,0,-8">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                            <Button Classes="filter" Classes.active="True" Tag="plugins:plugins" Click="OnSettingsTabClicked"><StackPanel Orientation="Horizontal" Spacing="6"><TextBlock Text="{DynamicResource S.e806fbbe}" /><TextBlock Text="{Binding Plugins.Count}" Foreground="{DynamicResource TextCaption}" /></StackPanel></Button>
+                            <Button Classes="filter" Tag="plugins:mcp" Click="OnSettingsTabClicked"><StackPanel Orientation="Horizontal" Spacing="6"><TextBlock Text="MCP" /><TextBlock Text="{Binding McpTools.Count}" Foreground="{DynamicResource TextCaption}" /></StackPanel></Button>
+                            </StackPanel>
+                            <Border Grid.Column="1" Classes="search-field" Width="223" VerticalAlignment="Center">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                            <Path Width="13" Height="13" Data="{DynamicResource SearchIcon}" Stretch="Uniform" Stroke="{DynamicResource TextTertiary}" StrokeThickness="1.35" StrokeLineCap="Round" StrokeJoin="Round" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="1" Classes="search" PlaceholderText="{DynamicResource S.44891fe3}" Text="{Binding PluginSearch, Mode=TwoWay}" />
+                            </Grid>
+                            </Border>
+                            </Grid>
+                            <StackPanel Spacing="0" Classes="settings-tab-page" Tag="plugins:plugins">
+                            <Border Classes="settings-card">
+                            <StackPanel>
+                            <ItemsControl ItemsSource="{Binding Plugins}"><ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:PluginItemViewModel"><Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="12" Margin="16,12,16,11"><Border Width="32" Height="32" CornerRadius="8" Background="#232326"><Path Width="16" Height="16" Data="{DynamicResource PluginIcon}" Stretch="Uniform" Stroke="{DynamicResource TextSecondary}" StrokeThickness="1.2" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border><StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center"><TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="Medium" Foreground="{DynamicResource TextPrimary}" /><TextBlock Text="{Binding Description}" FontSize="12" Foreground="{DynamicResource TextCaption}" TextTrimming="CharacterEllipsis" /></StackPanel><Button Grid.Column="2" Classes="subtle" Content="{DynamicResource S.35588dcb}" Click="OnReloadPluginClicked" VerticalAlignment="Center" /><ToggleSwitch Grid.Column="3" Classes="setting" IsChecked="{Binding Enabled, Mode=OneWay}" IsEnabled="{Binding CanToggle}" VerticalAlignment="Center" IsCheckedChanged="OnPluginToggled" ToolTip.Tip="{Binding StatusText}" /><Path Classes="row-chevron" Grid.Column="4" Width="10" Height="10" Data="{DynamicResource ChevronRightIcon}" Stretch="Uniform" Stroke="{DynamicResource TextTertiary}" StrokeThickness="1.4" VerticalAlignment="Center" /></Grid></DataTemplate></ItemsControl.ItemTemplate></ItemsControl><TextBlock Text="{DynamicResource S.18165f88}" IsVisible="{Binding !HasPlugins}" FontSize="12.5" Foreground="{DynamicResource TextCaption}" Margin="16,12,16,11" />
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            <StackPanel Spacing="0" Classes="settings-tab-page" Tag="plugins:mcp" IsVisible="False">
+                            <TextBlock Classes="settings-heading" Text="{DynamicResource S.7d7f9135}" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11"><StackPanel Spacing="3"><TextBlock Classes="settings-title" Text="{DynamicResource S.c2f9363d}" /><TextBlock Classes="settings-desc" Text="{Binding McpStatusText}" HorizontalAlignment="Left" MaxWidth="520" /></StackPanel><Button Grid.Column="1" Classes="secondary settings-button" Click="OnRefreshMcpToolsClicked" Content="{DynamicResource S.aee88743}" /></Grid>
+                            <Border Classes="settings-divider" />
+                            <ItemsControl ItemsSource="{Binding McpTools}"><ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:McpToolRow"><StackPanel Margin="16,10" Spacing="3"><TextBlock Text="{Binding Name}" FontSize="12.5" FontFamily="Cascadia Mono, Consolas" TextTrimming="CharacterEllipsis" /><TextBlock Text="{Binding Description}" FontSize="12" Foreground="{DynamicResource TextCaption}" MaxWidth="560" /></StackPanel></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            </StackPanel>
+                             <StackPanel IsVisible="{Binding IsSettingsPasswords}" Spacing="50" Classes="settings-pane">
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="{DynamicResource S.56dd7bc4}" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="Provider API Key" />
+                            <TextBlock Text="{Binding CoreKeyStatusText}" Classes="settings-desc" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="secondary settings-button" Content="{DynamicResource S.bb6d9957}" Click="OnOpenModelsSettingsClicked" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="{DynamicResource S.8d088a8e}" />
+                            <TextBlock Text="{Binding RemoteTokenStatusText}" Classes="settings-desc" HorizontalAlignment="Left" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                            <Button Classes="secondary settings-button" Content="{DynamicResource S.aee88743}" Click="OnRefreshCredentialsClicked" />
+                            <Button Classes="secondary settings-button" Content="{DynamicResource S.7d0d5850}" Click="OnOpenCredentialsClicked" />
+                            </StackPanel>
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            </StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsCloudPc}" Spacing="50" Classes="settings-pane">
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="{DynamicResource S.96c28e58}" />
+                            <TextBlock Classes="settings-desc" Text="{DynamicResource S.f3f21877}"
+                                       HorizontalAlignment="Left" Margin="0,6,0,0" MaxWidth="650" TextWrapping="Wrap" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="{DynamicResource S.e403ba57}" />
+                            <TextBlock Text="{Binding RemoteCoreConnectionLabel}" Classes="settings-desc"
+                                       FontFamily="Cascadia Mono, Consolas" HorizontalAlignment="Left" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Button Classes="secondary settings-button" Content="{DynamicResource S.67957162}" Click="OnReconnectCoreClicked" />
+                            <Button Classes="secondary settings-button" Content="{DynamicResource S.148d195e}" Click="OnOpenRemoteCoreSettingsClicked" />
+                            </StackPanel>
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            </StackPanel>
+    </StackPanel>
+</UserControl>

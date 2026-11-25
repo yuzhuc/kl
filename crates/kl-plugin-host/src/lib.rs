@@ -16,7 +16,7 @@ use sidecar::SidecarProcess;
 pub use wasm::WasmError;
 use wasm::WasmInstance;
 
-use kl_policy::{PolicyConfig, PolicyEngine};
+use kl_policy::{PolicyConfig, PolicyEngine, host_allowed};
 use kl_provider::{ChatOutcome, ChatRequest};
 use kl_sandbox::{
     SandboxError, SandboxManager, SandboxPolicy, SandboxRequest, SandboxViolation,
@@ -929,19 +929,6 @@ fn extract_host(value: &str) -> Option<String> {
         .trim()
         .to_lowercase();
     (!host.is_empty()).then_some(host)
-}
-
-fn host_allowed(allowed: &[String], host: &str) -> bool {
-    allowed.iter().any(|entry| {
-        let entry = entry.trim().to_lowercase();
-        if let Some(suffix) = entry.strip_prefix("*.") {
-            host == suffix || host.ends_with(&format!(".{suffix}"))
-        } else if let Some(suffix) = entry.strip_prefix('.') {
-            host == suffix || host.ends_with(&format!(".{suffix}"))
-        } else {
-            host == entry
-        }
-    })
 }
 
 fn path_allowed(allowed: &[String], relative: &str) -> bool {

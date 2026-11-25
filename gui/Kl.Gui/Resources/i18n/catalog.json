@@ -1,0 +1,4134 @@
+{
+  "S.00089e77": {
+    "zh": "置顶或取消置顶当前聊天",
+    "en": "Pin or unpin the current chat"
+  },
+  "S.000b5761": {
+    "zh": "悬停交互元素时切换为指针光标",
+    "en": "Show a pointer cursor over interactive elements"
+  },
+  "S.005a7747": {
+    "zh": "扫描 Codex 和 Claude 的说明文件与技能，合并到 KL 的 AGENTS.md 和 skills 目录。",
+    "en": "Scan Codex and Claude instruction files and skills, then merge them into KL's AGENTS.md and skills directory."
+  },
+  "S.00d8c43d": {
+    "zh": "已配置 {0} 行钩子；修改后重启 KL Core 生效。",
+    "en": "{0} hooks configured; restart KL Core after changes."
+  },
+  "S.00e5e60d": {
+    "zh": "分支前缀包含非法字符，请检查 Git 设置。",
+    "en": "The branch prefix contains invalid characters; check the Git settings."
+  },
+  "S.015406a3": {
+    "zh": "先填写条目名称。",
+    "en": "Enter an item name first."
+  },
+  "S.018df70e": {
+    "zh": "审查智能体",
+    "en": "Review agent"
+  },
+  "S.0197c9f1": {
+    "zh": "已导出到 {0}",
+    "en": "Exported to {0}"
+  },
+  "S.01bee551": {
+    "zh": "本次回合失败。",
+    "en": "This turn failed."
+  },
+  "S.01fe53b3": {
+    "zh": "留空以使用默认位置",
+    "en": "Leave empty to use the default location"
+  },
+  "S.03524ebd": {
+    "zh": "已保存。重启 KL 后生效。",
+    "en": "Saved. Takes effect after restarting KL."
+  },
+  "S.04b77083": {
+    "zh": "系统默认",
+    "en": "System default"
+  },
+  "S.04e4b1d8": {
+    "zh": "无法保存：{0}",
+    "en": "Could not save: {0}"
+  },
+  "S.04eb5397": {
+    "zh": "立即运行",
+    "en": "Run now"
+  },
+  "S.05183656": {
+    "zh": "编辑",
+    "en": "Edit"
+  },
+  "S.051ea7bf": {
+    "zh": "暂无通知",
+    "en": "No notifications"
+  },
+  "S.05227849": {
+    "zh": "← 返回提供商列表",
+    "en": "← Back to providers"
+  },
+  "S.052294c6": {
+    "zh": "正在连接 KL Core…",
+    "en": "Connecting to KL Core…"
+  },
+  "S.053461ce": {
+    "zh": "成功",
+    "en": "Succeeded"
+  },
+  "S.0580b66d": {
+    "zh": "还没有本地用量记录",
+    "en": "No local usage recorded yet"
+  },
+  "S.070a8016": {
+    "zh": "颜色",
+    "en": "Color"
+  },
+  "S.0716a5f3": {
+    "zh": "登录时启动",
+    "en": "Launch at login"
+  },
+  "S.072256bd": {
+    "zh": "目标工作树已存在。",
+    "en": "The target worktree already exists."
+  },
+  "S.0736cf4b": {
+    "zh": "打开 config.toml ↗",
+    "en": "Open config.toml ↗"
+  },
+  "S.078838da": {
+    "zh": "字体",
+    "en": "Font"
+  },
+  "S.078e8e58": {
+    "zh": "没有匹配的快捷键",
+    "en": "No matching shortcuts"
+  },
+  "S.07b172df": {
+    "zh": "智能体预设",
+    "en": "Agent preset"
+  },
+  "S.07b47386": {
+    "zh": "\r\n\u001b[90m[终端已退出]\u001b[0m\r\n",
+    "en": "\r\n\u001b[90m[Terminal exited]\u001b[0m\r\n"
+  },
+  "S.07cea44b": {
+    "zh": "使用关闭标签页的快捷键会导致窗口关闭时，显示警告",
+    "en": "Warn when the close-tab shortcut would close the window"
+  },
+  "S.07ec86e0": {
+    "zh": "创建时间",
+    "en": "Created"
+  },
+  "S.07fa9401": {
+    "zh": "已载入 {0}",
+    "en": "Loaded {0}"
+  },
+  "S.08d90be0": {
+    "zh": "新建聊天",
+    "en": "New chat"
+  },
+  "S.09ee8b39": {
+    "zh": "点击刷新，从 KL Core 读取配置。",
+    "en": "Click refresh to read the configuration from KL Core."
+  },
+  "S.09f0c3b1": {
+    "zh": "删除自动化任务",
+    "en": "Delete automation"
+  },
+  "S.09f12da9": {
+    "zh": "{0} 天前",
+    "en": "{0} days ago"
+  },
+  "S.0a2fd693": {
+    "zh": "最近聊天",
+    "en": "Recent chats"
+  },
+  "S.0a574b6c": {
+    "zh": "Ctrl+1-9 切换页面",
+    "en": "Ctrl+1-9 switches pages"
+  },
+  "S.0a98a48e": {
+    "zh": "测试连接",
+    "en": "Test connection"
+  },
+  "S.0acae5ea": {
+    "zh": "插件目录",
+    "en": "Plugins directory"
+  },
+  "S.0acd4d88": {
+    "zh": "源文件夹",
+    "en": "Source folder"
+  },
+  "S.0ae4f6b9": {
+    "zh": " 回复包含细节的详细程度",
+    "en": " how much detail replies include"
+  },
+  "S.0b1735b3": {
+    "zh": "控制其他设备",
+    "en": "Control other devices"
+  },
+  "S.0b344dfa": {
+    "zh": "KL Core 在启动时读取 hooks.toml；工具执行前后会运行匹配的钩子。",
+    "en": "KL Core reads hooks.toml at startup and runs matching hooks before and after tools."
+  },
+  "S.0bc1fb72": {
+    "zh": "错误",
+    "en": "Error"
+  },
+  "S.0bc4e4de": {
+    "zh": "工具调用审批",
+    "en": "Tool approval"
+  },
+  "S.0bcdbb24": {
+    "zh": "当沙盒设为工作空间写入时允许网络访问",
+    "en": "Allow network access when the sandbox is set to workspace-write"
+  },
+  "S.0c184871": {
+    "zh": "昨天",
+    "en": "Yesterday"
+  },
+  "S.0c4ff1cb": {
+    "zh": "暂无可用模型",
+    "en": "No models available"
+  },
+  "S.0c70665b": {
+    "zh": "否",
+    "en": "No"
+  },
+  "S.0d0cbac2": {
+    "zh": "重命名",
+    "en": "Rename"
+  },
+  "S.0d0e1a86": {
+    "zh": "用户",
+    "en": "User"
+  },
+  "S.0d101d43": {
+    "zh": "切换推理强度失败：{0}",
+    "en": "Could not change reasoning effort: {0}"
+  },
+  "S.0d57c4ea": {
+    "zh": "调整聊天和差异视图中代码使用的基础字号",
+    "en": "Base font size for code in chats and diffs"
+  },
+  "S.0d6fad81": {
+    "zh": "选择文件夹",
+    "en": "Choose folder"
+  },
+  "S.0d840ec3": {
+    "zh": "未知的导入类型。",
+    "en": "Unknown import type."
+  },
+  "S.0eeb6141": {
+    "zh": "当前 Core 可用：{0}（协议 v{1}）",
+    "en": "Core available: {0} (protocol v{1})"
+  },
+  "S.0ef90971": {
+    "zh": "目标技能已存在，跳过。",
+    "en": "The target skill already exists; skipped."
+  },
+  "S.0f155693": {
+    "zh": "运行 KL Core 诊断（设置 → 模型与连接查看）",
+    "en": "Run KL Core diagnostics (see Settings → Models and connections)"
+  },
+  "S.0f403a03": {
+    "zh": "无法读取配置：{0}",
+    "en": "Could not read configuration: {0}"
+  },
+  "S.0f782a19": {
+    "zh": "始终",
+    "en": "Always"
+  },
+  "S.105a9082": {
+    "zh": "测试中…",
+    "en": "Testing…"
+  },
+  "S.106de8b9": {
+    "zh": "视觉风格",
+    "en": "Visual style"
+  },
+  "S.114e71e3": {
+    "zh": "部分未读聊天暂时不可用",
+    "en": "Some unread chats are unavailable"
+  },
+  "S.1160026c": {
+    "zh": "正在审查…",
+    "en": "Reviewing…"
+  },
+  "S.116bfd45": {
+    "zh": "null 原样保存；/xxx 和 /v1/xxx 会按协议自动补全三种地址。",
+    "en": "null is stored as-is; /xxx and /v1/xxx are expanded into full URLs for all three protocols."
+  },
+  "S.1170d564": {
+    "zh": "KL Core 就绪",
+    "en": "KL Core ready"
+  },
+  "S.117c113c": {
+    "zh": "排队",
+    "en": "Queue"
+  },
+  "S.118bad34": {
+    "zh": "复制为新会话（分支）",
+    "en": "Copy to new session (fork)"
+  },
+  "S.11a55171": {
+    "zh": "切换模型失败：{0}",
+    "en": "Could not switch model: {0}"
+  },
+  "S.11cf70bb": {
+    "zh": "已删除 {0}",
+    "en": "Deleted {0}"
+  },
+  "S.123321c4": {
+    "zh": "多用",
+    "en": "More"
+  },
+  "S.125e5b58": {
+    "zh": "名称、备注和官网链接只保存在本机。",
+    "en": "Name, notes and website are stored only on this machine."
+  },
+  "S.125fbcaa": {
+    "zh": "无法从 KL Core 读取插件：{0}",
+    "en": "Could not read plugins from KL Core: {0}"
+  },
+  "S.126fbf59": {
+    "zh": "请求失败",
+    "en": "Request failed"
+  },
+  "S.134393b2": {
+    "zh": "导出设置备份",
+    "en": "Export settings backup"
+  },
+  "S.136de7a8": {
+    "zh": "拒绝",
+    "en": "Deny"
+  },
+  "S.13a7776a": {
+    "zh": "为 KL 提供适用于所有聊天的额外指令",
+    "en": "Extra instructions for KL across all chats"
+  },
+  "S.13b50ede": {
+    "zh": "删除后无法恢复。确定要删除此提供商吗？",
+    "en": "This cannot be undone. Delete this provider?"
+  },
+  "S.143345c3": {
+    "zh": "添加设备以远程控制此电脑",
+    "en": "Add a device to control this computer remotely"
+  },
+  "S.1449870d": {
+    "zh": "已发现 {0} 个本地插件。",
+    "en": "Found {0} local plugins."
+  },
+  "S.147eaeb5": {
+    "zh": "发送完整文件内容，而不是只发送差异",
+    "en": "Send full file contents instead of only the diff"
+  },
+  "S.148d195e": {
+    "zh": "配置",
+    "en": "Config"
+  },
+  "S.14987f14": {
+    "zh": "输出详细程度",
+    "en": "Output detail"
+  },
+  "S.14ad9d78": {
+    "zh": "无法删除提供商 {0}：{1}",
+    "en": "Could not delete provider {0}: {1}"
+  },
+  "S.14d9f2d8": {
+    "zh": "运行中…",
+    "en": "Running…"
+  },
+  "S.154b2e40": {
+    "zh": "正在从 /models 获取模型…",
+    "en": "Fetching models from /models…"
+  },
+  "S.15dec507": {
+    "zh": "个人",
+    "en": "Personal"
+  },
+  "S.15e3f56d": {
+    "zh": "API Key 未配置",
+    "en": "API key not configured"
+  },
+  "S.1616faa2": {
+    "zh": "没有匹配的设置项",
+    "en": "No matching settings"
+  },
+  "S.1683a466": {
+    "zh": "工作区记忆保存在当前项目，只在该项目内生效。",
+    "en": "Workspace memory is stored in the current project and applies only there."
+  },
+  "S.168e845a": {
+    "zh": "添加模型",
+    "en": "Add model"
+  },
+  "S.1715bbb3": {
+    "zh": "KL Core 未连接",
+    "en": "KL Core not connected"
+  },
+  "S.171dd39b": {
+    "zh": "已处理 {0} 项，成功 {1} 项。",
+    "en": "Processed {0} items, {1} succeeded."
+  },
+  "S.173f88d2": {
+    "zh": "置顶",
+    "en": "Pin"
+  },
+  "S.175d3274": {
+    "zh": "重新生成（不会撤销已执行的工具改动）",
+    "en": "Regenerate (does not undo tool changes already applied)"
+  },
+  "S.18042e31": {
+    "zh": "从其他 AI 应用导入",
+    "en": "Import from other AI apps"
+  },
+  "S.18165f88": {
+    "zh": "还没有安装插件",
+    "en": "No plugins installed yet"
+  },
+  "S.18336129": {
+    "zh": "打开导入源目录",
+    "en": "Open import source directory"
+  },
+  "S.185161ee": {
+    "zh": "少用",
+    "en": "Less"
+  },
+  "S.18a1416e": {
+    "zh": "共 {0} 条记忆",
+    "en": "{0} memories"
+  },
+  "S.195be001": {
+    "zh": "正在与 KL Core 握手…",
+    "en": "Handshaking with KL Core…"
+  },
+  "S.19a8d85c": {
+    "zh": "{0} 处",
+    "en": "{0} places"
+  },
+  "S.1a78d1d5": {
+    "zh": "用户：",
+    "en": "User: "
+  },
+  "S.1add43f7": {
+    "zh": "已运行",
+    "en": "Ran"
+  },
+  "S.1ae6b0a0": {
+    "zh": "关闭窗口",
+    "en": "Close window"
+  },
+  "S.1afed6a8": {
+    "zh": "选择模型",
+    "en": "Select model"
+  },
+  "S.1b45dc42": {
+    "zh": "{0} · {1} · {2} 上下文 · {3} 输出",
+    "en": "{0} · {1} · {2} context · {3} output"
+  },
+  "S.1b782122": {
+    "zh": "只保存在本机凭据目录",
+    "en": "Stored only in the local credentials directory"
+  },
+  "S.1bd91a7d": {
+    "zh": "已保存",
+    "en": "Saved"
+  },
+  "S.1bffadb0": {
+    "zh": "下载代码",
+    "en": "Download code"
+  },
+  "S.1c21bf72": {
+    "zh": "记忆条目",
+    "en": "Memory entries"
+  },
+  "S.1c5b6615": {
+    "zh": "添加工作区…",
+    "en": "Add workspace…"
+  },
+  "S.1c5c0671": {
+    "zh": "视图",
+    "en": "View"
+  },
+  "S.1cdde3ed": {
+    "zh": "还没有记忆条目。",
+    "en": "No memory entries yet."
+  },
+  "S.1cf1d4d0": {
+    "zh": "右侧",
+    "en": "Right"
+  },
+  "S.1d27f02e": {
+    "zh": "配置文件",
+    "en": "Config file"
+  },
+  "S.1ded9dbf": {
+    "zh": "读取会话历史失败：{0}",
+    "en": "Could not read session history: {0}"
+  },
+  "S.1e2933c6": {
+    "zh": "默认模型",
+    "en": "Default model"
+  },
+  "S.1e7f17fd": {
+    "zh": "无法删除记忆：{0}",
+    "en": "Could not delete memory: {0}"
+  },
+  "S.1ef3de06": {
+    "zh": "清空",
+    "en": "Clear"
+  },
+  "S.1ef73609": {
+    "zh": "当前聊天没有可复制的代码块。",
+    "en": "The current chat has no code block to copy."
+  },
+  "S.1effcf2c": {
+    "zh": "从 /models 获取",
+    "en": "Fetch from /models"
+  },
+  "S.1f0eb99b": {
+    "zh": "运行中",
+    "en": "Running"
+  },
+  "S.1f20ce32": {
+    "zh": "获取到的模型",
+    "en": "Fetched models"
+  },
+  "S.1f4f8aa9": {
+    "zh": "重命名失败：{0}",
+    "en": "Rename failed: {0}"
+  },
+  "S.1f94f97d": {
+    "zh": "由 KL Core 的 config.toml 决定",
+    "en": "Determined by KL Core's config.toml"
+  },
+  "S.1fa3244c": {
+    "zh": "代码审查",
+    "en": "Code review"
+  },
+  "S.1fa394a4": {
+    "zh": "可控制此电脑的设备",
+    "en": "Devices that can control this computer"
+  },
+  "S.1fb60559": {
+    "zh": "分别设置浅色和深色模式",
+    "en": "Set light and dark mode separately"
+  },
+  "S.1fdbd848": {
+    "zh": "↑↓ 选择 · Enter 确认 · Esc 关闭",
+    "en": "↑↓ select · Enter confirm · Esc close"
+  },
+  "S.1feb4ace": {
+    "zh": "无法读取提供商：{0}",
+    "en": "Could not read providers: {0}"
+  },
+  "S.1ff1b67d": {
+    "zh": "接入新的模型提供商",
+    "en": "Connect a new model provider"
+  },
+  "S.200a0aac": {
+    "zh": "未配置 API Key（在 KL Core 配置中设置）",
+    "en": "API key not configured (set it in the KL Core configuration)"
+  },
+  "S.203c08e0": {
+    "zh": "首页",
+    "en": "Home"
+  },
+  "S.204d732e": {
+    "zh": "项目目录不存在。",
+    "en": "The project directory does not exist."
+  },
+  "S.20505064": {
+    "zh": "请求批准",
+    "en": "Ask for approval"
+  },
+  "S.206eaa9c": {
+    "zh": "内容字体",
+    "en": "Content font"
+  },
+  "S.20cd211f": {
+    "zh": "和 kl 一起工作",
+    "en": "Work with kl"
+  },
+  "S.20f0def4": {
+    "zh": "选择终端快捷键和环境操作在何处打开终端面板",
+    "en": "Choose where terminal shortcuts and environment actions open the terminal panel"
+  },
+  "S.20f7682e": {
+    "zh": "任务完成、请求权限和提问时的提示音",
+    "en": "Sound when a task finishes, requests permission or asks a question"
+  },
+  "S.217cfe7d": {
+    "zh": "跟随系统",
+    "en": "Follow system"
+  },
+  "S.21819924": {
+    "zh": "{0} 个任务，{1} 个已启用。",
+    "en": "{0} tasks, {1} enabled."
+  },
+  "S.223f5723": {
+    "zh": "工作树名称只能包含字母、数字、点、下划线和短横线。",
+    "en": "Worktree names may contain only letters, numbers, dots, underscores and hyphens."
+  },
+  "S.22b33413": {
+    "zh": "导出为 Markdown…",
+    "en": "Export as Markdown…"
+  },
+  "S.22d4c193": {
+    "zh": "无法确定 KL 可执行文件路径。",
+    "en": "Could not determine the KL executable path."
+  },
+  "S.22eafd31": {
+    "zh": "界面状态",
+    "en": "GUI state"
+  },
+  "S.22ee703c": {
+    "zh": "当前工作区没有技能。",
+    "en": "No skills in the current workspace."
+  },
+  "S.2312be9f": {
+    "zh": "标记为未读",
+    "en": "Mark as unread"
+  },
+  "S.233ca502": {
+    "zh": "没有可恢复的 KL Core 会话。",
+    "en": "No KL Core session to restore."
+  },
+  "S.2368690e": {
+    "zh": "导入扫描",
+    "en": "Import scan"
+  },
+  "S.238a880d": {
+    "zh": "连接本地插件，让 kl 在你的工具中协同工作",
+    "en": "Connect local plugins so kl works with your tools"
+  },
+  "S.238eb1d9": {
+    "zh": "在应用标题栏中显示底部面板控件",
+    "en": "Show bottom-panel controls in the app title bar"
+  },
+  "S.23a63460": {
+    "zh": "输入新的 API Key",
+    "en": "Enter a new API key"
+  },
+  "S.23a91d61": {
+    "zh": "新建自动化任务",
+    "en": "New automation"
+  },
+  "S.241e0bfb": {
+    "zh": "在侧边栏中搜索聊天",
+    "en": "Search chats in the sidebar"
+  },
+  "S.242f705b": {
+    "zh": "在 KL 运行时将后续消息加入队列，或引导当前运行。",
+    "en": "Queue follow-up messages while KL runs, or steer the current run."
+  },
+  "S.2449402c": {
+    "zh": "我们应该在",
+    "en": "What should we do in "
+  },
+  "S.2479560d": {
+    "zh": "任务名称",
+    "en": "Task name"
+  },
+  "S.247c2117": {
+    "zh": "无法打开会话：{0}",
+    "en": "Could not open session: {0}"
+  },
+  "S.24a015d6": {
+    "zh": "保存任务",
+    "en": "Save task"
+  },
+  "S.24b872c8": {
+    "zh": "无法初始化工作区：{0}",
+    "en": "Could not initialize workspace: {0}"
+  },
+  "S.258ad35e": {
+    "zh": "保存令牌失败：{0}",
+    "en": "Could not save token: {0}"
+  },
+  "S.263fe78e": {
+    "zh": "我们应该在{0}中做些什么?",
+    "en": "What should we do in {0}?"
+  },
+  "S.26589c1f": {
+    "zh": "已导入过，跳过。",
+    "en": "Already imported; skipped."
+  },
+  "S.266ffac8": {
+    "zh": "权限模式无效。",
+    "en": "Invalid permission mode."
+  },
+  "S.2671b62c": {
+    "zh": "正在创建工作树…",
+    "en": "Creating worktree…"
+  },
+  "S.26a9a822": {
+    "zh": "复制会话失败：{0}",
+    "en": "Could not copy session: {0}"
+  },
+  "S.26ab0eee": {
+    "zh": "已调用工具",
+    "en": "Called a tool"
+  },
+  "S.26ca773b": {
+    "zh": "正在扫描 Codex 和 Claude 的安全配置项…",
+    "en": "Scanning safe Codex and Claude configuration items…"
+  },
+  "S.26de3dd9": {
+    "zh": "存储空间",
+    "en": "Storage space"
+  },
+  "S.28384d7a": {
+    "zh": "失败",
+    "en": "Failed"
+  },
+  "S.28865dcb": {
+    "zh": "请至少启用一种协议。",
+    "en": "Enable at least one protocol."
+  },
+  "S.2a8e6698": {
+    "zh": "中做些什么?",
+    "en": "?"
+  },
+  "S.2b7762ea": {
+    "zh": "删除工作树 {0}？",
+    "en": "Delete worktree {0}?"
+  },
+  "S.2c26da0b": {
+    "zh": "无法读取 AGENTS.md：{0}",
+    "en": "Could not read AGENTS.md: {0}"
+  },
+  "S.2c28f2a0": {
+    "zh": "思考 xhigh",
+    "en": "Reasoning xhigh"
+  },
+  "S.2c40969b": {
+    "zh": "容量按文件当前大小统计。",
+    "en": "Capacity is measured by current file sizes."
+  },
+  "S.2c4149be": {
+    "zh": "打开此页时读取当前项目的 Git 状态。",
+    "en": "Reads the current project's Git status when this page opens."
+  },
+  "S.2cbc6d61": {
+    "zh": "导出会话失败：{0}",
+    "en": "Could not export session: {0}"
+  },
+  "S.2cd0f3be": {
+    "zh": "取消",
+    "en": "Cancel"
+  },
+  "S.2cd1f341": {
+    "zh": "默认终端位置",
+    "en": "Default terminal position"
+  },
+  "S.2d1d8c1e": {
+    "zh": "后退",
+    "en": "Back"
+  },
+  "S.2d828150": {
+    "zh": "手动排序",
+    "en": "Manual order"
+  },
+  "S.2d8c7359": {
+    "zh": "编辑条目",
+    "en": "Edit entry"
+  },
+  "S.2de7dc4f": {
+    "zh": "删除失败：{0}",
+    "en": "Delete failed: {0}"
+  },
+  "S.2ed9c6fa": {
+    "zh": "紫色",
+    "en": "Purple"
+  },
+  "S.2f017738": {
+    "zh": "与 KL Core 的连接已断开，正在重连（第 {0} 次）…",
+    "en": "Lost connection to KL Core, reconnecting (attempt {0})…"
+  },
+  "S.2f08b70b": {
+    "zh": "打开资料库",
+    "en": "Open library"
+  },
+  "S.2f58b6ed": {
+    "zh": "导入中…",
+    "en": "Importing…"
+  },
+  "S.2f9daa82": {
+    "zh": "删除",
+    "en": "Delete"
+  },
+  "S.2fd39ace": {
+    "zh": "导出会话",
+    "en": "Export session"
+  },
+  "S.3018a255": {
+    "zh": "为“{0}”录制快捷键",
+    "en": "Record a shortcut for “{0}”"
+  },
+  "S.30609d9c": {
+    "zh": "添加文本或代码附件",
+    "en": "Add text or code attachments"
+  },
+  "S.3088cc46": {
+    "zh": "自动化任务",
+    "en": "Automations"
+  },
+  "S.30c83dc2": {
+    "zh": "绿色",
+    "en": "Green"
+  },
+  "S.31078e07": {
+    "zh": "思考 low",
+    "en": "Reasoning low"
+  },
+  "S.3190c2df": {
+    "zh": "关闭 KL？",
+    "en": "Close KL?"
+  },
+  "S.31c6cea9": {
+    "zh": "为每种协议填写完整请求地址，打开右侧开关后启用；保存只更新协议地址，已有模型保持不变。",
+    "en": "Enter the full request URL for each protocol and enable it with the switch on the right; saving updates only URLs and keeps existing models."
+  },
+  "S.3283784e": {
+    "zh": "选择项目进入对话，或添加新的本地项目",
+    "en": "Choose a project to start chatting, or add a new local project"
+  },
+  "S.32aa2f3c": {
+    "zh": "文件不是 KL 的 GUI 设置备份。",
+    "en": "The file is not a KL GUI settings backup."
+  },
+  "S.3312c0ce": {
+    "zh": "提供商信息",
+    "en": "Provider details"
+  },
+  "S.333afd28": {
+    "zh": "把当前会话复制为分支",
+    "en": "Copy the current session as a fork"
+  },
+  "S.34195de4": {
+    "zh": "输入 / 输出 tokens",
+    "en": "Input / output tokens"
+  },
+  "S.34638cbe": {
+    "zh": "标题（可选）",
+    "en": "Title (optional)"
+  },
+  "S.349b21c0": {
+    "zh": "专业",
+    "en": "Professional"
+  },
+  "S.34f8db1c": {
+    "zh": "无法删除：{0}",
+    "en": "Could not delete: {0}"
+  },
+  "S.34fe78ad": {
+    "zh": "启用问题通知",
+    "en": "Enable question notifications"
+  },
+  "S.3501a70d": {
+    "zh": "永久删除前，请先查看聊天及其子智能体",
+    "en": "Review the chat and its subagents before deleting permanently"
+  },
+  "S.3504c990": {
+    "zh": "填写基础请求地址并选择后缀；保存时会为三种协议自动生成完整地址。",
+    "en": "Enter the base request URL and choose a suffix; saving generates full URLs for all three protocols."
+  },
+  "S.3537d57d": {
+    "zh": "压缩本地保存的聊天历史记录",
+    "en": "Compress locally stored chat history"
+  },
+  "S.35588dcb": {
+    "zh": "重新载入",
+    "en": "Reload"
+  },
+  "S.358956dd": {
+    "zh": "会从 KL Core 配置中移除该提供商，并删除本机保存的 API Key。",
+    "en": "Removes the provider from KL Core config and deletes the API key stored on this machine."
+  },
+  "S.369c4853": {
+    "zh": "打开设置页面",
+    "en": "Open settings"
+  },
+  "S.36bf6c68": {
+    "zh": "模型 URL",
+    "en": "Model URL"
+  },
+  "S.36e04fec": {
+    "zh": "系统等宽",
+    "en": "System monospace"
+  },
+  "S.3717a020": {
+    "zh": "诊断工作空间中的问题",
+    "en": "Diagnose problems in the workspace"
+  },
+  "S.37979829": {
+    "zh": "工作区",
+    "en": "Workspace"
+  },
+  "S.37a51ab0": {
+    "zh": "打开插件目录",
+    "en": "Open plugins directory"
+  },
+  "S.37aa6ad6": {
+    "zh": "打开设置",
+    "en": "Open settings"
+  },
+  "S.37aac5b4": {
+    "zh": "地址",
+    "en": "Address"
+  },
+  "S.37f18ce8": {
+    "zh": "Codex 用户技能",
+    "en": "Codex user skill"
+  },
+  "S.38255886": {
+    "zh": "无法定位这条消息（可能已被压缩、来自 fork 或导入）。",
+    "en": "Could not locate this message (it may have been compacted, forked or imported)."
+  },
+  "S.383b3f5b": {
+    "zh": "已取消开机启动。",
+    "en": "Launch at login disabled."
+  },
+  "S.38844b13": {
+    "zh": "更多",
+    "en": "More"
+  },
+  "S.38c043e0": {
+    "zh": "个性化",
+    "en": "Personalization"
+  },
+  "S.38eefacb": {
+    "zh": "7 天",
+    "en": "7 days"
+  },
+  "S.3962aa6a": {
+    "zh": "最近的审计记录",
+    "en": "Recent audit records"
+  },
+  "S.39932f24": {
+    "zh": "文件",
+    "en": "File"
+  },
+  "S.3a1de94a": {
+    "zh": "开机启动仅支持 Windows。",
+    "en": "Launch at login is supported only on Windows."
+  },
+  "S.3a251a2a": {
+    "zh": "导入失败：{0}",
+    "en": "Import failed: {0}"
+  },
+  "S.3a411735": {
+    "zh": "KL Core {0}（protocol {1}）连通正常。",
+    "en": "KL Core {0} (protocol {1}) is reachable."
+  },
+  "S.3b0d2993": {
+    "zh": "本地插件",
+    "en": "Local plugins"
+  },
+  "S.3b1a8ede": {
+    "zh": "没有可添加的文本附件。",
+    "en": "No text attachments to add."
+  },
+  "S.3b7f5965": {
+    "zh": "编辑器",
+    "en": "Editor"
+  },
+  "S.3c026145": {
+    "zh": "自动归档不活跃的聊天",
+    "en": "Auto-archive inactive chats"
+  },
+  "S.3c39e9bd": {
+    "zh": "定时任务",
+    "en": "Scheduled tasks"
+  },
+  "S.3c3bba99": {
+    "zh": "优先事项部分",
+    "en": "Priority section"
+  },
+  "S.3c50ed52": {
+    "zh": "删除当前会话",
+    "en": "Delete current session"
+  },
+  "S.3ca222db": {
+    "zh": "运行审查",
+    "en": "Run review"
+  },
+  "S.3cc810d8": {
+    "zh": "智能体默认设置",
+    "en": "Agent defaults"
+  },
+  "S.3ce32715": {
+    "zh": "配置 KL 如何管理记忆",
+    "en": "Configure how KL manages memory"
+  },
+  "S.3d52574c": {
+    "zh": "未连接",
+    "en": "Not connected"
+  },
+  "S.3d705553": {
+    "zh": "打开此页时读取 hooks.toml。",
+    "en": "Reads hooks.toml when this page opens."
+  },
+  "S.3de09e2e": {
+    "zh": "思考 none",
+    "en": "Reasoning none"
+  },
+  "S.3e8a4f65": {
+    "zh": "没有匹配的文本",
+    "en": "No matching text"
+  },
+  "S.3f049887": {
+    "zh": "底部",
+    "en": "Bottom"
+  },
+  "S.3f8f3ea0": {
+    "zh": "完整访问权限",
+    "en": "Full access"
+  },
+  "S.3fd1de8c": {
+    "zh": "由 Core 的 agent.list 提供；对后续回合生效。",
+    "en": "Provided by Core's agent.list; applies to later turns."
+  },
+  "S.3fd47edc": {
+    "zh": "关闭",
+    "en": "Close"
+  },
+  "S.4084045d": {
+    "zh": "引导",
+    "en": "Steer"
+  },
+  "S.408ce7af": {
+    "zh": "在项目外发起的聊天，其数据的默认存储位置。",
+    "en": "Default storage location for chats started outside a project."
+  },
+  "S.40b5f61c": {
+    "zh": "数字快捷键",
+    "en": "Number shortcuts"
+  },
+  "S.40fae00b": {
+    "zh": "常规",
+    "en": "General"
+  },
+  "S.40ff6300": {
+    "zh": "诊断",
+    "en": "Diagnostics"
+  },
+  "S.4115d63b": {
+    "zh": "集成",
+    "en": "Integrations"
+  },
+  "S.41551b76": {
+    "zh": "接入提供商",
+    "en": "Connect provider"
+  },
+  "S.4182ea9b": {
+    "zh": "托管的工作树",
+    "en": "Managed worktrees"
+  },
+  "S.4186bf69": {
+    "zh": "表情符号",
+    "en": "Emoji"
+  },
+  "S.4193c38d": {
+    "zh": "将当前聊天标记为未读",
+    "en": "Mark the current chat as unread"
+  },
+  "S.41dc94e2": {
+    "zh": "暂无本地插件",
+    "en": "No local plugins"
+  },
+  "S.41ff5dc2": {
+    "zh": "打开技能页时读取当前工作区。",
+    "en": "Reads the current workspace when the skills page opens."
+  },
+  "S.420c20dd": {
+    "zh": "复制代码",
+    "en": "Copy code"
+  },
+  "S.4222dccb": {
+    "zh": "已搜索网页",
+    "en": "Searched the web"
+  },
+  "S.4268493c": {
+    "zh": "插入",
+    "en": "Insert"
+  },
+  "S.42a85af2": {
+    "zh": "保存后重启 KL 生效；配置后不再启动本机 Core。",
+    "en": "Takes effect after restarting KL; once configured, no local Core is started."
+  },
+  "S.42cdc8b2": {
+    "zh": "删除工作树前询问",
+    "en": "Ask before deleting a worktree"
+  },
+  "S.42ee2863": {
+    "zh": "根目录",
+    "en": "Root directory"
+  },
+  "S.433bdcb2": {
+    "zh": "资料库",
+    "en": "Library"
+  },
+  "S.434b9abf": {
+    "zh": "KL 占用 {0}",
+    "en": "KL uses {0}"
+  },
+  "S.43ce458c": {
+    "zh": "思考中",
+    "en": "Thinking"
+  },
+  "S.43d7d2b5": {
+    "zh": "创建项目",
+    "en": "Create project"
+  },
+  "S.43fd932f": {
+    "zh": "未找到 PowerShell。",
+    "en": "PowerShell not found."
+  },
+  "S.44891fe3": {
+    "zh": "搜索插件",
+    "en": "Search plugins"
+  },
+  "S.44ce7ae9": {
+    "zh": "搜索",
+    "en": "Search"
+  },
+  "S.45c8826f": {
+    "zh": "重置为默认设置",
+    "en": "Reset to defaults"
+  },
+  "S.45da2d9c": {
+    "zh": "添加文件夹",
+    "en": "Add folder"
+  },
+  "S.466dd71e": {
+    "zh": "质量模式",
+    "en": "Quality mode"
+  },
+  "S.478c2df2": {
+    "zh": "已保存 {0}",
+    "en": "Saved {0}"
+  },
+  "S.47a27008": {
+    "zh": "模式",
+    "en": "Mode"
+  },
+  "S.47b5934c": {
+    "zh": "已把 {0} 的 API Key 写入 KL Core。",
+    "en": "Wrote the API key for {0} to KL Core."
+  },
+  "S.480a7504": {
+    "zh": "打开 KL Home",
+    "en": "Open KL Home"
+  },
+  "S.4864c222": {
+    "zh": "选择源文件夹",
+    "en": "Choose source folder"
+  },
+  "S.486670c1": {
+    "zh": "各文件夹的存储用量",
+    "en": "Storage used by folder"
+  },
+  "S.4871613a": {
+    "zh": "默认打开文件和文件夹的位置",
+    "en": "Default location for opening files and folders"
+  },
+  "S.48849f31": {
+    "zh": "开始新聊天",
+    "en": "Start a new chat"
+  },
+  "S.4895ea31": {
+    "zh": "已查看图像",
+    "en": "Viewed image"
+  },
+  "S.4897f95a": {
+    "zh": "已创建工作树 {0}（分支 {1}）。",
+    "en": "Created worktree {0} (branch {1})."
+  },
+  "S.49504fdf": {
+    "zh": "搜索快捷键",
+    "en": "Search shortcuts"
+  },
+  "S.498e1d59": {
+    "zh": "退出",
+    "en": "Quit"
+  },
+  "S.4a190fba": {
+    "zh": "压缩阈值必须在 0 到 1 之间。",
+    "en": "The compaction threshold must be between 0 and 1."
+  },
+  "S.4a3af88f": {
+    "zh": "等待首次运行",
+    "en": "Waiting for first run"
+  },
+  "S.4a6d8d49": {
+    "zh": "允许一次",
+    "en": "Allow once"
+  },
+  "S.4aa1f325": {
+    "zh": "模型提供商",
+    "en": "Model providers"
+  },
+  "S.4b29ce8e": {
+    "zh": "取消编辑",
+    "en": "Cancel editing"
+  },
+  "S.4b3510b8": {
+    "zh": "聊天",
+    "en": "Chat"
+  },
+  "S.4b6ded8a": {
+    "zh": "通知",
+    "en": "Notifications"
+  },
+  "S.4b7dac99": {
+    "zh": "无法启动 reg.exe。",
+    "en": "Could not start reg.exe."
+  },
+  "S.4be7cfc7": {
+    "zh": "当前没有打开的 KL Core 会话。",
+    "en": "No KL Core session is open."
+  },
+  "S.4c22bff1": {
+    "zh": "整理侧边栏",
+    "en": "Organize sidebar"
+  },
+  "S.4c39a8ba": {
+    "zh": "KL Core 已连接",
+    "en": "KL Core connected"
+  },
+  "S.4c44cf1e": {
+    "zh": "Git 没有报告 worktree。",
+    "en": "Git reported no worktrees."
+  },
+  "S.4c977ef4": {
+    "zh": "只统计本版本之后完成的回合；更早的会话没有用量数据。",
+    "en": "Only turns completed after this version are counted; older sessions have no usage data."
+  },
+  "S.4cbc7532": {
+    "zh": "对比度",
+    "en": "Contrast"
+  },
+  "S.4d0680f9": {
+    "zh": "未读",
+    "en": "Unread"
+  },
+  "S.4daf11f4": {
+    "zh": "没有匹配的插件",
+    "en": "No matching plugins"
+  },
+  "S.4e1449e7": {
+    "zh": "显示",
+    "en": "Display"
+  },
+  "S.4e574ea6": {
+    "zh": "和 kl 一起聊天",
+    "en": "Chat with kl"
+  },
+  "S.4eafa9e9": {
+    "zh": "自定义",
+    "en": "Custom"
+  },
+  "S.4f31cc18": {
+    "zh": "热情程度",
+    "en": "Enthusiasm"
+  },
+  "S.4f4a1093": {
+    "zh": "过去 12 个会话",
+    "en": "Last 12 sessions"
+  },
+  "S.50a177b5": {
+    "zh": "上下文已压缩 · {0}",
+    "en": "Context compacted · {0}"
+  },
+  "S.50ef2f4c": {
+    "zh": "新建",
+    "en": "New"
+  },
+  "S.5187b9b0": {
+    "zh": "无法重新载入 {0}：{1}",
+    "en": "Could not reload {0}: {1}"
+  },
+  "S.519648d3": {
+    "zh": "工作区干净",
+    "en": "Working tree clean"
+  },
+  "S.522e55a5": {
+    "zh": "无法复制代码块：{0}",
+    "en": "Could not copy code block: {0}"
+  },
+  "S.52496e5a": {
+    "zh": "未分配",
+    "en": "Unassigned"
+  },
+  "S.52776470": {
+    "zh": "例如：团队共享额度",
+    "en": "e.g. team shared quota"
+  },
+  "S.53107c65": {
+    "zh": "用户记忆保存在 KL Home，对所有项目生效。",
+    "en": "User memory is stored in KL Home and applies to all projects."
+  },
+  "S.5349f7cc": {
+    "zh": "共 {0} 个技能",
+    "en": "{0} skills"
+  },
+  "S.53b599c8": {
+    "zh": "导入来源",
+    "en": "Import sources"
+  },
+  "S.54030c68": {
+    "zh": "Git 状态",
+    "en": "Git status"
+  },
+  "S.54334255": {
+    "zh": "例如：每日项目摘要",
+    "en": "e.g. daily project summary"
+  },
+  "S.5503ded4": {
+    "zh": "云电脑",
+    "en": "Cloud computer"
+  },
+  "S.550575d3": {
+    "zh": "编辑 AGENTS.md",
+    "en": "Edit AGENTS.md"
+  },
+  "S.550b094e": {
+    "zh": "最大输出 tokens",
+    "en": "Max output tokens"
+  },
+  "S.553a3b6f": {
+    "zh": "语音输入（即将支持）",
+    "en": "Voice input (coming soon)"
+  },
+  "S.55920a97": {
+    "zh": "通知提示音",
+    "en": "Notification sound"
+  },
+  "S.55d66913": {
+    "zh": "30 天前没有活动的聊天。删除后无法恢复。",
+    "en": "Chats with no activity in 30 days. Deleting is permanent."
+  },
+  "S.55e89389": {
+    "zh": "任务详情在右侧展示",
+    "en": "Task details appear on the right"
+  },
+  "S.56282289": {
+    "zh": "重启",
+    "en": "Restart"
+  },
+  "S.565d6460": {
+    "zh": "优先级",
+    "en": "Priority"
+  },
+  "S.56875e68": {
+    "zh": "在插件目录下创建子目录并放入 plugin.json",
+    "en": "Create a subdirectory under the plugins directory and add plugin.json"
+  },
+  "S.56dd7bc4": {
+    "zh": "KL 凭据",
+    "en": "KL credentials"
+  },
+  "S.57130c0d": {
+    "zh": "保存提供商失败：{0}",
+    "en": "Could not save provider: {0}"
+  },
+  "S.572cf45b": {
+    "zh": "返回",
+    "en": "Back"
+  },
+  "S.576d81bb": {
+    "zh": "导入",
+    "en": "Import"
+  },
+  "S.577feeef": {
+    "zh": "编辑项目",
+    "en": "Edit project"
+  },
+  "S.57907a69": {
+    "zh": "偏好设置",
+    "en": "Preferences"
+  },
+  "S.579ba29b": {
+    "zh": "新聊天使用的 Provider 和模型，由 KL Core 执行。",
+    "en": "Provider and model for new chats, enforced by KL Core."
+  },
+  "S.57b37811": {
+    "zh": "正在压缩上下文…",
+    "en": "Compacting context…"
+  },
+  "S.57e88a43": {
+    "zh": "本地文件",
+    "en": "Local files"
+  },
+  "S.58d29446": {
+    "zh": "重新发送（会替换这条消息及其后的回复）",
+    "en": "Resend (replaces this message and later replies)"
+  },
+  "S.58e21b87": {
+    "zh": "新建会话",
+    "en": "New session"
+  },
+  "S.58fe3988": {
+    "zh": "连接你使用的模型提供商；请求地址、协议和密钥由 KL Core 管理。",
+    "en": "Connect the model providers you use; URLs, protocols and keys are managed by KL Core."
+  },
+  "S.59165924": {
+    "zh": "已导入设置；重启 KL 后生效，重启前不会保存新的更改。原设置已自动备份。",
+    "en": "Settings imported; they take effect after restarting KL, and new changes are not saved before then. The original settings were backed up."
+  },
+  "S.5948628c": {
+    "zh": "聊天存储空间",
+    "en": "Chat storage"
+  },
+  "S.5a21d9c0": {
+    "zh": "导入插件失败：{0}",
+    "en": "Could not import plugin: {0}"
+  },
+  "S.5a29940b": {
+    "zh": "发送快捷键",
+    "en": "Send shortcut"
+  },
+  "S.5a4540c9": {
+    "zh": "浏览目录",
+    "en": "Browse folders"
+  },
+  "S.5ad3f4f6": {
+    "zh": "归档当前聊天",
+    "en": "Archive the current chat"
+  },
+  "S.5ae1766d": {
+    "zh": "刷新插件",
+    "en": "Refresh plugins"
+  },
+  "S.5b1f2c92": {
+    "zh": "创建工作树失败：{0}",
+    "en": "Could not create worktree: {0}"
+  },
+  "S.5b3a9fa8": {
+    "zh": "复制会话",
+    "en": "Copy session"
+  },
+  "S.5b50d7c4": {
+    "zh": "系统",
+    "en": "System"
+  },
+  "S.5b71c2c2": {
+    "zh": "已删除 {0} 条记忆",
+    "en": "Deleted {0} memories"
+  },
+  "S.5b8369fa": {
+    "zh": "尚未发现本地插件。将插件目录放入上方路径后点击刷新。",
+    "en": "No local plugins found. Put plugins in the directory above and click refresh."
+  },
+  "S.5ba4b234": {
+    "zh": "共 {0} 条记录",
+    "en": "{0} records"
+  },
+  "S.5bb3e412": {
+    "zh": "下次运行：{0:MM-dd HH:mm}",
+    "en": "Next run: {0:MM-dd HH:mm}"
+  },
+  "S.5c08da81": {
+    "zh": "配置状态",
+    "en": "Config status"
+  },
+  "S.5c117365": {
+    "zh": "选择推理强度",
+    "en": "Select reasoning effort"
+  },
+  "S.5c359221": {
+    "zh": "已获取 {0} 个模型；选择后自动填入模型 ID。",
+    "en": "Fetched {0} models; selecting one fills in the model ID."
+  },
+  "S.5c4d9677": {
+    "zh": "半透明侧边栏",
+    "en": "Translucent sidebar"
+  },
+  "S.5c528768": {
+    "zh": "终端已经在运行。",
+    "en": "The terminal is already running."
+  },
+  "S.5c55a679": {
+    "zh": "全部",
+    "en": "All"
+  },
+  "S.5c5df721": {
+    "zh": "已接入的模型提供商",
+    "en": "Connected model providers"
+  },
+  "S.5ca6730d": {
+    "zh": "工具",
+    "en": "Tools"
+  },
+  "S.5cc0dee3": {
+    "zh": "资料库还没有条目。保存常用提示词或规范，之后可一键插入输入框。",
+    "en": "The library is empty. Save reusable prompts or guidelines to insert them with one click."
+  },
+  "S.5ccd91f4": {
+    "zh": "主要",
+    "en": "Primary"
+  },
+  "S.5d3f86d0": {
+    "zh": "钩子",
+    "en": "Hooks"
+  },
+  "S.5d726231": {
+    "zh": "任务名称不能为空。",
+    "en": "Task name cannot be empty."
+  },
+  "S.5d7cb25d": {
+    "zh": "本地已记录的 token 用量；最近的 12 个会话。",
+    "en": "Locally recorded token usage for the last 12 sessions."
+  },
+  "S.5dae076a": {
+    "zh": "分别选择各自的主题、颜色和字体",
+    "en": "Choose theme, color and font for each mode"
+  },
+  "S.5dc52ea7": {
+    "zh": "快捷键列表",
+    "en": "Shortcut list"
+  },
+  "S.5ddfe3ab": {
+    "zh": "提供商连接",
+    "en": "Provider connections"
+  },
+  "S.5e8237f5": {
+    "zh": "聊天排序方式",
+    "en": "Chat sort order"
+  },
+  "S.5e992fd1": {
+    "zh": "按下新的组合键；需要包含 Ctrl、Alt、Shift 或 Win。按 Esc 取消。",
+    "en": "Press a new shortcut; it must include Ctrl, Alt, Shift or Win. Press Esc to cancel."
+  },
+  "S.5f18a07a": {
+    "zh": "KL Core 尚未报告可用的 Provider。",
+    "en": "KL Core has not reported any available providers."
+  },
+  "S.5f2e2920": {
+    "zh": "获取模型列表失败：{0}",
+    "en": "Could not fetch models: {0}"
+  },
+  "S.5f64610f": {
+    "zh": "重命名会话",
+    "en": "Rename session"
+  },
+  "S.5f76b2bf": {
+    "zh": "版本",
+    "en": "Version"
+  },
+  "S.5fcb250b": {
+    "zh": "共 {0} 个 MCP 工具",
+    "en": "{0} MCP tools"
+  },
+  "S.6019a767": {
+    "zh": "无需省略消息",
+    "en": "No messages omitted"
+  },
+  "S.6089721b": {
+    "zh": "界面字号",
+    "en": "Interface font size"
+  },
+  "S.60b5b793": {
+    "zh": "无法读取技能：{0}",
+    "en": "Could not read skill: {0}"
+  },
+  "S.613642c6": {
+    "zh": "审查指令",
+    "en": "Review instructions"
+  },
+  "S.617f44fc": {
+    "zh": "当前没有可用会话。",
+    "en": "No sessions available."
+  },
+  "S.6196bfd3": {
+    "zh": "KL Core 不可用。",
+    "en": "KL Core is unavailable."
+  },
+  "S.61b25d27": {
+    "zh": "创建工作树前始终获取上游更新",
+    "en": "Always fetch upstream updates before creating a worktree"
+  },
+  "S.6211e4aa": {
+    "zh": "插入文件引用",
+    "en": "Insert file reference"
+  },
+  "S.625644b3": {
+    "zh": "此设备",
+    "en": "This device"
+  },
+  "S.62cf3dd7": {
+    "zh": "前景",
+    "en": "Foreground"
+  },
+  "S.6320b4a8": {
+    "zh": "状态",
+    "en": "Status"
+  },
+  "S.6347c01d": {
+    "zh": "打开 hooks.toml",
+    "en": "Open hooks.toml"
+  },
+  "S.639047cc": {
+    "zh": "已恢复默认外观设置。",
+    "en": "Appearance settings restored to defaults."
+  },
+  "S.63b71a6f": {
+    "zh": "导入设置备份",
+    "en": "Import settings backup"
+  },
+  "S.63d90d97": {
+    "zh": "复制",
+    "en": "Copy"
+  },
+  "S.64a4fee1": {
+    "zh": "工作区目录不存在。",
+    "en": "The workspace directory does not exist."
+  },
+  "S.64c5af94": {
+    "zh": "请填写模型 ID。",
+    "en": "Enter a model ID."
+  },
+  "S.64c6de63": {
+    "zh": "已接入 {0} 个提供商 · 支持同时启用多个模型提供商",
+    "en": "{0} providers connected · multiple providers can be enabled at once"
+  },
+  "S.6504a911": {
+    "zh": "{0} 小时前",
+    "en": "{0} hours ago"
+  },
+  "S.651d71ae": {
+    "zh": "允许 KL 使用已安装的插件",
+    "en": "Allow KL to use installed plugins"
+  },
+  "S.6522f0ce": {
+    "zh": "已删除工作树。",
+    "en": "Worktree deleted."
+  },
+  "S.65350ffb": {
+    "zh": "运行异常",
+    "en": "Unhealthy"
+  },
+  "S.6536047c": {
+    "zh": "选择模型与强度",
+    "en": "Select model and effort"
+  },
+  "S.65a1f546": {
+    "zh": "请求地址",
+    "en": "Request URL"
+  },
+  "S.66a13edb": {
+    "zh": "连接非本机地址需要访问令牌。",
+    "en": "Connecting to a non-local address requires an access token."
+  },
+  "S.66d69b6b": {
+    "zh": "无法读取插件目录：{0}",
+    "en": "Could not read plugins directory: {0}"
+  },
+  "S.66da6751": {
+    "zh": "界面语言；跟随系统时按系统 UI 语言选择。",
+    "en": "Interface language; Follow system uses the system UI language."
+  },
+  "S.66f93fe5": {
+    "zh": "{0} 分钟前",
+    "en": "{0} minutes ago"
+  },
+  "S.67035e6b": {
+    "zh": "蓝色",
+    "en": "Blue"
+  },
+  "S.672c0fa9": {
+    "zh": "使用 Ctrl+1-9 切换页面，使用 Alt+1-9 切换聊天",
+    "en": "Use Ctrl+1-9 to switch pages and Alt+1-9 to switch chats"
+  },
+  "S.673ea337": {
+    "zh": "导入所选",
+    "en": "Import selected"
+  },
+  "S.6740f329": {
+    "zh": "把技能放到工作区或 KL Home 的技能目录后刷新",
+    "en": "Add skills to the workspace or KL Home skills directory, then refresh"
+  },
+  "S.6750f10a": {
+    "zh": "当前项目不是 Git 仓库。",
+    "en": "The current project is not a Git repository."
+  },
+  "S.67957162": {
+    "zh": "重连",
+    "en": "Reconnect"
+  },
+  "S.67b8f642": {
+    "zh": "选择在模型控件中显示哪些推理强度级别。可用性因模型而异。",
+    "en": "Choose which reasoning levels appear in the model control. Availability varies by model."
+  },
+  "S.67be4d75": {
+    "zh": "管理插件、技能和 MCP",
+    "en": "Manage plugins, skills and MCP"
+  },
+  "S.67dc2165": {
+    "zh": "{0} 次聊天",
+    "en": "{0} chats"
+  },
+  "S.67eb40df": {
+    "zh": "与 KL Core 的连接已断开，请点击重试。",
+    "en": "Connection to KL Core was lost. Click retry."
+  },
+  "S.682279bf": {
+    "zh": "选择项目",
+    "en": "Select project"
+  },
+  "S.68505d9e": {
+    "zh": "无法创建终端输出管道。",
+    "en": "Could not create the terminal output pipe."
+  },
+  "S.69e71f03": {
+    "zh": "暂无会话",
+    "en": "No sessions"
+  },
+  "S.6a0abfde": {
+    "zh": "Core 未返回配置内容。",
+    "en": "Core returned no configuration."
+  },
+  "S.6a0bbf0f": {
+    "zh": "插件与技能列表在右侧展示",
+    "en": "Plugins and skills appear on the right"
+  },
+  "S.6a193411": {
+    "zh": "无法读取 MCP 列表：{0}",
+    "en": "Could not read the MCP list: {0}"
+  },
+  "S.6a1be012": {
+    "zh": "未保存",
+    "en": "Not saved"
+  },
+  "S.6a587014": {
+    "zh": "AGENTS.md 不能超过 {0} KiB。",
+    "en": "AGENTS.md cannot exceed {0} KiB."
+  },
+  "S.6a75e403": {
+    "zh": "已读取文件",
+    "en": "Read file"
+  },
+  "S.6a81178c": {
+    "zh": "用量趋势",
+    "en": "Usage trend"
+  },
+  "S.6a904ba4": {
+    "zh": "差异标记",
+    "en": "Diff markers"
+  },
+  "S.6aadb4c4": {
+    "zh": "- 导出时间：",
+    "en": "- Exported: "
+  },
+  "S.6ab7a79f": {
+    "zh": "诊断失败：{0}",
+    "en": "Diagnostics failed: {0}"
+  },
+  "S.6b3d6921": {
+    "zh": "审批请求已过期。",
+    "en": "The approval request has expired."
+  },
+  "S.6b4f5ae3": {
+    "zh": "无法读取技能正文：{0}",
+    "en": "Could not read skill body: {0}"
+  },
+  "S.6b5f3d51": {
+    "zh": "已导入技能。",
+    "en": "Skill imported."
+  },
+  "S.6b7b0111": {
+    "zh": "接口协议",
+    "en": "API protocol"
+  },
+  "S.6b88f8c0": {
+    "zh": " 访问网络的方式",
+    "en": " how KL accesses the network"
+  },
+  "S.6b89bbb2": {
+    "zh": "思考 默认",
+    "en": "Reasoning default"
+  },
+  "S.6bea77ac": {
+    "zh": "标准",
+    "en": "Standard"
+  },
+  "S.6beda481": {
+    "zh": "备份与恢复",
+    "en": "Backup and restore"
+  },
+  "S.6c0212de": {
+    "zh": "连接失败：{0}",
+    "en": "Connection failed: {0}"
+  },
+  "S.6c0a8abc": {
+    "zh": "工作区路径无效。",
+    "en": "Invalid workspace path."
+  },
+  "S.6cda64b3": {
+    "zh": "可用推理强度",
+    "en": "Available reasoning levels"
+  },
+  "S.6cf728ea": {
+    "zh": "下次运行：等待调度",
+    "en": "Next run: waiting for schedule"
+  },
+  "S.6d7bd50d": {
+    "zh": "{0} 已用于“{1}”。",
+    "en": "{0} is already used by “{1}”."
+  },
+  "S.6d9531c4": {
+    "zh": "跳到底部",
+    "en": "Jump to bottom"
+  },
+  "S.6e257338": {
+    "zh": "创建任务后可手动运行；启用后会按间隔自动执行。",
+    "en": "Create a task to run it manually; once enabled it runs on its interval."
+  },
+  "S.6e943534": {
+    "zh": "保存模型配置失败：{0}",
+    "en": "Could not save model configuration: {0}"
+  },
+  "S.6e971fc3": {
+    "zh": "审查完成：{0} 个发现。",
+    "en": "Review complete: {0} findings."
+  },
+  "S.6f14c6a6": {
+    "zh": "KL 占用 —",
+    "en": "KL uses —"
+  },
+  "S.6fa353da": {
+    "zh": "接管写入",
+    "en": "Take over writing"
+  },
+  "S.6fba6dde": {
+    "zh": "界面字体样式",
+    "en": "Interface font style"
+  },
+  "S.6fbb8dd8": {
+    "zh": "标题和列表",
+    "en": "Titles and lists"
+  },
+  "S.7005deaf": {
+    "zh": "集成终端 Shell",
+    "en": "Integrated terminal shell"
+  },
+  "S.70133285": {
+    "zh": "访问令牌",
+    "en": "Access token"
+  },
+  "S.701416d1": {
+    "zh": "工作树根目录",
+    "en": "Worktree root"
+  },
+  "S.7017ff8d": {
+    "zh": "启用权限通知",
+    "en": "Enable permission notifications"
+  },
+  "S.70450213": {
+    "zh": "下次运行：未启用",
+    "en": "Next run: disabled"
+  },
+  "S.70678e99": {
+    "zh": "无法启动 git。",
+    "en": "Could not start git."
+  },
+  "S.70f62d0d": {
+    "zh": "添加任意兼容的模型提供商，保存后会自动出现在这里。",
+    "en": "Add any compatible model provider; it appears here after saving."
+  },
+  "S.7159f460": {
+    "zh": "已合并到 AGENTS.md。",
+    "en": "Merged into AGENTS.md."
+  },
+  "S.71f1fa19": {
+    "zh": "仅对检测到的风险操作请求批准",
+    "en": "Ask for approval only for detected risky operations"
+  },
+  "S.722420b0": {
+    "zh": "连接成功：{0}。保存并重启 KL 后使用此 Core。",
+    "en": "Connection succeeded: {0}. Save and restart KL to use this Core."
+  },
+  "S.731d3950": {
+    "zh": "排队发送；当前回复完成后自动发送",
+    "en": "Queue and send automatically when the current reply finishes"
+  },
+  "S.7349a15b": {
+    "zh": "项目外聊天文件夹",
+    "en": "Chats outside projects folder"
+  },
+  "S.73c4a551": {
+    "zh": "无法初始化终端进程属性。",
+    "en": "Could not initialize terminal process attributes."
+  },
+  "S.73ca55e2": {
+    "zh": " 总结其推理的方式",
+    "en": " how KL summarizes its reasoning"
+  },
+  "S.74197b28": {
+    "zh": "还没有自动化任务",
+    "en": "No automations yet"
+  },
+  "S.748ae692": {
+    "zh": "全部标为已读",
+    "en": "Mark all as read"
+  },
+  "S.7491bf2b": {
+    "zh": "上下文已压缩",
+    "en": "Context compacted"
+  },
+  "S.74f72b91": {
+    "zh": "KL 记忆",
+    "en": "KL memory"
+  },
+  "S.75308449": {
+    "zh": "项目指令会附加到 {0} 的每次请求中，保存后下一个回合生效。",
+    "en": "Project instructions are added to every request for {0} and apply from the next turn after saving."
+  },
+  "S.769c4f86": {
+    "zh": "保存信息",
+    "en": "Save"
+  },
+  "S.76b3a4db": {
+    "zh": "这个提供商已存在，请从列表中编辑它。",
+    "en": "This provider already exists; edit it from the list."
+  },
+  "S.778503b4": {
+    "zh": "启用或停用此提供商",
+    "en": "Enable or disable this provider"
+  },
+  "S.77cb1f61": {
+    "zh": "部分附件未添加：",
+    "en": "Some attachments were not added: "
+  },
+  "S.77e46f43": {
+    "zh": "查看 KL 对你的了解概览。对于希望它始终记住的信息，可以使用自定义指令。",
+    "en": "See what KL knows about you. Use custom instructions for information it should always remember."
+  },
+  "S.77e87a92": {
+    "zh": "打开插件页",
+    "en": "Open plugins page"
+  },
+  "S.78040844": {
+    "zh": "显示上下文窗口使用情况",
+    "en": "Show context window usage"
+  },
+  "S.7885e0c5": {
+    "zh": "管理存储在此电脑上的聊天和工作树",
+    "en": "Manage chats and worktrees stored on this computer"
+  },
+  "S.78865462": {
+    "zh": "当前 Core 连接失败：{0}",
+    "en": "Current Core connection failed: {0}"
+  },
+  "S.7892e109": {
+    "zh": "更改快捷键",
+    "en": "Change shortcut"
+  },
+  "S.79a01a58": {
+    "zh": "尚未创建自动化任务。",
+    "en": "No automations created yet."
+  },
+  "S.79f1c34b": {
+    "zh": "帮我批准",
+    "en": "Approve for me"
+  },
+  "S.79f326be": {
+    "zh": "项目",
+    "en": "Projects"
+  },
+  "S.7a21cbda": {
+    "zh": "先打开一个聊天会话，然后重试。",
+    "en": "Open a chat session first, then retry."
+  },
+  "S.7a3c57ea": {
+    "zh": "模型与连接",
+    "en": "Models and connections"
+  },
+  "S.7a56d47c": {
+    "zh": "减少动态效果",
+    "en": "Reduce motion"
+  },
+  "S.7a6335b3": {
+    "zh": "记忆",
+    "en": "Memory"
+  },
+  "S.7a763afa": {
+    "zh": "插件安装",
+    "en": "Plugin installation"
+  },
+  "S.7a793fa3": {
+    "zh": "保存代码",
+    "en": "Save code"
+  },
+  "S.7a8a11ea": {
+    "zh": "添加",
+    "en": "Add"
+  },
+  "S.7adc8567": {
+    "zh": "尚未运行",
+    "en": "Not run yet"
+  },
+  "S.7b2979dc": {
+    "zh": "模型与推理强度",
+    "en": "Model and reasoning effort"
+  },
+  "S.7b6f155c": {
+    "zh": "无法刷新提供商：读取 provider.list 失败。",
+    "en": "Could not refresh providers: reading provider.list failed."
+  },
+  "S.7bb2db7c": {
+    "zh": "未找到 kl-core（请构建 Core 或设置 KL_CORE_PATH）",
+    "en": "kl-core not found (build Core or set KL_CORE_PATH)"
+  },
+  "S.7c3708f6": {
+    "zh": "设置文件",
+    "en": "Settings file"
+  },
+  "S.7c7ab927": {
+    "zh": "检查当前工作区并总结今天需要处理的事项。",
+    "en": "Review the current workspace and summarize what needs attention today."
+  },
+  "S.7cdfe034": {
+    "zh": "设置已保存。审批模式由 KL Core 执行。",
+    "en": "Settings saved. Approval mode is enforced by KL Core."
+  },
+  "S.7d0d5850": {
+    "zh": "打开目录",
+    "en": "Open directory"
+  },
+  "S.7d2583f5": {
+    "zh": "将其他 AI 应用的设置、项目和聊天导入 KL",
+    "en": "Import settings, projects and chats from other AI apps into KL"
+  },
+  "S.7d7f9135": {
+    "zh": "MCP 工具",
+    "en": "MCP tools"
+  },
+  "S.7dbac1c2": {
+    "zh": "日志",
+    "en": "Log"
+  },
+  "S.7dc541bf": {
+    "zh": "无法更新 {0}：{1}",
+    "en": "Could not update {0}: {1}"
+  },
+  "S.7e151c5d": {
+    "zh": "保存 API Key 失败：{0}",
+    "en": "Could not save API key: {0}"
+  },
+  "S.7eb336e4": {
+    "zh": "自动",
+    "en": "Auto"
+  },
+  "S.7ee8b2d0": {
+    "zh": "移除附件",
+    "en": "Remove attachment"
+  },
+  "S.7f2ef242": {
+    "zh": "无法创建终端输入管道。",
+    "en": "Could not create the terminal input pipe."
+  },
+  "S.7fbb0d86": {
+    "zh": "无法刷新提供商：{0}",
+    "en": "Could not refresh providers: {0}"
+  },
+  "S.80849e86": {
+    "zh": "密钥由 Core 保存在本机凭据目录，GUI 不读取；不会写入 config.toml。",
+    "en": "Core stores the key in the local credentials directory; the GUI never reads it and it is not written to config.toml."
+  },
+  "S.80a57e03": {
+    "zh": "未配置",
+    "en": "Not configured"
+  },
+  "S.81385c38": {
+    "zh": "删除条目",
+    "en": "Delete entry"
+  },
+  "S.8151e870": {
+    "zh": "没有匹配项",
+    "en": "No matches"
+  },
+  "S.8173b834": {
+    "zh": "无法打开官网链接：{0}",
+    "en": "Could not open the website: {0}"
+  },
+  "S.81ac24ca": {
+    "zh": "远程 KL Core：Git、worktree、导入和插件导入只会在本机执行，已禁用；请在 Core 所在机器上操作。",
+    "en": "Remote KL Core: Git, worktrees, imports and plugin imports run only on this machine and are disabled here; use the machine running Core."
+  },
+  "S.81fb42e5": {
+    "zh": "正在测试 KL Core 连接…",
+    "en": "Testing the KL Core connection…"
+  },
+  "S.820e0028": {
+    "zh": "将添加到审查智能体的提示中",
+    "en": "Added to the review agent's prompt"
+  },
+  "S.826d09ee": {
+    "zh": "技能名称不合法，已跳过。",
+    "en": "Invalid skill name; skipped."
+  },
+  "S.82745e72": {
+    "zh": "无法保存本地状态：{0}",
+    "en": "Could not save local state: {0}"
+  },
+  "S.829a3555": {
+    "zh": "自动化",
+    "en": "Automation"
+  },
+  "S.82c4aa13": {
+    "zh": "最大化",
+    "en": "Maximize"
+  },
+  "S.837bc957": {
+    "zh": "当前版本",
+    "en": "Current version"
+  },
+  "S.838bacee": {
+    "zh": "新的资料",
+    "en": "New item"
+  },
+  "S.83971626": {
+    "zh": "应如何批准操作？",
+    "en": "How should actions be approved?"
+  },
+  "S.83d7141f": {
+    "zh": "切换侧边栏",
+    "en": "Toggle sidebar"
+  },
+  "S.83ebad35": {
+    "zh": "思考 medium",
+    "en": "Reasoning medium"
+  },
+  "S.8423a1fb": {
+    "zh": "正在编辑消息：发送后会替换这条消息及其后的回复。工具的改动不会被撤销。",
+    "en": "Editing a message: sending replaces this message and later replies. Tool changes are not undone."
+  },
+  "S.844b8cc8": {
+    "zh": "默认",
+    "en": "Default"
+  },
+  "S.84536a8b": {
+    "zh": "请至少启用一个思考等级。",
+    "en": "Enable at least one reasoning level."
+  },
+  "S.84663136": {
+    "zh": "移除项目",
+    "en": "Remove project"
+  },
+  "S.848d5ab0": {
+    "zh": "远程 KL Core：请填写服务器上的项目路径。",
+    "en": "Remote KL Core: enter the project path on the server."
+  },
+  "S.84ad2952": {
+    "zh": "30 天",
+    "en": "30 days"
+  },
+  "S.84ba75cf": {
+    "zh": "重命名项目",
+    "en": "Rename project"
+  },
+  "S.84e4d5d4": {
+    "zh": "另一客户端正在写入此会话；当前窗口为只读观察者。",
+    "en": "Another client is writing to this session; this window is a read-only observer."
+  },
+  "S.856e892a": {
+    "zh": "置顶聊天",
+    "en": "Pin chat"
+  },
+  "S.8595fffb": {
+    "zh": "已更新计划",
+    "en": "Updated plan"
+  },
+  "S.85e5ec26": {
+    "zh": "条目名称",
+    "en": "Item name"
+  },
+  "S.85f35bd3": {
+    "zh": "已接管该会话的写入。",
+    "en": "Took over writing for this session."
+  },
+  "S.8611b78c": {
+    "zh": "找到 {0} 个可导入项。",
+    "en": "Found {0} importable items."
+  },
+  "S.8658c009": {
+    "zh": "分项目显示",
+    "en": "Group by project"
+  },
+  "S.865cf10e": {
+    "zh": "另一台电脑上通过 --listen 暴露的地址",
+    "en": "Address exposed by --listen on another computer"
+  },
+  "S.867698fb": {
+    "zh": "项目名称",
+    "en": "Project name"
+  },
+  "S.86a63f23": {
+    "zh": "外观",
+    "en": "Appearance"
+  },
+  "S.86b6d0d6": {
+    "zh": "正在读取…",
+    "en": "Reading…"
+  },
+  "S.86bbe690": {
+    "zh": "导入设置…",
+    "en": "Import settings…"
+  },
+  "S.885e1ae3": {
+    "zh": "添加审查智能体指引...",
+    "en": "Add review agent guidance…"
+  },
+  "S.8878c78e": {
+    "zh": "思考完成",
+    "en": "Thought"
+  },
+  "S.89089802": {
+    "zh": "无法复制状态文件路径：{0}",
+    "en": "Could not copy the state file path: {0}"
+  },
+  "S.8964f53a": {
+    "zh": "添加项目",
+    "en": "Add project"
+  },
+  "S.899432d8": {
+    "zh": "快捷操作",
+    "en": "Quick actions"
+  },
+  "S.89a47be8": {
+    "zh": "每回合传给 Core 的质量模式；跟随默认时由 Core 配置决定。",
+    "en": "Quality mode sent to Core each turn; Follow default uses the Core configuration."
+  },
+  "S.89ce481a": {
+    "zh": "键盘快捷键",
+    "en": "Keyboard shortcuts"
+  },
+  "S.89dfbafc": {
+    "zh": "导入失败：无法写入说明文件。",
+    "en": "Import failed: could not write the instructions file."
+  },
+  "S.89e47a19": {
+    "zh": "选择 KL 运行命令时的权限范围",
+    "en": "Choose the permission scope for commands KL runs"
+  },
+  "S.8a0302dd": {
+    "zh": "导出失败：{0}",
+    "en": "Export failed: {0}"
+  },
+  "S.8a4ef3e4": {
+    "zh": "已开启",
+    "en": "On"
+  },
+  "S.8a86cd03": {
+    "zh": "调整筛选条件或搜索关键词后再试。",
+    "en": "Adjust the filters or search terms and try again."
+  },
+  "S.8b22196b": {
+    "zh": "KL Core 配置",
+    "en": "KL Core configuration"
+  },
+  "S.8b490cc5": {
+    "zh": "合并显示",
+    "en": "Merge"
+  },
+  "S.8b6f326f": {
+    "zh": "没有匹配的自动化任务",
+    "en": "No matching automations"
+  },
+  "S.8b79f904": {
+    "zh": "切换 Chat / Work",
+    "en": "Switch Chat / Work"
+  },
+  "S.8b84338d": {
+    "zh": "模型 ID",
+    "en": "Model ID"
+  },
+  "S.8ba59ae0": {
+    "zh": "选择按 Enter 时是发送提示词还是换行",
+    "en": "Choose whether Enter sends the prompt or inserts a newline"
+  },
+  "S.8c62901a": {
+    "zh": "选择 KL 访问网络的方式",
+    "en": "Choose how KL accesses the network"
+  },
+  "S.8c7ee2b7": {
+    "zh": "当前项目路径不可用。",
+    "en": "The current project path is unavailable."
+  },
+  "S.8c8762a4": {
+    "zh": "无法定位这条回复对应的用户记录（可能已被压缩、来自 fork 或导入）。",
+    "en": "Could not locate the user record for this reply (it may have been compacted, forked or imported)."
+  },
+  "S.8c88f0dc": {
+    "zh": "审查完成：没有发现问题。",
+    "en": "Review complete: no issues found."
+  },
+  "S.8c90922a": {
+    "zh": "发送给模型的指令",
+    "en": "Instructions sent to the model"
+  },
+  "S.8ccd874e": {
+    "zh": "使用情况和计费",
+    "en": "Usage and billing"
+  },
+  "S.8d088a8e": {
+    "zh": "远程 Core 访问令牌",
+    "en": "Remote Core access token"
+  },
+  "S.8d12fc0d": {
+    "zh": "暂停",
+    "en": "Pause"
+  },
+  "S.8d55a111": {
+    "zh": "删除工作树失败：{0}",
+    "en": "Could not delete worktree: {0}"
+  },
+  "S.8d8dc664": {
+    "zh": "省略 {0} 条消息",
+    "en": "{0} messages omitted"
+  },
+  "S.8da97ddd": {
+    "zh": "开启",
+    "en": "Enable"
+  },
+  "S.8dd3b0f2": {
+    "zh": "管理云端浏览设置和已保存的网站 Cookie",
+    "en": "Manage cloud browser settings and saved site cookies"
+  },
+  "S.8ddcb363": {
+    "zh": "打开此页时读取当前项目的 worktree。",
+    "en": "Reads the current project's worktrees when this page opens."
+  },
+  "S.8e4b39f7": {
+    "zh": "跟随 Core 默认",
+    "en": "Follow Core default"
+  },
+  "S.8f0ad142": {
+    "zh": "打开 config.toml",
+    "en": "Open config.toml"
+  },
+  "S.8f5a2a45": {
+    "zh": "批准策略",
+    "en": "Approval policy"
+  },
+  "S.8f6b85fb": {
+    "zh": "请求地址必须是完整的 http:// 或 https:// 地址。",
+    "en": "The request URL must be a full http:// or https:// address."
+  },
+  "S.8f6f8d97": {
+    "zh": "已复制",
+    "en": "Copied"
+  },
+  "S.8fe2493b": {
+    "zh": "共 {0} 个工作树",
+    "en": "{0} worktrees"
+  },
+  "S.8ff6b8cc": {
+    "zh": "这条消息没有关联的事件记录（可能来自 fork 或导入），只能作为新消息发送。",
+    "en": "This message has no linked event record (it may come from a fork or import) and can only be sent as a new message."
+  },
+  "S.90171aed": {
+    "zh": "KL Core 已连接（{0}）",
+    "en": "KL Core connected ({0})"
+  },
+  "S.904dd029": {
+    "zh": "环境",
+    "en": "Environments"
+  },
+  "S.90951ebe": {
+    "zh": "插入到输入框",
+    "en": "Insert into composer"
+  },
+  "S.909a4f28": {
+    "zh": "本地项目",
+    "en": "Local projects"
+  },
+  "S.90df9f72": {
+    "zh": "没有匹配的文件",
+    "en": "No matching files"
+  },
+  "S.914d29f0": {
+    "zh": "KL Core 暂不支持在回合运行中引导",
+    "en": "KL Core does not support steering a running turn yet"
+  },
+  "S.9198c793": {
+    "zh": "无法绑定终端伪控制台。",
+    "en": "Could not bind the terminal pseudoconsole."
+  },
+  "S.9238a5be": {
+    "zh": "轮次完成通知",
+    "en": "Turn completion notifications"
+  },
+  "S.928f87d4": {
+    "zh": "命令",
+    "en": "Commands"
+  },
+  "S.92cef424": {
+    "zh": "无法读取审计记录：{0}",
+    "en": "Could not read audit records: {0}"
+  },
+  "S.936ed875": {
+    "zh": "管理工作树",
+    "en": "Manage worktrees"
+  },
+  "S.93ee21cf": {
+    "zh": "{0:0.#}k 字符",
+    "en": "{0:0.#}k characters"
+  },
+  "S.9466e900": {
+    "zh": "审查结果",
+    "en": "Review results"
+  },
+  "S.951b445e": {
+    "zh": "运行审查后在此显示结果。",
+    "en": "Results appear here after running a review."
+  },
+  "S.9580d39a": {
+    "zh": "已停止生成本次回复。",
+    "en": "Stopped generating this reply."
+  },
+  "S.95ad5bf3": {
+    "zh": "数据目录",
+    "en": "Data directory"
+  },
+  "S.9634fb08": {
+    "zh": "参数",
+    "en": "Arguments"
+  },
+  "S.96c28e58": {
+    "zh": "远程 KL Core",
+    "en": "Remote KL Core"
+  },
+  "S.97617a49": {
+    "zh": "启动时重新打开上次退出时所在的聊天",
+    "en": "Reopen the last chat on startup"
+  },
+  "S.978c4c44": {
+    "zh": "代码字体大小",
+    "en": "Code font size"
+  },
+  "S.978cbca6": {
+    "zh": "权限",
+    "en": "Permissions"
+  },
+  "S.978fd055": {
+    "zh": "发送完整文件",
+    "en": "Send full files"
+  },
+  "S.979ea66e": {
+    "zh": "运行了命令",
+    "en": "Ran a command"
+  },
+  "S.97b5625a": {
+    "zh": "显示或隐藏集成终端面板",
+    "en": "Show or hide the integrated terminal panel"
+  },
+  "S.97b81b5e": {
+    "zh": "先打开一个会话再查看技能正文。",
+    "en": "Open a session before viewing skill bodies."
+  },
+  "S.97d3d63e": {
+    "zh": "上下文已压缩（省略 {0} 条消息）",
+    "en": "Context compacted ({0} messages omitted)"
+  },
+  "S.97e2f946": {
+    "zh": "恢复或删除单个已归档的聊天",
+    "en": "Restore or delete individual archived chats"
+  },
+  "S.98683495": {
+    "zh": "正在删除工作树…",
+    "en": "Deleting worktree…"
+  },
+  "S.987ec835": {
+    "zh": "TLS 指纹应为 64 位十六进制 SHA-256。",
+    "en": "The TLS fingerprint must be a 64-character hexadecimal SHA-256."
+  },
+  "S.988169bb": {
+    "zh": "配置新聊天的权限、网页访问和智能体回复",
+    "en": "Configure permissions, web access and agent replies for new chats"
+  },
+  "S.99360e74": {
+    "zh": "搜索自动化任务",
+    "en": "Search automations"
+  },
+  "S.9937e365": {
+    "zh": "简体中文",
+    "en": "简体中文"
+  },
+  "S.997a5e6e": {
+    "zh": "最近",
+    "en": "Recent"
+  },
+  "S.9989b4ae": {
+    "zh": "请选择运行间隔。",
+    "en": "Choose a run interval."
+  },
+  "S.999480ce": {
+    "zh": "压缩当前会话的上下文",
+    "en": "Compact the current session's context"
+  },
+  "S.99aea2f9": {
+    "zh": "技能",
+    "en": "Skills"
+  },
+  "S.99cb7da5": {
+    "zh": "请先输入 API Key。",
+    "en": "Enter an API key first."
+  },
+  "S.9a1c8de2": {
+    "zh": "尚无工作树",
+    "en": "No worktrees yet"
+  },
+  "S.9a36b187": {
+    "zh": "模型默认",
+    "en": "Model default"
+  },
+  "S.9ac3ae8d": {
+    "zh": "重命名当前会话",
+    "en": "Rename current session"
+  },
+  "S.9ad0aac3": {
+    "zh": "停止生成",
+    "en": "Stop generating"
+  },
+  "S.9aefab2b": {
+    "zh": "正在打开会话…",
+    "en": "Opening session…"
+  },
+  "S.9b850146": {
+    "zh": "新自动化",
+    "en": "New automation"
+  },
+  "S.9b919de3": {
+    "zh": "tls:// 地址需要服务器启动时打印的证书指纹。",
+    "en": "tls:// addresses require the certificate fingerprint printed at server startup."
+  },
+  "S.9d223b2d": {
+    "zh": "KL Core 执行所有模型调用；这里只保存默认选择和凭据。",
+    "en": "KL Core performs all model calls; only defaults and credentials are stored here."
+  },
+  "S.9d802aa7": {
+    "zh": "完整访问权限已开启",
+    "en": "Full access is on"
+  },
+  "S.9d82c98f": {
+    "zh": "## 用户",
+    "en": "## User"
+  },
+  "S.9e218722": {
+    "zh": "提供方",
+    "en": "Provider"
+  },
+  "S.9e63c63d": {
+    "zh": "已记录用量",
+    "en": "Recorded usage"
+  },
+  "S.9eaa4ecd": {
+    "zh": "登录 Windows 后自动打开 KL",
+    "en": "Open KL automatically after signing in to Windows"
+  },
+  "S.9eb5f3cf": {
+    "zh": "点击“扫描”查找 Codex 或 Claude 的说明文件与用户技能。",
+    "en": "Click Scan to find Codex or Claude instruction files and user skills."
+  },
+  "S.9edb2157": {
+    "zh": "新工作树名称，如 feature/login",
+    "en": "New worktree name, e.g. feature/login"
+  },
+  "S.9ee3c076": {
+    "zh": "无限制",
+    "en": "Unrestricted"
+  },
+  "S.9ef4785b": {
+    "zh": "官网链接",
+    "en": "Website"
+  },
+  "S.9f082c2a": {
+    "zh": "每 {0} 分钟",
+    "en": "Every {0} minutes"
+  },
+  "S.9f4b80e4": {
+    "zh": "无法复制回复：{0}",
+    "en": "Could not copy reply: {0}"
+  },
+  "S.9f56a066": {
+    "zh": "本会话允许",
+    "en": "Allow for this session"
+  },
+  "S.9f608774": {
+    "zh": "KL Core 连接已恢复。",
+    "en": "KL Core connection restored."
+  },
+  "S.9f68ea28": {
+    "zh": "还没有记录到用量",
+    "en": "No usage recorded yet"
+  },
+  "S.9f6fee1a": {
+    "zh": "语言",
+    "en": "Language"
+  },
+  "S.9fedfb54": {
+    "zh": "设置 KL 完成后何时提醒你",
+    "en": "Choose when KL notifies you that it finished"
+  },
+  "S.a0c77166": {
+    "zh": "你",
+    "en": "You"
+  },
+  "S.a0f79e91": {
+    "zh": "审计日志",
+    "en": "Audit log"
+  },
+  "S.a13420b8": {
+    "zh": "KL Core 不可用：{0}",
+    "en": "KL Core unavailable: {0}"
+  },
+  "S.a153567f": {
+    "zh": "工作空间依赖项",
+    "en": "Workspace dependencies"
+  },
+  "S.a1b7609c": {
+    "zh": "官网链接必须是完整的 http:// 或 https:// 地址。",
+    "en": "The website must be a full http:// or https:// address."
+  },
+  "S.a1d1b17f": {
+    "zh": "已保存。下一个回合生效。",
+    "en": "Saved. Applies from the next turn."
+  },
+  "S.a1e87f0e": {
+    "zh": "记忆内容",
+    "en": "Memory content"
+  },
+  "S.a21f63e7": {
+    "zh": "与服务器 --token 的值一致；本机地址可留空",
+    "en": "Must match the server's --token value; leave empty for local addresses"
+  },
+  "S.a24c68da": {
+    "zh": "没有找到可导入项。",
+    "en": "No importable items found."
+  },
+  "S.a251448a": {
+    "zh": "分支",
+    "en": "Branch"
+  },
+  "S.a28f70e8": {
+    "zh": "上下文窗口必须是正整数。",
+    "en": "The context window must be a positive integer."
+  },
+  "S.a2c1be71": {
+    "zh": "备份不包含 API 密钥；导入后重启 KL 生效",
+    "en": "Backup excludes API keys; restart KL after importing"
+  },
+  "S.a2cfd5c2": {
+    "zh": "在此电脑上添加文件夹",
+    "en": "Add a folder on this computer"
+  },
+  "S.a2d3a4ee": {
+    "zh": "不再显示",
+    "en": "Don't show again"
+  },
+  "S.a2e7cd00": {
+    "zh": "扫描失败：{0}",
+    "en": "Scan failed: {0}"
+  },
+  "S.a3030bf8": {
+    "zh": "保存",
+    "en": "Save"
+  },
+  "S.a332b694": {
+    "zh": "查看工作副本，并选择要保留的旧工作树数量",
+    "en": "Inspect working copies and choose how many old worktrees to keep"
+  },
+  "S.a3434acd": {
+    "zh": "存储",
+    "en": "Storage"
+  },
+  "S.a35df9be": {
+    "zh": "删除本机上的全部 KL 记忆",
+    "en": "Delete all KL memory on this machine"
+  },
+  "S.a3ea3c17": {
+    "zh": "确认删除",
+    "en": "Confirm delete"
+  },
+  "S.a49424ea": {
+    "zh": "\r\n\u001b[31m无法启动终端：{0}\u001b[0m\r\n",
+    "en": "\r\n\u001b[31mCould not start terminal: {0}\u001b[0m\r\n"
+  },
+  "S.a5447ecd": {
+    "zh": "减少动画效果或匹配系统设置",
+    "en": "Reduce animation or match the system setting"
+  },
+  "S.a5574109": {
+    "zh": "连接",
+    "en": "Connections"
+  },
+  "S.a567bdaa": {
+    "zh": "中",
+    "en": "Medium"
+  },
+  "S.a57cfcb8": {
+    "zh": "帮助",
+    "en": "Help"
+  },
+  "S.a58a73fa": {
+    "zh": "切换终端面板",
+    "en": "Toggle terminal panel"
+  },
+  "S.a5be7728": {
+    "zh": "请填写提供商名称。",
+    "en": "Enter a provider name."
+  },
+  "S.a621ab60": {
+    "zh": "密码",
+    "en": "Password"
+  },
+  "S.a6735826": {
+    "zh": "当前工作区没有技能",
+    "en": "No skills in the current workspace"
+  },
+  "S.a6e4f7bf": {
+    "zh": "与 KL Core 的连接中断：{0}",
+    "en": "Connection to KL Core was interrupted: {0}"
+  },
+  "S.a707d646": {
+    "zh": "清理旧聊天",
+    "en": "Clean up old chats"
+  },
+  "S.a72bea78": {
+    "zh": "新聊天",
+    "en": "New chat"
+  },
+  "S.a73817f1": {
+    "zh": "输入至少 2 个字符搜索文件",
+    "en": "Type at least 2 characters to search files"
+  },
+  "S.a84b4042": {
+    "zh": "无法读取记忆：{0}",
+    "en": "Could not read memory: {0}"
+  },
+  "S.a89152a8": {
+    "zh": "找到 {0} 个匹配插件。",
+    "en": "Found {0} matching plugins."
+  },
+  "S.a8a7ab15": {
+    "zh": "KL 可以在未经你批准的情况下编辑任何文件，并通过互联网访问权限运行命令。这会增加数据丢失、信息暴露和意外更改的风险。",
+    "en": "KL can edit any file without your approval and run commands with internet access. This increases the risk of data loss, exposure and unintended changes."
+  },
+  "S.a8b6c39d": {
+    "zh": "已安装",
+    "en": "Installed"
+  },
+  "S.a8b8730c": {
+    "zh": "正在生成…",
+    "en": "Generating…"
+  },
+  "S.a8c3698b": {
+    "zh": "已停用",
+    "en": "Disabled"
+  },
+  "S.a8c81f93": {
+    "zh": "浏览",
+    "en": "Browse"
+  },
+  "S.a8ca3c13": {
+    "zh": "工具调用",
+    "en": "Tool call"
+  },
+  "S.a8ed2ca2": {
+    "zh": "插件导入",
+    "en": "Plugin import"
+  },
+  "S.a8f39630": {
+    "zh": "保存会写入 KL Core 配置。",
+    "en": "Saving writes to the KL Core configuration."
+  },
+  "S.a9606415": {
+    "zh": "添加提供商",
+    "en": "Add provider"
+  },
+  "S.a9c3bf39": {
+    "zh": "选择审查发现问题的严格程度",
+    "en": "Choose how strictly review findings are reported"
+  },
+  "S.a9de074d": {
+    "zh": "\n\n[文件内容已截断]",
+    "en": "\n\n[File contents truncated]"
+  },
+  "S.aa182c94": {
+    "zh": "可不受限制地访问互联网和你电脑上的任何文件",
+    "en": "Unrestricted access to the internet and any file on your computer"
+  },
+  "S.aa1e899d": {
+    "zh": "橙色",
+    "en": "Orange"
+  },
+  "S.aa470887": {
+    "zh": "最大输出 tokens 必须是正整数。",
+    "en": "Max output tokens must be a positive integer."
+  },
+  "S.aa55960e": {
+    "zh": "简洁",
+    "en": "Concise"
+  },
+  "S.aa9caa29": {
+    "zh": "所选目录中没有 plugin.json 或 manifest.json。",
+    "en": "The selected directory has no plugin.json or manifest.json."
+  },
+  "S.aa9e366f": {
+    "zh": "低",
+    "en": "Low"
+  },
+  "S.ab274251": {
+    "zh": "从不",
+    "en": "Never"
+  },
+  "S.abb4b3c0": {
+    "zh": "Core 未加载",
+    "en": "Not loaded by Core"
+  },
+  "S.abc1e01b": {
+    "zh": "导出 GUI 设置、工作区、聊天记录和本地提示词；导入会先自动备份当前设置",
+    "en": "Export GUI settings, workspaces, chats and local prompts; import backs up current settings first"
+  },
+  "S.ac239c3a": {
+    "zh": "将所有外观设置恢复为默认值",
+    "en": "Restore all appearance settings to defaults"
+  },
+  "S.ac29e57a": {
+    "zh": "最小化",
+    "en": "Minimize"
+  },
+  "S.ac43b401": {
+    "zh": "删除“{0}”？此操作无法撤销。",
+    "en": "Delete “{0}”? This cannot be undone."
+  },
+  "S.acbc4f53": {
+    "zh": "远程 KL Core 模式下{0}不可用（该操作只能作用于 Core 所在机器）。",
+    "en": "In remote KL Core mode, {0} is unavailable (it can only act on the machine running Core)."
+  },
+  "S.acdc74cc": {
+    "zh": "压缩上下文失败：{0}",
+    "en": "Could not compact context: {0}"
+  },
+  "S.ace4ea4b": {
+    "zh": "以压缩格式保存 GUI 聊天记录和设置，以节省磁盘空间。",
+    "en": "Store GUI chats and settings compressed to save disk space."
+  },
+  "S.ad04a36d": {
+    "zh": "已搜索文件",
+    "en": "Searched files"
+  },
+  "S.adbb03cb": {
+    "zh": "KL 会话",
+    "en": "KL session"
+  },
+  "S.adf263ec": {
+    "zh": "每小时",
+    "en": "Every hour"
+  },
+  "S.ae0e1574": {
+    "zh": "删除提供商",
+    "en": "Delete provider"
+  },
+  "S.ae4ab324": {
+    "zh": "保存连接配置失败：{0}",
+    "en": "Could not save connection configuration: {0}"
+  },
+  "S.ae67e467": {
+    "zh": "请填写供应商名称。",
+    "en": "Enter a provider name."
+  },
+  "S.aed83b8d": {
+    "zh": "没有已归档的聊天",
+    "en": "No archived chats"
+  },
+  "S.aee88743": {
+    "zh": "刷新",
+    "en": "Refresh"
+  },
+  "S.afbad96e": {
+    "zh": "API Key 已配置（由 KL Core 管理）",
+    "en": "API key configured (managed by KL Core)"
+  },
+  "S.affb6f10": {
+    "zh": "选择 KL 回复包含细节的详细程度",
+    "en": "Choose how much detail KL includes in replies"
+  },
+  "S.b067526e": {
+    "zh": "最近更新",
+    "en": "Last updated"
+  },
+  "S.b068685e": {
+    "zh": "随心输入",
+    "en": "Type anything"
+  },
+  "S.b096842c": {
+    "zh": "自动换行",
+    "en": "Wrap lines"
+  },
+  "S.b10fc937": {
+    "zh": "从提供商支持的 /models 地址读取可用模型（失败时会尝试 /modul）。",
+    "en": "Read available models from the provider's /models endpoint (falls back to /modul)."
+  },
+  "S.b1113ba9": {
+    "zh": "添加模型后，KL 才能在聊天中选择它。",
+    "en": "Add a model before KL can select it in chats."
+  },
+  "S.b1c27820": {
+    "zh": "高",
+    "en": "High"
+  },
+  "S.b1ddbdca": {
+    "zh": "用户记忆对所有项目生效；工作区记忆只属于当前项目。",
+    "en": "User memory applies to all projects; workspace memory belongs only to the current project."
+  },
+  "S.b23ae6f8": {
+    "zh": "未提供说明",
+    "en": "No description"
+  },
+  "S.b2a51912": {
+    "zh": "本机 Core（未配置远程）",
+    "en": "Local Core (no remote configured)"
+  },
+  "S.b2e995d1": {
+    "zh": "刷新技能",
+    "en": "Refresh skills"
+  },
+  "S.b333ac65": {
+    "zh": "正在检查 KL Core…",
+    "en": "Checking KL Core…"
+  },
+  "S.b3db904f": {
+    "zh": "无法启动 {0}（错误 {1}）。",
+    "en": "Could not start {0} (error {1})."
+  },
+  "S.b3e205ce": {
+    "zh": "创建工作树",
+    "en": "Create worktree"
+  },
+  "S.b405227c": {
+    "zh": "备注（可选）",
+    "en": "Notes (optional)"
+  },
+  "S.b47874e0": {
+    "zh": "当对话中有人提问时显示提醒",
+    "en": "Show an alert when someone asks a question in the conversation"
+  },
+  "S.b50f9c91": {
+    "zh": "诊断发现问题。",
+    "en": "Diagnostics found problems."
+  },
+  "S.b5141d3d": {
+    "zh": "是",
+    "en": "Yes"
+  },
+  "S.b5588001": {
+    "zh": "选择 KL 何时请求批准",
+    "en": "Choose when KL asks for approval"
+  },
+  "S.b5652753": {
+    "zh": "压缩阈值",
+    "en": "Compaction threshold"
+  },
+  "S.b5ac5877": {
+    "zh": "模型 URL 使用完整的 chat/completions、messages 或 responses 地址。",
+    "en": "Model URLs use full chat/completions, messages or responses endpoints."
+  },
+  "S.b5bfc55b": {
+    "zh": "使用 Chat",
+    "en": "Use Chat"
+  },
+  "S.b5ea27fe": {
+    "zh": "地址格式应为 tcp:// 或 tls://主机:端口。",
+    "en": "The address must be tcp:// or tls://host:port."
+  },
+  "S.b614387a": {
+    "zh": "说明文件为空，已跳过。",
+    "en": "The instructions file is empty; skipped."
+  },
+  "S.b62bbec2": {
+    "zh": "运行代码审查",
+    "en": "Run code review"
+  },
+  "S.b63b9946": {
+    "zh": "删除自动化“{0}”？历史运行结果也会一起删除。",
+    "en": "Delete automation “{0}”? Its run history will also be deleted."
+  },
+  "S.b70d059b": {
+    "zh": "还没有审计记录。",
+    "en": "No audit records yet."
+  },
+  "S.b71d0d10": {
+    "zh": "供应商凭据",
+    "en": "Provider credentials"
+  },
+  "S.b7803384": {
+    "zh": "将一段时间未活动的本地聊天归档",
+    "en": "Archive local chats inactive for a while"
+  },
+  "S.b7cbb752": {
+    "zh": "选择包含 plugin.json 的插件目录",
+    "en": "Choose a plugin directory containing plugin.json"
+  },
+  "S.b7dfbccf": {
+    "zh": "尚未接入模型提供商。",
+    "en": "No model provider connected yet."
+  },
+  "S.b7f7daca": {
+    "zh": "请填写请求地址。",
+    "en": "Enter the request URL."
+  },
+  "S.b8784c8d": {
+    "zh": "重试",
+    "en": "Retry"
+  },
+  "S.b8ea4883": {
+    "zh": "API Key 已配置",
+    "en": "API key configured"
+  },
+  "S.b8f945ea": {
+    "zh": "连接状态",
+    "en": "Connection status"
+  },
+  "S.b90c7258": {
+    "zh": "仅在使用“关闭”快捷键时",
+    "en": "Only with the close shortcut"
+  },
+  "S.b9237a33": {
+    "zh": "另一客户端仍在写入此会话，请稍后再试。",
+    "en": "Another client is still writing to this session; try again later."
+  },
+  "S.b9673097": {
+    "zh": "记忆摘要",
+    "en": "Memory summaries"
+  },
+  "S.b9934ad3": {
+    "zh": "通过 SSH 连接远程主机时会话将显示在此处",
+    "en": "Sessions from SSH remote hosts appear here"
+  },
+  "S.b99f178f": {
+    "zh": "打开此页时从 KL Core 读取。",
+    "en": "Reads from KL Core when this page opens."
+  },
+  "S.baa8dd59": {
+    "zh": "未找到 Git Bash；请安装 Git for Windows 或改用其他 Shell。",
+    "en": "Git Bash not found; install Git for Windows or choose another shell."
+  },
+  "S.bafeb8cd": {
+    "zh": "标记该轮对话",
+    "en": "Mark this turn"
+  },
+  "S.bb074b86": {
+    "zh": "上下文窗口",
+    "en": "Context window"
+  },
+  "S.bb6686c6": {
+    "zh": "搜索聊天或运行命令",
+    "en": "Search chats or run a command"
+  },
+  "S.bb6d9957": {
+    "zh": "管理",
+    "en": "Manage"
+  },
+  "S.bbfcf968": {
+    "zh": "无法创建 ConPTY（0x{0:X8}）。",
+    "en": "Could not create ConPTY (0x{0:X8})."
+  },
+  "S.bc132600": {
+    "zh": "导出设置…",
+    "en": "Export settings…"
+  },
+  "S.bce23772": {
+    "zh": "清除",
+    "en": "Clear"
+  },
+  "S.bd2ac253": {
+    "zh": "{0}（文件过大）",
+    "en": "{0} (file too large)"
+  },
+  "S.bd676dfe": {
+    "zh": "{0} 字符",
+    "en": "{0} characters"
+  },
+  "S.be1aa832": {
+    "zh": "切换置顶状态",
+    "en": "Toggle pin"
+  },
+  "S.be235f67": {
+    "zh": "取消归档",
+    "en": "Unarchive"
+  },
+  "S.be37d841": {
+    "zh": "动作",
+    "en": "Action"
+  },
+  "S.beb4816b": {
+    "zh": "选择 ",
+    "en": "Choose "
+  },
+  "S.bf004c06": {
+    "zh": "没有 30 天前未活动的聊天",
+    "en": "No chats inactive for 30 days"
+  },
+  "S.bf2431e3": {
+    "zh": "永不",
+    "en": "Never"
+  },
+  "S.bf508fed": {
+    "zh": "使用指针光标",
+    "en": "Use pointer cursor"
+  },
+  "S.bf962b2b": {
+    "zh": "当前项目",
+    "en": "Current project"
+  },
+  "S.bfc7a40c": {
+    "zh": "该模型没有对应的 Provider，无法切换。",
+    "en": "This model has no matching provider and cannot be selected."
+  },
+  "S.bff3ea77": {
+    "zh": "思考 max",
+    "en": "Reasoning max"
+  },
+  "S.c01d0e3e": {
+    "zh": "了解更多关于风险升高的信息。",
+    "en": "Learn more about elevated risk."
+  },
+  "S.c0792357": {
+    "zh": "KL 可能会使用记忆功能，对发送给搜索服务的查询进行个性化处理。",
+    "en": "KL may use memory to personalize queries sent to search services."
+  },
+  "S.c0b3fbff": {
+    "zh": "完成",
+    "en": "Done"
+  },
+  "S.c12e3e91": {
+    "zh": "技能超过 2 MB，已跳过。",
+    "en": "The skill exceeds 2 MB; skipped."
+  },
+  "S.c12e7500": {
+    "zh": "打开源目录",
+    "en": "Open source directory"
+  },
+  "S.c18f65be": {
+    "zh": "使用 tls:// 时必填：KL Core 启动时打印的证书 SHA-256。tcp:// 地址请留空。",
+    "en": "Required for tls://: the certificate SHA-256 printed when KL Core starts. Leave empty for tcp://."
+  },
+  "S.c191d033": {
+    "zh": "亲切程度",
+    "en": "Warmth"
+  },
+  "S.c1aa5ceb": {
+    "zh": "控制此电脑",
+    "en": "Control this computer"
+  },
+  "S.c1f9e9fc": {
+    "zh": "保存失败：{0}",
+    "en": "Save failed: {0}"
+  },
+  "S.c20560ad": {
+    "zh": "编辑所选机器上的 AGENTS.md 文件。代码仓库的说明也可能适用。",
+    "en": "Edit the AGENTS.md file on the selected machine. Repository instructions may also apply."
+  },
+  "S.c2171e4a": {
+    "zh": "请选择要设为默认的模型。",
+    "en": "Choose the model to set as default."
+  },
+  "S.c2296a3a": {
+    "zh": "创建 worktree",
+    "en": "Create worktree"
+  },
+  "S.c2b21cd4": {
+    "zh": "编辑自动化任务",
+    "en": "Edit automation"
+  },
+  "S.c2bf03dd": {
+    "zh": "推理摘要",
+    "en": "Reasoning summaries"
+  },
+  "S.c2dbfda5": {
+    "zh": "在会话标题栏显示本会话的 token 用量",
+    "en": "Show this session's token usage in the session header"
+  },
+  "S.c2de0e29": {
+    "zh": "诊断通过。",
+    "en": "Diagnostics passed."
+  },
+  "S.c2f9363d": {
+    "zh": "已连接的工具",
+    "en": "Connected tools"
+  },
+  "S.c306f7fa": {
+    "zh": "连接中断",
+    "en": "Connection interrupted"
+  },
+  "S.c3ed949e": {
+    "zh": "最多附加 {0} 个文件",
+    "en": "Attach at most {0} files"
+  },
+  "S.c48930fc": {
+    "zh": "审查失败：{0}",
+    "en": "Review failed: {0}"
+  },
+  "S.c5327e21": {
+    "zh": "请等待当前回合结束后再重新生成。",
+    "en": "Wait for the current turn to finish before regenerating."
+  },
+  "S.c53c8ce6": {
+    "zh": "无法连接 KL Core：{0}",
+    "en": "Could not connect to KL Core: {0}"
+  },
+  "S.c55746be": {
+    "zh": "创建与清理",
+    "en": "Create and clean up"
+  },
+  "S.c57c30bc": {
+    "zh": "新会话",
+    "en": "New session"
+  },
+  "S.c5a93ed9": {
+    "zh": "应用数据文件夹",
+    "en": "App data folder"
+  },
+  "S.c5abb65d": {
+    "zh": "保存 Key",
+    "en": "Save key"
+  },
+  "S.c5f9bd71": {
+    "zh": "当对话需要你批准时显示提醒",
+    "en": "Show an alert when the conversation needs your approval"
+  },
+  "S.c65a9409": {
+    "zh": "KL 可以在未经你批准的情况下编辑任何文件，并通过互联网访问权限运行命令。这会增加数据丢失、信息暴露和意外更改的风险。了解更多关于风险升高的信息。",
+    "en": "KL can edit any file without your approval and run commands with internet access. This increases the risk of data loss, exposure and unintended changes. Learn more about elevated risk."
+  },
+  "S.c6b2b6e8": {
+    "zh": "选择工作区",
+    "en": "Choose workspace"
+  },
+  "S.c6d8df5b": {
+    "zh": "按 Enter 键",
+    "en": "Press Enter"
+  },
+  "S.c7092c51": {
+    "zh": "中等",
+    "en": "Medium"
+  },
+  "S.c7225dbf": {
+    "zh": "附件",
+    "en": "Attachments"
+  },
+  "S.c76806a9": {
+    "zh": "复制最后一个代码块",
+    "en": "Copy the last code block"
+  },
+  "S.c771248e": {
+    "zh": "打开",
+    "en": "Open"
+  },
+  "S.c7c27be8": {
+    "zh": "已归档聊天",
+    "en": "Archived chats"
+  },
+  "S.c7c3af94": {
+    "zh": "当前工作区的技能由 KL Core 发现",
+    "en": "Skills in the current workspace are discovered by KL Core"
+  },
+  "S.c7daf0a8": {
+    "zh": "模型没有返回可保存的正文结果。",
+    "en": "The model returned no content to save."
+  },
+  "S.c7ea2c9b": {
+    "zh": "编辑模型",
+    "en": "Edit model"
+  },
+  "S.c7fd0d60": {
+    "zh": "我们要做什么?",
+    "en": "What should we do?"
+  },
+  "S.c86434f8": {
+    "zh": "思考 minimal",
+    "en": "Reasoning minimal"
+  },
+  "S.c8a5fb8e": {
+    "zh": "后续消息处理方式",
+    "en": "How to handle follow-up messages"
+  },
+  "S.c8a8b2de": {
+    "zh": "命令提示符",
+    "en": "Command prompt"
+  },
+  "S.c8afdcec": {
+    "zh": "KL 创建新分支时使用的前缀",
+    "en": "Prefix KL uses when creating new branches"
+  },
+  "S.c8c14507": {
+    "zh": "推理强度",
+    "en": "Reasoning effort"
+  },
+  "S.c8d6e3a7": {
+    "zh": "思考 high",
+    "en": "Reasoning high"
+  },
+  "S.c93734ce": {
+    "zh": "正在写入 {0}…",
+    "en": "Writing {0}…"
+  },
+  "S.c98e118e": {
+    "zh": "模型",
+    "en": "Model"
+  },
+  "S.c9cbf04b": {
+    "zh": "KL Core 连接失败：{0}",
+    "en": "KL Core connection failed: {0}"
+  },
+  "S.ca3634c7": {
+    "zh": "详细",
+    "en": "Detailed"
+  },
+  "S.ca5c524b": {
+    "zh": "关闭窗口会停止正在运行的回合，并断开与 KL Core 的连接。",
+    "en": "Closing the window stops the running turn and disconnects from KL Core."
+  },
+  "S.ca66c2da": {
+    "zh": "了解更多",
+    "en": "Learn more"
+  },
+  "S.ca7dd03c": {
+    "zh": "项目 AGENTS.md",
+    "en": "Project AGENTS.md"
+  },
+  "S.cab9e0fa": {
+    "zh": "当 KL 以完整访问权限运行时，它无需你的批准即可编辑你电脑上的任何文件，并运行可访问网络的命令。这会显著增加数据丢失、泄露或意外行为的风险。了解更多关于风险升高的信息。",
+    "en": "When KL runs with full access, it can edit any file on your computer without your approval and run commands with network access. This significantly increases the risk of data loss, exposure or unintended behavior. Learn more about elevated risk."
+  },
+  "S.cb12c426": {
+    "zh": "输入名称与内容后保存。",
+    "en": "Enter a name and content, then save."
+  },
+  "S.cb62ebd6": {
+    "zh": "当前",
+    "en": "Current"
+  },
+  "S.cbb2ff38": {
+    "zh": "供应商名称",
+    "en": "Provider name"
+  },
+  "S.cc251c51": {
+    "zh": "模型 URL 必须是完整的 http:// 或 https:// 地址。",
+    "en": "The model URL must be a full http:// or https:// address."
+  },
+  "S.cc26991c": {
+    "zh": "按间隔让 KL Core 自动执行任务并保存结果",
+    "en": "Have KL Core run tasks on an interval and save results"
+  },
+  "S.cc4f9580": {
+    "zh": "已发现",
+    "en": "Found"
+  },
+  "S.cc828d9d": {
+    "zh": "显示/隐藏侧边栏",
+    "en": "Show/hide sidebar"
+  },
+  "S.ccd48797": {
+    "zh": "说明文件",
+    "en": "Instructions file"
+  },
+  "S.cd23723e": {
+    "zh": "这个提供商还没有模型",
+    "en": "This provider has no models yet"
+  },
+  "S.cd3c2b7d": {
+    "zh": "思考 ultra",
+    "en": "Reasoning ultra"
+  },
+  "S.cd708c7e": {
+    "zh": "任务指令不能为空。",
+    "en": "Task instructions cannot be empty."
+  },
+  "S.cda0ef47": {
+    "zh": "保存指令",
+    "en": "Save instructions"
+  },
+  "S.cdb90842": {
+    "zh": "发送 Ctrl+Enter",
+    "en": "Send with Ctrl+Enter"
+  },
+  "S.cdcc37a4": {
+    "zh": "该目录已经位于插件管理目录中。",
+    "en": "That directory is already inside the plugin directory."
+  },
+  "S.ce1a4778": {
+    "zh": "无法读取 hooks.toml：{0}",
+    "en": "Could not read hooks.toml: {0}"
+  },
+  "S.cf04abaa": {
+    "zh": "本地用量",
+    "en": "Local usage"
+  },
+  "S.cf6e7879": {
+    "zh": "worktree 列表",
+    "en": "Worktree list"
+  },
+  "S.cf7c76fb": {
+    "zh": "以下统计的是本机 GUI 数据；远程 Core 的会话与附件在服务器上。",
+    "en": "The statistics below cover local GUI data; remote Core sessions and attachments live on the server."
+  },
+  "S.cfb27d69": {
+    "zh": "选择项目进入对话",
+    "en": "Choose a project to start chatting"
+  },
+  "S.d03438b7": {
+    "zh": "未命名条目",
+    "en": "Untitled item"
+  },
+  "S.d0448138": {
+    "zh": "费用（USD）",
+    "en": "Cost (USD)"
+  },
+  "S.d06ebcee": {
+    "zh": "默认模型已切换为 {0} / {1}。",
+    "en": "Default model switched to {0} / {1}."
+  },
+  "S.d0b94a30": {
+    "zh": "插件文件已复制，但 KL Core 未能载入：{0}",
+    "en": "Plugin files were copied, but KL Core could not load them: {0}"
+  },
+  "S.d0c87090": {
+    "zh": "配置 KL 在本机管理记忆的方式",
+    "en": "Configure how KL manages memory on this machine"
+  },
+  "S.d0e28567": {
+    "zh": "暂无聊天",
+    "en": "No chats"
+  },
+  "S.d10ec81b": {
+    "zh": "在资源管理器中打开",
+    "en": "Open in file explorer"
+  },
+  "S.d1a46579": {
+    "zh": "严格隔离",
+    "en": "Strict isolation"
+  },
+  "S.d20753bd": {
+    "zh": "连接配置已写入 KL Core；重新连接后应用到聊天。",
+    "en": "Connection settings written to KL Core; reconnect to apply them to chats."
+  },
+  "S.d22d7532": {
+    "zh": "无法连接 KL Core 会话。",
+    "en": "Could not connect the KL Core session."
+  },
+  "S.d269feb0": {
+    "zh": "取消请求失败：{0}",
+    "en": "Could not cancel: {0}"
+  },
+  "S.d2909f16": {
+    "zh": "其他",
+    "en": "Other"
+  },
+  "S.d2e45c95": {
+    "zh": "底部面板",
+    "en": "Bottom panel"
+  },
+  "S.d36946e0": {
+    "zh": "压缩上下文",
+    "en": "Compact context"
+  },
+  "S.d36b3a9b": {
+    "zh": "允许网络访问",
+    "en": "Allow network access"
+  },
+  "S.d36f463e": {
+    "zh": "还没有记忆条目",
+    "en": "No memory entries yet"
+  },
+  "S.d37bab70": {
+    "zh": "亲切",
+    "en": "Warm"
+  },
+  "S.d3f55af5": {
+    "zh": "根据本机上的聊天创建记忆，并使用这些记忆为此后的本地聊天提供个性化体验",
+    "en": "Create memories from chats on this machine and use them to personalize future local chats"
+  },
+  "S.d3fa4eda": {
+    "zh": "删除工作树？",
+    "en": "Delete worktree?"
+  },
+  "S.d42d6cb4": {
+    "zh": "API Key（可选）",
+    "en": "API key (optional)"
+  },
+  "S.d44e9b3d": {
+    "zh": "名称",
+    "en": "Name"
+  },
+  "S.d451c07d": {
+    "zh": "黄色",
+    "en": "Yellow"
+  },
+  "S.d463f14e": {
+    "zh": "无法更新开机启动设置。",
+    "en": "Could not update the launch-at-login setting."
+  },
+  "S.d4991789": {
+    "zh": "自定义指令",
+    "en": "Custom instructions"
+  },
+  "S.d4db4017": {
+    "zh": "来自 {0} 的说明文件",
+    "en": "Instructions file from {0}"
+  },
+  "S.d51250d1": {
+    "zh": "删除会话",
+    "en": "Delete session"
+  },
+  "S.d55a2896": {
+    "zh": "尚未接入模型提供商",
+    "en": "No model provider connected yet"
+  },
+  "S.d58a57c2": {
+    "zh": "审批：{0}",
+    "en": "Approval: {0}"
+  },
+  "S.d5f5a7a0": {
+    "zh": "今天",
+    "en": "Today"
+  },
+  "S.d63307a8": {
+    "zh": "基础风格和语气",
+    "en": "Base style and tone"
+  },
+  "S.d675d622": {
+    "zh": "与界面字体相同",
+    "en": "Same as interface font"
+  },
+  "S.d681c6e2": {
+    "zh": "前进",
+    "en": "Forward"
+  },
+  "S.d6e22702": {
+    "zh": "插件已载入 KL Core。",
+    "en": "Plugin loaded by KL Core."
+  },
+  "S.d6e61888": {
+    "zh": "高级",
+    "en": "Advanced"
+  },
+  "S.d6fd5187": {
+    "zh": " 运行命令时的权限范围",
+    "en": " permission scope for running commands"
+  },
+  "S.d73e4b5d": {
+    "zh": "KL Core 没有返回新会话 ID。",
+    "en": "KL Core did not return a new session ID."
+  },
+  "S.d778caa9": {
+    "zh": "调整 KL 聊天内容的字号",
+    "en": "Font size for KL chat content"
+  },
+  "S.d784b8b7": {
+    "zh": "复制回复",
+    "en": "Copy reply"
+  },
+  "S.d79b1d0e": {
+    "zh": "已结束",
+    "en": "Ended"
+  },
+  "S.d79f12b7": {
+    "zh": " 以完整访问权限运行时，它无需你的批准即可编辑你电脑上的任何文件，并运行可访问网络的命令。这会显著增加数据丢失、泄露或意外行为的风险。了解更多关于风险升高的信息。",
+    "en": " runs with full access, it can edit any file on your computer without approval and run commands with network access. This significantly increases the risk of data loss, exposure or unintended behavior. Learn more about elevated risk."
+  },
+  "S.d7c2301e": {
+    "zh": "全局指令会附加到每次请求的系统提示中，保存后下一个回合生效。",
+    "en": "Global instructions are added to the system prompt of every request and apply from the next turn after saving."
+  },
+  "S.d86d4d5c": {
+    "zh": "删除 KL 记忆",
+    "en": "Delete KL memory"
+  },
+  "S.d8ca12c7": {
+    "zh": "需要先打开一个聊天会话，然后点刷新。",
+    "en": "Open a chat session first, then click refresh."
+  },
+  "S.da1aacb8": {
+    "zh": "请填写 {0} 的请求地址。",
+    "en": "Enter the request URL for {0}."
+  },
+  "S.da99ea13": {
+    "zh": "打开数据目录",
+    "en": "Open data directory"
+  },
+  "S.daa6d02a": {
+    "zh": "资源",
+    "en": "Resources"
+  },
+  "S.daede988": {
+    "zh": "备注",
+    "en": "Notes"
+  },
+  "S.daf3304c": {
+    "zh": "复制当前聊天中助手提供的最后一个代码块",
+    "en": "Copy the last code block from the assistant in this chat"
+  },
+  "S.daf5103f": {
+    "zh": "重新扫描",
+    "en": "Rescan"
+  },
+  "S.dafbf7fc": {
+    "zh": "输入至少 2 个字符搜索文本",
+    "en": "Type at least 2 characters to search text"
+  },
+  "S.db03684b": {
+    "zh": "附件会话",
+    "en": "Attached session"
+  },
+  "S.db8db053": {
+    "zh": "查看",
+    "en": "View"
+  },
+  "S.db945cfe": {
+    "zh": "快速",
+    "en": "Fast"
+  },
+  "S.dbb542c2": {
+    "zh": "已重新载入 {0}。",
+    "en": "Reloaded {0}."
+  },
+  "S.dbcd9805": {
+    "zh": "连接超时：10 秒内没有收到响应。",
+    "en": "Connection timed out: no response within 10 seconds."
+  },
+  "S.dbd379b3": {
+    "zh": "粉色",
+    "en": "Pink"
+  },
+  "S.dc248742": {
+    "zh": "沙箱阻止了操作：{0}",
+    "en": "The sandbox blocked the operation: {0}"
+  },
+  "S.dcc045b9": {
+    "zh": "恢复默认快捷键",
+    "en": "Restore default shortcuts"
+  },
+  "S.dd6c0f50": {
+    "zh": "KL Core 会话尚未建立。",
+    "en": "The KL Core session is not established yet."
+  },
+  "S.dd818618": {
+    "zh": "文本",
+    "en": "Text"
+  },
+  "S.dd852805": {
+    "zh": "无法恢复 KL Core 会话：{0}",
+    "en": "Could not restore the KL Core session: {0}"
+  },
+  "S.ddda9c0d": {
+    "zh": "TLS 指纹",
+    "en": "TLS fingerprint"
+  },
+  "S.de6785d9": {
+    "zh": "刚刚",
+    "en": "Just now"
+  },
+  "S.deb46d83": {
+    "zh": "请先打开一个 KL Core 会话，再复制为分支。",
+    "en": "Open a KL Core session before copying it as a fork."
+  },
+  "S.df359a6a": {
+    "zh": "通过配置和已启用的插件管理生命周期钩子。",
+    "en": "Manage lifecycle hooks through configuration and enabled plugins."
+  },
+  "S.df3d58c7": {
+    "zh": "设置",
+    "en": "Settings"
+  },
+  "S.df3d7f3a": {
+    "zh": "未标注版本",
+    "en": "No version"
+  },
+  "S.df7d1665": {
+    "zh": "已加入开机启动。",
+    "en": "Launch at login enabled."
+  },
+  "S.dfa5387c": {
+    "zh": "编辑外部文件和使用互联网时始终询问",
+    "en": "Always ask before editing external files or using the internet"
+  },
+  "S.dfb80223": {
+    "zh": "已启用",
+    "en": "Enabled"
+  },
+  "S.dfc2cde5": {
+    "zh": "官网链接（可选）",
+    "en": "Website (optional)"
+  },
+  "S.dfd5de41": {
+    "zh": "删除工作树",
+    "en": "Delete worktree"
+  },
+  "S.e02966b3": {
+    "zh": "恢复上次会话",
+    "en": "Restore last session"
+  },
+  "S.e1fa1bf0": {
+    "zh": "正在计算…",
+    "en": "Calculating…"
+  },
+  "S.e26074a4": {
+    "zh": "运行间隔",
+    "en": "Interval"
+  },
+  "S.e29efe02": {
+    "zh": "导入失败：无法复制技能目录。",
+    "en": "Import failed: could not copy the skill directory."
+  },
+  "S.e2a76ef1": {
+    "zh": "终端",
+    "en": "Terminal"
+  },
+  "S.e35715f9": {
+    "zh": "没有找到 Codex 或 Claude 配置目录。",
+    "en": "No Codex or Claude configuration directory found."
+  },
+  "S.e367e163": {
+    "zh": "默认文件打开位置",
+    "en": "Default file open location"
+  },
+  "S.e369180d": {
+    "zh": "网页搜索",
+    "en": "Web search"
+  },
+  "S.e38a88e4": {
+    "zh": "个人偏好",
+    "en": "Personal preferences"
+  },
+  "S.e38ab486": {
+    "zh": "连接配置",
+    "en": "Connection configuration"
+  },
+  "S.e3ca04a9": {
+    "zh": "缓存",
+    "en": "Cache"
+  },
+  "S.e403ba57": {
+    "zh": "当前连接",
+    "en": "Current connection"
+  },
+  "S.e4112c2a": {
+    "zh": "另一客户端持有该会话的写权限，当前窗口只能观察。",
+    "en": "Another client holds write access to this session; this window can only observe."
+  },
+  "S.e41c3122": {
+    "zh": "{0} 个未提交更改",
+    "en": "{0} uncommitted changes"
+  },
+  "S.e4210733": {
+    "zh": "代码字体",
+    "en": "Code font"
+  },
+  "S.e42b0f4a": {
+    "zh": "打开此页时计算。",
+    "en": "Calculated when this page opens."
+  },
+  "S.e4cbe431": {
+    "zh": "正在连接本地 KL Core…",
+    "en": "Connecting to local KL Core…"
+  },
+  "S.e56904ef": {
+    "zh": "KL Core 默认使用的推理强度；模型控件仍可临时覆盖。",
+    "en": "Default reasoning effort for KL Core; the model control can still override it."
+  },
+  "S.e5bb30c6": {
+    "zh": "请等待当前回合结束后再重新发送。",
+    "en": "Wait for the current turn to finish before resending."
+  },
+  "S.e63278cf": {
+    "zh": "粘贴常用提示词、规范或说明…",
+    "en": "Paste a reusable prompt, guideline or note…"
+  },
+  "S.e6513faa": {
+    "zh": "本地用户",
+    "en": "Local user"
+  },
+  "S.e66883ff": {
+    "zh": "编码",
+    "en": "Coding"
+  },
+  "S.e674f8dd": {
+    "zh": "{0} · 分支",
+    "en": "{0} · branch"
+  },
+  "S.e6f6d875": {
+    "zh": "会话操作",
+    "en": "Session actions"
+  },
+  "S.e7889648": {
+    "zh": "已清除。重启 KL 后使用本地 Core。",
+    "en": "Cleared. KL uses the local Core after restart."
+  },
+  "S.e792d64b": {
+    "zh": "自动化任务执行失败。",
+    "en": "Automation run failed."
+  },
+  "S.e7adfca8": {
+    "zh": "完全访问",
+    "en": "Full access"
+  },
+  "S.e806fbbe": {
+    "zh": "插件",
+    "en": "Plugins"
+  },
+  "S.e8215b4a": {
+    "zh": "工作空间写入",
+    "en": "Workspace write"
+  },
+  "S.e821845e": {
+    "zh": "已归档的聊天",
+    "en": "Archived chats"
+  },
+  "S.e84e71a5": {
+    "zh": "已写入 {0}；可在提供商详情中继续添加模型。",
+    "en": "Wrote {0}; add more models from the provider details."
+  },
+  "S.e87e55a8": {
+    "zh": "正在运行诊断…",
+    "en": "Running diagnostics…"
+  },
+  "S.e8d6f349": {
+    "zh": "{0}（文件不存在）",
+    "en": "{0} (file not found)"
+  },
+  "S.e8e1a8da": {
+    "zh": "已编辑文件",
+    "en": "Edited file"
+  },
+  "S.e9038ec4": {
+    "zh": "<summary>工具：",
+    "en": "<summary>Tool: "
+  },
+  "S.e951cbd0": {
+    "zh": "移除本地项目",
+    "en": "Remove local project"
+  },
+  "S.e9d5ca6c": {
+    "zh": "返回列表",
+    "en": "Back to list"
+  },
+  "S.ea58d1c4": {
+    "zh": "沙盒设置",
+    "en": "Sandbox settings"
+  },
+  "S.eb01ff26": {
+    "zh": "提供商没有返回模型。",
+    "en": "The provider returned no models."
+  },
+  "S.eb0c326b": {
+    "zh": "已暂停",
+    "en": "Paused"
+  },
+  "S.ec068156": {
+    "zh": "本地环境用于指导 KL 如何为项目设置工作树。",
+    "en": "The local environment tells KL how to set up worktrees for the project."
+  },
+  "S.ec15d57e": {
+    "zh": "请先打开一个提供商。",
+    "en": "Open a provider first."
+  },
+  "S.ec25ed49": {
+    "zh": "归档的聊天不会出现在侧边栏；点击右侧按钮可恢复。",
+    "en": "Archived chats disappear from the sidebar; use the button on the right to restore."
+  },
+  "S.ec3d7f14": {
+    "zh": "KL Core 返回错误：{0}",
+    "en": "KL Core returned an error: {0}"
+  },
+  "S.ec68f111": {
+    "zh": "已查看 {0} 张图像",
+    "en": "Viewed {0} images"
+  },
+  "S.ecfc0b7f": {
+    "zh": "> 错误：",
+    "en": "> Error: "
+  },
+  "S.ed255e25": {
+    "zh": "无法更新开机启动：{0}",
+    "en": "Could not update launch at login: {0}"
+  },
+  "S.ed59c7c0": {
+    "zh": "每 6 小时",
+    "en": "Every 6 hours"
+  },
+  "S.ed68ea17": {
+    "zh": "使用颜色或 +/- 标记显示更改",
+    "en": "Show changes with colors or +/- markers"
+  },
+  "S.ed9b5750": {
+    "zh": "保存设置失败：{0}",
+    "en": "Could not save settings: {0}"
+  },
+  "S.ed9f02b7": {
+    "zh": "已保存 {0} 的显示信息。",
+    "en": "Saved display information for {0}."
+  },
+  "S.ee0398fa": {
+    "zh": "{0} 的请求地址必须是完整的 http:// 或 https:// 地址。",
+    "en": "The request URL for {0} must be a full http:// or https:// address."
+  },
+  "S.ee609787": {
+    "zh": "选择要在集成终端中打开的 Shell。",
+    "en": "Choose the shell to open in the integrated terminal."
+  },
+  "S.ee810222": {
+    "zh": "先选择或填写要删除的条目。",
+    "en": "Select or enter the item to delete first."
+  },
+  "S.eea1694c": {
+    "zh": "每天",
+    "en": "Daily"
+  },
+  "S.eee3f65d": {
+    "zh": "无法打开{0}：{1}",
+    "en": "Could not open {0}: {1}"
+  },
+  "S.ef48458a": {
+    "zh": "每 15 分钟",
+    "en": "Every 15 minutes"
+  },
+  "S.ef765bc7": {
+    "zh": "未命名自动化",
+    "en": "Untitled automation"
+  },
+  "S.efb7496d": {
+    "zh": "项目路径（远程 Core 时填写服务器路径）",
+    "en": "Project path (server path for remote Core)"
+  },
+  "S.efc4cf02": {
+    "zh": "已运行 {0}",
+    "en": "Ran {0}"
+  },
+  "S.f006455e": {
+    "zh": "已停止",
+    "en": "Stopped"
+  },
+  "S.f029d9cb": {
+    "zh": "原因",
+    "en": "Reason"
+  },
+  "S.f07068d2": {
+    "zh": "创建、学习和探索",
+    "en": "Create, learn and explore"
+  },
+  "S.f096ea3f": {
+    "zh": "- 工作区：`",
+    "en": "- Workspace: `"
+  },
+  "S.f0fa34ad": {
+    "zh": "上次运行：{0:MM-dd HH:mm}",
+    "en": "Last run: {0:MM-dd HH:mm}"
+  },
+  "S.f106fe6c": {
+    "zh": "分支前缀",
+    "en": "Branch prefix"
+  },
+  "S.f1673daa": {
+    "zh": "Core 当前没有可用的 MCP 工具。",
+    "en": "Core currently has no available MCP tools."
+  },
+  "S.f1bd8689": {
+    "zh": "正在重新连接 KL Core…",
+    "en": "Reconnecting to KL Core…"
+  },
+  "S.f2395df7": {
+    "zh": "{0}（暂不支持该格式）",
+    "en": "{0} (format not supported)"
+  },
+  "S.f2d80bd9": {
+    "zh": "本会话累计用量",
+    "en": "Session usage"
+  },
+  "S.f37db12d": {
+    "zh": "归档聊天",
+    "en": "Archive chat"
+  },
+  "S.f3af96bf": {
+    "zh": "当 ",
+    "en": "When "
+  },
+  "S.f3bf3a5f": {
+    "zh": "切换终端",
+    "en": "Toggle terminal"
+  },
+  "S.f3f21877": {
+    "zh": "把 KL Core 部署到另一台电脑（或云电脑），通过 IP + 端口连接；回合和工具都在那台机器上执行。",
+    "en": "Deploy KL Core to another computer (or cloud computer) and connect by IP + port; turns and tools run on that machine."
+  },
+  "S.f40cc1bd": {
+    "zh": "这个提供商下已经有同名模型。",
+    "en": "This provider already has a model with that name."
+  },
+  "S.f46202db": {
+    "zh": "可视化回答",
+    "en": "Visual answers"
+  },
+  "S.f46fb929": {
+    "zh": "已排队 {0} 条；回复完成后自动发送",
+    "en": "{0} queued; they send after the reply finishes"
+  },
+  "S.f4ad2bb4": {
+    "zh": "权限模式",
+    "en": "Permission mode"
+  },
+  "S.f4b669c5": {
+    "zh": "背景",
+    "en": "Background"
+  },
+  "S.f4f0ead1": {
+    "zh": "启用",
+    "en": "Enable"
+  },
+  "S.f50941b1": {
+    "zh": "选择文本或代码附件",
+    "en": "Choose text or code attachments"
+  },
+  "S.f5174c6f": {
+    "zh": "无法读取 {0}：{1}",
+    "en": "Could not read {0}: {1}"
+  },
+  "S.f55690e9": {
+    "zh": "启用或停用此模型",
+    "en": "Enable or disable this model"
+  },
+  "S.f56e7eff": {
+    "zh": "白色",
+    "en": "White"
+  },
+  "S.f5945047": {
+    "zh": "仅在未聚焦时",
+    "en": "Only when unfocused"
+  },
+  "S.f5c2506e": {
+    "zh": "保存模型",
+    "en": "Save model"
+  },
+  "S.f5c61859": {
+    "zh": " 何时请求批准",
+    "en": " when to ask for approval"
+  },
+  "S.f5dede74": {
+    "zh": "保存连接",
+    "en": "Save connection"
+  },
+  "S.f634a248": {
+    "zh": "每 {0} 小时",
+    "en": "Every {0} hours"
+  },
+  "S.f6da93ed": {
+    "zh": "粗体",
+    "en": "Bold"
+  },
+  "S.f715ee48": {
+    "zh": "检查当前捆绑包并记录诊断日志",
+    "en": "Inspect the current bundle and record diagnostics"
+  },
+  "S.f744db20": {
+    "zh": "选择 KL 总结其推理的方式",
+    "en": "Choose how KL summarizes its reasoning"
+  },
+  "S.f807f24b": {
+    "zh": "保存到资料库",
+    "en": "Save to library"
+  },
+  "S.f84cb3ec": {
+    "zh": "未找到 hooks.toml（{0}）",
+    "en": "hooks.toml not found ({0})"
+  },
+  "S.f84e0542": {
+    "zh": "强调色",
+    "en": "Accent color"
+  },
+  "S.f85fc840": {
+    "zh": "KL Core 记录的最近工具调用与审批决策。",
+    "en": "Recent tool calls and approval decisions recorded by KL Core."
+  },
+  "S.f8e477cc": {
+    "zh": "审查强度",
+    "en": "Review intensity"
+  },
+  "S.f9124b40": {
+    "zh": "纯文本",
+    "en": "Plain text"
+  },
+  "S.f94f2aa6": {
+    "zh": "构建、调试和发布",
+    "en": "Build, debug and ship"
+  },
+  "S.f9c0fd33": {
+    "zh": "关闭当前窗口",
+    "en": "Close the current window"
+  },
+  "S.f9ee319c": {
+    "zh": "聊天（进行中）",
+    "en": "Chat (in progress)"
+  },
+  "S.fa04eac6": {
+    "zh": "严格",
+    "en": "Strict"
+  },
+  "S.fa3a8530": {
+    "zh": "未找到 kl-core 可执行文件，请先构建 Core 或设置 KL_CORE_PATH。",
+    "en": "The kl-core executable was not found; build Core or set KL_CORE_PATH."
+  },
+  "S.fa3b3294": {
+    "zh": "切换工作区",
+    "en": "Switch workspace"
+  },
+  "S.fa933635": {
+    "zh": "审批模式",
+    "en": "Approval mode"
+  },
+  "S.fb47db5e": {
+    "zh": "已置顶",
+    "en": "Pinned"
+  },
+  "S.fb918f80": {
+    "zh": "先打开一个聊天会话，然后点刷新。",
+    "en": "Open a chat session first, then click refresh."
+  },
+  "S.fc548ee4": {
+    "zh": "地址原样写入；打开右侧开关后启用对应协议。",
+    "en": "URLs are stored as-is; enable a protocol with the switch on the right."
+  },
+  "S.fc88eb78": {
+    "zh": "关闭窗口前确认",
+    "en": "Confirm before closing the window"
+  },
+  "S.fcf5d25a": {
+    "zh": "SHA-256（可带冒号）",
+    "en": "SHA-256 (colons allowed)"
+  },
+  "S.fcf8b4bf": {
+    "zh": "打开文件夹",
+    "en": "Open folder"
+  },
+  "S.feb95554": {
+    "zh": "搜索会话",
+    "en": "Search sessions"
+  },
+  "S.fee6e55f": {
+    "zh": "删除 worktree",
+    "en": "Delete worktree"
+  },
+  "S.ff6b830e": {
+    "zh": "使用默认位置",
+    "en": "Use default location"
+  },
+  "S.ffa0a402": {
+    "zh": "启用 KL 记忆功能",
+    "en": "Enable KL memory"
+  }
+}

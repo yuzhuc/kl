@@ -1,6 +1,6 @@
 # CC-Switch CLI 设置页与供应商页参考
 
-> Status: external settings-page reference, not a KL implementation specification. Current KL settings code lives in `tui/Kl.Tui/SettingsTui*.cs`.
+> Status: external settings-page reference, not a KL implementation specification. Current KL settings UI lives in `gui/Kl.Gui/MainWindow.axaml` and `ViewModels/MainWindowViewModel.Settings.cs`; the Terminal.Gui TUI edits configuration through CLI subcommands (`kl provider|model|config|plugin`).
 
 
 > 参考对象：`SaladDay/cc-switch-cli`  
@@ -561,10 +561,10 @@ KL 建议：
 
 ## 14. KL 实现映射
 
-建议只改 C# CLI 与测试：
+本参考只用于 GUI 设置页；TUI 没有设置页（`/settings` 只打印 CLI 入口提示）。
 
-- `tui/Kl.Tui/`：设置页状态、渲染、输入处理、表单；
-- `tui/Kl.Tui.Tests/`：布局、URL 展开、字段校验、快捷键、resize；
+- `gui/Kl.Gui/`：设置页状态、导航、表单与展示；
+- `gui/Kl.Gui.Tests/`：设置页视图模型与解析逻辑测试；
 - 复用现有 Core 方法：
   - `provider.list`
   - `provider.upsert`
@@ -580,14 +580,14 @@ KL 建议：
 
 ### 布局
 
-- [ ] `kl` 默认进入聊天页；
-- [ ] 输入 `/settings` 或 `/设置` 进入设置页；
-- [ ] 设置页为左导航 + 右内容；
-- [ ] 左栏有 Model、Agent、Plugins、Skills；
-- [ ] Model 分组可浏览 Provider 列表；
+- [ ] `kl` 默认进入 Terminal.Gui 聊天页；
+- [ ] GUI 用 Ctrl+, 打开设置页；
+- [ ] 设置页为左导航 + 右内容，导航分 个人 / 集成 / 编码；
+- [ ] 左栏包含模型、提供商、插件等分页；
+- [ ] 模型与连接分页可浏览 Provider 列表；
 - [ ] Footer 显示快捷键；
 - [ ] resize 后焦点和输入不丢失；
-- [ ] 非交互输出回退纯文本。
+- [ ] 无 TTY 时 `kl chat` 回退纯文本 REPL。
 
 ### Model 分组
 
@@ -614,7 +614,7 @@ KL 建议：
 
 ## 16. 结论
 
-`cc-switch-cli` 值得学习的不是它的业务范围，而是它的 TUI 结构：
+`cc-switch-cli` 值得学习的不是它的业务范围，而是它的设置页结构（KL 用于 GUI）：
 
 1. 固定 Header + 左导航 + 右内容 + Footer；
 2. 列表页和编辑表单分离；
@@ -625,4 +625,4 @@ KL 建议：
 7. 加载、空、错误状态明确区分；
 8. 表格列简洁，详细信息进入编辑页。
 
-KL 第一版只需把这些原则落到 Model 分组，不复制它的全部功能。
+KL 只需把这些原则落到 GUI 的模型与提供商分页，不复制它的全部功能。

@@ -5,18 +5,19 @@
 ```text
 crates/       Rust core and capability crates
 tui/          C# Terminal.Gui client and tests
-gui/          C# Avalonia GUI shell
+gui/          C# Avalonia desktop client and tests
 sdk/          reusable C# client library
 schemas/      protocol and plugin schemas
 benchmarks/   acceptance tasks and fixtures
-scripts/      package, benchmark and live-smoke scripts
+scripts/      Python build, validation, benchmark and demo tooling
 docs/         architecture, security, plugin and ADR docs
 tests/        cross-language contract and provider fixtures
 plugins/      plugin examples
 ```
 
-Generated output such as `target/`, `bin/`, `obj/`, `dist/` and benchmark
-workspaces is ignored or treated as disposable.
+Cargo caches stay in `target/`; .NET intermediates stay in project `bin/` and
+`obj/` directories. `python scripts/build.py` stages final GUI/TUI files in the
+sibling `bin/` directory, while benchmark workspaces are disposable.
 
 ## Rust crates
 
@@ -42,12 +43,20 @@ workspaces is ignored or treated as disposable.
 |---|---|
 | `tui/Kl.Tui` | Terminal.Gui v2 UI, commands, approvals and terminal rendering |
 | `tui/Kl.Tui.Tests` | TUI, protocol, server and core integration tests |
-| `gui/Kl.Gui` | Avalonia 12.1.4 static shell; client integration paused |
+| `gui/Kl.Gui` | Avalonia desktop client over `Kl.Client` |
+| `gui/Kl.Gui.Tests` | GUI view-model and service tests |
+| `gui/Kl.Gui.HeadlessTests` | Avalonia headless layout tests for the shell and settings panes |
+| `gui/Kl.Gui/Views` | Settings pane UserControls split out of `MainWindow.axaml` |
 | `sdk/Kl.Client` | JSON-RPC connection, session client, DTOs and endpoint discovery |
 
-The TUI and GUI share `Kl.Client`; neither owns an agent loop. `KlSessionClient`
-supports stdio, local-server connect, attach/replay, sequence de-duplication and
-reconnect from `LastSeq`.
+The TUI and the GUI both use `Kl.Client` and do not own an agent loop.
+`KlSessionClient` supports stdio, local-server connect, attach/replay, sequence
+de-duplication, reconnect from `LastSeq`, protocol-backed rich history and
+read-only observer sessions when another client holds the write lease. The GUI
+adds `gui/Kl.Gui/Services/CoreSessionService.cs`, `CoreSessionPresenter.cs`,
+`CoreProtocolModels.cs` and `ViewModels/MainWindowViewModel.Core.cs`; it renders
+Core sessions and events but keeps provider/model/credential management and all
+execution inside Core.
 
 ## Protocol and fixtures
 
@@ -61,6 +70,9 @@ reconnect from `LastSeq`.
 
 - Rust: `cargo build --release -p kl-core`.
 - TUI: `dotnet build tui/Kl.Tui/Kl.Tui.csproj`.
-- GUI shell: `dotnet build gui/Kl.Gui/Kl.Gui.csproj`.
-- Packaging: `scripts/package.mjs` builds a self-contained TUI bundle.
+- GUI: `dotnet build gui/Kl.Gui/Kl.Gui.csproj`.
+- Build: `python scripts/build.py` publishes final GUI/TUI files to the sibling
+  `bin` directory and stages `kl-core.exe` next to both clients.
+- Packaging: `python scripts/package.py` builds a self-contained release archive
+  (`--gui` adds the Avalonia client under `gui/` on Windows and macOS RIDs).
 - Release: only `main` pushes, tag `v<version>-rcN`, archives only.

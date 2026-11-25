@@ -1,7 +1,7 @@
 # KL benchmark
 
 The acceptance benchmark is defined by `benchmarks/tasks.json` and executed by
-`scripts/benchmark.mjs`. It contains 23 tasks.
+`scripts/benchmark.py`. It contains 23 tasks.
 
 ## Task fields
 
@@ -20,7 +20,7 @@ Each fixture has:
 ```text
 initial/       starting workspace
 solution/      reference end state
-verify.mjs     verifier receiving the workspace path
+verify.py      verifier receiving the workspace path
 ```
 
 `--verify-only` checks the solution state. `--state initial` checks the
@@ -30,8 +30,8 @@ meaningful change.
 ## Run
 
 ```powershell
-node scripts/benchmark.mjs --dry-run
-node scripts/benchmark.mjs --verify-only
+python scripts/benchmark.py --dry-run
+python scripts/benchmark.py --verify-only
 ```
 
 Use an external workspace for tasks without a local fixture. Keep live provider

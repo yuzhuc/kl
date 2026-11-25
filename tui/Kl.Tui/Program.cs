@@ -23,6 +23,14 @@ internal static class Program
         {
             return await RunAsync(options).ConfigureAwait(false);
         }
+        catch (JsonRpcException error) when (error.Code == Protocol.ProviderUnavailable)
+        {
+            Console.Error.WriteLine($"kl: {error.Message}");
+            Console.Error.WriteLine(
+                "kl: enable at least one model for this provider in the GUI " +
+                "(Settings → Model providers) or in the provider's TOML file, then retry.");
+            return 1;
+        }
         catch (JsonRpcException error)
         {
             Console.Error.WriteLine($"kl: core error {error.Code}: {error.Message}");
@@ -98,7 +106,7 @@ internal static class Program
 
     private static async Task<int> DoctorAsync(TuiOptions options, ConsoleUi ui)
     {
-        await using var client = KlCoreClient.Start(options.ToClientOptions());
+        await using var client = await KlCoreClient.ConnectOrStartAsync(options.ToClientOptions());
         AttachDiagnostics(client, options, ui);
         var handshake = await client.HandshakeAsync().ConfigureAwait(false);
         var ping = await client.PingAsync("doctor").ConfigureAwait(false);
@@ -125,7 +133,7 @@ internal static class Program
 
     private static async Task<int> PingAsync(TuiOptions options, ConsoleUi ui)
     {
-        await using var client = KlCoreClient.Start(options.ToClientOptions());
+        await using var client = await KlCoreClient.ConnectOrStartAsync(options.ToClientOptions());
         AttachDiagnostics(client, options, ui);
         var handshake = await client.HandshakeAsync().ConfigureAwait(false);
         var stopwatch = Stopwatch.StartNew();
@@ -215,11 +223,19 @@ internal static class Program
                 {
                     continue;
                 }
-                if (ChatCommand.IsSettings(line))
+                var trimmed = line.Trim();
+                if (trimmed.Equals("/settings", StringComparison.OrdinalIgnoreCase)
+                    || trimmed.Equals("/设置", StringComparison.Ordinal))
                 {
                     ui.Line(
-                        "settings require an interactive terminal; " +
-                        "run kl in a terminal and enter /settings");
+                        "settings are managed by the CLI: kl provider|model|config|plugin; " +
+                        "run kl help");
+                    continue;
+                }
+
+                if (trimmed.StartsWith('/'))
+                {
+                    ui.Line("available commands: /exit, /quit, /settings");
                     continue;
                 }
 
@@ -242,7 +258,7 @@ internal static class Program
         try
         {
             var result = await session.HistoryAsync(20).ConfigureAwait(false);
-            foreach (var message in ChatTuiState.ParseHistory(result))
+            foreach (var message in SessionHistory.ParseHistory(result))
             {
                 switch (message.Role)
                 {
@@ -276,7 +292,7 @@ internal static class Program
             return await ChatAsync(options, ui).ConfigureAwait(false);
         }
 
-        await using var client = KlCoreClient.Start(options.ToClientOptions());
+        await using var client = await KlCoreClient.ConnectOrStartAsync(options.ToClientOptions());
         AttachDiagnostics(client, options, ui);
         await client.HandshakeAsync().ConfigureAwait(false);
         var result = await client.ListSessionsAsync().ConfigureAwait(false);
@@ -305,7 +321,7 @@ internal static class Program
     private static async Task<int> PluginAsync(TuiOptions options, ConsoleUi ui)
     {
         var subcommand = (options.Positionals.FirstOrDefault() ?? "list").ToLowerInvariant();
-        await using var client = KlCoreClient.Start(options.ToClientOptions());
+        await using var client = await KlCoreClient.ConnectOrStartAsync(options.ToClientOptions());
         AttachDiagnostics(client, options, ui);
         await client.HandshakeAsync().ConfigureAwait(false);
 
@@ -377,7 +393,7 @@ internal static class Program
     {
         var workspace = Path.GetFullPath(options.Workspace ?? Directory.GetCurrentDirectory());
         var mode = options.Strict ? "strict" : options.ReviewMode ?? "standard";
-        await using var client = KlCoreClient.Start(options.ToClientOptions());
+        await using var client = await KlCoreClient.ConnectOrStartAsync(options.ToClientOptions());
         AttachDiagnostics(client, options, ui);
         await client.HandshakeAsync().ConfigureAwait(false);
         var result = await client.ReviewAsync(
@@ -399,7 +415,7 @@ internal static class Program
             limit = Math.Clamp(parsed, 1, 1000);
         }
 
-        await using var client = KlCoreClient.Start(options.ToClientOptions());
+        await using var client = await KlCoreClient.ConnectOrStartAsync(options.ToClientOptions());
         AttachDiagnostics(client, options, ui);
         await client.HandshakeAsync().ConfigureAwait(false);
         var result = await client.AuditTailAsync(limit).ConfigureAwait(false);
@@ -420,7 +436,7 @@ internal static class Program
 
     private static async Task<int> ConfigAsync(TuiOptions options, ConsoleUi ui)
     {
-        await using var client = KlCoreClient.Start(options.ToClientOptions());
+        await using var client = await KlCoreClient.ConnectOrStartAsync(options.ToClientOptions());
         AttachDiagnostics(client, options, ui);
         await client.HandshakeAsync().ConfigureAwait(false);
         var result = await client.GetConfigAsync().ConfigureAwait(false);

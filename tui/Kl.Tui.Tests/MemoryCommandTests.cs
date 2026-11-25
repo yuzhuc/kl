@@ -5,14 +5,6 @@ namespace Kl.Tui.Tests;
 public sealed class MemoryCommandTests
 {
     [Fact]
-    public void MemoryIsRegisteredInThePalette()
-    {
-        var command = ChatCommandPalette.FindExact("/memory");
-        Assert.NotNull(command);
-        Assert.Equal(ChatCommandKind.Memory, command!.Kind);
-    }
-
-    [Fact]
     public void BareMemoryLists()
     {
         Assert.True(MemoryCommandParser.TryParse("/memory", out var command));

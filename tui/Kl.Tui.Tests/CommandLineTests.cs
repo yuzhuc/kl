@@ -94,6 +94,14 @@ public sealed class CommandLineTests
     }
 
     [Fact]
+    public void TuiSkipsInitialReplayAndLoadsProtocolHistory()
+    {
+        var options = CommandLine.Parse(["chat"]);
+
+        Assert.True(options.ToSessionOptions().SkipInitialReplay);
+    }
+
+    [Fact]
     public void AcceptsCustomAgentPreset()
     {
         var options = CommandLine.Parse(["run", "task", "--agent", "custom-reviewer"]);

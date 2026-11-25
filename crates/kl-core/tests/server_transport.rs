@@ -211,6 +211,118 @@ fn two_clients_attach_and_lease_one_writer() {
 }
 
 #[test]
+fn session_mutations_respect_another_clients_lease() {
+    let server = TestServer::start();
+    let mut first = server.connect();
+    let mut second = server.connect();
+    first.handshake();
+    second.handshake();
+
+    let created = first.request("session.create", json!({"workspace": server.workspace()}));
+    let session_id = created["result"]["session_id"].as_str().unwrap().to_owned();
+    let other = first.request("session.create", json!({"workspace": server.workspace()}));
+    let other_id = other["result"]["session_id"].as_str().unwrap().to_owned();
+
+    // A history-list rename of an unleased session remains available.
+    let renamed = second.request(
+        "session.rename",
+        json!({"session_id": other_id, "name": "from history"}),
+    );
+    assert!(renamed.get("error").is_none(), "{renamed}");
+
+    assert!(
+        first
+            .request(
+                "session.lease",
+                json!({"session_id": session_id, "lease_ms": 30000})
+            )
+            .get("error")
+            .is_none()
+    );
+
+    for (method, params) in [
+        (
+            "session.rename",
+            json!({"session_id": session_id, "name": "blocked"}),
+        ),
+        (
+            "session.archive",
+            json!({"session_id": session_id, "archived": true}),
+        ),
+        ("session.delete", json!({"session_id": session_id})),
+    ] {
+        let blocked = second.request(method, params);
+        assert_eq!(blocked["error"]["code"], -32009, "{method}: {blocked}");
+    }
+
+    let own = first.request(
+        "session.rename",
+        json!({"session_id": session_id, "name": "mine"}),
+    );
+    assert!(own.get("error").is_none(), "{own}");
+}
+
+#[test]
+fn compact_without_session_id_uses_the_connection_session() {
+    let server = TestServer::start();
+    let mut first = server.connect();
+    let mut second = server.connect();
+    first.handshake();
+    second.handshake();
+    let created = first.request("session.create", json!({"workspace": server.workspace()}));
+    let session_id = created["result"]["session_id"].as_str().unwrap().to_owned();
+
+    assert!(
+        first
+            .request(
+                "session.lease",
+                json!({"session_id": session_id, "lease_ms": 30000})
+            )
+            .get("error")
+            .is_none()
+    );
+    let resumed = second.request("session.resume", json!({"session_id": session_id}));
+    assert!(resumed.get("error").is_none(), "{resumed}");
+
+    let compacted = second.request("session.compact", json!({}));
+    assert_eq!(compacted["error"]["code"], -32009, "{compacted}");
+}
+
+#[test]
+fn compact_without_a_connection_session_is_rejected() {
+    let server = TestServer::start();
+    let mut first = server.connect();
+    let mut observer = server.connect();
+    first.handshake();
+    observer.handshake();
+    let created = first.request("session.create", json!({"workspace": server.workspace()}));
+    let session_id = created["result"]["session_id"].as_str().unwrap().to_owned();
+    assert!(
+        first
+            .request(
+                "session.lease",
+                json!({"session_id": session_id, "lease_ms": 30000})
+            )
+            .get("error")
+            .is_none()
+    );
+    let attached = observer.request("session.attach", json!({"session_id": session_id}));
+    assert!(attached.get("error").is_none(), "{attached}");
+
+    for params in [
+        json!({}),
+        json!({"session_id": ""}),
+        json!({"session_id": null}),
+    ] {
+        let compacted = observer.request("session.compact", params.clone());
+        assert_eq!(compacted["error"]["code"], -32602, "{params}: {compacted}");
+    }
+
+    let status = first.request("session.status", json!({"session_id": session_id}));
+    assert!(status.get("error").is_none(), "{status}");
+}
+
+#[test]
 fn turn_requires_a_lease() {
     let server = TestServer::start();
     let mut client = server.connect();

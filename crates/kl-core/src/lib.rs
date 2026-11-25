@@ -6,12 +6,15 @@
 
 mod agents;
 mod config;
+mod history;
 mod hooks;
 pub mod mcp;
 mod skills;
 mod subagent;
 
 pub use agents::AgentProfile;
+pub(crate) use history::{RewindPlan, StoredSessionEvent, build_session_history, live_events};
+
 pub use config::{
     AgentPreset, Config, ConfigError, ProviderCatalog, QualityMode, RoleSettings,
     config_set_default_model, provider_set_api_key, provider_set_enabled, provider_upsert,
@@ -30,22 +33,24 @@ use kl_policy::{PolicyEngine, PolicyError, ToolAccess};
 use kl_protocol::{
     AgentConfigResult, AgentConfigSetParams, AgentInfo, AgentListResult, ApprovalDecision,
     ApprovalMode, ApprovalRespondParams, AuditTailParams, CORE_NAME, CORE_VERSION, CoreEvent,
-    DefaultModelResult, DoctorCheck, DoctorResult, EventNotification, HandshakeParams,
-    HandshakeResult, IncomingMessage, MIN_PROTOCOL_VERSION, McpListResult, McpToolInfo,
-    MemoryDeleteParams, MemoryDeleteResult, MemoryEntryInfo, MemoryListParams, MemoryListResult,
-    MemoryReadParams, MemoryReadResult, MemoryWriteParams, MemoryWriteResult, PROTOCOL_VERSION,
-    PermissionsResult, PermissionsSetParams, PingParams, PingResult, PluginIdParams,
-    PluginInstallParams, PluginListResult, ProviderEnabledResult, ProviderKeyResult,
-    ProviderListResult, ProviderModelSummary, ProviderSetApiKeyParams, ProviderSetEnabledParams,
-    ProviderUpsertParams, ProviderUpsertResult, RequestId, ReviewFinding, ReviewResult,
-    ReviewRunParams, RpcError, SandboxCapabilitiesSummary, SandboxSummary, SessionCompactParams,
-    SessionCompactResult, SessionCreateParams, SessionDeleteParams, SessionDeleteResult,
-    SessionHistoryEntry, SessionHistoryParams, SessionHistoryResult, SessionHistoryToolSummary,
+    DefaultModelResult, DoctorCheck, DoctorResult, EmojiUsage, EventNotification, HandshakeParams,
+    HandshakeResult, HeadingStyle, IncomingMessage, MIN_PROTOCOL_VERSION, McpListResult,
+    McpToolInfo, MemoryDeleteParams, MemoryDeleteResult, MemoryEntryInfo, MemoryListParams,
+    MemoryListResult, MemoryReadParams, MemoryReadResult, MemoryWriteParams, MemoryWriteResult,
+    OutputVerbosity, PROTOCOL_VERSION, PermissionsResult, PermissionsSetParams, PersonalStyle,
+    PingParams, PingResult, PluginIdParams, PluginInstallParams, PluginListResult,
+    ProviderDeleteParams, ProviderEnabledResult, ProviderKeyResult, ProviderListResult,
+    ProviderModelSummary, ProviderModelsParams, ProviderModelsResult, ProviderProtocolSummary,
+    ProviderSetApiKeyParams, ProviderSetEnabledParams, ProviderUpsertParams, ProviderUpsertResult,
+    ReasoningEffort, ReasoningSummary, RequestId, ReviewFinding, ReviewResult, ReviewRunParams,
+    RpcError, SandboxCapabilitiesSummary, SandboxSummary, SessionArchiveParams,
+    SessionArchiveResult, SessionCompactParams, SessionCompactResult, SessionCreateParams,
+    SessionDeleteParams, SessionDeleteResult, SessionHistoryParams, SessionHistoryResult,
     SessionInfo, SessionListResult, SessionRenameParams, SessionResumeParams, SessionStatusParams,
     SessionStatusResult, SetDefaultModelParams, SkillGetParams, SkillGetResult, SkillInfo,
-    SkillListParams, SkillListResult, TurnCancelParams, TurnCancelResult, TurnStartParams,
-    TurnStartResult, WorkspaceInitParams, WorkspaceInitResult, error_codes, failure,
-    failure_with_data, methods, negotiate, success, validate_envelope,
+    SkillListParams, SkillListResult, ToneLevel, TurnCancelParams, TurnCancelResult,
+    TurnStartParams, TurnStartResult, VisualAnswers, WorkspaceInitParams, WorkspaceInitResult,
+    error_codes, failure, failure_with_data, methods, negotiate, success, validate_envelope,
 };
 use kl_provider::{
     AnthropicAdapter, BoundProvider, CancellationToken, ChatEvent, ChatMessage, ChatOutcome,
@@ -58,7 +63,7 @@ use kl_review::{
 };
 use kl_sandbox::{SandboxManager, SandboxPolicy};
 use kl_store::{
-    SessionData, SessionMeta, SessionStore, StoreError, TURN_STATE_IDLE,
+    EVENT_SCHEMA_VERSION, SessionData, SessionMeta, SessionStore, StoreError, TURN_STATE_IDLE,
     TURN_STATE_WAITING_APPROVAL, TURN_STATE_WORKING,
 };
 use kl_tools::{MemoryScope, MemoryStore, ToolError, ToolRegistry, ToolSource};
@@ -77,7 +82,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 mod server;
 
-pub use server::run_server;
+pub use server::{run_server, run_tcp_server};
 
 pub const FEATURES: &[&str] = &[
     "events",
@@ -212,18 +217,23 @@ impl EventHub {
     }
 
     fn register(&self, session_id: &str, seq: u64) {
-        self.sequences
+        let mut sequences = self
+            .sequences
             .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .insert(session_id.to_owned(), seq);
+            .unwrap_or_else(|error| error.into_inner());
+        let entry = sequences.entry(session_id.to_owned()).or_insert(0);
+        *entry = (*entry).max(seq);
     }
 
+    // The sequence lock keeps seq order and store appends in one order; the
+    // store's own lock serializes them against SessionStore::save. A blocked
+    // stdout still stalls every emit, which stdio mode cannot avoid.
     fn emit(&self, session_id: &str, event: CoreEvent) -> Result<u64, String> {
+        let mut sequences = self
+            .sequences
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         let seq = {
-            let mut sequences = self
-                .sequences
-                .lock()
-                .unwrap_or_else(|error| error.into_inner());
             let entry = sequences.entry(session_id.to_owned()).or_insert(0);
             *entry += 1;
             *entry
@@ -975,6 +985,8 @@ struct Core {
 impl Core {
     fn new(context: ServerContext, emitter: Emitter) -> Result<Self, CoreError> {
         std::fs::create_dir_all(&context.home)?;
+        write_install_metadata(&context.home);
+        skills::install_system_skills(&context.home);
         let config = Config::load(&context.config_path)?;
         let agent_profiles = agents::load(&context.home);
         let hook_config =
@@ -995,17 +1007,22 @@ impl Core {
         for disabled in &catalog.disabled {
             router.mark_disabled(disabled);
         }
-        let store = Arc::new(SessionStore::new(context.home.join("sessions"))?);
+        let store = Arc::new(SessionStore::new(&context.home)?);
         let audit = Arc::new(AuditLog::open(
             context.home.join("audit"),
             config.audit.rotate_bytes,
             config.audit.keep_files,
         )?);
         let tools = Arc::new(ToolRegistry::builtin());
+        tools.set_enabled(
+            "web_fetch",
+            config.agent.web_search && config.agent.network_access,
+        );
+        tools.set_enabled("memory", config.agent.memory_enabled);
         tools.register(Arc::new(skills::SkillTool {
             home: context.home.clone(),
         }));
-        register_plugin_adapters(&plugin_host, &router, &tools);
+        register_plugin_adapters(&plugin_host, &router, &tools, config.agent.plugins_enabled);
         // shortcut: MCP startup handshake is capped at 10s; tool calls still use the agent timeout.
         register_mcp_tools(
             &context.home,
@@ -1121,6 +1138,7 @@ impl Core {
             methods::SESSION_LIST => self.session_list(),
             methods::SESSION_RENAME => self.session_rename(params),
             methods::SESSION_DELETE => self.session_delete(params),
+            methods::SESSION_ARCHIVE => self.session_archive(params),
             methods::SESSION_STATUS => self.session_status(params),
             methods::SESSION_COMPACT => self.session_compact(params),
             methods::SESSION_FORK => self.session_fork(params),
@@ -1130,6 +1148,8 @@ impl Core {
             methods::PERMISSIONS_GET => self.permissions_get(),
             methods::PERMISSIONS_SET => self.permissions_set(params),
             methods::PROVIDER_LIST => self.provider_list(),
+            methods::PROVIDER_MODELS => self.provider_models(params),
+            methods::PROVIDER_DELETE => self.provider_delete(params),
             methods::PROVIDER_UPSERT => self.provider_upsert(params),
             methods::PROVIDER_SET_API_KEY => self.provider_set_api_key(params),
             methods::PROVIDER_SET_ENABLED => self.provider_set_enabled(params),
@@ -1472,7 +1492,7 @@ impl Core {
             .collect::<Result<Vec<_>, _>>()?;
         let seq = self
             .store
-            .event_count(&params.session_id)
+            .last_seq(&params.session_id)
             .map_err(store_error)?;
         self.hub.register(&params.session_id, seq);
         let info = session_info(
@@ -1502,14 +1522,18 @@ impl Core {
     fn session_history(&self, params: Value) -> Result<Value, RpcError> {
         let params: SessionHistoryParams = parse_params(params, "session.history")?;
         let data = self.store.load(&params.session_id).map_err(store_error)?;
-        let events = read_session_events(
-            &self
-                .store
-                .root()
-                .join(&params.session_id)
-                .join("events.jsonl"),
-        )
-        .map_err(store_error)?;
+        let events = self
+            .store
+            .read_events(&params.session_id)
+            .map_err(store_error)?
+            .into_iter()
+            .map(|stored| StoredSessionEvent {
+                seq: stored.seq,
+                at: stored.at,
+                event: stored.event,
+            })
+            .collect::<Vec<_>>();
+        let events = live_events(events);
         let history = build_session_history(&data.messages, &events);
         let start = history.len().saturating_sub(params.limit);
         to_value(SessionHistoryResult {
@@ -1520,13 +1544,25 @@ impl Core {
 
     fn session_list(&self) -> Result<Value, RpcError> {
         let sessions = self.store.list().map_err(store_error)?;
+        let archived = self.store.list_archived().map_err(store_error)?;
         let reasoning = self.config.agent.reasoning_effort.as_str();
-        to_value(SessionListResult {
-            sessions: sessions
-                .iter()
-                .map(|meta| session_info(meta, meta.message_count, reasoning))
-                .collect(),
-        })
+        let mut infos: Vec<SessionInfo> = sessions
+            .iter()
+            .map(|meta| session_info(meta, meta.message_count, reasoning))
+            .collect();
+        infos.extend(archived.iter().map(|meta| SessionInfo {
+            archived: true,
+            ..session_info(meta, meta.message_count, reasoning)
+        }));
+        to_value(SessionListResult { sessions: infos })
+    }
+
+    fn session_busy(&self, session_id: &str) -> bool {
+        self.sessions
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .get(session_id)
+            .is_some_and(|state| state.active_turn.is_some())
     }
 
     fn session_delete(&mut self, params: Value) -> Result<Value, RpcError> {
@@ -1537,6 +1573,12 @@ impl Core {
                 "cannot delete the active session",
             ));
         }
+        if self.session_busy(&params.session_id) {
+            return Err(rpc_error(
+                error_codes::TURN_IN_PROGRESS,
+                "cannot delete a running session",
+            ));
+        }
         self.store.delete(&params.session_id).map_err(store_error)?;
         self.sessions
             .lock()
@@ -1545,15 +1587,25 @@ impl Core {
         to_value(SessionDeleteResult { deleted: true })
     }
 
+    fn session_archive(&mut self, params: Value) -> Result<Value, RpcError> {
+        let params: SessionArchiveParams = parse_params(params, methods::SESSION_ARCHIVE)?;
+        if self.session_busy(&params.session_id) {
+            return Err(rpc_error(
+                error_codes::TURN_IN_PROGRESS,
+                "cannot archive a running session",
+            ));
+        }
+        self.store
+            .set_archived(&params.session_id, params.archived)
+            .map_err(store_error)?;
+        to_value(SessionArchiveResult {
+            archived: params.archived,
+        })
+    }
+
     fn session_rename(&mut self, params: Value) -> Result<Value, RpcError> {
         let params: SessionRenameParams = parse_params(params, methods::SESSION_RENAME)?;
-        let busy = self
-            .sessions
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .get(&params.session_id)
-            .is_some_and(|state| state.active_turn.is_some());
-        if busy {
+        if self.session_busy(&params.session_id) {
             return Err(rpc_error(
                 error_codes::TURN_IN_PROGRESS,
                 "cannot rename a running session",
@@ -1699,17 +1751,16 @@ impl Core {
                     format!("turn already running: {active}"),
                 ));
             }
-            state.messages = history;
             let data = SessionData {
                 meta: state.meta.clone(),
-                messages: state
-                    .messages
+                messages: history
                     .iter()
                     .map(|message| serde_json::to_value(message).unwrap_or(Value::Null))
                     .collect(),
                 approval_rules: state.approval_rules.clone(),
             };
             self.store.save(&data).map_err(store_error)?;
+            state.messages = history;
         }
         let _ = self.hub.emit(
             &session_id,
@@ -1726,6 +1777,35 @@ impl Core {
             estimated_tokens,
             context_window: metadata.context_window,
             compact_threshold: metadata.compact_threshold,
+        })
+    }
+
+    /// Validates a rewind target and maps it onto the retained messages.
+    fn rewind_plan(&self, session_id: &str, from_seq: u64) -> Result<RewindPlan, RpcError> {
+        let events = self.store.read_events(session_id).map_err(store_error)?;
+        let events = events
+            .into_iter()
+            .map(|stored| StoredSessionEvent {
+                seq: stored.seq,
+                at: stored.at,
+                event: stored.event,
+            })
+            .collect::<Vec<_>>();
+        let live = live_events(events);
+        let user_events: Vec<u64> = live
+            .iter()
+            .filter(|stored| matches!(stored.event, CoreEvent::UserMessage { .. }))
+            .map(|stored| stored.seq)
+            .collect();
+        if !user_events.contains(&from_seq) {
+            return Err(rpc_error(
+                error_codes::INVALID_PARAMS,
+                "rewind_from_seq must be a live user.message event",
+            ));
+        }
+        Ok(RewindPlan {
+            from_seq,
+            user_events,
         })
     }
 
@@ -1822,7 +1902,14 @@ impl Core {
 
         self.threads.retain(|handle| !handle.is_finished());
 
-        let (metadata, workspace, history, provider) = {
+        self.ensure_session_loaded(&params.session_id)?;
+
+        let rewind = match params.rewind_from_seq {
+            Some(from_seq) => Some(self.rewind_plan(&params.session_id, from_seq)?),
+            None => None,
+        };
+
+        let (metadata, workspace, history, provider, rewound_messages, before_rewind, policy) = {
             let mut sessions = self
                 .sessions
                 .lock()
@@ -1849,24 +1936,176 @@ impl Core {
                 .clone()
                 .or_else(|| profile.model.clone())
                 .or_else(|| (provider_id == state.meta.provider).then(|| state.meta.model.clone()));
-            let (provider, metadata) = self
+            let (provider, mut metadata) = self
                 .router
                 .get(Some(&provider_id), requested_model.as_deref())
                 .map_err(provider_error)?;
             check_provider_available(provider.as_ref())?;
+            if let Some(effort) = params.reasoning_effort.as_deref() {
+                let effort = effort.trim();
+                if !effort.is_empty() && !effort.eq_ignore_ascii_case("default") {
+                    if !metadata.reasoning_efforts.is_empty()
+                        && !metadata
+                            .reasoning_efforts
+                            .iter()
+                            .any(|level| level.eq_ignore_ascii_case(effort))
+                    {
+                        return Err(rpc_error(
+                            error_codes::INVALID_PARAMS,
+                            format!("unsupported reasoning effort: {effort}"),
+                        ));
+                    }
+                    metadata.reasoning_effort = Some(effort.to_owned());
+                }
+            }
             let workspace = state.meta.workspace.clone();
+            // Build the policy before claiming the turn so a bad workspace
+            // cannot leave active_turn set.
+            let policy = Arc::new(
+                PolicyEngine::new(PathBuf::from(&workspace), self.effective_policy_config())
+                    .map_err(|error| rpc_error(error_codes::INVALID_PARAMS, error.to_string()))?,
+            );
+            let before_rewind = rewind
+                .as_ref()
+                .map(|_| (state.messages.clone(), state.meta.clone()));
+            let rewound_messages = match &rewind {
+                Some(plan) => {
+                    let (truncated, _) = plan.truncate(&state.messages)?;
+                    state.messages = truncated;
+                    Some(state.messages.clone())
+                }
+                None => None,
+            };
             state.active_turn = Some(turn_id.clone());
             state.meta.provider = metadata.provider.clone();
             state.meta.model = metadata.model.clone();
-            (metadata, workspace, state.messages.clone(), provider)
+            state.meta.reasoning_effort = metadata.reasoning_effort.clone();
+            (
+                metadata,
+                workspace,
+                state.messages.clone(),
+                provider,
+                rewound_messages,
+                before_rewind,
+                policy,
+            )
         };
+
+        if let (Some(plan), Some(messages)) = (&rewind, &rewound_messages) {
+            let data = {
+                let sessions = self
+                    .sessions
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner());
+                let state = sessions.get(&params.session_id).ok_or_else(|| {
+                    rpc_error(
+                        error_codes::SESSION_NOT_FOUND,
+                        format!("session not found: {}", params.session_id),
+                    )
+                })?;
+                SessionData {
+                    meta: state.meta.clone(),
+                    messages: messages
+                        .iter()
+                        .map(|message| serde_json::to_value(message).unwrap_or(Value::Null))
+                        .collect(),
+                    approval_rules: state.approval_rules.clone(),
+                }
+            };
+            if let Err(error) = self.store.save(&data) {
+                let mut sessions = self
+                    .sessions
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner());
+                if let Some(state) = sessions.get_mut(&params.session_id) {
+                    state.active_turn = None;
+                    if let Some((messages, meta)) = before_rewind.clone() {
+                        state.messages = messages;
+                        state.meta = meta;
+                    }
+                }
+                return Err(store_error(error));
+            }
+            let marker_before = self.store.last_seq(&params.session_id).ok();
+            if let Err(error) = self.hub.emit(
+                &params.session_id,
+                CoreEvent::ConversationRewound {
+                    from_seq: plan.from_seq,
+                },
+            ) {
+                // Best-effort rollback: only undo the truncation when the marker
+                // did not reach disk. A failed last_seq probe is treated as
+                // "marker may be durable" so the rollout is never rewritten twice.
+                let marker_persisted =
+                    match (marker_before, self.store.last_seq(&params.session_id)) {
+                        (Some(before), Ok(after)) => after > before,
+                        _ => true,
+                    };
+                if !marker_persisted {
+                    if let Some((messages, meta)) = before_rewind.clone() {
+                        let approval_rules = self
+                            .sessions
+                            .lock()
+                            .unwrap_or_else(|error| error.into_inner())
+                            .get(&params.session_id)
+                            .map(|state| state.approval_rules.clone());
+                        if let Some(approval_rules) = approval_rules {
+                            let data = SessionData {
+                                meta: meta.clone(),
+                                messages: messages
+                                    .iter()
+                                    .map(|message| {
+                                        serde_json::to_value(message).unwrap_or(Value::Null)
+                                    })
+                                    .collect(),
+                                approval_rules,
+                            };
+                            match self.store.save(&data) {
+                                Ok(()) => {
+                                    let mut sessions = self
+                                        .sessions
+                                        .lock()
+                                        .unwrap_or_else(|error| error.into_inner());
+                                    if let Some(state) = sessions.get_mut(&params.session_id) {
+                                        state.messages = messages;
+                                        state.meta = meta;
+                                    }
+                                }
+                                Err(save_error) => eprintln!(
+                                    "rewind rollback failed for {}: {save_error}",
+                                    params.session_id
+                                ),
+                            }
+                        }
+                    }
+                }
+                let mut sessions = self
+                    .sessions
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner());
+                if let Some(state) = sessions.get_mut(&params.session_id) {
+                    state.active_turn = None;
+                }
+                return Err(rpc_error(error_codes::INTERNAL_ERROR, error));
+            }
+            let mut audit = AuditRecord::new(
+                params.session_id.clone(),
+                turn_id.clone(),
+                turn_id.clone(),
+                "session",
+                "rewind",
+                plan.from_seq.to_string(),
+                "allow",
+            );
+            audit.actor = "client".to_owned();
+            audit.ok = true;
+            if let Err(error) = self.audit.record(&audit) {
+                eprintln!("rewind audit failed for {}: {error}", params.session_id);
+            }
+        }
 
         let skills_summary =
             skills::summary_prompt(&skills::discover(&self.context.home, Path::new(&workspace)));
-        let policy = Arc::new(
-            PolicyEngine::new(PathBuf::from(&workspace), self.effective_policy_config())
-                .map_err(|error| rpc_error(error_codes::INVALID_PARAMS, error.to_string()))?,
-        );
         if let Err(error) = set_turn_state(
             &self.sessions,
             &self.store,
@@ -1915,11 +2154,29 @@ impl Core {
         };
         let is_deep = profile.id == agents::DEEP_ID;
         let prompt_prefix = profile.prompt_prefix.clone();
-        let memory_block = self.memory_injection(&workspace);
+        let mut memory_block = self.memory_injection(&workspace);
+        if Path::new(&workspace) != self.context.home {
+            if let Some(instructions) = kl_agent::home_instructions(&self.context.home) {
+                if !memory_block.is_empty() {
+                    memory_block.push_str("\n\n");
+                }
+                memory_block.push_str("Global instructions from AGENTS.md:\n");
+                memory_block.push_str(&instructions);
+            }
+        }
+        // Skills and memory are instructions, not user text: keeping them in the
+        // system prompt leaves session titles derived from the raw prompt.
+        let system_extras = format!(
+            "{skills_summary}{memory_block}{}{}{}{}",
+            self.personalization_block(),
+            self.output_style_block(),
+            self.reasoning_summary_block(),
+            self.custom_instructions_block()
+        );
         let system_prompt = match profile.system.clone() {
-            Some(system) if memory_block.is_empty() => system,
-            Some(system) => format!("{memory_block}\n\n{system}"),
-            None => memory_block.clone(),
+            Some(system) if system_extras.is_empty() => system,
+            Some(system) => format!("{system_extras}\n\n{system}"),
+            None => system_extras.clone(),
         };
 
         let thread_session = session_id.clone();
@@ -1960,9 +2217,9 @@ impl Core {
                     base_turn_id: thread_turn.clone(),
                     default_provider: thread_metadata.provider.clone(),
                     default_model: thread_metadata.model.clone(),
-                    task: format!("{skills_summary}{prompt_prefix}{prompt}"),
+                    task: format!("{prompt_prefix}{prompt}"),
                     workspace: PathBuf::from(&workspace),
-                    memory_prompt: memory_block.clone(),
+                    memory_prompt: system_extras.clone(),
                     tool_access,
                 }
                 .run(&mut history)
@@ -1977,7 +2234,7 @@ impl Core {
                     agent_config,
                 )
                 .with_system_prompt(&system_prompt);
-                let prompt = format!("{skills_summary}{prompt_prefix}{prompt}");
+                let prompt = format!("{prompt_prefix}{prompt}");
                 let prompt = if quality == QualityMode::Fast {
                     format!("Work quickly and keep the response concise.\n{prompt}")
                 } else {
@@ -2084,10 +2341,11 @@ impl Core {
         config::permissions_set(&self.context.config_path, params.approval_mode)
             .map_err(config_write_error)?;
         self.config.agent.approval_mode = params.approval_mode;
-        let (edits, shell, plugins) = config::approval_flags(params.approval_mode);
-        self.config.policy.auto_approve_edits = edits;
-        self.config.policy.auto_approve_shell = shell;
-        self.config.policy.auto_approve_plugins = plugins;
+        if let Some((edits, shell, plugins)) = config::approval_flags(params.approval_mode) {
+            self.config.policy.auto_approve_edits = edits;
+            self.config.policy.auto_approve_shell = shell;
+            self.config.policy.auto_approve_plugins = plugins;
+        }
         let mut audit = AuditRecord::new(
             "core",
             "",
@@ -2130,18 +2388,22 @@ impl Core {
 
     fn effective_policy_config(&self) -> kl_policy::PolicyConfig {
         let mut policy = self.config.policy.clone();
+        policy.deny_network = !self.config.agent.network_access;
         match self.config.agent.approval_mode {
             ApprovalMode::AcceptEdits => {
                 policy.auto_approve_edits = true;
                 policy.auto_approve_shell = false;
                 policy.auto_approve_plugins = false;
             }
-            ApprovalMode::DontAsk | ApprovalMode::Auto => {
+            ApprovalMode::DontAsk => {
                 policy.auto_approve_edits = true;
                 policy.auto_approve_shell = true;
                 policy.auto_approve_plugins = true;
             }
-            ApprovalMode::Ask | ApprovalMode::Plan | ApprovalMode::ReadOnly => {}
+            ApprovalMode::Ask
+            | ApprovalMode::Plan
+            | ApprovalMode::ReadOnly
+            | ApprovalMode::Auto => {}
         }
         policy
     }
@@ -2165,22 +2427,93 @@ impl Core {
             .map(|model| ProviderModelSummary {
                 provider: model.provider,
                 model: model.model,
+                name: model.name,
                 protocol: model.protocol.as_str().to_owned(),
                 url: model.url,
                 context_window: model.context_window,
                 compact_threshold: model.compact_threshold,
                 max_output_tokens: model.max_output_tokens,
                 enabled: model.enabled,
+                reasoning_effort: model
+                    .reasoning_effort
+                    .unwrap_or_else(|| "default".to_owned()),
+                reasoning_efforts: model
+                    .reasoning_efforts
+                    .iter()
+                    .filter_map(|effort| match effort.as_str() {
+                        "none" => Some(ReasoningEffort::None),
+                        "minimal" => Some(ReasoningEffort::Minimal),
+                        "low" => Some(ReasoningEffort::Low),
+                        "medium" => Some(ReasoningEffort::Medium),
+                        "high" => Some(ReasoningEffort::High),
+                        "xhigh" => Some(ReasoningEffort::XHigh),
+                        "max" => Some(ReasoningEffort::Max),
+                        "ultra" => Some(ReasoningEffort::Ultra),
+                        _ => None,
+                    })
+                    .collect(),
                 key_configured: model.key_configured,
                 available: model.available,
                 detail: model.detail,
+            })
+            .collect();
+        let providers = self
+            .catalog
+            .providers
+            .iter()
+            .map(|provider| ProviderProtocolSummary {
+                provider: provider.id.clone(),
+                protocols: provider.protocols.clone(),
             })
             .collect();
         to_value(ProviderListResult {
             active_provider: self.config.agent.provider.clone(),
             active_model: self.config.agent.model.clone(),
             models,
+            providers,
         })
+    }
+
+    fn provider_models(&self, params: Value) -> Result<Value, RpcError> {
+        let params: ProviderModelsParams = parse_params(params, methods::PROVIDER_MODELS)?;
+        let endpoints = config::provider_model_endpoints(
+            &self.context.config_path,
+            &self.context.home,
+            &params.id,
+        )
+        .map_err(config_write_error)?;
+
+        let mut last_error = "无法获取模型列表".to_owned();
+        for endpoint in endpoints {
+            for models_url in endpoint.models_urls {
+                match kl_provider::fetch_model_ids(
+                    &models_url,
+                    endpoint.api_key.as_deref(),
+                    endpoint.protocol,
+                ) {
+                    Ok(models) if !models.is_empty() => {
+                        return to_value(ProviderModelsResult {
+                            provider: params.id,
+                            protocol: endpoint.protocol.as_str().to_owned(),
+                            url: endpoint.chat_url,
+                            models,
+                        });
+                    }
+                    Ok(_) => last_error = "提供商没有返回模型".to_owned(),
+                    Err(error) => last_error = error.message,
+                }
+            }
+        }
+
+        Err(rpc_error(error_codes::PROVIDER_UNAVAILABLE, last_error))
+    }
+
+    fn provider_delete(&self, params: Value) -> Result<Value, RpcError> {
+        let params: ProviderDeleteParams = parse_params(params, methods::PROVIDER_DELETE)?;
+        let result =
+            config::provider_delete(&self.context.config_path, &self.context.home, &params.id)
+                .map_err(config_write_error)?;
+        to_value(result)
     }
 
     fn provider_upsert(&self, params: Value) -> Result<Value, RpcError> {
@@ -2246,13 +2579,24 @@ impl Core {
             .tail(1000)
             .map_err(|error| rpc_error(error_codes::INTERNAL_ERROR, error.to_string()))?;
         findings.extend(runtime_findings(&records));
-        findings.extend(self.llm_review(&context, mode));
+        findings.extend(self.llm_review(
+            &context,
+            mode,
+            params.instructions.as_deref(),
+            params.full_files,
+        ));
         let report = finalize(mode, context.changed_files.len(), findings);
         to_value(review_result(report))
     }
 
-    fn llm_review(&self, context: &ReviewContext, mode: ReviewMode) -> Vec<Finding> {
-        let prompt = model_prompt(context, mode);
+    fn llm_review(
+        &self,
+        context: &ReviewContext,
+        mode: ReviewMode,
+        instructions: Option<&str>,
+        full_files: bool,
+    ) -> Vec<Finding> {
+        let prompt = model_prompt(context, mode, instructions, full_files);
         let result: Result<String, String> = self
             .router
             .get(None, None)
@@ -2335,10 +2679,12 @@ impl Core {
     }
 
     fn sync_plugins(&self) {
+        let master = self.config.agent.plugins_enabled;
         for info in self.plugin_host.list() {
+            let enabled = info.enabled && master;
             match info.kind {
                 PluginKind::Provider => {
-                    if info.enabled {
+                    if enabled {
                         self.router.enable_provider(&info.id);
                         let provider = Arc::new(SidecarProvider::new(
                             self.plugin_host.clone(),
@@ -2361,7 +2707,7 @@ impl Core {
                     }
                 }
                 PluginKind::Tool => {
-                    if info.enabled {
+                    if enabled {
                         if let Some(tool) =
                             SidecarTool::new(self.plugin_host.clone(), info.id.clone())
                         {
@@ -2386,15 +2732,175 @@ impl Core {
     fn agent_config_get(&self) -> Result<Value, RpcError> {
         to_value(AgentConfigResult {
             reasoning_effort: self.config.agent.reasoning_effort,
+            web_search: self.config.agent.web_search,
+            network_access: self.config.agent.network_access,
+            output_verbosity: self.config.agent.output_verbosity,
+            reasoning_summary: self.config.agent.reasoning_summary,
+            memory_enabled: self.config.agent.memory_enabled,
+            plugins_enabled: self.config.agent.plugins_enabled,
+            custom_instructions: self.config.agent.custom_instructions.clone(),
+            personal_style: self.config.agent.personal_style,
+            warmth: self.config.agent.warmth,
+            enthusiasm: self.config.agent.enthusiasm,
+            emoji_usage: self.config.agent.emoji_usage,
+            visual_answers: self.config.agent.visual_answers,
+            heading_style: self.config.agent.heading_style,
+            quick_answers: self.config.agent.quick_answers,
         })
     }
 
     fn agent_config_set(&mut self, params: Value) -> Result<Value, RpcError> {
         let params: AgentConfigSetParams = parse_params(params, methods::AGENT_CONFIG_SET)?;
-        config::agent_config_set(&self.context.config_path, params.reasoning_effort)
-            .map_err(config_write_error)?;
-        self.config.agent.reasoning_effort = params.reasoning_effort;
+        config::agent_config_set(&self.context.config_path, &params).map_err(config_write_error)?;
+        let agent = &mut self.config.agent;
+        if let Some(value) = params.reasoning_effort {
+            agent.reasoning_effort = value;
+        }
+        if let Some(value) = params.web_search {
+            agent.web_search = value;
+        }
+        if let Some(value) = params.network_access {
+            agent.network_access = value;
+        }
+        if let Some(value) = params.output_verbosity {
+            agent.output_verbosity = value;
+        }
+        if let Some(value) = params.reasoning_summary {
+            agent.reasoning_summary = value;
+        }
+        if let Some(value) = params.memory_enabled {
+            agent.memory_enabled = value;
+        }
+        if let Some(value) = params.plugins_enabled {
+            agent.plugins_enabled = value;
+        }
+        if let Some(value) = &params.custom_instructions {
+            agent.custom_instructions = config::sanitize_custom_instructions(value);
+        }
+        if let Some(value) = params.personal_style {
+            agent.personal_style = value;
+        }
+        if let Some(value) = params.warmth {
+            agent.warmth = value;
+        }
+        if let Some(value) = params.enthusiasm {
+            agent.enthusiasm = value;
+        }
+        if let Some(value) = params.emoji_usage {
+            agent.emoji_usage = value;
+        }
+        if let Some(value) = params.visual_answers {
+            agent.visual_answers = value;
+        }
+        if let Some(value) = params.heading_style {
+            agent.heading_style = value;
+        }
+        if let Some(value) = params.quick_answers {
+            agent.quick_answers = value;
+        }
+        self.tools.set_enabled(
+            "web_fetch",
+            self.config.agent.web_search && self.config.agent.network_access,
+        );
+        self.tools
+            .set_enabled("memory", self.config.agent.memory_enabled);
+        self.sync_plugins();
         self.agent_config_get()
+    }
+
+    fn personalization_block(&self) -> String {
+        let agent = &self.config.agent;
+        let mut lines: Vec<&str> = Vec::new();
+        match agent.personal_style {
+            PersonalStyle::Default => {}
+            PersonalStyle::Friendly => lines.push("Use a friendly, approachable tone."),
+            PersonalStyle::Professional => lines.push("Use a professional, direct tone."),
+        }
+        match agent.warmth {
+            ToneLevel::Default => {}
+            ToneLevel::Low => lines.push("Keep the tone neutral and reserved."),
+            ToneLevel::High => lines.push("Be warm and supportive."),
+        }
+        match agent.enthusiasm {
+            ToneLevel::Default => {}
+            ToneLevel::Low => lines.push("Keep enthusiasm understated."),
+            ToneLevel::High => lines.push("Show enthusiasm where appropriate."),
+        }
+        match agent.emoji_usage {
+            EmojiUsage::Default => {}
+            EmojiUsage::Less => lines.push("Use emoji sparingly."),
+            EmojiUsage::More => lines.push("Use emoji when they fit the tone."),
+        }
+        match agent.visual_answers {
+            VisualAnswers::Default => {}
+            VisualAnswers::Off => {
+                lines.push("Prefer prose and avoid visual formatting unless asked.")
+            }
+            VisualAnswers::On => {
+                lines.push("Use tables, diagrams or other visual structure when they help.");
+            }
+        }
+        match agent.heading_style {
+            HeadingStyle::Default => {}
+            HeadingStyle::Concise => lines.push("Keep headings and lists short and minimal."),
+            HeadingStyle::Detailed => {
+                lines.push("Use descriptive headings and lists when they improve clarity.");
+            }
+        }
+        if agent.quick_answers {
+            lines.push(
+                "When general knowledge is sufficient, answer directly without relying on memory.",
+            );
+        }
+        if lines.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "
+
+Personalization preferences:
+- {}",
+                lines.join(
+                    "
+- "
+                )
+            )
+        }
+    }
+
+    fn output_style_block(&self) -> String {
+        match self.config.agent.output_verbosity {
+            OutputVerbosity::Default => String::new(),
+            OutputVerbosity::Concise => {
+                "\n\nResponse style: keep answers concise and omit unnecessary detail.".to_owned()
+            }
+            OutputVerbosity::Detailed => {
+                "\n\nResponse style: give detailed answers with the relevant context and tradeoffs."
+                    .to_owned()
+            }
+        }
+    }
+
+    fn reasoning_summary_block(&self) -> String {
+        match self.config.agent.reasoning_summary {
+            ReasoningSummary::Auto => String::new(),
+            ReasoningSummary::Off => {
+                "\n\nDo not include a separate reasoning summary in the final answer.".to_owned()
+            }
+            ReasoningSummary::Detailed => {
+                "\n\nBefore the final answer, briefly summarize the reasoning that led to it."
+                    .to_owned()
+            }
+        }
+    }
+
+    fn custom_instructions_block(&self) -> String {
+        let instructions = self.config.agent.custom_instructions.trim();
+        if instructions.is_empty() {
+            String::new()
+        } else {
+            format!("\n\nCustom instructions:\n{instructions}")
+        }
     }
 
     fn agent_list(&self) -> Result<Value, RpcError> {
@@ -2450,7 +2956,7 @@ impl Core {
         let params: SkillGetParams = parse_params(params, methods::SKILL_GET)?;
         let workspace = self.session_workspace(&params.session_id)?;
         let content =
-            skills::load_body(&self.context.home, &workspace, &params.name).map_err(skill_error)?;
+            skills::load_body(&self.context.home, &workspace, &params.name).map_err(tool_error)?;
         to_value(SkillGetResult {
             name: params.name,
             content,
@@ -2461,12 +2967,15 @@ impl Core {
     /// `.kl/memory` and the user store under the KL home.
     fn memory_store(&mut self, session_id: &str) -> Result<MemoryStore, RpcError> {
         let workspace = self.session_workspace(session_id)?;
-        MemoryStore::resolve(&workspace, Some(&self.context.home)).map_err(memory_error)
+        MemoryStore::resolve(&workspace, Some(&self.context.home)).map_err(tool_error)
     }
 
     /// Builds the bounded memory block that is injected into the system
     /// prompt and records it in the audit trail.
     fn memory_injection(&self, workspace: &str) -> String {
+        if !self.config.agent.memory_enabled {
+            return String::new();
+        }
         let Ok(store) = MemoryStore::resolve(Path::new(workspace), Some(&self.context.home)) else {
             return String::new();
         };
@@ -2519,19 +3028,16 @@ impl Core {
         let scope = memory_scope(params.scope.as_deref())?;
         let store = self.memory_store(&params.session_id)?;
         let (scope, content) = match scope {
-            Some(scope) => (
-                scope,
-                store.read(scope, &params.name).map_err(memory_error)?,
-            ),
+            Some(scope) => (scope, store.read(scope, &params.name).map_err(tool_error)?),
             None => match store.read(MemoryScope::Workspace, &params.name) {
                 Ok(content) => (MemoryScope::Workspace, content),
                 Err(ToolError::NotFound(_)) => (
                     MemoryScope::User,
                     store
                         .read(MemoryScope::User, &params.name)
-                        .map_err(memory_error)?,
+                        .map_err(tool_error)?,
                 ),
-                Err(error) => return Err(memory_error(error)),
+                Err(error) => return Err(tool_error(error)),
             },
         };
         to_value(MemoryReadResult {
@@ -2549,7 +3055,7 @@ impl Core {
         let store = self.memory_store(&params.session_id)?;
         let (_, path) = store
             .write(scope, &params.name, &params.content)
-            .map_err(memory_error)?;
+            .map_err(tool_error)?;
         self.record_memory_audit("write", &path, scope)?;
         to_value(MemoryWriteResult {
             name: params.name,
@@ -2580,8 +3086,8 @@ impl Core {
         };
         let path = store
             .entry_path_for(scope, &params.name)
-            .map_err(memory_error)?;
-        store.delete(scope, &params.name).map_err(memory_error)?;
+            .map_err(tool_error)?;
+        store.delete(scope, &params.name).map_err(tool_error)?;
         self.record_memory_audit("delete", &path, scope)?;
         to_value(MemoryDeleteResult {
             name: params.name,
@@ -2775,7 +3281,11 @@ fn register_plugin_adapters(
     host: &Arc<PluginHost>,
     router: &ProviderRouter,
     tools: &Arc<ToolRegistry>,
+    plugins_enabled: bool,
 ) {
+    if !plugins_enabled {
+        return;
+    }
     for info in host.list() {
         if !info.enabled {
             continue;
@@ -2949,166 +3459,8 @@ fn session_info(meta: &SessionMeta, message_count: usize, fallback_reasoning: &s
         task: meta.task.clone(),
         prompt: meta.prompt.clone(),
         last_message: meta.last_message.clone(),
+        archived: false,
     }
-}
-
-#[derive(Debug, serde::Deserialize)]
-struct StoredSessionEvent {
-    seq: u64,
-    at: String,
-    event: CoreEvent,
-}
-
-fn read_session_events(path: &Path) -> Result<Vec<StoredSessionEvent>, StoreError> {
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-    let text = std::fs::read_to_string(path)?;
-    // A crash can leave a partial final line; keep the earlier valid records.
-    Ok(text
-        .lines()
-        .filter_map(|line| serde_json::from_str::<StoredSessionEvent>(line).ok())
-        .collect())
-}
-
-fn build_session_history(
-    messages: &[Value],
-    events: &[StoredSessionEvent],
-) -> Vec<SessionHistoryEntry> {
-    let mut entries = Vec::new();
-    let mut cursor = 0;
-    for message in messages {
-        let role = message
-            .get("role")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        match role {
-            "user" => {
-                let text = history_message_text(message);
-                if text.trim().is_empty() {
-                    continue;
-                }
-                let event = next_history_event(events, &mut cursor, |event| {
-                    matches!(event, CoreEvent::TurnStarted { .. })
-                });
-                entries.push(history_entry("user", text, event, None));
-            }
-            "assistant" => {
-                let text = history_message_text(message);
-                if text.trim().is_empty() {
-                    continue;
-                }
-                let event = next_assistant_event(events, &mut cursor);
-                entries.push(history_entry("assistant", text, event, None));
-            }
-            "tool" => {
-                let event = next_history_event(events, &mut cursor, |event| {
-                    matches!(event, CoreEvent::ToolCompleted { .. })
-                });
-                if let Some(event) = event {
-                    if let CoreEvent::ToolCompleted {
-                        name, ok, summary, ..
-                    } = &event.event
-                    {
-                        entries.push(history_entry(
-                            "tool",
-                            String::new(),
-                            Some(event),
-                            Some(SessionHistoryToolSummary {
-                                name: name.clone(),
-                                ok: *ok,
-                                summary: summary.clone(),
-                            }),
-                        ));
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    entries
-}
-
-fn next_assistant_event<'a>(
-    events: &'a [StoredSessionEvent],
-    cursor: &mut usize,
-) -> Option<&'a StoredSessionEvent> {
-    while *cursor < events.len() {
-        match &events[*cursor].event {
-            CoreEvent::TurnDelta { .. } => {
-                let mut anchor = &events[*cursor];
-                *cursor += 1;
-                while *cursor < events.len() {
-                    match &events[*cursor].event {
-                        CoreEvent::TurnDelta { .. } => {
-                            anchor = &events[*cursor];
-                            *cursor += 1;
-                        }
-                        CoreEvent::TurnReasoning { .. } => {
-                            *cursor += 1;
-                        }
-                        _ => break,
-                    }
-                }
-                return Some(anchor);
-            }
-            CoreEvent::TurnCompleted { .. } => {
-                let anchor = &events[*cursor];
-                *cursor += 1;
-                return Some(anchor);
-            }
-            _ => *cursor += 1,
-        }
-    }
-    None
-}
-
-fn next_history_event<'a>(
-    events: &'a [StoredSessionEvent],
-    cursor: &mut usize,
-    is_match: impl Fn(&CoreEvent) -> bool,
-) -> Option<&'a StoredSessionEvent> {
-    while *cursor < events.len() {
-        let index = *cursor;
-        *cursor += 1;
-        if is_match(&events[index].event) {
-            return Some(&events[index]);
-        }
-    }
-    None
-}
-
-fn history_entry(
-    role: &str,
-    text: String,
-    event: Option<&StoredSessionEvent>,
-    tool: Option<SessionHistoryToolSummary>,
-) -> SessionHistoryEntry {
-    SessionHistoryEntry {
-        role: role.to_owned(),
-        text,
-        timestamp: event.map(|event| event.at.clone()),
-        seq: event.map(|event| event.seq),
-        tool,
-    }
-}
-
-fn history_message_text(value: &Value) -> String {
-    if let Some(text) = value.get("content").and_then(Value::as_str) {
-        return text.to_owned();
-    }
-    value
-        .get("content")
-        .and_then(Value::as_array)
-        .map(|parts| {
-            parts
-                .iter()
-                .filter(|part| part.get("type").and_then(Value::as_str) == Some("text"))
-                .filter_map(|part| part.get("data").and_then(Value::as_str))
-                .collect::<Vec<_>>()
-                .join("")
-        })
-        .unwrap_or_default()
 }
 
 fn parse_params<T: DeserializeOwned>(params: Value, method: &str) -> Result<T, RpcError> {
@@ -3125,7 +3477,7 @@ fn to_value<T: Serialize>(value: T) -> Result<Value, RpcError> {
         .map_err(|error| rpc_error(error_codes::INTERNAL_ERROR, error.to_string()))
 }
 
-fn rpc_error(code: i64, message: impl Into<String>) -> RpcError {
+pub(crate) fn rpc_error(code: i64, message: impl Into<String>) -> RpcError {
     RpcError {
         code,
         message: message.into(),
@@ -3270,16 +3622,7 @@ fn review_result(report: ReviewReport) -> ReviewResult {
     }
 }
 
-fn skill_error(error: ToolError) -> RpcError {
-    let code = match &error {
-        ToolError::Policy(_) => error_codes::POLICY_DENIED,
-        ToolError::InvalidArgs(_) | ToolError::NotFound(_) => error_codes::INVALID_PARAMS,
-        _ => error_codes::INTERNAL_ERROR,
-    };
-    rpc_error(code, error.to_string())
-}
-
-fn memory_error(error: ToolError) -> RpcError {
+fn tool_error(error: ToolError) -> RpcError {
     let code = match &error {
         ToolError::Policy(_) => error_codes::POLICY_DENIED,
         ToolError::InvalidArgs(_) | ToolError::NotFound(_) => error_codes::INVALID_PARAMS,
@@ -3333,13 +3676,29 @@ fn policy_summary(mode: ApprovalMode) -> &'static str {
         ApprovalMode::AcceptEdits => {
             "Workspace edits are auto-approved; shell commands and plugins still require approval."
         }
-        ApprovalMode::DontAsk | ApprovalMode::Auto => {
-            "Edits, shell commands, and plugins are auto-approved within policy; workspace paths are enforced."
+        ApprovalMode::DontAsk => {
+            "Non-denied edits, shell commands, and plugins proceed without an interactive prompt."
         }
+        ApprovalMode::Auto => "Uses the configured policy auto-approval settings.",
         ApprovalMode::ReadOnly => {
             "Reads are allowed; edits, shell commands, plugin actions, and git writes are denied."
         }
     }
+}
+
+/// Writes the install metadata that sits beside the sessions: a stable
+/// installation id plus the running version.
+fn write_install_metadata(home: &Path) {
+    let id_path = home.join("installation_id");
+    if !id_path.exists() {
+        let _ = write_file_atomic(&id_path, uuid::Uuid::new_v4().to_string().as_bytes());
+    }
+    let payload = json!({
+        "version": CORE_VERSION,
+        "protocol": PROTOCOL_VERSION,
+        "event_schema": EVENT_SCHEMA_VERSION,
+    });
+    let _ = write_file_atomic(&home.join("version.json"), payload.to_string().as_bytes());
 }
 
 fn write_file_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
@@ -3443,1994 +3802,4 @@ pub fn run_with_io_args<R: BufRead>(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::io::Cursor;
-    use std::sync::Barrier;
-
-    #[derive(Clone, Default)]
-    struct Buffer(Arc<Mutex<Vec<u8>>>);
-
-    impl Write for Buffer {
-        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-            self.0.lock().unwrap().extend_from_slice(bytes);
-            Ok(bytes.len())
-        }
-
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
-    }
-
-    struct BlockingApprovalProvider {
-        first: Arc<Barrier>,
-        release_first: Arc<Barrier>,
-        second: Arc<Barrier>,
-        release_second: Arc<Barrier>,
-        calls: AtomicUsize,
-    }
-
-    impl Provider for BlockingApprovalProvider {
-        fn id(&self) -> &str {
-            "scripted"
-        }
-
-        fn kind(&self) -> &str {
-            "scripted"
-        }
-
-        fn models(&self) -> Vec<ModelInfo> {
-            vec![ModelInfo::new("scripted")]
-        }
-
-        fn stream_chat(
-            &self,
-            _request: &ChatRequest,
-            _cancel: &CancellationToken,
-            _on_event: &mut dyn FnMut(ChatEvent),
-        ) -> Result<ChatOutcome, ProviderError> {
-            if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
-                self.first.wait();
-                self.release_first.wait();
-                Ok(ChatOutcome {
-                    text: String::new(),
-                    tool_calls: vec![kl_provider::ToolCall {
-                        id: "call-1".to_owned(),
-                        name: "write_file".to_owned(),
-                        arguments: r#"{"path":"out.txt","content":"approved"}"#.to_owned(),
-                    }],
-                    finish_reason: FinishReason::ToolCalls,
-                    usage: Usage::default(),
-                })
-            } else {
-                self.second.wait();
-                self.release_second.wait();
-                Ok(ChatOutcome {
-                    text: "done".to_owned(),
-                    tool_calls: Vec::new(),
-                    finish_reason: FinishReason::Stop,
-                    usage: Usage::default(),
-                })
-            }
-        }
-    }
-
-    fn serve(input: &str, config: Option<PathBuf>, home: PathBuf) -> Vec<Value> {
-        let buffer = Buffer::default();
-        run_with_io_args(
-            Cursor::new(input),
-            Emitter::new(Box::new(buffer.clone())),
-            config,
-            Some(home),
-        )
-        .unwrap();
-        let bytes = buffer.0.lock().unwrap().clone();
-        String::from_utf8(bytes)
-            .unwrap()
-            .lines()
-            .map(|line| serde_json::from_str(line).unwrap())
-            .collect()
-    }
-
-    #[test]
-    fn approval_broker_timeout_and_cancel_deny() {
-        let broker = ApprovalBroker::new(Duration::from_millis(20));
-        let receiver = broker.register("timeout");
-        let started = Instant::now();
-        assert_eq!(
-            broker.wait_registered("timeout", receiver, &AtomicBool::new(false)),
-            ApprovalDecision::Deny
-        );
-        assert!(started.elapsed() >= Duration::from_millis(15));
-
-        let receiver = broker.register("cancel");
-        assert_eq!(
-            broker.wait_registered("cancel", receiver, &AtomicBool::new(true)),
-            ApprovalDecision::Deny
-        );
-    }
-
-    #[test]
-    fn handshake_then_ping() {
-        let home = tempfile::tempdir().unwrap();
-        let output = serve(
-            r#"{"jsonrpc":"2.0","id":1,"method":"kl.handshake","params":{"client_name":"test","client_version":"0.1.0","protocol_versions":[1]}}
-{"jsonrpc":"2.0","id":2,"method":"kl.ping","params":{"nonce":"abc"}}
-"#,
-            None,
-            home.path().to_path_buf(),
-        );
-        assert_eq!(output.len(), 2);
-        assert_eq!(output[0]["result"]["protocol_version"], 1);
-        assert_eq!(output[0]["result"]["server_name"], "kl-core");
-        assert_eq!(output[1]["result"]["pong"], true);
-        assert_eq!(output[1]["result"]["nonce"], "abc");
-    }
-
-    #[test]
-    fn rejects_incompatible_version() {
-        let home = tempfile::tempdir().unwrap();
-        let output = serve(
-            r#"{"jsonrpc":"2.0","id":1,"method":"kl.handshake","params":{"client_name":"test","client_version":"0.1.0","protocol_versions":[9]}}
-"#,
-            None,
-            home.path().to_path_buf(),
-        );
-        assert_eq!(output.len(), 1);
-        assert_eq!(output[0]["error"]["code"], error_codes::VERSION_MISMATCH);
-        assert_eq!(output[0]["error"]["data"]["server_max"], 1);
-    }
-
-    #[test]
-    fn requires_handshake_for_sessions() {
-        let home = tempfile::tempdir().unwrap();
-        let output = serve(
-            r#"{"jsonrpc":"2.0","id":1,"method":"session.list","params":{}}
-"#,
-            None,
-            home.path().to_path_buf(),
-        );
-        assert_eq!(output[0]["error"]["code"], error_codes::NOT_INITIALIZED);
-    }
-
-    #[test]
-    fn routes_three_native_protocols_and_redacts_keys() {
-        let temp = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(temp.path().join("providers")).unwrap();
-        std::fs::write(
-            temp.path().join("providers/opencode.toml"),
-            r#"
-api_key = "super-secret-key"
-[protocols]
-openai-chat = "https://gateway.example/v1/chat/completions"
-anthropic = "https://gateway.example/v1/messages"
-openai-responses = "https://gateway.example/v1/responses"
-[[models]]
-id = "gpt-5-chat"
-protocol = "openai-chat"
-context_window = 128000
-compact_threshold = 0.8
-max_output_tokens = 4096
-[[models]]
-id = "claude-native"
-protocol = "anthropic"
-context_window = 200000
-compact_threshold = 0.75
-max_output_tokens = 8192
-[[models]]
-id = "gpt-5-responses"
-protocol = "openai-responses"
-context_window = 256000
-compact_threshold = 0.9
-max_output_tokens = 16384
-url = "https://gateway.example/custom/responses"
-"#,
-        )
-        .unwrap();
-        std::fs::write(
-            temp.path().join("kl.toml"),
-            r#"
-[agent]
-provider = "opencode"
-model = "gpt-5-responses"
-[providers.opencode]
-enabled = true
-path = "providers/opencode.toml"
-"#,
-        )
-        .unwrap();
-        let workspace = temp.path().to_string_lossy().replace('\\', "\\\\");
-        let input = format!(
-            "{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"kl.handshake\",\"params\":{{\"client_name\":\"test\",\"client_version\":\"0.1.0\",\"protocol_versions\":[1]}}}}\n\
-             {{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"provider.list\",\"params\":{{}}}}\n\
-             {{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session.create\",\"params\":{{\"workspace\":\"{workspace}\",\"provider\":\"opencode\",\"model\":\"gpt-5-responses\"}}}}\n\
-             {{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"config.get\",\"params\":{{}}}}\n"
-        );
-        let output = serve(
-            &input,
-            Some(temp.path().join("kl.toml")),
-            temp.path().join(".kl"),
-        );
-        let providers = &output.iter().find(|value| value["id"] == 2).unwrap()["result"];
-        let models = providers["models"].as_array().unwrap();
-        assert_eq!(models.len(), 3);
-        assert_eq!(providers["active_provider"], "opencode");
-        assert_eq!(providers["active_model"], "gpt-5-responses");
-        let model = |id: &str| models.iter().find(|model| model["model"] == id).unwrap();
-        assert_eq!(model("gpt-5-chat")["protocol"], "openai-chat");
-        assert_eq!(model("claude-native")["protocol"], "anthropic");
-        assert_eq!(model("gpt-5-responses")["protocol"], "openai-responses");
-        assert_eq!(model("gpt-5-responses")["context_window"], 256000);
-        let threshold = model("gpt-5-responses")["compact_threshold"]
-            .as_f64()
-            .unwrap();
-        assert!((threshold - 0.9).abs() < 1e-6);
-        assert_eq!(model("gpt-5-responses")["max_output_tokens"], 16384);
-        assert_eq!(
-            model("gpt-5-responses")["url"],
-            "https://gateway.example/custom/responses"
-        );
-
-        let create = output.iter().find(|value| value["id"] == 3).unwrap();
-        assert_eq!(create["result"]["provider"], "opencode");
-        assert_eq!(create["result"]["model"], "gpt-5-responses");
-
-        let config = output.iter().find(|value| value["id"] == 4).unwrap();
-        assert!(!config.to_string().contains("super-secret-key"));
-        assert!(config.to_string().contains("configured"));
-    }
-
-    #[test]
-    fn disabled_provider_has_no_models_and_selection_fails() {
-        let temp = tempfile::tempdir().unwrap();
-        std::fs::write(
-            temp.path().join("kl.toml"),
-            r#"
-[agent]
-provider = "opencode"
-model = "gpt-5-chat"
-[providers.opencode]
-enabled = false
-path = "providers/missing.toml"
-"#,
-        )
-        .unwrap();
-        let workspace = temp.path().to_string_lossy().replace('\\', "\\\\");
-        let input = format!(
-            "{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"kl.handshake\",\"params\":{{\"client_name\":\"test\",\"client_version\":\"0.1.0\",\"protocol_versions\":[1]}}}}\n\
-             {{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"provider.list\",\"params\":{{}}}}\n\
-             {{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session.create\",\"params\":{{\"workspace\":\"{workspace}\",\"provider\":\"opencode\"}}}}\n"
-        );
-        let output = serve(
-            &input,
-            Some(temp.path().join("kl.toml")),
-            temp.path().join(".kl"),
-        );
-        let providers = output.iter().find(|value| value["id"] == 2).unwrap();
-        assert_eq!(providers["result"]["models"].as_array().unwrap().len(), 0);
-        let create = output.iter().find(|value| value["id"] == 3).unwrap();
-        assert_eq!(create["error"]["code"], error_codes::PROVIDER_UNAVAILABLE);
-        assert!(
-            create["error"]["message"]
-                .as_str()
-                .unwrap()
-                .contains("disabled")
-        );
-    }
-
-    #[test]
-    fn provider_upsert_and_key_survive_core_restart() {
-        let temp = tempfile::tempdir().unwrap();
-        let config_path = temp.path().join("kl.toml");
-        let home_path = temp.path().join("home");
-        let input = r#"{"jsonrpc":"2.0","id":1,"method":"kl.handshake","params":{"client_name":"test","client_version":"0.1.0","protocol_versions":[1]}}
-{"jsonrpc":"2.0","id":2,"method":"provider.upsert","params":{"id":"local","protocols":{"openai-responses":"https://gateway.example/custom/responses?tenant=kl"},"models":[{"id":"gpt-5-responses","protocol":"openai-responses","context_window":1000,"compact_threshold":0.8,"max_output_tokens":100}],"enabled":true}}
-{"jsonrpc":"2.0","id":3,"method":"provider.set_api_key","params":{"id":"local","key":"super-secret"}}
-{"jsonrpc":"2.0","id":4,"method":"config.set_default_model","params":{"provider":"local","model":"gpt-5-responses"}}
-"#;
-        let first = serve(input, Some(config_path.clone()), home_path.clone());
-        assert!(
-            first.iter().all(|value| value.get("error").is_none()),
-            "{first:?}"
-        );
-
-        let second = serve(
-            r#"{"jsonrpc":"2.0","id":1,"method":"kl.handshake","params":{"client_name":"test","client_version":"0.1.0","protocol_versions":[1]}}
-{"jsonrpc":"2.0","id":2,"method":"provider.list","params":{}}
-{"jsonrpc":"2.0","id":3,"method":"config.get","params":{}}
-"#,
-            Some(config_path),
-            home_path.clone(),
-        );
-        let providers = second.iter().find(|value| value["id"] == 2).unwrap();
-        let models = providers["result"]["models"].as_array().unwrap();
-        assert_eq!(models.len(), 1);
-        assert_eq!(models[0]["provider"], "local");
-        assert_eq!(models[0]["model"], "gpt-5-responses");
-        assert_eq!(models[0]["protocol"], "openai-responses");
-        assert_eq!(models[0]["enabled"], true);
-        assert_eq!(models[0]["key_configured"], true);
-        assert_eq!(
-            models[0]["url"],
-            "https://gateway.example/custom/responses?tenant=kl"
-        );
-        let config = second.iter().find(|value| value["id"] == 3).unwrap();
-        assert!(!config.to_string().contains("super-secret"));
-        assert_eq!(
-            std::fs::read_to_string(home_path.join("credentials/local.key")).unwrap(),
-            "super-secret"
-        );
-        assert!(
-            !std::fs::read_to_string(temp.path().join("providers/local.toml"))
-                .unwrap()
-                .contains("super-secret")
-        );
-    }
-    #[test]
-    fn creates_scripted_session_and_lists_it() {
-        let temp = tempfile::tempdir().unwrap();
-        std::fs::write(temp.path().join("script.json"), r#"[{"text":"hello"}]"#).unwrap();
-        std::fs::write(
-            temp.path().join("kl.toml"),
-            r#"
-[agent]
-provider = "scripted"
-model = "scripted"
-scripted_path = "script.json"
-"#,
-        )
-        .unwrap();
-        let workspace = temp.path().to_string_lossy().replace('\\', "\\\\");
-        let input = format!(
-            "{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"kl.handshake\",\"params\":{{\"client_name\":\"test\",\"client_version\":\"0.1.0\",\"protocol_versions\":[1]}}}}\n\
-             {{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"session.create\",\"params\":{{\"workspace\":\"{workspace}\"}}}}\n\
-             {{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session.list\",\"params\":{{}}}}\n"
-        );
-        let output = serve(
-            &input,
-            Some(temp.path().join("kl.toml")),
-            temp.path().join(".kl"),
-        );
-        let create = output
-            .iter()
-            .find(|value| value["id"] == 2)
-            .expect("session.create response");
-        let list = output
-            .iter()
-            .find(|value| value["id"] == 3)
-            .expect("session.list response");
-        assert_eq!(create["result"]["provider"], "scripted", "{create}");
-        assert!(create["result"]["session_id"].as_str().is_some());
-        assert_eq!(list["result"]["sessions"].as_array().unwrap().len(), 1);
-    }
-
-    #[test]
-    fn turn_state_tracks_working_approval_and_completion() {
-        let temp = tempfile::tempdir().unwrap();
-        let workspace = temp.path().join("workspace");
-        std::fs::create_dir_all(&workspace).unwrap();
-        let config = command_config(temp.path());
-        let home = tempfile::tempdir().unwrap();
-        let (mut core, buffer) = new_test_core(config, home.path());
-        core.handshaken = true;
-
-        let (_, metadata) = core.router.get(Some("scripted"), Some("scripted")).unwrap();
-        let first = Arc::new(Barrier::new(2));
-        let release_first = Arc::new(Barrier::new(2));
-        let second = Arc::new(Barrier::new(2));
-        let release_second = Arc::new(Barrier::new(2));
-        core.router.register(
-            metadata,
-            Arc::new(BlockingApprovalProvider {
-                first: first.clone(),
-                release_first: release_first.clone(),
-                second: second.clone(),
-                release_second: release_second.clone(),
-                calls: AtomicUsize::new(0),
-            }),
-        );
-
-        let created = core
-            .session_create(json!({"workspace": workspace.to_string_lossy()}))
-            .unwrap();
-        let session_id = created["session_id"].as_str().unwrap().to_owned();
-        assert_eq!(created["turn_state"], TURN_STATE_IDLE);
-        let listed = core.session_list().unwrap();
-        assert_eq!(listed["sessions"][0]["turn_state"], TURN_STATE_IDLE);
-
-        core.turn_start(json!({"session_id": session_id, "prompt": "write a file"}))
-            .unwrap();
-        first.wait();
-        assert_eq!(
-            session_turn_state(&core, &session_id).as_deref(),
-            Some(TURN_STATE_WORKING)
-        );
-        release_first.wait();
-
-        wait_for_session_turn_state(&core, &session_id, TURN_STATE_WAITING_APPROVAL);
-        let approval_id = wait_for_approval_id(&buffer);
-        let response = core
-            .approval_respond(json!({
-                "session_id": session_id,
-                "approval_id": approval_id,
-                "decision": "allow"
-            }))
-            .unwrap();
-        assert_eq!(response["accepted"], true);
-
-        wait_for_session_turn_state(&core, &session_id, TURN_STATE_WORKING);
-        second.wait();
-        assert_eq!(
-            session_turn_state(&core, &session_id).as_deref(),
-            Some(TURN_STATE_WORKING)
-        );
-        release_second.wait();
-
-        wait_for_threads(&mut core);
-        assert_eq!(
-            session_turn_state(&core, &session_id).as_deref(),
-            Some(TURN_STATE_IDLE)
-        );
-        let listed = core.session_list().unwrap();
-        assert_eq!(listed["sessions"][0]["turn_state"], TURN_STATE_IDLE);
-    }
-
-    #[test]
-    fn turn_state_survives_core_restart() {
-        let temp = tempfile::tempdir().unwrap();
-        let workspace = temp.path().join("workspace");
-        std::fs::create_dir_all(&workspace).unwrap();
-        let config = command_config(temp.path());
-        let home = tempfile::tempdir().unwrap();
-        let session_id = {
-            let (mut core, _) = new_test_core(config.clone(), home.path());
-            core.handshaken = true;
-            let created = core
-                .session_create(json!({"workspace": workspace.to_string_lossy()}))
-                .unwrap();
-            let session_id = created["session_id"].as_str().unwrap().to_owned();
-            core.store
-                .set_turn_state(&session_id, TURN_STATE_WAITING_APPROVAL)
-                .unwrap();
-            session_id
-        };
-
-        let (mut restarted, _) = new_test_core(config, home.path());
-        restarted.handshaken = true;
-        let listed = restarted.session_list().unwrap();
-        assert_eq!(
-            listed["sessions"][0]["turn_state"],
-            TURN_STATE_WAITING_APPROVAL
-        );
-        let resumed = restarted
-            .session_resume(json!({"session_id": session_id}))
-            .unwrap();
-        assert_eq!(resumed["turn_state"], TURN_STATE_WAITING_APPROVAL);
-    }
-
-    use kl_provider::{ChatOutcome, FinishReason, ModelInfo, ProviderErrorKind};
-
-    fn copy_dir(source: &Path, target: &Path) {
-        std::fs::create_dir_all(target).unwrap();
-        for entry in std::fs::read_dir(source).unwrap() {
-            let entry = entry.unwrap();
-            if entry.file_name() == ".git" {
-                continue;
-            }
-            let destination = target.join(entry.file_name());
-            if entry.file_type().unwrap().is_dir() {
-                copy_dir(&entry.path(), &destination);
-            } else {
-                std::fs::copy(entry.path(), destination).unwrap();
-            }
-        }
-    }
-
-    fn test_git(workspace: &Path, args: &[&str]) {
-        let status = std::process::Command::new("git")
-            .arg("-C")
-            .arg(workspace)
-            .args([
-                "-c",
-                "user.email=review@example.test",
-                "-c",
-                "user.name=review",
-            ])
-            .args(args)
-            .status()
-            .unwrap();
-        assert!(status.success(), "git {:?} failed", args);
-    }
-
-    fn output_lines(buffer: &Buffer) -> Vec<Value> {
-        let bytes = buffer.0.lock().unwrap().clone();
-        String::from_utf8(bytes)
-            .unwrap()
-            .lines()
-            .map(|line| serde_json::from_str(line).unwrap())
-            .collect()
-    }
-
-    fn wait_for_threads(core: &mut Core) {
-        let deadline = Instant::now() + Duration::from_secs(15);
-        while Instant::now() < deadline && core.threads.iter().any(|handle| !handle.is_finished()) {
-            std::thread::sleep(Duration::from_millis(25));
-        }
-        assert!(
-            core.threads.iter().all(|handle| handle.is_finished()),
-            "core turn thread did not finish"
-        );
-        for handle in core.threads.drain(..) {
-            handle.join().unwrap();
-        }
-    }
-
-    fn session_turn_state(core: &Core, session_id: &str) -> Option<String> {
-        core.store
-            .load(session_id)
-            .ok()
-            .map(|data| data.meta.turn_state)
-    }
-
-    fn wait_for_session_turn_state(core: &Core, session_id: &str, expected: &str) {
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
-            if session_turn_state(core, session_id).as_deref() == Some(expected) {
-                return;
-            }
-            assert!(
-                Instant::now() < deadline,
-                "turn state did not become {expected}: {:?}",
-                session_turn_state(core, session_id)
-            );
-            std::thread::sleep(Duration::from_millis(10));
-        }
-    }
-
-    fn wait_for_approval_id(buffer: &Buffer) -> String {
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
-            for value in output_lines(buffer) {
-                if value["params"]["event"]["type"] == "tool.approval.requested" {
-                    if let Some(id) = value["params"]["event"]["data"]["approval_id"].as_str() {
-                        return id.to_owned();
-                    }
-                }
-            }
-            assert!(
-                Instant::now() < deadline,
-                "tool approval request was not emitted"
-            );
-            std::thread::sleep(Duration::from_millis(10));
-        }
-    }
-
-    fn deep_config(temp: &Path) -> PathBuf {
-        std::fs::write(
-            temp.join("script.json"),
-            r#"[
-                {"text":"explored src/lib.rs:1"},
-                {"text":"PLAN write out.txt"},
-                {"tool_calls":[{"name":"write_file","arguments":{"path":"out.txt","content":"done"}}]},
-                {"text":"IMPLEMENTATION wrote out.txt:1"},
-                {"text":"REVIEW out.txt:1 evidence=done"},
-                {"text":"VERIFY out.txt:1 tests passed"}
-            ]"#,
-        )
-        .unwrap();
-        let config = temp.join("kl.toml");
-        std::fs::write(
-            &config,
-            r#"
-[agent]
-provider = "scripted"
-model = "scripted"
-scripted_path = "script.json"
-scripted_sequential = true
-quality = "deep"
-
-[policy]
-auto_approve_edits = true
-"#,
-        )
-        .unwrap();
-        config
-    }
-
-    fn new_test_core(config: PathBuf, home: &Path) -> (Core, Buffer) {
-        let buffer = Buffer::default();
-        let core = Core::new(
-            ServerContext::resolve(Some(config), Some(home.to_path_buf())),
-            Emitter::new(Box::new(buffer.clone())),
-        )
-        .unwrap();
-        (core, buffer)
-    }
-
-    fn command_config(temp: &Path) -> PathBuf {
-        std::fs::write(temp.join("script.json"), r#"[{"text":"unused"}]"#).unwrap();
-        let config = temp.join("kl.toml");
-        std::fs::write(
-            &config,
-            r#"
-[agent]
-provider = "scripted"
-model = "scripted"
-scripted_path = "script.json"
-max_iterations = 2
-"#,
-        )
-        .unwrap();
-        config
-    }
-
-    #[test]
-    fn session_status_reports_the_loaded_session_and_turn_state() {
-        let temp = tempfile::tempdir().unwrap();
-        let workspace = temp.path().join("workspace");
-        std::fs::create_dir_all(&workspace).unwrap();
-        let config = command_config(temp.path());
-        let home = tempfile::tempdir().unwrap();
-        let (mut core, _) = new_test_core(config, home.path());
-        core.handshaken = true;
-        let created = core
-            .session_create(json!({"workspace": workspace.to_string_lossy()}))
-            .unwrap();
-        let session_id = created["session_id"].as_str().unwrap().to_owned();
-
-        let status = core.session_status(json!({})).unwrap();
-        assert_eq!(status["session_id"], session_id);
-        let expected_workspace = std::fs::canonicalize(&workspace).unwrap();
-        let expected_text = expected_workspace.to_string_lossy();
-        let expected_text = expected_text
-            .strip_prefix(r"\\?\")
-            .unwrap_or(expected_text.as_ref());
-        assert_eq!(status["workspace"], expected_text);
-        assert_eq!(status["provider"], "scripted");
-        assert_eq!(status["model"], "scripted");
-        assert_eq!(status["context_window"], 8192);
-        assert_eq!(status["turn_active"], false);
-        assert_eq!(status["approval_mode"], "ask");
-        assert!(status["sandbox"]["backend"].as_str().is_some());
-        assert!(status["sandbox"]["capabilities"].is_object());
-
-        {
-            let mut sessions = core.sessions.lock().unwrap();
-            sessions.get_mut(&session_id).unwrap().active_turn = Some("turn-test".to_owned());
-        }
-        let active = core
-            .session_status(json!({"session_id": session_id}))
-            .unwrap();
-        assert_eq!(active["turn_active"], true);
-    }
-
-    #[test]
-    fn permissions_modes_are_hot_updated_and_persisted() {
-        let temp = tempfile::tempdir().unwrap();
-        let config_path = command_config(temp.path());
-        let home = tempfile::tempdir().unwrap();
-        let (mut core, _) = new_test_core(config_path.clone(), home.path());
-        core.handshaken = true;
-
-        for mode in ["ask", "plan", "acceptEdits", "dontAsk", "auto", "read-only"] {
-            let result = core
-                .permissions_set(json!({"approval_mode": mode}))
-                .unwrap();
-            assert_eq!(result["approval_mode"], mode);
-            assert_eq!(core.permissions_get().unwrap(), result);
-            let saved = Config::load(&config_path).unwrap();
-            assert_eq!(saved.agent.approval_mode.as_str(), mode);
-            let (edits, shell, plugins) = match mode {
-                "acceptEdits" => (true, false, false),
-                "dontAsk" | "auto" => (true, true, true),
-                _ => (false, false, false),
-            };
-            assert_eq!(saved.policy.auto_approve_edits, edits);
-            assert_eq!(saved.policy.auto_approve_shell, shell);
-            assert_eq!(saved.policy.auto_approve_plugins, plugins);
-            assert_eq!(
-                core.tool_access(),
-                if matches!(mode, "plan" | "read-only") {
-                    ToolAccess::ReadOnly
-                } else {
-                    ToolAccess::Full
-                }
-            );
-        }
-
-        let error = core
-            .permissions_set(json!({"approval_mode": "unknown"}))
-            .unwrap_err();
-        assert_eq!(error.code, error_codes::INVALID_PARAMS);
-        assert_eq!(
-            core.permissions_get().unwrap()["approval_mode"],
-            "read-only"
-        );
-    }
-
-    #[test]
-    fn permissions_and_reasoning_effort_survive_restart() {
-        let temp = tempfile::tempdir().unwrap();
-        let config_path = command_config(temp.path());
-        let home = tempfile::tempdir().unwrap();
-        {
-            let (mut core, _) = new_test_core(config_path.clone(), home.path());
-            core.handshaken = true;
-            assert_eq!(
-                core.agent_config_get().unwrap()["reasoning_effort"],
-                "default"
-            );
-            core.permissions_set(json!({"approval_mode": "auto"}))
-                .unwrap();
-            core.agent_config_set(json!({"reasoning_effort": "high"}))
-                .unwrap();
-        }
-
-        let (mut restarted, _) = new_test_core(config_path, home.path());
-        restarted.handshaken = true;
-        assert_eq!(
-            restarted.permissions_get().unwrap()["approval_mode"],
-            "auto"
-        );
-        assert_eq!(
-            restarted.agent_config_get().unwrap()["reasoning_effort"],
-            "high"
-        );
-        let error = restarted
-            .agent_config_set(json!({"reasoning_effort": "extreme"}))
-            .unwrap_err();
-        assert_eq!(error.code, error_codes::INVALID_PARAMS);
-    }
-
-    #[test]
-    fn session_compact_reuses_agent_compaction_and_keeps_tool_pairs() {
-        let temp = tempfile::tempdir().unwrap();
-        let workspace = temp.path().join("workspace");
-        std::fs::create_dir_all(&workspace).unwrap();
-        let config = command_config(temp.path());
-        let home = tempfile::tempdir().unwrap();
-        let (mut core, _) = new_test_core(config, home.path());
-        core.handshaken = true;
-        let created = core
-            .session_create(json!({"workspace": workspace.to_string_lossy()}))
-            .unwrap();
-        let session_id = created["session_id"].as_str().unwrap().to_owned();
-        let empty = core
-            .session_compact(json!({"session_id": session_id}))
-            .unwrap();
-        assert_eq!(empty["omitted_messages"], 0);
-        assert!(empty["estimated_tokens"].as_u64().unwrap() > 0);
-        let tool_call = kl_provider::ToolCall {
-            id: "latest-call".to_owned(),
-            name: "read_file".to_owned(),
-            arguments: r#"{"path":"README.md"}"#.to_owned(),
-        };
-        let mut messages = Vec::new();
-        for round in 0..3 {
-            messages.push(ChatMessage::user(format!("round {round}")));
-            if round == 2 {
-                messages.push(ChatMessage::assistant("", vec![tool_call.clone()]));
-                messages.push(ChatMessage::tool("latest-call", "file contents"));
-                messages.push(ChatMessage::assistant("latest answer", Vec::new()));
-            } else {
-                messages.push(ChatMessage::assistant(
-                    format!("answer {round}"),
-                    Vec::new(),
-                ));
-            }
-        }
-        {
-            let mut sessions = core.sessions.lock().unwrap();
-            sessions.get_mut(&session_id).unwrap().messages = messages;
-        }
-
-        let compacted = core
-            .session_compact(json!({"session_id": session_id}))
-            .unwrap();
-        assert!(compacted["omitted_messages"].as_u64().unwrap() <= 3);
-        assert!(compacted["estimated_tokens"].as_u64().unwrap() > 0);
-        assert_eq!(compacted["context_window"], 8192);
-        assert!((compacted["compact_threshold"].as_f64().unwrap() - 0.8).abs() < 0.001);
-
-        let history = {
-            let sessions = core.sessions.lock().unwrap();
-            sessions.get(&session_id).unwrap().messages.clone()
-        };
-        let tool_ids: Vec<String> = history
-            .iter()
-            .filter_map(|message| message.tool_call_id.clone())
-            .collect();
-        for call in history.iter().flat_map(|message| &message.tool_calls) {
-            assert!(
-                tool_ids.contains(&call.id),
-                "tool call {} lost its result",
-                call.id
-            );
-        }
-        assert!(
-            history
-                .iter()
-                .any(|message| message.text() == "latest answer")
-        );
-        let persisted = core.store.load(&session_id).unwrap();
-        assert_eq!(persisted.messages.len(), history.len());
-        let events = core.store.read_events(&session_id).unwrap();
-        assert!(events.iter().any(|event| matches!(
-            &event.event,
-            CoreEvent::ContextCompacted {
-                trigger,
-                summary_used: false,
-                ..
-            } if trigger == "session.compact"
-        )));
-
-        {
-            let mut sessions = core.sessions.lock().unwrap();
-            sessions.get_mut(&session_id).unwrap().active_turn = Some("turn-test".to_owned());
-        }
-        let active_error = core
-            .session_compact(json!({"session_id": session_id}))
-            .unwrap_err();
-        assert_eq!(active_error.code, error_codes::TURN_IN_PROGRESS);
-
-        let empty_home = tempfile::tempdir().unwrap();
-        let (mut empty, _) = new_test_core(temp.path().join("empty.toml"), empty_home.path());
-        empty.handshaken = true;
-        let error = empty.session_compact(json!({})).unwrap_err();
-        assert_eq!(error.code, error_codes::SESSION_NOT_FOUND);
-    }
-
-    #[test]
-    fn workspace_init_creates_without_overwriting_and_rejects_escape() {
-        let temp = tempfile::tempdir().unwrap();
-        let workspace = temp.path().join("workspace");
-        let nested = workspace.join("nested");
-        let outside = temp.path().join("outside");
-        std::fs::create_dir_all(&nested).unwrap();
-        std::fs::create_dir_all(&outside).unwrap();
-        let config = command_config(temp.path());
-        let config_path = config.clone();
-        let home = tempfile::tempdir().unwrap();
-        let (mut core, _) = new_test_core(config, home.path());
-        core.handshaken = true;
-        core.session_create(json!({"workspace": workspace.to_string_lossy()}))
-            .unwrap();
-
-        let created = core
-            .workspace_init(json!({"path": "nested", "force": false}))
-            .unwrap();
-        assert_eq!(created["created"], true);
-        let agents_path = PathBuf::from(created["path"].as_str().unwrap());
-        assert!(agents_path.is_file());
-        std::fs::write(&agents_path, "keep me").unwrap();
-
-        let existing = core
-            .workspace_init(json!({"path": "nested", "force": false}))
-            .unwrap();
-        assert_eq!(existing["created"], false);
-        assert_eq!(std::fs::read_to_string(&agents_path).unwrap(), "keep me");
-
-        let forced = core
-            .workspace_init(json!({"path": "nested", "force": true}))
-            .unwrap();
-        assert_eq!(forced["created"], true);
-        assert!(
-            std::fs::read_to_string(&agents_path)
-                .unwrap()
-                .starts_with("# AGENTS.md")
-        );
-
-        let error = core
-            .workspace_init(json!({"path": outside.to_string_lossy()}))
-            .unwrap_err();
-        assert_eq!(error.code, error_codes::POLICY_DENIED);
-        assert!(!outside.join("AGENTS.md").exists());
-
-        let standalone_home = tempfile::tempdir().unwrap();
-        let (mut standalone, _) = new_test_core(config_path, standalone_home.path());
-        standalone.handshaken = true;
-        let initialized = standalone
-            .workspace_init(json!({"path": workspace.to_string_lossy()}))
-            .unwrap();
-        assert_eq!(initialized["created"], true);
-        assert!(workspace.join("AGENTS.md").is_file());
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn workspace_init_rejects_agents_symlink() {
-        use std::os::unix::fs::symlink;
-
-        let temp = tempfile::tempdir().unwrap();
-        let workspace = temp.path().join("workspace");
-        std::fs::create_dir_all(&workspace).unwrap();
-        let outside = temp.path().join("outside.md");
-        std::fs::write(&outside, "outside").unwrap();
-        symlink(&outside, workspace.join("AGENTS.md")).unwrap();
-        let config = command_config(temp.path());
-        let home = tempfile::tempdir().unwrap();
-        let (mut core, _) = new_test_core(config, home.path());
-        core.handshaken = true;
-        core.session_create(json!({"workspace": workspace.to_string_lossy()}))
-            .unwrap();
-
-        let error = core.workspace_init(json!({"force": true})).unwrap_err();
-        assert_eq!(error.code, error_codes::POLICY_DENIED);
-        assert_eq!(std::fs::read_to_string(outside).unwrap(), "outside");
-    }
-
-    #[test]
-    fn review_run_finds_fixture_rules_without_a_provider() {
-        let temp = tempfile::tempdir().unwrap();
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let workspace = temp.path().join("repo");
-        copy_dir(&root.join("tests/fixtures/review-repo/base"), &workspace);
-        test_git(&workspace, &["init"]);
-        test_git(&workspace, &["add", "."]);
-        test_git(&workspace, &["commit", "-m", "base"]);
-        copy_dir(&root.join("tests/fixtures/review-repo/changed"), &workspace);
-        let home = tempfile::tempdir().unwrap();
-        let escaped = workspace.to_string_lossy().replace('\\', "\\\\");
-        let input = format!(
-            "{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"kl.handshake\",\"params\":{{\"client_name\":\"test\",\"client_version\":\"0.1.0\",\"protocol_versions\":[1]}}}}\n\
-             {{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"review.run\",\"params\":{{\"workspace\":\"{escaped}\",\"mode\":\"strict\"}}}}\n"
-        );
-        let output = serve(&input, None, home.path().to_path_buf());
-        let review = output.iter().find(|value| value["id"] == 2).unwrap();
-        let rules: Vec<&str> = review["result"]["findings"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|finding| finding["rule"].as_str().unwrap())
-            .collect();
-        for expected in [
-            "debug-unwrap",
-            "secret-openai",
-            "missing-test",
-            "cross-file-command-injection",
-            "llm-review-unavailable",
-        ] {
-            assert!(
-                rules.contains(&expected),
-                "missing {expected}; got {rules:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn turn_start_records_one_user_message_before_the_agent_starts() {
-        let temp = tempfile::tempdir().unwrap();
-        let config = command_config(temp.path());
-        let home = tempfile::tempdir().unwrap();
-        let (mut core, _) = new_test_core(config, home.path());
-        core.handshaken = true;
-        let created = core
-            .session_create(json!({"workspace": temp.path().to_string_lossy()}))
-            .unwrap();
-        let session_id = created["session_id"].as_str().unwrap().to_owned();
-
-        core.turn_start(json!({"session_id": session_id, "prompt": "hello"}))
-            .unwrap();
-        wait_for_threads(&mut core);
-
-        let events = core.store.read_events(&session_id).unwrap();
-        let user_messages: Vec<_> = events
-            .iter()
-            .filter_map(|stored| match &stored.event {
-                CoreEvent::UserMessage { turn_id, text } => Some((stored.seq, turn_id, text)),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(user_messages.len(), 1);
-        assert_eq!(user_messages[0].2, "hello");
-        let started_seq = events
-            .iter()
-            .find(|stored| {
-                matches!(
-                    &stored.event,
-                    CoreEvent::TurnStarted { turn_id } if turn_id == user_messages[0].1
-                )
-            })
-            .map(|stored| stored.seq)
-            .expect("matching turn.started event");
-        assert!(user_messages[0].0 < started_seq);
-    }
-
-    #[test]
-    fn memory_methods_round_trip_and_reject_unsafe_input() {
-        let temp = tempfile::tempdir().unwrap();
-        let workspace = temp.path().join("workspace");
-        std::fs::create_dir_all(&workspace).unwrap();
-        let config = command_config(temp.path());
-        let home = tempfile::tempdir().unwrap();
-        let (mut core, _) = new_test_core(config, home.path());
-        core.handshaken = true;
-        let created = core
-            .session_create(json!({"workspace": workspace.to_string_lossy()}))
-            .unwrap();
-        let session_id = created["session_id"].as_str().unwrap().to_owned();
-
-        let empty = core.memory_list(json!({"session_id": session_id})).unwrap();
-        assert_eq!(empty["entries"].as_array().unwrap().len(), 0);
-
-        let written = core
-            .memory_write(json!({
-                "session_id": session_id,
-                "name": "notes.md",
-                "content": "# hello"
-            }))
-            .unwrap();
-        assert_eq!(written["name"], "notes.md");
-        assert_eq!(written["scope"], "workspace");
-        assert!(workspace.join(".kl/memory/notes.md").is_file());
-
-        let listed = core.memory_list(json!({"session_id": session_id})).unwrap();
-        assert_eq!(listed["entries"].as_array().unwrap().len(), 1);
-        assert_eq!(listed["entries"][0]["name"], "notes.md");
-
-        let read = core
-            .memory_read(json!({"session_id": session_id, "name": "notes.md"}))
-            .unwrap();
-        assert_eq!(read["content"], "# hello");
-        assert_eq!(read["scope"], "workspace");
-
-        for name in ["../escape.md", "sub/dir.md", "..", "notes.txt"] {
-            let error = core
-                .memory_write(json!({
-                    "session_id": session_id,
-                    "name": name,
-                    "content": "x"
-                }))
-                .unwrap_err();
-            assert_eq!(error.code, error_codes::INVALID_PARAMS, "{name}");
-        }
-        assert!(!workspace.join(".kl/escape.md").exists());
-
-        let error = core
-            .memory_write(json!({
-                "session_id": session_id,
-                "name": "big.md",
-                "content": "a".repeat(70 * 1024)
-            }))
-            .unwrap_err();
-        assert_eq!(error.code, error_codes::INVALID_PARAMS);
-
-        let deleted = core
-            .memory_delete(json!({"session_id": session_id, "name": "notes.md"}))
-            .unwrap();
-        assert_eq!(deleted["deleted"], true);
-        assert!(!workspace.join(".kl/memory/notes.md").exists());
-
-        let listed = core.memory_list(json!({"session_id": session_id})).unwrap();
-        assert_eq!(listed["entries"].as_array().unwrap().len(), 0);
-    }
-
-    #[test]
-    fn memory_is_injected_into_the_system_prompt_and_dropped_after_delete() {
-        let temp = tempfile::tempdir().unwrap();
-        let workspace = temp.path().join("workspace");
-        std::fs::create_dir_all(workspace.join(".kl/memory")).unwrap();
-        std::fs::write(workspace.join(".kl/memory/notes.md"), "remember the milk").unwrap();
-        let config = command_config(temp.path());
-        let home = tempfile::tempdir().unwrap();
-        let (mut core, _) = new_test_core(config, home.path());
-        core.handshaken = true;
-
-        let system = Arc::new(Mutex::new(Vec::new()));
-        let (_, metadata) = core.router.get(Some("scripted"), Some("scripted")).unwrap();
-        core.router.register(
-            metadata,
-            Arc::new(CapturingProvider {
-                system: system.clone(),
-            }),
-        );
-
-        let created = core
-            .session_create(json!({"workspace": workspace.to_string_lossy()}))
-            .unwrap();
-        let session_id = created["session_id"].as_str().unwrap().to_owned();
-
-        core.turn_start(json!({"session_id": session_id, "prompt": "hello"}))
-            .unwrap();
-        wait_for_threads(&mut core);
-        let captured = system
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .clone();
-        assert!(
-            !captured.is_empty(),
-            "the agent must have called the provider"
-        );
-        assert!(
-            captured[0].contains("remember the milk"),
-            "memory must reach the system prompt: {}",
-            captured[0]
-        );
-
-        let records = core.audit.tail(50).unwrap();
-        assert!(
-            records
-                .iter()
-                .any(|record| record["tool"] == "memory" && record["action"] == "inject"),
-            "the injection must be recorded in the audit trail"
-        );
-
-        core.memory_delete(json!({"session_id": session_id, "name": "notes.md"}))
-            .unwrap();
-        core.turn_start(json!({"session_id": session_id, "prompt": "hello again"}))
-            .unwrap();
-        wait_for_threads(&mut core);
-        let captured = system
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .clone();
-        let last = captured.last().unwrap();
-        assert!(
-            !last.contains("remember the milk"),
-            "a deleted memory must not be injected again: {last}"
-        );
-    }
-
-    #[test]
-    fn user_memory_is_injected_but_the_workspace_wins() {
-        let temp = tempfile::tempdir().unwrap();
-        let workspace = temp.path().join("workspace");
-        std::fs::create_dir_all(workspace.join(".kl/memory")).unwrap();
-        let home = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(home.path().join("memory")).unwrap();
-        std::fs::write(home.path().join("memory/global.md"), "global note").unwrap();
-        std::fs::write(home.path().join("memory/dup.md"), "user version").unwrap();
-        std::fs::write(workspace.join(".kl/memory/dup.md"), "workspace version").unwrap();
-
-        let config = command_config(temp.path());
-        let (mut core, _) = new_test_core(config, home.path());
-        core.handshaken = true;
-
-        let system = Arc::new(Mutex::new(Vec::new()));
-        let (_, metadata) = core.router.get(Some("scripted"), Some("scripted")).unwrap();
-        core.router.register(
-            metadata,
-            Arc::new(CapturingProvider {
-                system: system.clone(),
-            }),
-        );
-
-        let created = core
-            .session_create(json!({"workspace": workspace.to_string_lossy()}))
-            .unwrap();
-        let session_id = created["session_id"].as_str().unwrap().to_owned();
-        core.turn_start(json!({"session_id": session_id, "prompt": "hello"}))
-            .unwrap();
-        wait_for_threads(&mut core);
-
-        let captured = system
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .clone();
-        let prompt = captured.first().unwrap();
-        assert!(prompt.contains("global note"), "{prompt}");
-        assert!(prompt.contains("workspace version"), "{prompt}");
-        assert!(!prompt.contains("user version"), "{prompt}");
-    }
-
-    #[test]
-    fn agent_preset_defaults_and_tool_access_are_bounded() {
-        assert_eq!(
-            capped_tool_access(ToolAccess::Full, AgentPreset::Plan.tool_access()),
-            ToolAccess::ReadOnly
-        );
-        assert_eq!(
-            capped_tool_access(ToolAccess::Full, AgentPreset::Verify.tool_access()),
-            ToolAccess::VerifyOnly
-        );
-        assert_eq!(
-            capped_tool_access(ToolAccess::ReadOnly, AgentPreset::Build.tool_access()),
-            ToolAccess::ReadOnly
-        );
-        assert_eq!(
-            capped_tool_access(ToolAccess::ReadOnly, AgentPreset::Deep.tool_access()),
-            ToolAccess::ReadOnly
-        );
-    }
-
-    #[test]
-    fn agent_list_includes_custom_profiles() {
-        let temp = tempfile::tempdir().unwrap();
-        let config = command_config(temp.path());
-        let home = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(home.path().join("agents")).unwrap();
-        std::fs::write(
-            home.path().join("agents/reviewer.toml"),
-            "id = \"reviewer\"\nname = \"Reviewer\"\ndescription = \"strict\"\npolicy = \"read-only\"\n",
-        )
-        .unwrap();
-        let (core, _) = new_test_core(config, home.path());
-        let list = core.agent_list().unwrap();
-        let agents = list["agents"].as_array().unwrap();
-        assert!(agents.iter().any(|agent| agent["id"] == "reviewer"
-            && agent["policy"] == "read-only"
-            && agent["built_in"] == false));
-        assert!(
-            agents
-                .iter()
-                .any(|agent| agent["id"] == "deep" && agent["built_in"] == true)
-        );
-    }
-
-    #[test]
-    fn turn_start_rejects_unknown_agent_preset() {
-        let temp = tempfile::tempdir().unwrap();
-        let config = command_config(temp.path());
-        let home = tempfile::tempdir().unwrap();
-        let (mut core, _) = new_test_core(config, home.path());
-        let error = core
-            .turn_start(json!({
-                "session_id": "missing",
-                "prompt": "hello",
-                "agent": "turbo"
-            }))
-            .unwrap_err();
-        assert_eq!(error.code, error_codes::INVALID_PARAMS);
-        assert!(error.message.contains("unknown agent preset"));
-    }
-
-    #[test]
-    fn turn_start_prepends_the_agent_preset_prompt() {
-        let temp = tempfile::tempdir().unwrap();
-        let config = command_config(temp.path());
-        let home = tempfile::tempdir().unwrap();
-        let (mut core, _) = new_test_core(config, home.path());
-        core.handshaken = true;
-        let created = core
-            .session_create(json!({"workspace": temp.path().to_string_lossy()}))
-            .unwrap();
-        let session_id = created["session_id"].as_str().unwrap().to_owned();
-        core.turn_start(json!({
-            "session_id": session_id,
-            "prompt": "hello",
-            "agent": "plan"
-        }))
-        .unwrap();
-        wait_for_threads(&mut core);
-        let history = core
-            .session_history(json!({"session_id": session_id}))
-            .unwrap();
-        let first = history["messages"][0]["text"].as_str().unwrap();
-        assert!(first.starts_with(AgentPreset::Plan.prompt_prefix()));
-        assert!(first.ends_with("hello"));
-    }
-
-    #[test]
-    fn turn_start_prepends_discovered_skill_summaries() {
-        let temp = tempfile::tempdir().unwrap();
-        let workspace = temp.path().join("workspace");
-        std::fs::create_dir_all(&workspace).unwrap();
-        let config = command_config(temp.path());
-        let home = tempfile::tempdir().unwrap();
-        let skill = home.path().join("skills").join("alpha");
-        std::fs::create_dir_all(&skill).unwrap();
-        std::fs::write(
-            skill.join("SKILL.md"),
-            "---\nname: alpha\ndescription: Alpha description\n---\nSECRET BODY\n",
-        )
-        .unwrap();
-        let (mut core, _) = new_test_core(config, home.path());
-        core.handshaken = true;
-        let created = core
-            .session_create(json!({"workspace": workspace.to_string_lossy()}))
-            .unwrap();
-        let session_id = created["session_id"].as_str().unwrap().to_owned();
-        core.turn_start(json!({
-            "session_id": session_id,
-            "prompt": "hello"
-        }))
-        .unwrap();
-        wait_for_threads(&mut core);
-        let history = core
-            .session_history(json!({"session_id": session_id}))
-            .unwrap();
-        let first = history["messages"][0]["text"].as_str().unwrap();
-        assert!(first.starts_with("alpha: Alpha description\n"));
-        assert!(first.ends_with("hello"));
-        assert_eq!(first.matches("Alpha description").count(), 1);
-        assert!(!first.contains("SECRET BODY"));
-    }
-
-    #[test]
-    fn skill_rpc_lists_summaries_and_loads_body() {
-        let temp = tempfile::tempdir().unwrap();
-        let workspace = temp.path().join("workspace");
-        std::fs::create_dir_all(&workspace).unwrap();
-        let skill = workspace.join(".kl/skills/alpha");
-        std::fs::create_dir_all(&skill).unwrap();
-        std::fs::write(
-            skill.join("SKILL.md"),
-            "---\nname: alpha\ndescription: Alpha description\n---\nSECRET BODY\n",
-        )
-        .unwrap();
-        let config = command_config(temp.path());
-        let home = tempfile::tempdir().unwrap();
-        let (mut core, _) = new_test_core(config, home.path());
-        core.handshaken = true;
-        let created = core
-            .session_create(json!({"workspace": workspace.to_string_lossy()}))
-            .unwrap();
-        let session_id = created["session_id"].as_str().unwrap().to_owned();
-
-        let list = core.skill_list(json!({"session_id": session_id})).unwrap();
-        assert_eq!(list["skills"][0]["name"], "alpha");
-        assert_eq!(list["skills"][0]["description"], "Alpha description");
-        assert!(!list.to_string().contains("SECRET BODY"));
-        assert!(!list.to_string().contains("SKILL.md"));
-
-        let loaded = core
-            .skill_get(json!({"session_id": session_id, "name": "alpha"}))
-            .unwrap();
-        assert_eq!(loaded["name"], "alpha");
-        assert_eq!(loaded["content"], "SECRET BODY\n");
-
-        let missing = core
-            .skill_get(json!({"session_id": session_id, "name": "missing"}))
-            .unwrap_err();
-        assert_eq!(missing.code, error_codes::INVALID_PARAMS);
-        assert!(missing.message.contains("unknown skill: missing"));
-    }
-
-    #[test]
-    fn skill_rpc_lists_by_workspace_and_rejects_missing_target() {
-        let temp = tempfile::tempdir().unwrap();
-        let workspace = temp.path().join("workspace");
-        let skill = workspace.join(".kl/skills/alpha");
-        std::fs::create_dir_all(&skill).unwrap();
-        std::fs::write(
-            skill.join("SKILL.md"),
-            "---\nname: alpha\ndescription: Alpha description\n---\nSECRET BODY\n",
-        )
-        .unwrap();
-        let config = command_config(temp.path());
-        let home = tempfile::tempdir().unwrap();
-        let (mut core, _) = new_test_core(config, home.path());
-        core.handshaken = true;
-
-        let list = core
-            .skill_list(json!({"workspace": workspace.to_string_lossy()}))
-            .unwrap();
-        assert_eq!(list["skills"][0]["name"], "alpha");
-        assert_eq!(list["skills"][0]["description"], "Alpha description");
-
-        let missing = core.skill_list(json!({})).unwrap_err();
-        assert_eq!(missing.code, error_codes::INVALID_PARAMS);
-        assert!(missing.message.contains("session_id or workspace"));
-    }
-
-    #[test]
-    fn skill_rpc_loads_home_skill_body() {
-        let temp = tempfile::tempdir().unwrap();
-        let workspace = temp.path().join("workspace");
-        std::fs::create_dir_all(&workspace).unwrap();
-        let config = command_config(temp.path());
-        let home = tempfile::tempdir().unwrap();
-        let skill = home.path().join("skills/global");
-        std::fs::create_dir_all(&skill).unwrap();
-        std::fs::write(
-            skill.join("SKILL.md"),
-            "---\nname: global\ndescription: Global skill\n---\nGLOBAL BODY\n",
-        )
-        .unwrap();
-        let (mut core, _) = new_test_core(config, home.path());
-        core.handshaken = true;
-        let created = core
-            .session_create(json!({"workspace": workspace.to_string_lossy()}))
-            .unwrap();
-        let session_id = created["session_id"].as_str().unwrap().to_owned();
-
-        let list = core.skill_list(json!({"session_id": session_id})).unwrap();
-        assert_eq!(list["skills"][0]["name"], "global");
-
-        let loaded = core
-            .skill_get(json!({"session_id": session_id, "name": "global"}))
-            .unwrap();
-        assert_eq!(loaded["name"], "global");
-        assert_eq!(loaded["content"], "GLOBAL BODY\n");
-    }
-
-    #[test]
-    fn mcp_list_is_empty_without_mcp_tools() {
-        let temp = tempfile::tempdir().unwrap();
-        let config = command_config(temp.path());
-        let home = tempfile::tempdir().unwrap();
-        let (core, _) = new_test_core(config, home.path());
-        let result = core.mcp_list().unwrap();
-        assert_eq!(result["tools"], json!([]));
-    }
-
-    #[test]
-    fn deep_mode_runs_five_stages_and_writes_the_workspace() {
-        let temp = tempfile::tempdir().unwrap();
-        let config = deep_config(temp.path());
-        let home = tempfile::tempdir().unwrap();
-        let (mut core, buffer) = new_test_core(config, home.path());
-        core.handshaken = true;
-        let workspace = temp.path().to_string_lossy().to_string();
-        let created = core
-            .session_create(json!({"workspace": workspace}))
-            .unwrap();
-        let session_id = created["session_id"].as_str().unwrap().to_owned();
-        core.turn_start(json!({
-            "session_id": session_id,
-            "prompt": "write done to out.txt",
-            "quality": "deep"
-        }))
-        .unwrap();
-        wait_for_threads(&mut core);
-        let output = output_lines(&buffer);
-        let completed = output
-            .iter()
-            .find(|value| value["params"]["event"]["type"] == "turn.completed")
-            .expect("turn.completed event");
-        assert_eq!(
-            completed["params"]["event"]["data"]["status"], "completed",
-            "{completed}"
-        );
-        let text = completed["params"]["event"]["data"]["text"]
-            .as_str()
-            .unwrap();
-        assert!(text.contains("explorer -> planner -> implementer -> reviewer -> verifier"));
-        assert!(text.contains("REVIEW out.txt:1"));
-        assert!(text.contains("VERIFY out.txt:1"));
-        assert_eq!(
-            std::fs::read_to_string(temp.path().join("out.txt")).unwrap(),
-            "done"
-        );
-    }
-
-    #[test]
-    fn deep_prompts_include_index_context_only_for_explorer_and_planner() {
-        let context = "3 files, 4 symbols.";
-        let explorer = DeepStage::Explorer.prompt("task", Some(context));
-        assert!(explorer.contains(context));
-        assert!(explorer.contains("Repository index"));
-        let planner = DeepStage::Planner.prompt("task", Some(context));
-        assert!(planner.contains(context));
-        let reviewer = DeepStage::Reviewer.prompt("task", Some(context));
-        assert!(!reviewer.contains(context));
-        let verifier = DeepStage::Verifier.prompt("task", Some(context));
-        assert!(!verifier.contains(context));
-    }
-
-    struct SlowProvider;
-
-    /// Captures the system prompt of every request so tests can assert what
-    /// the agent was told.
-    struct CapturingProvider {
-        system: Arc<Mutex<Vec<String>>>,
-    }
-
-    impl Provider for CapturingProvider {
-        fn id(&self) -> &str {
-            "capturing"
-        }
-
-        fn kind(&self) -> &str {
-            "test"
-        }
-
-        fn models(&self) -> Vec<ModelInfo> {
-            vec![ModelInfo::new("capturing")]
-        }
-
-        fn available(&self) -> (bool, String) {
-            (true, "captures the system prompt".to_owned())
-        }
-
-        fn stream_chat(
-            &self,
-            request: &ChatRequest,
-            _cancel: &CancellationToken,
-            _on_event: &mut dyn FnMut(ChatEvent),
-        ) -> Result<ChatOutcome, ProviderError> {
-            self.system
-                .lock()
-                .unwrap_or_else(|error| error.into_inner())
-                .push(request.system.clone());
-            Ok(ChatOutcome {
-                text: "ok".to_owned(),
-                tool_calls: Vec::new(),
-                finish_reason: FinishReason::Stop,
-                usage: Usage::default(),
-            })
-        }
-    }
-
-    impl Provider for SlowProvider {
-        fn id(&self) -> &str {
-            "slow"
-        }
-
-        fn kind(&self) -> &str {
-            "test"
-        }
-
-        fn models(&self) -> Vec<ModelInfo> {
-            vec![ModelInfo::new("slow")]
-        }
-
-        fn available(&self) -> (bool, String) {
-            (true, "slow provider".to_owned())
-        }
-
-        fn stream_chat(
-            &self,
-            _request: &ChatRequest,
-            cancel: &CancellationToken,
-            _on_event: &mut dyn FnMut(ChatEvent),
-        ) -> Result<ChatOutcome, ProviderError> {
-            for _ in 0..50 {
-                if cancel.is_cancelled() {
-                    return Err(ProviderError::cancelled());
-                }
-                std::thread::sleep(Duration::from_millis(10));
-            }
-            Ok(ChatOutcome {
-                text: "slow".to_owned(),
-                tool_calls: Vec::new(),
-                finish_reason: FinishReason::Stop,
-                usage: Usage::default(),
-            })
-        }
-    }
-
-    #[test]
-    fn deep_mode_cancels_without_waiting_for_all_stages() {
-        let temp = tempfile::tempdir().unwrap();
-        let config = deep_config(temp.path());
-        let home = tempfile::tempdir().unwrap();
-        let (mut core, buffer) = new_test_core(config, home.path());
-        core.handshaken = true;
-        core.router = ProviderRouter::new(
-            vec![(
-                ModelMetadata::new(
-                    "slow",
-                    "slow",
-                    Protocol::Scripted,
-                    "test://slow",
-                    8192,
-                    0.8,
-                    4096,
-                ),
-                Arc::new(SlowProvider) as Arc<dyn Provider>,
-            )],
-            "slow",
-            "slow",
-        );
-        core.config.agent.provider = "slow".to_owned();
-        core.config.agent.model = "slow".to_owned();
-        let workspace = temp.path().to_string_lossy().to_string();
-        let created = core
-            .session_create(json!({"workspace": workspace}))
-            .unwrap();
-        let session_id = created["session_id"].as_str().unwrap().to_owned();
-        let started = core
-            .turn_start(json!({
-                "session_id": session_id,
-                "prompt": "cancel this deep turn",
-                "quality": "deep"
-            }))
-            .unwrap();
-        let turn_id = started["turn_id"].as_str().unwrap().to_owned();
-        core.turn_cancel(json!({
-            "session_id": session_id,
-            "turn_id": turn_id
-        }))
-        .unwrap();
-        wait_for_threads(&mut core);
-        let output = output_lines(&buffer);
-        let completed = output
-            .iter()
-            .find(|value| value["params"]["event"]["type"] == "turn.completed")
-            .expect("turn.completed event");
-        assert_eq!(
-            completed["params"]["event"]["data"]["status"], "cancelled",
-            "{completed}"
-        );
-    }
-    struct FailAfterProvider {
-        calls: AtomicUsize,
-    }
-
-    impl Provider for FailAfterProvider {
-        fn id(&self) -> &str {
-            "fail-after"
-        }
-
-        fn kind(&self) -> &str {
-            "test"
-        }
-
-        fn models(&self) -> Vec<ModelInfo> {
-            vec![ModelInfo::new("fail-after")]
-        }
-
-        fn available(&self) -> (bool, String) {
-            (true, "fails after two calls".to_owned())
-        }
-
-        fn stream_chat(
-            &self,
-            _request: &ChatRequest,
-            _cancel: &CancellationToken,
-            _on_event: &mut dyn FnMut(ChatEvent),
-        ) -> Result<ChatOutcome, ProviderError> {
-            let call = self.calls.fetch_add(1, Ordering::Relaxed);
-            if call < 2 {
-                return Ok(ChatOutcome {
-                    text: format!("stage {call}"),
-                    tool_calls: Vec::new(),
-                    finish_reason: FinishReason::Stop,
-                    usage: Usage::default(),
-                });
-            }
-            Err(ProviderError::new(ProviderErrorKind::Server, "boom"))
-        }
-    }
-
-    #[test]
-    fn deep_mode_reports_implementer_provider_failure() {
-        let temp = tempfile::tempdir().unwrap();
-        let config = deep_config(temp.path());
-        let home = tempfile::tempdir().unwrap();
-        let (mut core, buffer) = new_test_core(config, home.path());
-        core.handshaken = true;
-        core.router = ProviderRouter::new(
-            vec![(
-                ModelMetadata::new(
-                    "fail-after",
-                    "fail-after",
-                    Protocol::Scripted,
-                    "test://fail-after",
-                    8192,
-                    0.8,
-                    4096,
-                ),
-                Arc::new(FailAfterProvider {
-                    calls: AtomicUsize::new(0),
-                }) as Arc<dyn Provider>,
-            )],
-            "fail-after",
-            "fail-after",
-        );
-        core.config.agent.provider = "fail-after".to_owned();
-        core.config.agent.model = "fail-after".to_owned();
-        let workspace = temp.path().to_string_lossy().to_string();
-        let created = core
-            .session_create(json!({"workspace": workspace}))
-            .unwrap();
-        let session_id = created["session_id"].as_str().unwrap().to_owned();
-        core.turn_start(json!({
-            "session_id": session_id,
-            "prompt": "fail during implementation",
-            "quality": "deep"
-        }))
-        .unwrap();
-        wait_for_threads(&mut core);
-        let output = output_lines(&buffer);
-        let failed = output
-            .iter()
-            .find(|value| value["params"]["event"]["type"] == "turn.failed")
-            .expect("turn.failed event");
-        let message = failed["params"]["event"]["data"]["message"]
-            .as_str()
-            .unwrap();
-        assert!(message.contains("boom"), "{message}");
-    }
-    struct ReviewMutationProvider {
-        workspace: PathBuf,
-        calls: AtomicUsize,
-    }
-
-    impl Provider for ReviewMutationProvider {
-        fn id(&self) -> &str {
-            "mutating-review"
-        }
-
-        fn kind(&self) -> &str {
-            "test"
-        }
-
-        fn models(&self) -> Vec<ModelInfo> {
-            vec![ModelInfo::new("mutating-review")]
-        }
-
-        fn available(&self) -> (bool, String) {
-            (true, "writes during review".to_owned())
-        }
-
-        fn stream_chat(
-            &self,
-            _request: &ChatRequest,
-            _cancel: &CancellationToken,
-            _on_event: &mut dyn FnMut(ChatEvent),
-        ) -> Result<ChatOutcome, ProviderError> {
-            let call = self.calls.fetch_add(1, Ordering::Relaxed);
-            if call == 3 {
-                std::fs::write(self.workspace.join("sneaky.txt"), "extra").unwrap();
-            }
-            Ok(ChatOutcome {
-                text: format!("stage {call}"),
-                tool_calls: Vec::new(),
-                finish_reason: FinishReason::Stop,
-                usage: Usage::default(),
-            })
-        }
-    }
-
-    fn deep_turn_output(config: PathBuf, workspace: &Path) -> Vec<Value> {
-        let home = tempfile::tempdir().unwrap();
-        let (mut core, buffer) = new_test_core(config, home.path());
-        core.handshaken = true;
-        let created = core
-            .session_create(json!({"workspace": workspace.to_string_lossy()}))
-            .unwrap();
-        let session_id = created["session_id"].as_str().unwrap().to_owned();
-        core.turn_start(json!({
-            "session_id": session_id,
-            "prompt": "deep stage test",
-            "quality": "deep"
-        }))
-        .unwrap();
-        wait_for_threads(&mut core);
-        output_lines(&buffer)
-    }
-
-    #[test]
-    fn deep_mode_reviewer_and_verifier_tools_are_hard_read_only() {
-        let temp = tempfile::tempdir().unwrap();
-        let config = deep_config(temp.path());
-        std::fs::write(
-            temp.path().join("script.json"),
-            r#"[
-                {"text":"explored"},
-                {"text":"plan"},
-                {"tool_calls":[{"name":"write_file","arguments":{"path":"out.txt","content":"done"}}]},
-                {"text":"implemented"},
-                {"tool_calls":[{"name":"write_file","arguments":{"path":"sneaky.txt","content":"extra"}}]},
-                {"text":"reviewed"},
-                {"tool_calls":[{"name":"shell","arguments":{"command":"echo hacked > sneaky.txt","cwd":"."}}]},
-                {"text":"verified"}
-            ]"#,
-        )
-        .unwrap();
-        let output = deep_turn_output(config, temp.path());
-        let completed = output
-            .iter()
-            .find(|value| value["params"]["event"]["type"] == "turn.completed")
-            .expect("turn.completed event");
-        assert_eq!(completed["params"]["event"]["data"]["status"], "completed");
-        assert!(!temp.path().join("sneaky.txt").exists());
-        assert!(temp.path().join("out.txt").exists());
-        let tool_events: Vec<&Value> = output
-            .iter()
-            .filter(|value| value["params"]["event"]["type"] == "tool.completed")
-            .collect();
-        assert!(tool_events.iter().any(|value| {
-            value["params"]["event"]["data"]["name"] == "write_file"
-                && value["params"]["event"]["data"]["ok"] == false
-                && value["params"]["event"]["data"]["summary"]
-                    .as_str()
-                    .is_some_and(|text| text.contains("review-only"))
-        }));
-        assert!(tool_events.iter().any(|value| {
-            value["params"]["event"]["data"]["name"] == "shell"
-                && value["params"]["event"]["data"]["ok"] == false
-                && value["params"]["event"]["data"]["summary"]
-                    .as_str()
-                    .is_some_and(|text| text.contains("verification stage allows only"))
-        }));
-    }
-
-    #[test]
-    fn deep_mode_fingerprint_catches_out_of_band_reviewer_mutation() {
-        let temp = tempfile::tempdir().unwrap();
-        let config = deep_config(temp.path());
-        let home = tempfile::tempdir().unwrap();
-        let (mut core, buffer) = new_test_core(config, home.path());
-        core.handshaken = true;
-        core.router = ProviderRouter::new(
-            vec![(
-                ModelMetadata::new(
-                    "mutating-review",
-                    "mutating-review",
-                    Protocol::Scripted,
-                    "test://mutating-review",
-                    8192,
-                    0.8,
-                    4096,
-                ),
-                Arc::new(ReviewMutationProvider {
-                    workspace: temp.path().to_path_buf(),
-                    calls: AtomicUsize::new(0),
-                }) as Arc<dyn Provider>,
-            )],
-            "mutating-review",
-            "mutating-review",
-        );
-        core.config.agent.provider = "mutating-review".to_owned();
-        core.config.agent.model = "mutating-review".to_owned();
-        let workspace = temp.path().to_string_lossy().to_string();
-        let created = core
-            .session_create(json!({"workspace": workspace}))
-            .unwrap();
-        let session_id = created["session_id"].as_str().unwrap().to_owned();
-        core.turn_start(json!({
-            "session_id": session_id,
-            "prompt": "detect mutation",
-            "quality": "deep"
-        }))
-        .unwrap();
-        wait_for_threads(&mut core);
-        let output = output_lines(&buffer);
-        let failed = output
-            .iter()
-            .find(|value| value["params"]["event"]["type"] == "turn.failed")
-            .expect("turn.failed event");
-        let message = failed["params"]["event"]["data"]["message"]
-            .as_str()
-            .unwrap();
-        assert!(message.contains("modified the workspace"), "{message}");
-        assert!(temp.path().join("sneaky.txt").exists());
-    }
-
-    #[test]
-    fn deep_mode_budgets_provider_without_usage() {
-        let temp = tempfile::tempdir().unwrap();
-        let config = deep_config(temp.path());
-        let text = std::fs::read_to_string(&config).unwrap();
-        std::fs::write(
-            &config,
-            text.replace(
-                "quality = \"deep\"",
-                "quality = \"deep\"\ndeep_token_budget = 1",
-            ),
-        )
-        .unwrap();
-        let output = deep_turn_output(config, temp.path());
-        let failed = output
-            .iter()
-            .find(|value| value["params"]["event"]["type"] == "turn.failed")
-            .expect("turn.failed event");
-        let message = failed["params"]["event"]["data"]["message"]
-            .as_str()
-            .unwrap();
-        assert!(message.contains("token budget"), "{message}");
-    }
-
-    struct BlockingReviewProvider {
-        started: Arc<AtomicBool>,
-    }
-
-    impl Provider for BlockingReviewProvider {
-        fn id(&self) -> &str {
-            "blocking-review"
-        }
-
-        fn kind(&self) -> &str {
-            "test"
-        }
-
-        fn models(&self) -> Vec<ModelInfo> {
-            vec![ModelInfo::new("blocking-review")]
-        }
-
-        fn available(&self) -> (bool, String) {
-            (true, "blocks until cancelled".to_owned())
-        }
-
-        fn stream_chat(
-            &self,
-            _request: &ChatRequest,
-            cancel: &CancellationToken,
-            _on_event: &mut dyn FnMut(ChatEvent),
-        ) -> Result<ChatOutcome, ProviderError> {
-            self.started.store(true, Ordering::Relaxed);
-            while !cancel.is_cancelled() {
-                std::thread::sleep(Duration::from_millis(10));
-            }
-            Err(ProviderError::cancelled())
-        }
-    }
-
-    #[test]
-    fn review_chat_cancellation_exits_promptly() {
-        let started = Arc::new(AtomicBool::new(false));
-        let cancel = CancellationToken::new();
-        let request = ChatRequest::new("blocking-review", vec![ChatMessage::user("review")]);
-        let thread_cancel = cancel.clone();
-        let thread_started = started.clone();
-        let handle = std::thread::spawn(move || {
-            stream_review_chat(
-                Arc::new(BlockingReviewProvider {
-                    started: thread_started,
-                }),
-                request,
-                thread_cancel,
-                Duration::from_secs(5),
-            )
-        });
-        let deadline = Instant::now() + Duration::from_secs(2);
-        while !started.load(Ordering::Relaxed) && Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(10));
-        }
-        assert!(started.load(Ordering::Relaxed));
-        let cancelled_at = Instant::now();
-        cancel.cancel();
-        let result = handle.join().unwrap();
-        assert!(result.unwrap_err().contains("cancelled"));
-        assert!(cancelled_at.elapsed() < Duration::from_secs(1));
-    }
-
-    #[test]
-    fn review_chat_timeout_exits_promptly() {
-        let started = Arc::new(AtomicBool::new(false));
-        let started_for_worker = started.clone();
-        let started_at = Instant::now();
-        let result = stream_review_chat(
-            Arc::new(BlockingReviewProvider {
-                started: started_for_worker,
-            }),
-            ChatRequest::new("blocking-review", vec![ChatMessage::user("review")]),
-            CancellationToken::new(),
-            Duration::from_millis(100),
-        );
-        assert!(result.unwrap_err().contains("timed out"));
-        assert!(started_at.elapsed() < Duration::from_secs(1));
-        assert!(started.load(Ordering::Relaxed));
-    }
-    #[test]
-    fn review_run_timeout_returns_warning_instead_of_blocking() {
-        let temp = tempfile::tempdir().unwrap();
-        std::fs::write(temp.path().join("a.txt"), "old\n").unwrap();
-        test_git(temp.path(), &["init"]);
-        test_git(temp.path(), &["add", "."]);
-        test_git(temp.path(), &["commit", "-m", "base"]);
-        std::fs::write(temp.path().join("a.txt"), "new\n").unwrap();
-        let config = temp.path().join("kl.toml");
-        std::fs::write(&config, "[agent]\nreview_timeout_secs = 1\n").unwrap();
-        let home = tempfile::tempdir().unwrap();
-        let (mut core, _buffer) = new_test_core(config, home.path());
-        core.handshaken = true;
-        core.config.agent.review_timeout_secs = 1;
-        core.router = ProviderRouter::new(
-            vec![(
-                ModelMetadata::new(
-                    "blocking-review",
-                    "blocking-review",
-                    Protocol::Scripted,
-                    "test://blocking-review",
-                    8192,
-                    0.8,
-                    4096,
-                ),
-                Arc::new(BlockingReviewProvider {
-                    started: Arc::new(AtomicBool::new(false)),
-                }) as Arc<dyn Provider>,
-            )],
-            "blocking-review",
-            "blocking-review",
-        );
-        let started = Instant::now();
-        let result = core
-            .review_run(json!({
-                "workspace": temp.path().to_string_lossy(),
-                "mode": "strict"
-            }))
-            .unwrap();
-        assert!(started.elapsed() < Duration::from_secs(3));
-        let findings = result["findings"].as_array().unwrap();
-        assert!(findings.iter().any(|finding| {
-            finding["rule"] == "llm-review-unavailable"
-                && finding["evidence"]
-                    .as_str()
-                    .is_some_and(|text| text.contains("timed out"))
-        }));
-    }
-}
+mod tests;

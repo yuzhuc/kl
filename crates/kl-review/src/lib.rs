@@ -521,16 +521,42 @@ pub fn runtime_findings(records: &[Value]) -> Vec<Finding> {
     findings
 }
 
-pub fn model_prompt(context: &ReviewContext, mode: ReviewMode) -> String {
-    let diff = truncate(&context.diff, 80_000);
+pub fn model_prompt(
+    context: &ReviewContext,
+    mode: ReviewMode,
+    instructions: Option<&str>,
+    full_files: bool,
+) -> String {
+    let source = if full_files {
+        let mut text = String::new();
+        for file in &context.changed_files {
+            text.push_str(&format!("\n--- {} ---\n{}", file.path, file.full_text));
+        }
+        format!(
+            "Full contents of changed files:\n{}",
+            truncate(&text, 80_000)
+        )
+    } else {
+        format!("Diff:\n{}", truncate(&context.diff, 80_000))
+    };
+    let guidance = instructions
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| {
+            format!(
+                "\n\nAdditional review instructions:\n{}",
+                truncate(value, 4_000)
+            )
+        })
+        .unwrap_or_default();
     format!(
-        "You are a code review model. Review only the supplied diff.\n\
+        "You are a code review model. Review only the supplied changes.\n\
          Mode: {}\n\
          Return ONLY a JSON array. Each item must have: rule, file, line, severity \
          (critical|high|medium|low|info), confidence (0..1), evidence, recommendation, \
          and optionally introduced (boolean). Focus on security bugs, correctness, \
          missing tests, and cross-file risks. Do not invent files or lines.\n\n\
-         Diff:\n{diff}",
+         {source}{guidance}",
         mode.as_str()
     )
 }
@@ -694,39 +720,4 @@ fn truncate(text: &str, limit: usize) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parses_structured_model_findings() {
-        let findings = parse_model_findings(
-            r#"[{"rule":"auth-bypass","file":"src/auth.rs","line":12,"severity":"high","confidence":0.9,"evidence":"admin check","recommendation":"fix"}]"#,
-        )
-        .unwrap();
-        assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].severity, Severity::High);
-        assert_eq!(findings[0].source, "llm");
-    }
-
-    #[test]
-    fn strict_keeps_low_confidence_and_quick_filters_it() {
-        let item = finding(
-            "low",
-            "rules",
-            "src/a.rs",
-            1,
-            Severity::Low,
-            0.2,
-            "evidence",
-            "fix",
-        );
-        assert!(
-            finalize(ReviewMode::Quick, 1, vec![item.clone()])
-                .findings
-                .is_empty()
-        );
-        let strict = finalize(ReviewMode::Strict, 1, vec![item]);
-        assert_eq!(strict.findings.len(), 1);
-        assert!(strict.findings[0].low_confidence);
-    }
-}
+mod tests;

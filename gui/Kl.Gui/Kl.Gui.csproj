@@ -1,13 +1,23 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>kl</AssemblyName>
     <RootNamespace>Kl.Gui</RootNamespace>
-    <LangVersion>latest</LangVersion>
-    <Version>0.1.0</Version>
+    <AssemblyTitle>kl</AssemblyTitle>
+    <Product>kl</Product>
     <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\kl.ico</ApplicationIcon>
+    <Version>0.3.0</Version>
+    <FileVersion>0.3.0.1</FileVersion>
+    <InformationalVersion>0.3.0-gui.1</InformationalVersion>
   </PropertyGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.1.4" />
@@ -19,4 +29,17 @@
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\sdk\Kl.Client\Kl.Client.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Kl.Gui.Tests" />
+    <InternalsVisibleTo Include="Kl.Gui.HeadlessTests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\i18n\catalog.json" />
+  </ItemGroup>
+
 </Project>

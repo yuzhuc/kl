@@ -1,6 +1,6 @@
 # Provider live smoke
 
-`scripts/live-smoke.ps1` performs a minimal real call for each configured
+`scripts/live-smoke.py` performs a minimal real call for each configured
 native provider and records successful output as a fixture.
 
 - `openai-chat` uses `OPENAI_API_KEY`.
@@ -14,5 +14,5 @@ enabled servers in `~/.kl/mcp.toml`.
 Run:
 
 ```powershell
-pwsh scripts/live-smoke.ps1
+python scripts/live-smoke.py
 ```

@@ -1,0 +1,349 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kl.Gui.ViewModels"
+             xmlns:controls="using:Kl.Gui.Controls"
+             x:Class="Kl.Gui.Views.SettingsCodingView"
+             x:DataType="vm:MainWindowViewModel">
+    <StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsHooks}" Spacing="50" Classes="settings-pane">
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,2,0,0">
+                            <TextBlock Text="{DynamicResource S.0b344dfa}" FontSize="12.5" Foreground="{DynamicResource TextCaption}" VerticalAlignment="Center" TextWrapping="Wrap" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                            <Button Classes="secondary settings-button" Content="{DynamicResource S.6347c01d}" Click="OnOpenHooksClicked" />
+                            <Button Classes="subtle" Width="28" Height="28" Padding="0" HorizontalContentAlignment="Center" Click="OnRefreshHooksClicked"><Path Width="14" Height="14" Data="{DynamicResource RefreshIcon}" Stretch="Uniform" Stroke="{DynamicResource TextSecondary}" StrokeThickness="1.3" /></Button>
+                            </StackPanel>
+                            </Grid>
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="{DynamicResource S.5c08da81}" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Margin="16,12,16,11"><Border Width="30" Height="30" CornerRadius="8" Background="#232326"><Path Width="15" Height="15" Data="{DynamicResource CodeIcon}" Stretch="Uniform" Stroke="{DynamicResource TextSecondary}" StrokeThickness="1.2" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border><StackPanel Grid.Column="1" Spacing="2"><TextBlock Text="hooks.toml" FontSize="13.5" FontWeight="Medium" Foreground="{DynamicResource TextPrimary}" /><TextBlock Text="{Binding HooksStatusText}" FontSize="12" Foreground="{DynamicResource TextCaption}" TextWrapping="Wrap" /></StackPanel><TextBlock Grid.Column="2" Text="{Binding HooksFilePath}" FontSize="11" FontFamily="Cascadia Mono, Consolas" Foreground="{DynamicResource TextCaption}" VerticalAlignment="Center" MaxWidth="260" TextTrimming="CharacterEllipsis" /></Grid>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            </StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsConnections}" Spacing="50" Classes="settings-pane">
+                            <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,-8,0,-20">
+                            <Button Classes="filter" Classes.active="True" Content="{DynamicResource S.c1aa5ceb}" Tag="connect:this" Click="OnSettingsTabClicked" />
+                            <Button Classes="filter" Content="{DynamicResource S.0b1735b3}" Tag="connect:other" Click="OnSettingsTabClicked" />
+                            <Button Classes="filter" Content="SSH" Tag="connect:ssh" Click="OnSettingsTabClicked" />
+                            </StackPanel>
+                            <StackPanel Spacing="0" Classes="settings-tab-page" Tag="connect:this">
+                            <TextBlock Classes="settings-heading" Text="{DynamicResource S.1fa394a4}" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <StackPanel Spacing="10" HorizontalAlignment="Center" Margin="16,34"><StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center"><Path Width="24" Height="30" Data="{DynamicResource PanelIcon}" Stretch="Uniform" Stroke="{DynamicResource TextTertiary}" StrokeThickness="1.2" Fill="Transparent" /><Path Width="34" Height="26" Data="{DynamicResource PanelIcon}" Stretch="Uniform" Stroke="{DynamicResource TextTertiary}" StrokeThickness="1.2" Fill="Transparent" /></StackPanel><TextBlock Text="{DynamicResource S.143345c3}" FontSize="12.5" Foreground="{DynamicResource TextSecondary}" HorizontalAlignment="Center" /><Button Classes="secondary settings-button" Content="{DynamicResource S.7a8a11ea}" HorizontalAlignment="Center" Click="OnOpenRemoteCoreSettingsClicked" /></StackPanel>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            <StackPanel Spacing="0" Classes="settings-tab-page" Tag="connect:other"
+                                        IsVisible="False">
+                            <TextBlock Classes="settings-heading" Text="{DynamicResource S.96c28e58}" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="{DynamicResource S.37aac5b4}" />
+                            <TextBlock Classes="settings-desc" Text="{DynamicResource S.865cf10e}" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <TextBox x:Name="RemoteEndpointBox" Grid.Column="1" Classes="settings-input" Width="260" VerticalAlignment="Center"
+                                     PlaceholderText="tcp://192.168.1.20:8787"
+                                     Text="{Binding RemoteCoreEndpointDraft, Mode=TwoWay}" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="{DynamicResource S.70133285}" />
+                            <TextBlock Classes="settings-desc" Text="{DynamicResource S.a21f63e7}" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <TextBox Grid.Column="1" Classes="settings-input" Width="260" VerticalAlignment="Center"
+                                     PasswordChar="●"
+                                     Text="{Binding RemoteCoreTokenDraft, Mode=TwoWay}" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="{DynamicResource S.ddda9c0d}" />
+                            <TextBlock Classes="settings-desc" Text="{DynamicResource S.c18f65be}" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <TextBox Grid.Column="1" Classes="settings-input" Width="260" VerticalAlignment="Center"
+                                     PlaceholderText="{DynamicResource S.fcf5d25a}"
+                                     Text="{Binding RemoteCoreTlsFingerprintDraft, Mode=TwoWay}" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <TextBlock Text="{Binding RemoteCoreStatus}" IsVisible="{Binding HasRemoteCoreStatus}"
+                                       FontSize="12" Foreground="{DynamicResource TextSecondary}"
+                                       TextWrapping="Wrap" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
+                                        HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <Button Classes="subtle" Click="OnClearRemoteCoreClicked" Content="{DynamicResource S.bce23772}" />
+                            <Button Classes="secondary settings-button" Click="OnTestRemoteCoreClicked" Content="{DynamicResource S.0a98a48e}" IsEnabled="{Binding CanTestRemoteCore}" />
+                            <Button Classes="secondary settings-button" Click="OnSaveRemoteCoreClicked" Content="{DynamicResource S.a3030bf8}" />
+                            </StackPanel>
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            <TextBlock Classes="settings-desc" Margin="0,10,0,0"
+                                       Text="{DynamicResource S.42a85af2}" />
+                            </StackPanel>
+                            <StackPanel Spacing="0" Classes="settings-tab-page" Tag="connect:ssh"
+                                        IsVisible="False">
+                            <TextBlock Classes="settings-heading" Text="SSH" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <TextBlock Text="{DynamicResource S.b9934ad3}" FontSize="12.5"
+                                       Foreground="{DynamicResource TextCaption}" Margin="16,18" />
+                            </Border>
+                            </StackPanel>
+                            </StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsCodeReview}" Spacing="50" Classes="settings-pane">
+                            <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,-8,0,-20">
+                            <Button Classes="filter" Classes.active="True" Content="{DynamicResource S.57907a69}" Tag="review:prefs" Click="OnSettingsTabClicked" />
+                            <Button Classes="filter" Content="{DynamicResource S.018df70e}" Tag="review:agent" Click="OnSettingsTabClicked" />
+                            </StackPanel>
+                            <StackPanel Spacing="0" Classes="settings-tab-page" Tag="review:prefs">
+                            <TextBlock Classes="settings-heading" Text="{DynamicResource S.e38a88e4}" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="{DynamicResource S.f8e477cc}" />
+                            <TextBlock Classes="settings-desc" Text="{DynamicResource S.a9c3bf39}" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" Classes="settings-select" VerticalAlignment="Center" SelectedIndex="{Binding ReviewModeIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="{DynamicResource S.db945cfe}" />
+                            <ComboBoxItem Content="{DynamicResource S.6bea77ac}" />
+                            <ComboBoxItem Content="{DynamicResource S.fa04eac6}" />
+                            </ComboBox>
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            <StackPanel Spacing="0" Margin="0,50,0,0">
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+                            <TextBlock Classes="settings-heading" Text="{DynamicResource S.9466e900}" VerticalAlignment="Center" />
+                            <Button Grid.Column="1" Classes="secondary settings-button" Content="{DynamicResource S.3ca222db}"
+                                    Click="OnRunReviewClicked" IsEnabled="{Binding CanRunReview}" />
+                            </Grid>
+                            <TextBlock Text="{Binding ReviewStatusText}" FontSize="11.5"
+                                       Foreground="{DynamicResource TextCaption}" Margin="0,4,0,0"
+                                       TextWrapping="Wrap" HorizontalAlignment="Left" />
+                            <Border Classes="settings-card" Margin="0,11,0,0">
+                            <StackPanel>
+                            <ItemsControl ItemsSource="{Binding ReviewFindings}" IsVisible="{Binding HasReviewFindings}">
+                            <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ReviewFindingRow">
+                            <StackPanel Margin="16,10,16,10" Spacing="4">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
+                            <TextBlock Text="{Binding Severity}" FontSize="11.5" FontWeight="SemiBold"
+                                       Foreground="#E5837C" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding Location}" FontSize="12.5"
+                                       Foreground="{DynamicResource TextPrimary}" TextTrimming="CharacterEllipsis" />
+                            </Grid>
+                            <TextBlock Text="{Binding Rule}" FontSize="11.5"
+                                       Foreground="{DynamicResource TextCaption}" />
+                            <TextBlock Text="{Binding Evidence}" FontSize="12"
+                                       Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding Recommendation}" FontSize="12"
+                                       Foreground="{DynamicResource TextPrimary}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="{DynamicResource S.951b445e}" IsVisible="{Binding ShowNoReviewFindings}"
+                                       FontSize="12" Foreground="{DynamicResource TextCaption}" Margin="16,14,16,14" />
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            </StackPanel>
+                            <StackPanel Spacing="0" Classes="settings-tab-page" Tag="review:agent"
+                                        IsVisible="False">
+                            <TextBlock Classes="settings-heading" Text="{DynamicResource S.018df70e}" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="{DynamicResource S.978fd055}" />
+                            <TextBlock Classes="settings-desc" Text="{DynamicResource S.147eaeb5}" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="{Binding ReviewFullFiles, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            <StackPanel Spacing="0" Margin="0,50,0,0">
+                            <TextBlock Classes="settings-heading" Text="{DynamicResource S.613642c6}" />
+                            <TextBlock Classes="settings-desc" Text="{DynamicResource S.820e0028}" Margin="0,8,0,0" HorizontalAlignment="Left" />
+                            <TextBox Classes="settings-textarea" Margin="0,10,0,0" PlaceholderText="{DynamicResource S.885e1ae3}" Text="{Binding ReviewInstructions, Mode=TwoWay}" AcceptsReturn="True" />
+                            </StackPanel>
+                            </StackPanel>
+                            </StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsGit}" Spacing="50" Classes="settings-pane">
+                            <Border IsVisible="{Binding IsRemoteCore}" Classes="settings-card" Margin="0,0,0,0">
+                            <TextBlock Text="{Binding RemoteCoreNotice}" FontSize="12"
+                                       Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap"
+                                       Margin="16,12" />
+                            </Border>
+                                                        <StackPanel Spacing="0">
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+                            <TextBlock Classes="settings-heading" Text="{DynamicResource S.bf962b2b}" />
+                            <Button Grid.Column="1" Classes="secondary settings-button" Content="{DynamicResource S.aee88743}" Click="OnRefreshGitClicked" IsEnabled="{Binding !IsRemoteCore}" />
+                            </Grid>
+                            <Border Classes="settings-card" Margin="0,11,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="{DynamicResource S.a251448a}" />
+                            <TextBlock Text="{Binding GitBranchText}" Classes="settings-desc"
+                                       FontFamily="Cascadia Mono, Consolas" HorizontalAlignment="Left" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Text="{Binding WorkspacePath}" FontSize="11.5"
+                                       Foreground="{DynamicResource TextCaption}" MaxWidth="320"
+                                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <TextBlock Classes="settings-title" Text="{DynamicResource S.6320b4a8}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding GitStatusText}" FontSize="12"
+                                       Foreground="{DynamicResource TextCaption}" TextWrapping="Wrap"
+                                       TextAlignment="Right" MaxWidth="480" />
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="{DynamicResource S.f106fe6c}" />
+                            <TextBlock Classes="settings-desc" Text="{DynamicResource S.c8afdcec}" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <TextBox Grid.Column="1" Classes="settings-input" Width="260" VerticalAlignment="Center" PlaceholderText="kl/" Text="{Binding GitBranchPrefix, Mode=TwoWay}" />
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsEnvironments}" Spacing="50" Classes="settings-pane">
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="{DynamicResource S.682279bf}" />
+                            <StackPanel Spacing="10" Margin="0,10,0,0"><Grid ColumnDefinitions="*,Auto"><Button Grid.Column="1" Classes="secondary settings-button" Click="OnAddWorkspaceClicked" Content="{DynamicResource S.8964f53a}" /></Grid>
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <ItemsControl ItemsSource="{Binding Workspaces}"><ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:WorkspaceItemViewModel"><Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Margin="16,12,16,11"><Path Width="16" Height="16" Data="{DynamicResource FolderIcon}" Stretch="Uniform" Stroke="{DynamicResource TextSecondary}" StrokeThickness="1.2" VerticalAlignment="Center" /><StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center"><TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="Medium" Foreground="{DynamicResource TextPrimary}" /><TextBlock Text="{Binding Path}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" TextTrimming="CharacterEllipsis" /></StackPanel><Button Grid.Column="2" Classes="subtle" Width="28" Height="28" Padding="0" HorizontalContentAlignment="Center" Click="OnWorkspaceEditClicked"><Path Width="13" Height="13" Data="{DynamicResource SquarePenIcon}" Stretch="Uniform" Stroke="{DynamicResource TextSecondary}" StrokeThickness="1.3" /></Button></Grid></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                            </StackPanel>
+                            </Border></StackPanel>
+                            </StackPanel>
+                            </StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsWorktrees}" Spacing="50" Classes="settings-pane">
+                            <Border IsVisible="{Binding IsRemoteCore}" Classes="settings-card" Margin="0,0,0,0">
+                            <TextBlock Text="{Binding RemoteCoreNotice}" FontSize="12"
+                                       Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap"
+                                       Margin="16,12" />
+                            </Border>
+                                                        <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="{DynamicResource S.c55746be}" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="{DynamicResource S.701416d1}" />
+                            <TextBlock Classes="settings-desc" Text="{DynamicResource S.01fe53b3}" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <TextBox Grid.Column="1" Classes="settings-input" Width="300" VerticalAlignment="Center" PlaceholderText="{DynamicResource S.ff6b830e}" Text="{Binding WorktreeRoot, Mode=TwoWay}" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="{DynamicResource S.61b25d27}" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="{Binding WorktreeFetchBeforeCreate, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="{DynamicResource S.42cdc8b2}" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="{Binding WorktreeConfirmDelete, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            <StackPanel Spacing="0">
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+                            <TextBlock Classes="settings-heading" Text="{DynamicResource S.4182ea9b}" />
+                            <Button Grid.Column="1" Classes="secondary settings-button" Content="{DynamicResource S.aee88743}" Click="OnRefreshWorktreesClicked" IsEnabled="{Binding !IsRemoteCore}" />
+                            </Grid>
+                            <TextBlock Text="{Binding WorktreesStatusText}" FontSize="12" Foreground="{DynamicResource TextCaption}" Margin="0,0,0,10" />
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,10">
+                            <TextBox Classes="settings-input" Width="260" Text="{Binding NewWorktreeName, Mode=TwoWay}" PlaceholderText="{DynamicResource S.9edb2157}" />
+                            <Button Classes="primary settings-button" Content="{DynamicResource S.b3e205ce}" Click="OnCreateWorktreeClicked" IsEnabled="{Binding CanCreateWorktree}" />
+                            </StackPanel>
+                            <Border Classes="settings-card" Margin="0,7,0,0">
+                            <StackPanel>
+                            <ItemsControl ItemsSource="{Binding Worktrees}">
+                            <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:WorktreeRow">
+                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="12" Margin="16,10">
+                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Branch}" FontSize="13" FontWeight="Medium"
+                                       Foreground="{DynamicResource TextPrimary}" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding Path}" FontSize="11.5" FontFamily="Cascadia Mono, Consolas"
+                                       Foreground="{DynamicResource TextCaption}" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Text="{Binding CurrentLabel}" FontSize="11"
+                                       Foreground="{DynamicResource TextCaption}" VerticalAlignment="Center" />
+                            <Button Grid.Column="2" Classes="subtle" Width="28" Height="28" Padding="0"
+                                    HorizontalContentAlignment="Center" Click="OnOpenWorktreeClicked"
+                                    ToolTip.Tip="{DynamicResource S.d10ec81b}">
+                            <Path Width="13" Height="13" Data="{DynamicResource FolderIcon}" Stretch="Uniform"
+                                  Stroke="{DynamicResource TextSecondary}" StrokeThickness="1.3" />
+                            </Button>
+                            <Button Grid.Column="3" Classes="subtle" Width="28" Height="28" Padding="0"
+                                    HorizontalContentAlignment="Center" Click="OnDeleteWorktreeClicked"
+                                    ToolTip.Tip="{DynamicResource S.dfd5de41}">
+                            <Path Width="13" Height="13" Data="{DynamicResource TrashIcon}" Stretch="Uniform"
+                                  Stroke="{DynamicResource TextSecondary}" StrokeThickness="1.3" />
+                            </Button>
+                            </Grid>
+                            </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="{DynamicResource S.9a1c8de2}" IsVisible="{Binding !HasWorktrees}"
+                                       FontSize="12.5" Foreground="{DynamicResource TextCaption}" Margin="16,12,16,11" />
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            </StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsAudit}" Spacing="50" Classes="settings-pane">
+                            <StackPanel Spacing="0">
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+                            <TextBlock Classes="settings-heading" Text="{DynamicResource S.3962aa6a}" />
+                            <Button x:Name="AuditRefreshButton" Grid.Column="1" Classes="secondary settings-button" Content="{DynamicResource S.aee88743}" Click="OnRefreshAuditClicked" />
+                            </Grid>
+                            <TextBlock Text="{Binding AuditStatusText}" FontSize="12" Foreground="{DynamicResource TextCaption}" Margin="0,0,0,10" />
+                            <Border Classes="settings-card">
+                            <StackPanel>
+                            <ItemsControl ItemsSource="{Binding AuditRecords}">
+                            <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:AuditRow">
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" Margin="16,8">
+                            <TextBlock Text="{Binding Time}" FontSize="11" FontFamily="Cascadia Mono, Consolas"
+                                       Foreground="{DynamicResource TextCaption}" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Spacing="2">
+                            <TextBlock Text="{Binding Summary}" FontSize="12.5" Foreground="{DynamicResource TextPrimary}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding Resource}" FontSize="11" Foreground="{DynamicResource TextCaption}"
+                                       TextTrimming="CharacterEllipsis" IsVisible="{Binding HasResource}" />
+                            <TextBlock Text="{Binding Error}" FontSize="11" Foreground="{DynamicResource ErrorText}"
+                                       TextWrapping="Wrap" IsVisible="{Binding HasError}" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="2" Text="{Binding OkLabel}" FontSize="11"
+                                       Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+                            </Grid>
+                            </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="{DynamicResource S.b70d059b}" IsVisible="{Binding !ShowAuditRecords}" FontSize="12.5"
+                                       Foreground="{DynamicResource TextCaption}" Margin="16,12" />
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            </StackPanel>
+    </StackPanel>
+</UserControl>

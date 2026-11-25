@@ -311,6 +311,9 @@ pub fn responses_body(request: &ChatRequest) -> Value {
         "max_output_tokens": request.max_tokens,
         "temperature": request.temperature,
     });
+    if let Some(effort) = &request.reasoning_effort {
+        body["reasoning"] = json!({"effort": effort});
+    }
     if !request.tools.is_empty() {
         body["tools"] = Value::Array(
             request

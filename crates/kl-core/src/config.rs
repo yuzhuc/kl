@@ -1,8 +1,10 @@
 use kl_policy::{PolicyConfig, ToolAccess};
 use kl_protocol::{
-    ApprovalMode, DefaultModelResult, ProviderEnabledResult, ProviderKeyResult,
-    ProviderSetApiKeyParams, ProviderSetEnabledParams, ProviderUpsertParams, ProviderUpsertResult,
-    ReasoningEffort, SetDefaultModelParams,
+    AgentConfigSetParams, ApprovalMode, DefaultModelResult, EmojiUsage, HeadingStyle,
+    OutputVerbosity, PersonalStyle, ProviderDeleteResult, ProviderEnabledResult, ProviderKeyResult,
+    ProviderProtocolUrls, ProviderSetApiKeyParams, ProviderSetEnabledParams, ProviderUpsertParams,
+    ProviderUpsertResult, ReasoningEffort, ReasoningSummary, SetDefaultModelParams, ToneLevel,
+    VisualAnswers,
 };
 use kl_provider::{ModelMetadata, Protocol};
 use kl_sandbox::SandboxConfig;
@@ -182,6 +184,20 @@ pub struct AgentSettings {
     pub quality: QualityMode,
     pub approval_mode: ApprovalMode,
     pub reasoning_effort: ReasoningEffort,
+    pub web_search: bool,
+    pub network_access: bool,
+    pub output_verbosity: OutputVerbosity,
+    pub reasoning_summary: ReasoningSummary,
+    pub memory_enabled: bool,
+    pub plugins_enabled: bool,
+    pub custom_instructions: String,
+    pub personal_style: PersonalStyle,
+    pub warmth: ToneLevel,
+    pub enthusiasm: ToneLevel,
+    pub emoji_usage: EmojiUsage,
+    pub visual_answers: VisualAnswers,
+    pub heading_style: HeadingStyle,
+    pub quick_answers: bool,
     pub roles: BTreeMap<String, RoleSettings>,
     pub max_iterations: usize,
     pub max_tool_output_bytes: usize,
@@ -231,6 +247,8 @@ impl ProtocolUrls {
 #[derive(Debug, Clone, Deserialize)]
 pub struct ModelConfig {
     pub id: String,
+    #[serde(default)]
+    pub name: Option<String>,
     pub protocol: Protocol,
     pub context_window: u32,
     pub compact_threshold: f32,
@@ -238,6 +256,12 @@ pub struct ModelConfig {
     /// Optional per-model override; when present it is the complete request URL.
     #[serde(default)]
     pub url: Option<String>,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub reasoning_effort: Option<ReasoningEffort>,
+    #[serde(default)]
+    pub reasoning_efforts: Vec<ReasoningEffort>,
 }
 
 #[derive(Debug, Clone)]
@@ -246,6 +270,7 @@ pub struct LoadedProvider {
     pub path: PathBuf,
     pub api_key: Option<String>,
     pub api_key_env: Option<String>,
+    pub protocols: ProviderProtocolUrls,
     pub models: Vec<ModelMetadata>,
 }
 
@@ -253,6 +278,15 @@ pub struct LoadedProvider {
 pub struct ProviderCatalog {
     pub providers: Vec<LoadedProvider>,
     pub disabled: HashSet<String>,
+}
+
+/// One configured protocol plus the `/models` candidates for that endpoint.
+#[derive(Debug, Clone)]
+pub struct ProviderModelEndpoint {
+    pub protocol: Protocol,
+    pub chat_url: String,
+    pub models_urls: Vec<String>,
+    pub api_key: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -283,18 +317,20 @@ pub enum ConfigError {
     InvalidCredentials(String),
     #[error("unknown provider `{0}`")]
     UnknownProvider(String),
+    #[error("provider `{0}` has no usable protocol URL")]
+    NoProviderUrl(String),
     #[error("provider `{0}` is disabled")]
     ProviderDisabled(String),
     #[error("provider `{provider}` has no model `{model}`")]
     UnknownModel { provider: String, model: String },
+    #[error("model `{model}` for provider `{provider}` is disabled")]
+    ModelDisabled { provider: String, model: String },
     #[error("invalid provider id `{0}`")]
     InvalidProviderId(String),
     #[error("API key must not be empty")]
     EmptyApiKey,
     #[error("cannot serialize TOML: {0}")]
     SerializeToml(String),
-    #[error("provider `{0}` has no models")]
-    NoModels(String),
     #[error("provider `{provider}` has duplicate model id `{model}`")]
     DuplicateModel { provider: String, model: String },
     #[error("provider `{provider}` model `{model}` uses unsupported protocol `{protocol}`")]
@@ -351,6 +387,20 @@ impl Default for AgentSettings {
             quality: QualityMode::default(),
             approval_mode: ApprovalMode::default(),
             reasoning_effort: ReasoningEffort::default(),
+            web_search: true,
+            network_access: true,
+            output_verbosity: OutputVerbosity::default(),
+            reasoning_summary: ReasoningSummary::default(),
+            memory_enabled: true,
+            plugins_enabled: true,
+            custom_instructions: String::new(),
+            personal_style: PersonalStyle::default(),
+            warmth: ToneLevel::default(),
+            enthusiasm: ToneLevel::default(),
+            emoji_usage: EmojiUsage::default(),
+            visual_answers: VisualAnswers::default(),
+            heading_style: HeadingStyle::default(),
+            quick_answers: true,
             roles: BTreeMap::new(),
             max_iterations: 12,
             max_tool_output_bytes: 32 * 1024,
@@ -382,7 +432,10 @@ impl Config {
     pub fn validate(&self) -> Result<(), ConfigError> {
         let scripted_configured =
             self.agent.provider == "scripted" && self.agent.scripted_path.is_some();
+        // An empty provider table is a valid GUI-managed state: the user can still
+        // start Core and add a new provider. A non-empty table must have a valid default.
         if !self.agent.provider.is_empty()
+            && !self.providers.is_empty()
             && !self.providers.contains_key(&self.agent.provider)
             && !scripted_configured
         {
@@ -415,6 +468,20 @@ impl Config {
                 "quality": self.agent.quality,
                 "approval_mode": self.agent.approval_mode,
                 "reasoning_effort": self.agent.reasoning_effort,
+                "web_search": self.agent.web_search,
+                "network_access": self.agent.network_access,
+                "output_verbosity": self.agent.output_verbosity,
+                "reasoning_summary": self.agent.reasoning_summary,
+                "memory_enabled": self.agent.memory_enabled,
+                "plugins_enabled": self.agent.plugins_enabled,
+                "custom_instructions": self.agent.custom_instructions,
+                "personal_style": self.agent.personal_style,
+                "warmth": self.agent.warmth,
+                "enthusiasm": self.agent.enthusiasm,
+                "emoji_usage": self.agent.emoji_usage,
+                "visual_answers": self.agent.visual_answers,
+                "heading_style": self.agent.heading_style,
+                "quick_answers": self.agent.quick_answers,
                 "roles": self.agent.roles,
                 "max_iterations": self.agent.max_iterations,
                 "max_tool_output_bytes": self.agent.max_tool_output_bytes,
@@ -488,21 +555,44 @@ impl ProviderCatalog {
                     .filter(|url| !url.trim().is_empty())
                     .or_else(|| file.protocols.url(model.protocol).map(str::to_owned))
                     .unwrap_or_default();
-                models.push(ModelMetadata::new(
-                    id.clone(),
-                    model.id.clone(),
-                    model.protocol,
-                    url,
-                    model.context_window,
-                    model.compact_threshold,
-                    model.max_output_tokens,
-                ));
+                models.push(
+                    ModelMetadata::new(
+                        id.clone(),
+                        model.id.clone(),
+                        model.protocol,
+                        url,
+                        model.context_window,
+                        model.compact_threshold,
+                        model.max_output_tokens,
+                    )
+                    .with_name(model.name.clone().unwrap_or_default())
+                    .with_enabled(model.enabled)
+                    .with_reasoning_effort(
+                        model
+                            .reasoning_effort
+                            .filter(|effort| *effort != ReasoningEffort::Default)
+                            .map(|effort| effort.as_str().to_owned()),
+                    )
+                    .with_reasoning_efforts(
+                        model
+                            .reasoning_efforts
+                            .iter()
+                            .filter(|effort| **effort != ReasoningEffort::Default)
+                            .map(|effort| effort.as_str().to_owned())
+                            .collect(),
+                    ),
+                );
             }
             catalog.providers.push(LoadedProvider {
                 id: id.clone(),
                 path,
                 api_key,
                 api_key_env: file.api_key_env,
+                protocols: ProviderProtocolUrls {
+                    openai_chat: file.protocols.openai_chat.clone(),
+                    anthropic: file.protocols.anthropic.clone(),
+                    openai_responses: file.protocols.openai_responses.clone(),
+                },
                 models,
             });
         }
@@ -524,6 +614,102 @@ impl ProviderCatalog {
     }
 }
 
+/// Resolves protocol endpoints for model discovery, even when the provider is disabled.
+pub fn provider_model_endpoints(
+    config_path: &Path,
+    home: &Path,
+    id: &str,
+) -> Result<Vec<ProviderModelEndpoint>, ConfigError> {
+    if !is_valid_provider_id(id) {
+        return Err(ConfigError::InvalidProviderId(id.to_owned()));
+    }
+    let config = Config::load(config_path)?;
+    let entry = config
+        .providers
+        .get(id)
+        .ok_or_else(|| ConfigError::UnknownProvider(id.to_owned()))?;
+    let config_dir = Config::config_dir(config_path);
+    let stored_path = if entry.path.trim().is_empty() {
+        format!("providers/{id}.toml")
+    } else {
+        entry.path.clone()
+    };
+    let path = resolve_path(&config_dir, &stored_path);
+    if !path.exists() {
+        return Err(ConfigError::ProviderFileMissing {
+            provider: id.to_owned(),
+            path: path.display().to_string(),
+        });
+    }
+
+    let text = std::fs::read_to_string(&path).map_err(|error| ConfigError::ProviderFileIo {
+        provider: id.to_owned(),
+        path: path.display().to_string(),
+        message: error.to_string(),
+    })?;
+    let file: ProviderFile =
+        toml::from_str(&text).map_err(|error| ConfigError::ProviderFileParse {
+            provider: id.to_owned(),
+            path: path.display().to_string(),
+            message: redact_api_key(&error.to_string()),
+        })?;
+
+    let env_key = file
+        .api_key_env
+        .as_ref()
+        .and_then(|name| std::env::var(name).ok())
+        .filter(|key| !key.trim().is_empty());
+    let api_key = env_key
+        .or_else(|| read_provider_key(home, id))
+        .or_else(|| file.api_key.clone().filter(|key| !key.trim().is_empty()));
+
+    let mut endpoints = Vec::new();
+    for (protocol, url) in [
+        (Protocol::OpenAiChat, file.protocols.openai_chat.as_deref()),
+        (Protocol::Anthropic, file.protocols.anthropic.as_deref()),
+        (
+            Protocol::OpenAiResponses,
+            file.protocols.openai_responses.as_deref(),
+        ),
+    ] {
+        let Some(url) = url.map(str::trim).filter(|url| !url.is_empty()) else {
+            continue;
+        };
+        if !is_complete_url(url) {
+            continue;
+        }
+        let base = model_list_base(url);
+        if base.is_empty() {
+            continue;
+        }
+        endpoints.push(ProviderModelEndpoint {
+            protocol,
+            chat_url: url.to_owned(),
+            models_urls: vec![format!("{base}/models"), format!("{base}/modul")],
+            api_key: api_key.clone(),
+        });
+    }
+
+    if endpoints.is_empty() {
+        return Err(ConfigError::NoProviderUrl(id.to_owned()));
+    }
+    Ok(endpoints)
+}
+
+fn model_list_base(endpoint: &str) -> String {
+    let url = endpoint
+        .split(['?', '#'])
+        .next()
+        .unwrap_or(endpoint)
+        .trim_end_matches('/');
+    for suffix in ["/chat/completions", "/messages", "/responses"] {
+        if let Some(base) = url.strip_suffix(suffix) {
+            return base.trim_end_matches('/').to_owned();
+        }
+    }
+    url.to_owned()
+}
+
 fn validate_provider_file(id: &str, path: &Path, file: &ProviderFile) -> Result<(), ConfigError> {
     let has_inline = file
         .api_key
@@ -535,9 +721,6 @@ fn validate_provider_file(id: &str, path: &Path, file: &ProviderFile) -> Result<
         .is_some_and(|value| !value.trim().is_empty());
     if has_inline && has_env {
         return Err(ConfigError::InvalidCredentials(id.to_owned()));
-    }
-    if file.models.is_empty() {
-        return Err(ConfigError::NoModels(id.to_owned()));
     }
     let mut seen = HashSet::new();
     for model in &file.models {
@@ -768,6 +951,19 @@ pub fn provider_upsert(
     }
     let config_dir = Config::config_dir(config_path);
     let mut config_value = read_toml_value(config_path)?;
+    let default_missing = {
+        let current = config_value
+            .get("agent")
+            .and_then(toml::Value::as_table)
+            .and_then(|agent| agent.get("provider"))
+            .and_then(toml::Value::as_str)
+            .unwrap_or_default();
+        current.is_empty()
+            || !config_value
+                .get("providers")
+                .and_then(toml::Value::as_table)
+                .is_some_and(|providers| providers.contains_key(current))
+    };
     let stored_path = {
         let providers = ensure_table(&mut config_value, "providers")?;
         let entry = providers
@@ -803,11 +999,16 @@ pub fn provider_upsert(
             })?;
             Ok(ModelConfig {
                 id: model.id.clone(),
+                name: clean(model.name.clone()),
                 protocol,
                 context_window: model.context_window,
                 compact_threshold: model.compact_threshold,
                 max_output_tokens: model.max_output_tokens,
                 url: clean(model.url.clone()),
+                enabled: model.enabled,
+                reasoning_effort: (model.reasoning_effort != ReasoningEffort::Default)
+                    .then_some(model.reasoning_effort),
+                reasoning_efforts: model.reasoning_efforts.clone(),
             })
         })
         .collect::<Result<Vec<_>, ConfigError>>()?;
@@ -863,10 +1064,41 @@ pub fn provider_upsert(
                     "max_output_tokens".to_owned(),
                     toml::Value::Integer(i64::from(model.max_output_tokens)),
                 );
+                if let Some(name) = &model.name {
+                    model_table.insert("name".to_owned(), toml::Value::String(name.clone()));
+                } else {
+                    model_table.remove("name");
+                }
                 if let Some(url) = &model.url {
                     model_table.insert("url".to_owned(), toml::Value::String(url.clone()));
                 } else {
                     model_table.remove("url");
+                }
+                model_table.insert("enabled".to_owned(), toml::Value::Boolean(model.enabled));
+                match &model.reasoning_effort {
+                    Some(effort) => {
+                        model_table.insert(
+                            "reasoning_effort".to_owned(),
+                            toml::Value::String(effort.as_str().to_owned()),
+                        );
+                    }
+                    None => {
+                        model_table.remove("reasoning_effort");
+                    }
+                }
+                if model.reasoning_efforts.is_empty() {
+                    model_table.remove("reasoning_efforts");
+                } else {
+                    model_table.insert(
+                        "reasoning_efforts".to_owned(),
+                        toml::Value::Array(
+                            model
+                                .reasoning_efforts
+                                .iter()
+                                .map(|effort| toml::Value::String(effort.as_str().to_owned()))
+                                .collect(),
+                        ),
+                    );
                 }
                 toml::Value::Table(model_table)
             })
@@ -912,6 +1144,39 @@ pub fn provider_upsert(
         table.insert("enabled".to_owned(), toml::Value::Boolean(params.enabled));
         table.insert("path".to_owned(), toml::Value::String(stored_path.clone()));
     }
+    let first_enabled_model = params
+        .models
+        .iter()
+        .find(|model| model.enabled)
+        .map(|model| model.id.clone())
+        .unwrap_or_default();
+    {
+        let agent = ensure_table(&mut config_value, "agent")?;
+        let active_provider = agent
+            .get("provider")
+            .and_then(toml::Value::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        if default_missing {
+            agent.insert(
+                "provider".to_owned(),
+                toml::Value::String(params.id.clone()),
+            );
+        }
+        if default_missing || active_provider == params.id {
+            let active_model = agent
+                .get("model")
+                .and_then(toml::Value::as_str)
+                .unwrap_or_default();
+            let model_is_enabled = params
+                .models
+                .iter()
+                .any(|model| model.id == active_model && model.enabled);
+            if !model_is_enabled {
+                agent.insert("model".to_owned(), toml::Value::String(first_enabled_model));
+            }
+        }
+    }
     write_toml_atomic(config_path, &config_value)?;
 
     Ok(ProviderUpsertResult {
@@ -952,6 +1217,53 @@ pub fn provider_set_api_key(
     Ok(ProviderKeyResult {
         provider: params.id.clone(),
         key_configured: true,
+    })
+}
+
+pub fn provider_delete(
+    config_path: &Path,
+    home: &Path,
+    id: &str,
+) -> Result<ProviderDeleteResult, ConfigError> {
+    if !is_valid_provider_id(id) {
+        return Err(ConfigError::InvalidProviderId(id.to_owned()));
+    }
+
+    let config_dir = Config::config_dir(config_path);
+    let mut config_value = read_toml_value(config_path)?;
+    let provider_path = {
+        let providers = ensure_table(&mut config_value, "providers")?;
+        let stored_path = providers
+            .get(id)
+            .and_then(toml::Value::as_table)
+            .and_then(|entry| entry.get("path"))
+            .and_then(toml::Value::as_str)
+            .filter(|path| !path.trim().is_empty())
+            .map(str::to_owned)
+            .unwrap_or_else(|| format!("providers/{id}.toml"));
+        if providers.remove(id).is_none() {
+            return Err(ConfigError::UnknownProvider(id.to_owned()));
+        }
+        resolve_path(&config_dir, &stored_path)
+    };
+
+    {
+        let agent = ensure_table(&mut config_value, "agent")?;
+        if agent.get("provider").and_then(toml::Value::as_str) == Some(id) {
+            agent.insert("provider".to_owned(), toml::Value::String(String::new()));
+            agent.insert("model".to_owned(), toml::Value::String(String::new()));
+        }
+    }
+    write_toml_atomic(config_path, &config_value)?;
+
+    // Drop the provider file and secret so re-adding starts clean.
+    if provider_path.starts_with(&config_dir) {
+        let _ = std::fs::remove_file(provider_path);
+    }
+    let _ = std::fs::remove_file(home.join("credentials").join(format!("{id}.key")));
+    Ok(ProviderDeleteResult {
+        provider: id.to_owned(),
+        deleted: true,
     })
 }
 
@@ -1000,12 +1312,18 @@ pub fn config_set_default_model(
         .iter()
         .find(|provider| provider.id == params.provider)
         .ok_or_else(|| ConfigError::UnknownProvider(params.provider.clone()))?;
-    if !provider
+    let Some(model) = provider
         .models
         .iter()
-        .any(|model| model.model == params.model)
-    {
+        .find(|model| model.model == params.model)
+    else {
         return Err(ConfigError::UnknownModel {
+            provider: params.provider.clone(),
+            model: params.model.clone(),
+        });
+    };
+    if !model.enabled {
+        return Err(ConfigError::ModelDisabled {
             provider: params.provider.clone(),
             model: params.model.clone(),
         });
@@ -1029,11 +1347,14 @@ pub fn config_set_default_model(
     })
 }
 
-pub fn approval_flags(approval_mode: ApprovalMode) -> (bool, bool, bool) {
+pub fn approval_flags(approval_mode: ApprovalMode) -> Option<(bool, bool, bool)> {
     match approval_mode {
-        ApprovalMode::AcceptEdits => (true, false, false),
-        ApprovalMode::DontAsk | ApprovalMode::Auto => (true, true, true),
-        ApprovalMode::Ask | ApprovalMode::Plan | ApprovalMode::ReadOnly => (false, false, false),
+        ApprovalMode::AcceptEdits => Some((true, false, false)),
+        ApprovalMode::DontAsk => Some((true, true, true)),
+        ApprovalMode::Ask | ApprovalMode::Plan | ApprovalMode::ReadOnly => {
+            Some((false, false, false))
+        }
+        ApprovalMode::Auto => None,
     }
 }
 
@@ -1045,569 +1366,104 @@ pub fn permissions_set(config_path: &Path, approval_mode: ApprovalMode) -> Resul
             "approval_mode".to_owned(),
             toml::Value::String(approval_mode.as_str().to_owned()),
         );
-        let policy = ensure_table(&mut value, "policy")?;
-        let (edits, shell, plugins) = approval_flags(approval_mode);
-        for (key, enabled) in [
-            ("auto_approve_edits", edits),
-            ("auto_approve_shell", shell),
-            ("auto_approve_plugins", plugins),
-        ] {
-            policy.insert(key.to_owned(), toml::Value::Boolean(enabled));
-        }
-    }
-    write_toml_atomic(config_path, &value)
-}
-
-pub fn agent_config_set(
-    config_path: &Path,
-    reasoning_effort: ReasoningEffort,
-) -> Result<(), ConfigError> {
-    let mut value = read_toml_value(config_path)?;
-    let agent = ensure_table(&mut value, "agent")?;
-    agent.insert(
-        "reasoning_effort".to_owned(),
-        toml::Value::String(reasoning_effort.as_str().to_owned()),
-    );
-    write_toml_atomic(config_path, &value)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn three_protocol_config() -> (&'static str, &'static str) {
-        (
-            r#"
-[agent]
-provider = "opencode"
-model = "gpt-5-responses"
-
-[providers.opencode]
-enabled = true
-path = "providers/opencode.toml"
-"#,
-            r#"
-api_key_env = "OPENCODE_API_KEY"
-
-[protocols]
-openai-chat = "https://gateway.example/chat/complete"
-anthropic = "https://gateway.example/messages"
-openai-responses = "https://gateway.example/responses"
-
-[[models]]
-id = "gpt-5-chat"
-protocol = "openai-chat"
-context_window = 128000
-compact_threshold = 0.8
-max_output_tokens = 4096
-
-[[models]]
-id = "claude-native"
-protocol = "anthropic"
-context_window = 200000
-compact_threshold = 0.75
-max_output_tokens = 8192
-
-[[models]]
-id = "gpt-5-responses"
-protocol = "openai-responses"
-context_window = 256000
-compact_threshold = 0.9
-max_output_tokens = 16384
-url = "https://gateway.example/custom/responses"
-"#,
-        )
-    }
-
-    #[test]
-    fn incomplete_urls_are_rejected() {
-        assert!(!is_complete_url("http://"));
-        assert!(!is_complete_url("http:///v1/chat"));
-        assert!(!is_complete_url("gateway.example/v1/chat"));
-        assert!(is_complete_url("https://gateway.example/v1/chat"));
-    }
-
-    #[test]
-    fn invalid_context_and_output_limits_are_rejected() {
-        let temp = tempfile::tempdir().unwrap();
-        let global = r#"
-[providers.test]
-enabled = true
-path = "test.toml"
-"#;
-        let provider = r#"
-api_key = "inline-key"
-[protocols]
-openai-chat = "https://example.test/chat"
-[[models]]
-id = "chat"
-protocol = "openai-chat"
-context_window = 0
-compact_threshold = 0.5
-max_output_tokens = 100
-"#;
-        let global_path = temp.path().join("config.toml");
-        std::fs::write(&global_path, global).unwrap();
-        let provider_path = temp.path().join("test.toml");
-        std::fs::write(&provider_path, provider).unwrap();
-        let config = Config::load(&global_path).unwrap();
-        let error = ProviderCatalog::load(&config, temp.path(), temp.path()).unwrap_err();
-        assert!(matches!(error, ConfigError::InvalidContextWindow { .. }));
-
-        let provider = provider.replace("context_window = 0", "context_window = 1000");
-        let provider = provider.replace("max_output_tokens = 100", "max_output_tokens = 0");
-        std::fs::write(&provider_path, provider).unwrap();
-        let error = ProviderCatalog::load(&config, temp.path(), temp.path()).unwrap_err();
-        assert!(matches!(error, ConfigError::InvalidMaxOutput { .. }));
-    }
-
-    #[test]
-    fn provider_parse_errors_redact_inline_keys() {
-        let temp = tempfile::tempdir().unwrap();
-        let global = r#"
-[providers.test]
-enabled = true
-path = "test.toml"
-"#;
-        let provider = r#"
-api_key = "super-secret-key"
-[[models]
-"#;
-        let global_path = temp.path().join("config.toml");
-        std::fs::write(&global_path, global).unwrap();
-        std::fs::write(temp.path().join("test.toml"), provider).unwrap();
-        let config = Config::load(&global_path).unwrap();
-        let error = ProviderCatalog::load(&config, temp.path(), temp.path())
-            .unwrap_err()
-            .to_string();
-        assert!(!error.contains("super-secret-key"));
-        assert!(!redact_api_key("api_key = \"secret\"").contains("secret"));
-    }
-
-    #[test]
-    fn loads_multiple_providers_independently() {
-        let temp = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(temp.path().join("providers")).unwrap();
-        std::fs::write(
-            temp.path().join("providers/a.toml"),
-            r#"
-api_key = "a-key"
-[protocols]
-openai-chat = "https://gateway.example/a/chat"
-[[models]]
-id = "a-model"
-protocol = "openai-chat"
-context_window = 1000
-compact_threshold = 0.5
-max_output_tokens = 100
-"#,
-        )
-        .unwrap();
-        std::fs::write(
-            temp.path().join("providers/b.toml"),
-            r#"
-api_key = "b-key"
-[protocols]
-anthropic = "https://gateway.example/b/messages"
-[[models]]
-id = "b-model"
-protocol = "anthropic"
-context_window = 2000
-compact_threshold = 0.6
-max_output_tokens = 200
-"#,
-        )
-        .unwrap();
-        let global_path = temp.path().join("config.toml");
-        std::fs::write(
-            &global_path,
-            r#"
-[agent]
-provider = "a"
-model = "a-model"
-[providers.a]
-enabled = true
-path = "providers/a.toml"
-[providers.b]
-enabled = true
-path = "providers/b.toml"
-"#,
-        )
-        .unwrap();
-        let config = Config::load(&global_path).unwrap();
-        let catalog = ProviderCatalog::load(&config, temp.path(), temp.path()).unwrap();
-        assert_eq!(catalog.providers.len(), 2);
-        assert_eq!(catalog.providers[0].models[0].model, "a-model");
-        assert_eq!(catalog.providers[1].models[0].model, "b-model");
-    }
-
-    #[test]
-    fn parses_three_protocol_provider_catalog() {
-        let temp = tempfile::tempdir().unwrap();
-        let (global, provider) = three_protocol_config();
-        std::fs::create_dir_all(temp.path().join("providers")).unwrap();
-        std::fs::write(temp.path().join("providers/opencode.toml"), provider).unwrap();
-        let global_path = temp.path().join("config.toml");
-        std::fs::write(&global_path, global).unwrap();
-        let config = Config::load(&global_path).unwrap();
-        let catalog = ProviderCatalog::load(&config, temp.path(), temp.path()).unwrap();
-        assert_eq!(catalog.providers.len(), 1);
-        assert_eq!(catalog.providers[0].models.len(), 3);
-        assert_eq!(
-            catalog.providers[0].models[2].url,
-            "https://gateway.example/custom/responses"
-        );
-    }
-
-    #[test]
-    fn disabled_provider_is_not_loaded() {
-        let temp = tempfile::tempdir().unwrap();
-        let global = r#"
-[agent]
-provider = "opencode"
-model = "gpt-5-chat"
-
-[providers.opencode]
-enabled = false
-path = "providers/missing.toml"
-"#;
-        let global_path = temp.path().join("config.toml");
-        std::fs::write(&global_path, global).unwrap();
-        let config = Config::load(&global_path).unwrap();
-        let catalog = ProviderCatalog::load(&config, temp.path(), temp.path()).unwrap();
-        assert!(catalog.providers.is_empty());
-        assert!(catalog.disabled.contains("opencode"));
-    }
-
-    #[test]
-    fn missing_protocol_url_is_rejected() {
-        let temp = tempfile::tempdir().unwrap();
-        let global = r#"
-[providers.test]
-enabled = true
-path = "test.toml"
-"#;
-        let provider = r#"
-api_key = "inline-key"
-[[models]]
-id = "chat"
-protocol = "openai-chat"
-context_window = 1000
-compact_threshold = 0.5
-max_output_tokens = 100
-"#;
-        let global_path = temp.path().join("config.toml");
-        std::fs::write(&global_path, global).unwrap();
-        std::fs::write(temp.path().join("test.toml"), provider).unwrap();
-        let config = Config::load(&global_path).unwrap();
-        let error = ProviderCatalog::load(&config, temp.path(), temp.path()).unwrap_err();
-        assert!(matches!(error, ConfigError::MissingProtocolUrl { .. }));
-    }
-
-    #[test]
-    fn invalid_threshold_and_duplicate_models_are_rejected() {
-        let temp = tempfile::tempdir().unwrap();
-        let global = r#"
-[providers.test]
-enabled = true
-path = "test.toml"
-"#;
-        let provider = r#"
-api_key = "inline-key"
-[protocols]
-openai-chat = "https://example.test/chat"
-[[models]]
-id = "same"
-protocol = "openai-chat"
-context_window = 1000
-compact_threshold = 1.5
-max_output_tokens = 100
-[[models]]
-id = "same"
-protocol = "openai-chat"
-context_window = 1000
-compact_threshold = 0.5
-max_output_tokens = 100
-"#;
-        let global_path = temp.path().join("config.toml");
-        std::fs::write(&global_path, global).unwrap();
-        std::fs::write(temp.path().join("test.toml"), provider).unwrap();
-        let config = Config::load(&global_path).unwrap();
-        let error = ProviderCatalog::load(&config, temp.path(), temp.path()).unwrap_err();
-        assert!(matches!(error, ConfigError::DuplicateModel { .. }));
-    }
-
-    #[test]
-    fn redacted_provider_catalog_does_not_leak_inline_key() {
-        let temp = tempfile::tempdir().unwrap();
-        let global = r#"
-[providers.test]
-enabled = true
-path = "test.toml"
-"#;
-        let provider = r#"
-api_key = "super-secret-key"
-[protocols]
-openai-chat = "https://example.test/chat"
-[[models]]
-id = "chat"
-protocol = "openai-chat"
-context_window = 1000
-compact_threshold = 0.5
-max_output_tokens = 100
-"#;
-        let global_path = temp.path().join("config.toml");
-        std::fs::write(&global_path, global).unwrap();
-        std::fs::write(temp.path().join("test.toml"), provider).unwrap();
-        let config = Config::load(&global_path).unwrap();
-        let catalog = ProviderCatalog::load(&config, temp.path(), temp.path()).unwrap();
-        let redacted = catalog.redacted().to_string();
-        assert!(!redacted.contains("super-secret-key"));
-        assert!(redacted.contains("configured"));
-    }
-
-    #[test]
-    fn provider_upsert_preserves_unknown_fields_and_writes_atomically() {
-        let temp = tempfile::tempdir().unwrap();
-        let config_path = temp.path().join("config.toml");
-        let provider_dir = temp.path().join("providers");
-        std::fs::create_dir_all(&provider_dir).unwrap();
-        std::fs::write(
-            &config_path,
-            r#"
-[custom]
-keep = "yes"
-
-[providers.opencode]
-enabled = false
-path = "providers/opencode.toml"
-note = "keep"
-"#,
-        )
-        .unwrap();
-        std::fs::write(
-            provider_dir.join("opencode.toml"),
-            r#"
-note = "keep"
-api_key_env = "OPENCODE_API_KEY"
-
-[protocols]
-openai-chat = "https://old.example/chat"
-
-[[models]]
-id = "gpt-5-responses"
-protocol = "openai-responses"
-context_window = 1000
-compact_threshold = 0.5
-max_output_tokens = 100
-note = "keep-model"
-"#,
-        )
-        .unwrap();
-
-        let result = provider_upsert(&config_path, &upsert_params("opencode", true)).unwrap();
-        assert_eq!(result.models, 1);
-        assert!(result.enabled);
-
-        let config_text = std::fs::read_to_string(&config_path).unwrap();
-        assert!(config_text.contains("keep = \"yes\""));
-        assert!(config_text.contains("note = \"keep\""));
-        assert!(config_text.contains("enabled = true"));
-
-        let provider_text = std::fs::read_to_string(provider_dir.join("opencode.toml")).unwrap();
-        assert!(provider_text.contains("note = \"keep\""));
-        assert!(provider_text.contains("note = \"keep-model\""));
-        assert!(provider_text.contains("openai-responses = \"https://gateway.example/responses\""));
-        assert!(!provider_text.contains("api_key ="));
-
-        provider_upsert(&config_path, &upsert_params("opencode", false)).unwrap();
-        let config_text = std::fs::read_to_string(&config_path).unwrap();
-        assert!(config_text.contains("enabled = false"));
-        assert!(config_text.contains("keep = \"yes\""));
-        let provider_text = std::fs::read_to_string(provider_dir.join("opencode.toml")).unwrap();
-        assert!(provider_text.contains("note = \"keep-model\""));
-        for directory in [temp.path(), provider_dir.as_path()] {
-            for entry in std::fs::read_dir(directory).unwrap() {
-                let name = entry.unwrap().file_name().to_string_lossy().into_owned();
-                assert!(!name.contains(".tmp"), "temporary file left behind: {name}");
+        if let Some((edits, shell, plugins)) = approval_flags(approval_mode) {
+            let policy = ensure_table(&mut value, "policy")?;
+            for (key, enabled) in [
+                ("auto_approve_edits", edits),
+                ("auto_approve_shell", shell),
+                ("auto_approve_plugins", plugins),
+            ] {
+                policy.insert(key.to_owned(), toml::Value::Boolean(enabled));
             }
         }
     }
-
-    #[test]
-    fn api_key_is_written_outside_provider_file_and_redacted() {
-        let temp = tempfile::tempdir().unwrap();
-        let config_path = temp.path().join("config.toml");
-        provider_upsert(&config_path, &upsert_params("opencode", true)).unwrap();
-        provider_set_api_key(
-            &config_path,
-            temp.path(),
-            &ProviderSetApiKeyParams {
-                id: "opencode".to_owned(),
-                key: "super-secret-key".to_owned(),
-            },
-        )
-        .unwrap();
-
-        let key_path = temp.path().join("credentials/opencode.key");
-        assert_eq!(
-            std::fs::read_to_string(&key_path).unwrap(),
-            "super-secret-key"
-        );
-        let provider_text =
-            std::fs::read_to_string(temp.path().join("providers/opencode.toml")).unwrap();
-        assert!(!provider_text.contains("super-secret-key"));
-
-        let config = Config::load(&config_path).unwrap();
-        let catalog = ProviderCatalog::load(&config, temp.path(), temp.path()).unwrap();
-        assert_eq!(
-            catalog.providers[0].api_key.as_deref(),
-            Some("super-secret-key")
-        );
-        let redacted = catalog.redacted().to_string();
-        assert!(!redacted.contains("super-secret-key"));
-        let redacted_value: Value = catalog.redacted();
-        assert_eq!(redacted_value["providers"][0]["key_configured"], true);
-    }
-
-    #[test]
-    fn default_model_and_enabled_validation_use_saved_config() {
-        let temp = tempfile::tempdir().unwrap();
-        let config_path = temp.path().join("config.toml");
-        provider_upsert(&config_path, &upsert_params("opencode", true)).unwrap();
-        provider_set_api_key(
-            &config_path,
-            temp.path(),
-            &ProviderSetApiKeyParams {
-                id: "opencode".to_owned(),
-                key: "test-key".to_owned(),
-            },
-        )
-        .unwrap();
-
-        let result = config_set_default_model(
-            &config_path,
-            temp.path(),
-            &SetDefaultModelParams {
-                provider: "opencode".to_owned(),
-                model: "gpt-5-responses".to_owned(),
-            },
-        )
-        .unwrap();
-        assert_eq!(result.provider, "opencode");
-        assert_eq!(result.model, "gpt-5-responses");
-        let config = Config::load(&config_path).unwrap();
-        assert_eq!(config.agent.provider, "opencode");
-        assert_eq!(config.agent.model, "gpt-5-responses");
-
-        provider_set_enabled(
-            &config_path,
-            &ProviderSetEnabledParams {
-                id: "opencode".to_owned(),
-                enabled: false,
-            },
-        )
-        .unwrap();
-        let error = config_set_default_model(
-            &config_path,
-            temp.path(),
-            &SetDefaultModelParams {
-                provider: "opencode".to_owned(),
-                model: "gpt-5-responses".to_owned(),
-            },
-        )
-        .unwrap_err();
-        assert!(matches!(error, ConfigError::ProviderDisabled(_)));
-        let config = Config::load(&config_path).unwrap();
-        let catalog = ProviderCatalog::load(&config, temp.path(), temp.path()).unwrap();
-        assert!(catalog.providers.is_empty());
-        assert!(catalog.disabled.contains("opencode"));
-    }
-
-    #[test]
-    fn invalid_provider_ids_are_rejected() {
-        let temp = tempfile::tempdir().unwrap();
-        let config_path = temp.path().join("config.toml");
-        let error = provider_upsert(&config_path, &upsert_params("../escape", true)).unwrap_err();
-        assert!(matches!(error, ConfigError::InvalidProviderId(_)));
-    }
-
-    #[test]
-    fn api_key_env_overrides_credentials_file() {
-        let temp = tempfile::tempdir().unwrap();
-        let config_path = temp.path().join("config.toml");
-        let env_name = format!("KL_TEST_PROVIDER_KEY_{}", std::process::id());
-        unsafe {
-            std::env::set_var(&env_name, "env-secret");
-        }
-        let mut params = upsert_params("local", true);
-        params.api_key_env = Some(env_name.clone());
-        provider_upsert(&config_path, &params).unwrap();
-        provider_set_api_key(
-            &config_path,
-            temp.path(),
-            &ProviderSetApiKeyParams {
-                id: "local".to_owned(),
-                key: "file-secret".to_owned(),
-            },
-        )
-        .unwrap();
-        let config = Config::load(&config_path).unwrap();
-        let catalog = ProviderCatalog::load(&config, temp.path(), temp.path()).unwrap();
-        assert_eq!(catalog.providers[0].api_key.as_deref(), Some("env-secret"));
-        unsafe {
-            std::env::remove_var(&env_name);
-        }
-    }
-    #[test]
-    fn agent_presets_parse_and_map_tool_access() {
-        assert_eq!(AgentPreset::parse("build"), Some(AgentPreset::Build));
-        assert_eq!(AgentPreset::parse("PLAN"), Some(AgentPreset::Plan));
-        assert_eq!(AgentPreset::parse("explore"), Some(AgentPreset::Explore));
-        assert_eq!(AgentPreset::parse("review"), Some(AgentPreset::Review));
-        assert_eq!(AgentPreset::parse("verify"), Some(AgentPreset::Verify));
-        assert_eq!(AgentPreset::parse("deep"), Some(AgentPreset::Deep));
-        assert_eq!(AgentPreset::parse("unknown"), None);
-        assert_eq!(AgentPreset::Build.tool_access(), ToolAccess::Full);
-        assert_eq!(AgentPreset::Plan.tool_access(), ToolAccess::ReadOnly);
-        assert_eq!(AgentPreset::Explore.tool_access(), ToolAccess::ReadOnly);
-        assert_eq!(AgentPreset::Review.tool_access(), ToolAccess::ReadOnly);
-        assert_eq!(AgentPreset::Verify.tool_access(), ToolAccess::VerifyOnly);
-        assert_eq!(AgentPreset::Deep.tool_access(), ToolAccess::Full);
-        assert!(AgentPreset::Build.prompt_prefix().is_empty());
-        assert!(AgentPreset::Deep.prompt_prefix().is_empty());
-        assert!(!AgentPreset::Plan.prompt_prefix().is_empty());
-        assert!(!AgentPreset::Verify.prompt_prefix().is_empty());
-        for preset in [
-            AgentPreset::Build,
-            AgentPreset::Plan,
-            AgentPreset::Explore,
-            AgentPreset::Review,
-            AgentPreset::Verify,
-            AgentPreset::Deep,
-        ] {
-            assert_eq!(AgentPreset::parse(preset.as_str()), Some(preset));
-        }
-    }
-
-    fn upsert_params(id: &str, enabled: bool) -> ProviderUpsertParams {
-        ProviderUpsertParams {
-            id: id.to_owned(),
-            protocols: kl_protocol::ProviderProtocolUrls {
-                openai_chat: Some("https://gateway.example/chat".to_owned()),
-                anthropic: Some("https://gateway.example/messages".to_owned()),
-                openai_responses: Some("https://gateway.example/responses".to_owned()),
-            },
-            models: vec![kl_protocol::ProviderModelInput {
-                id: "gpt-5-responses".to_owned(),
-                protocol: "openai-responses".to_owned(),
-                context_window: 1000,
-                compact_threshold: 0.5,
-                max_output_tokens: 100,
-                url: None,
-            }],
-            enabled,
-            api_key_env: None,
-        }
-    }
+    write_toml_atomic(config_path, &value)
 }
+
+pub const MAX_CUSTOM_INSTRUCTIONS: usize = 20_000;
+
+pub fn agent_config_set(
+    config_path: &Path,
+    params: &AgentConfigSetParams,
+) -> Result<(), ConfigError> {
+    let mut value = read_toml_value(config_path)?;
+    let agent = ensure_table(&mut value, "agent")?;
+    if let Some(reasoning_effort) = params.reasoning_effort {
+        agent.insert(
+            "reasoning_effort".to_owned(),
+            toml::Value::String(reasoning_effort.as_str().to_owned()),
+        );
+    }
+    for (key, enabled) in [
+        ("web_search", params.web_search),
+        ("network_access", params.network_access),
+        ("memory_enabled", params.memory_enabled),
+        ("plugins_enabled", params.plugins_enabled),
+    ] {
+        if let Some(enabled) = enabled {
+            agent.insert(key.to_owned(), toml::Value::Boolean(enabled));
+        }
+    }
+    if let Some(verbosity) = params.output_verbosity {
+        agent.insert(
+            "output_verbosity".to_owned(),
+            toml::Value::String(verbosity.as_str().to_owned()),
+        );
+    }
+    if let Some(summary) = params.reasoning_summary {
+        agent.insert(
+            "reasoning_summary".to_owned(),
+            toml::Value::String(summary.as_str().to_owned()),
+        );
+    }
+    if let Some(instructions) = &params.custom_instructions {
+        let instructions = sanitize_custom_instructions(instructions);
+        if instructions.is_empty() {
+            agent.remove("custom_instructions");
+        } else {
+            agent.insert(
+                "custom_instructions".to_owned(),
+                toml::Value::String(instructions),
+            );
+        }
+    }
+    for (key, value) in [
+        (
+            "personal_style",
+            params.personal_style.map(|value| value.as_str()),
+        ),
+        ("warmth", params.warmth.map(|value| value.as_str())),
+        ("enthusiasm", params.enthusiasm.map(|value| value.as_str())),
+        (
+            "emoji_usage",
+            params.emoji_usage.map(|value| value.as_str()),
+        ),
+        (
+            "visual_answers",
+            params.visual_answers.map(|value| value.as_str()),
+        ),
+        (
+            "heading_style",
+            params.heading_style.map(|value| value.as_str()),
+        ),
+    ] {
+        if let Some(value) = value {
+            agent.insert(key.to_owned(), toml::Value::String(value.to_owned()));
+        }
+    }
+    if let Some(enabled) = params.quick_answers {
+        agent.insert("quick_answers".to_owned(), toml::Value::Boolean(enabled));
+    }
+    write_toml_atomic(config_path, &value)
+}
+
+pub fn sanitize_custom_instructions(instructions: &str) -> String {
+    instructions
+        .trim()
+        .chars()
+        .take(MAX_CUSTOM_INSTRUCTIONS)
+        .collect()
+}
+
+#[cfg(test)]
+mod tests;

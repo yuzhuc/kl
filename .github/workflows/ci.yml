@@ -1,9 +1,7 @@
 name: ci
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 jobs:
   windows:
@@ -11,17 +9,17 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-python@v5
         with:
-          node-version: 22
+          python-version: "3.12"
       - name: Docs check
-        run: node scripts/check-docs.mjs
+        run: python scripts/check_docs.py
       - name: Docs check test
-        run: node --test scripts/check-docs.test.mjs
+        run: python scripts/check_docs_test.py
       - name: Protocol check
-        run: node scripts/check-protocol.mjs
+        run: python scripts/check_protocol.py
       - name: Protocol check test
-        run: node --test scripts/check-protocol.test.mjs
+        run: python scripts/check_protocol_test.py
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -62,31 +60,28 @@ jobs:
           fi
           exit "$status"
       - name: Windows end-to-end demo
-        shell: pwsh
-        run: ./scripts/demo-e2e.ps1
+        run: python scripts/demo-e2e.py
       - name: Windows policy demo
-        shell: pwsh
-        run: ./scripts/demo-policy.ps1
+        run: python scripts/demo-policy.py
       - name: Windows plugin hot-upgrade demo
-        shell: pwsh
-        run: ./scripts/demo-plugin.ps1
+        run: python scripts/demo-plugin.py
 
   linux:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-python@v5
         with:
-          node-version: 22
+          python-version: "3.12"
       - name: Docs check
-        run: node scripts/check-docs.mjs
+        run: python scripts/check_docs.py
       - name: Docs check test
-        run: node --test scripts/check-docs.test.mjs
+        run: python scripts/check_docs_test.py
       - name: Protocol check
-        run: node scripts/check-protocol.mjs
+        run: python scripts/check_protocol.py
       - name: Protocol check test
-        run: node --test scripts/check-protocol.test.mjs
+        run: python scripts/check_protocol_test.py
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -138,17 +133,17 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-python@v5
         with:
-          node-version: 22
+          python-version: "3.12"
       - name: Docs check
-        run: node scripts/check-docs.mjs
+        run: python scripts/check_docs.py
       - name: Docs check test
-        run: node --test scripts/check-docs.test.mjs
+        run: python scripts/check_docs_test.py
       - name: Protocol check
-        run: node scripts/check-protocol.mjs
+        run: python scripts/check_protocol.py
       - name: Protocol check test
-        run: node --test scripts/check-protocol.test.mjs
+        run: python scripts/check_protocol_test.py
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy

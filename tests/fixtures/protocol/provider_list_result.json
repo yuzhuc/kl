@@ -9,12 +9,14 @@
       {
         "provider": "opencode",
         "model": "gpt-5-chat",
+        "name": "GPT-5 Chat",
         "protocol": "openai-chat",
         "url": "https://gateway.example/v1/chat/completions",
         "context_window": 128000,
         "compact_threshold": 0.8,
         "max_output_tokens": 4096,
         "enabled": true,
+        "reasoning_effort": "default",
         "key_configured": true,
         "available": true,
         "detail": "API key present"
@@ -22,12 +24,14 @@
       {
         "provider": "opencode",
         "model": "claude-native",
+        "name": "Claude Native",
         "protocol": "anthropic",
         "url": "https://gateway.example/v1/messages",
         "context_window": 200000,
         "compact_threshold": 0.75,
         "max_output_tokens": 8192,
         "enabled": true,
+        "reasoning_effort": "default",
         "key_configured": true,
         "available": true,
         "detail": "API key present"
@@ -35,12 +39,14 @@
       {
         "provider": "opencode",
         "model": "gpt-5-responses",
+        "name": "GPT-5 Responses",
         "protocol": "openai-responses",
         "url": "https://gateway.example/custom/responses",
         "context_window": 256000,
         "compact_threshold": 0.9,
         "max_output_tokens": 16384,
         "enabled": true,
+        "reasoning_effort": "default",
         "key_configured": true,
         "available": true,
         "detail": "API key present"

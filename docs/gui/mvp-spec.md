@@ -1,97 +1,237 @@
-# KL GUI MVP specification
+# KL GUI specification
 
-> Status: paused by product request
+> Status: implemented Core client and Codex-style desktop shell
+>
+> Baseline: `dev` `65edccc`
+>
 > Stack: Avalonia 12.1.4, .NET 10
+>
 > Shared client: `sdk/Kl.Client`
+>
+> Verification: GUI projects `267 passed / 0 failed` (260 view-model/service + 7 headless); TUI `55 passed`
 
 ## 1. Goal
 
-The GUI is intended to be a desktop client for local KL sessions. It must use
-the shared `Kl.Client` transport and session event contract, not a separate
-agent loop or direct core integration.
+`gui/Kl.Gui` is a desktop client for local KL sessions. It uses
+`Kl.Client` and renders protocol events; session state, provider calls, tools,
+policy, sandboxing, approvals, audit and persistence stay inside `kl-core`.
 
-The current `gui/Kl.Gui` is a static shell only. It has no session list,
-streaming chat, tool activity, approvals, diff or settings wiring.
+## 2. Boundary
 
-## 2. Transport
+- No Agent, Policy, Sandbox, Tool or Audit implementation in `gui/`.
+- No manual JSON-RPC framing in views or view-models.
+- No direct provider API calls from the GUI.
+- No direct reads of Core session/event/config files.
+- GUI state lives under `~/.kl/gui`; Core session history comes from
+  `session.history`.
+- Python is build tooling only and is not a runtime dependency.
 
-`KlSessionClient` now supports:
+## 3. Transport and lifecycle
 
-- stdio child-process transport;
-- local named-pipe/UDS discovery through `server.json`;
-- `session.attach` replay;
-- `session_id + seq` de-duplication;
-- reconnect from `LastSeq`;
-- one-writer lease acquisition and renewal.
+`CoreSessionService` owns the complete Core session lifecycle. `Kl.Client`
+selects stdio or a discovered local server. The SDK provides attach/replay,
+`session_id + seq` de-duplication, reconnect from LastSeq, writer lease and
+read-only observer sessions.
 
-The GUI should prefer the local server when one is available and fall back to
-stdio only when no endpoint is configured or discoverable. The transport swap
-must remain inside `Kl.Client`, not Avalonia views.
-
-## 3. Non-goals
-
-- No Agent, Policy, Sandbox, Tool, Session or Audit implementation in `gui/`.
-- No manual JSON-RPC or direct `kl-core` process management.
-- No remote server, multi-user support or web client.
-- No GUI work until explicitly resumed.
-- No 32-bit local build requirement.
+When the transport drops, the GUI retries by itself: four attempts with
+backoff. On the local-server transport it re-attaches and replays events after
+`LastSeq`; on stdio the core is a child process, so the session is reopened
+from core history and the transcript reloads. A failed loop leaves the banner
+with a manual retry. A read-only observer gets a `接管写入` banner action that
+re-takes the write lease without reopening the session.
 
 ## 4. Window layout
 
-- Left sidebar: sessions, search, new session and workspace.
-- Main area: transcript with user, assistant, reasoning, tool and error items.
-- Composer: multiline prompt, send, cancel and turn status.
-- Top bar: provider, model, reasoning effort and connection state.
-- Approval surface: action, resource, reason, args and three decisions.
-- Diff surface: collapsible per tool result.
+- 40px custom title bar with application menus and window controls.
+- 52px rail: chat/home, plugins, automation, more, settings; project and code
+  review can be pinned under the rail divider.
+- Resizable session/project sidebar, approximately 280px by default, with
+  collapse/expand animation.
+- Main content: chat, projects, plugins, automation and settings pages.
+- Settings opens as a full-window page over a dimmed backdrop: a rounded,
+  inset panel with its own navigation column and a close button at the top
+  right. It is not a modal dialog.
+- Project navigation opens an in-app project page. The system folder picker is
+  only opened by the explicit “Add project” action.
 
-## 5. Event mapping
+## 5. Chat surface
+
+- Header with active session title and message actions.
+- Transcript with user bubbles, assistant Markdown, reasoning/tool/error
+  activity rows and bounded tool output.
+- Shell activity rows use `已运行 <command>` with status and command chips.
+  Expanded Shell panels render command/output/diff without ANSI-to-HTML.
+- Tool traffic is routed by `CallId`, so parallel calls write to their own
+  cards; the newest card is only the fallback when the core omits an id.
+- Activity rows rotate one chevron (no glyph swap) and the expanded panel fades
+  in with a 3px rise; a running tool's status label pulses.
+- Markdown code blocks use a header row, copy/wrap actions and a two-tone
+  surface; inline code uses a dark chip.
+- Composer includes project, mode/permission, provider/model, attachments,
+  send and cancel controls.
+- The sidebar header shows the product name (`kl`) with the Chat/Work switch in
+  its menu, matching Codex's product switcher.
+- The permission chip is borderless and shows only the mode in warning orange;
+  its Codex-style popover lists the
+  three modes 请求批准 / 帮我批准 / 完全访问 as icon + title + description rows
+  (selected row and check in the warning orange) and applies through Core as
+  ask / auto / dontAsk.
+- The model chip shows the model name and the active reasoning effort as one
+  centered unit: the model name at its natural width plus a fixed 48px effort
+  slot, so changing effort never resizes the capsule. Effort labels are raw
+  model ids (`default`, `low`, `medium`, `high`, ...) and their colour
+  interpolates from the accent blue to purple with the tier. While the panel is
+  open the chip shows 选择模型与强度.
+- Reasoning tiers come from the selected model's `reasoning_efforts` (with a
+  `default`/`low`/`medium`/`high` fallback when the model declares none) and
+  apply as a per-turn `turn.start` `reasoning_effort` override; they do not
+  write `config.toml`. The choice is remembered per `provider/model` in GUI
+  state and restored on launch, falling back to the model default, then the
+  nearest lower tier, then the first tier.
+- The model list (enabled Core models, check on the current one) lives in the
+  same panel and auto-sizes to the longest model name with a 254px minimum;
+  picking a row switches the provider/model for the current chat's next turn,
+  and the chip updates immediately.
+- Hover transitions start from alpha-0 versions of their hover colour, never
+  from `Transparent` (transparent white), so leaving a row does not flash.
+- The command palette filters chats live and, for queries of two or more
+  characters, shows matching file names plus text matches grouped by file
+  (line number and snippet); clicking a result inserts an `@` reference.
+- Typing `/` opens a command menu (`new`, `compact`, `fork`, `settings`,
+  `plugins`, `library`, `doctor`); typing `@` opens a workspace file menu with
+  prefix-ranked filtering. Both are anchored above the composer, support
+  arrow/Enter/Escape and click selection, and replace the typed token.
+- Approval surface exposes `allow`, `allow_session` and `deny`; Escape denies.
+- Activity rows expand downward and must not force-scroll the transcript.
+
+## 6. Conversation ruler
+
+- One tick per user turn; no placeholder ticks on an empty chat.
+- Current tick follows transcript scrolling.
+- Hover shows a preview card positioned immediately near the tick.
+- Clicking the tick jumps to the turn; the preview icon toggles a persistent
+  mark for the turn.
+- The current/selected mark keeps its square while hover growth is applied.
+
+## 7. Sidebar interactions
+
+- Project tree, recent sessions, pinned entries and search.
+- Session drag/reorder inside projects; project folder reorder.
+- Hover preview cards and section menus.
+- Sticky new-chat row.
+- Resizable splitter and collapsible sidebar with cancellable animation.
+- Full-row hit targets; no empty click-only zones.
+
+## 8. Event mapping
 
 | Session event | GUI behavior |
 |---|---|
-| `TurnStarted` | Mark busy; enable cancel |
-| `AssistantDelta` | Append to active assistant message |
-| `ReasoningDelta` | Append to collapsed reasoning |
-| `ToolStarted` | Add running tool card |
-| `ToolOutput` | Append bounded output |
-| `ApprovalRequested` | Open approval surface |
-| `ApprovalResolved` | Close and show decision |
-| `ToolCompleted` | Mark success/failure and attach diff |
-| `TurnCompleted` | Store usage/cost and leave busy state |
-| `TurnFailed` | Show failure and leave busy state |
-| `ContextCompacted` | Show a compact summary item |
-| `Error` | Add an error item without crashing |
+| TurnStarted | Mark busy; enable cancel |
+| AssistantDelta | Append to active assistant item |
+| ReasoningDelta | Append to collapsed reasoning item |
+| ToolStarted | Add/reuse activity row; group multiple tools |
+| ToolOutput | Append bounded output |
+| ApprovalRequested | Open approval surface and block the presenter |
+| ApprovalResolved | Close approval and show decision |
+| ToolCompleted | Set success/failure, summary, diff and output |
+| TurnCompleted | Persist usage/cost and leave busy state |
+| TurnFailed | Show failure and leave busy state |
+| ContextCompacted | Add compact summary item |
+| Error | Add error item; connection loss raises the Core banner |
 
-Events arrive off the UI thread. Marshal UI changes with
-`Dispatcher.UIThread.Post`.
+Events arrive off the UI thread and are marshalled with
+`Dispatcher.UIThread.Post`. Tool events carry `CallId` and are routed per call,
+so overlapping tools keep independent cards, output and status.
 
-## 6. Work slices
+## 9. Settings, plugins and automation
 
-| ID | Work | Acceptance |
-|---|---|---|
-| G1 | Shell/layout/theme | Window opens and resizes |
-| G2 | Session list/history | Create, resume and list sessions |
-| G3 | Chat streaming | Prompt, assistant and reasoning events live |
-| G4 | Tool activity | Started/output/completed cards |
-| G5 | Approval/diff/cancel | All three approval decisions work |
-| G6 | Settings/status | Provider, model, skills and MCP visible |
-| G7 | Error/reconnect | Core loss, replay and reconnect are usable |
-| G8 | Tests/package | Windows build, focused tests and bundle pass |
+- Layout follows Codex: settings column with grouped navigation, large page
+  title, then section headings over cards whose rows are split by hairlines.
+  Row controls sit on the right; the search box filters whole sections.
+- Pages (23 panes):
+  个人: 常规 / 通知 / 导入 / 外观 / 已归档的聊天 / 存储 / 配置 / 模型与连接 /
+  个性化 / 记忆 / 键盘快捷键 / 模型提供商 / 使用情况和计费;
+  集成: 插件 / 密码 / 云电脑;
+  编码: 钩子 / 连接 / 代码审查 / Git / 环境 / Worktrees / 审计日志.
+- General settings: permission mode through Core, applied on change with no save
+  button, plus work mode, session sort and pinned sort.
+- Notifications: the panel filter (优先事项 / 已置顶 / 定时任务) is persisted in
+  GUI state, and 全部标为已读 clears unread markers.
+- Appearance: language (Follow system / 简体中文 / English) applied live,
+  content font size, sidebar width presets (238 / 300 / 360) and sidebar
+  grouping (by project or merged).
+- Archived chats: archived sessions with their updated time; rows reopen the
+  session (closing settings) and the action restores it to the sidebar.
+- Shortcuts: editable table with capture/reset for the documented gestures.
+- Model settings: choose the default model and write a provider API key through
+  Core RPCs (`config.set_default_model`, `provider.set_api_key`); the key is
+  never displayed again, and the GUI never reads `credentials/*.key`.
+  Runtime/provider/model status stays read-only below.
+- Usage: completed turns add input/output tokens and cost to their session in
+  GUI state; the page totals them across sessions and lists per-session usage
+  (sessions that predate the change show nothing).
+- Integrations: `mcp.list` is read through a one-shot handshaken Core
+  connection, so MCP tools appear without an open chat session; the refresh
+  button repeats the probe.
+- Memory: lists, reads, writes and deletes Core memory entries
+  (`memory.list/read/write/delete`) for the open session, with a workspace/user
+  scope switch; edits go through Core so the agent sees them on its next turn.
+- Storage settings: GUI state location, local counts and adding a workspace.
+- About: version, privacy and the Core/GUI split.
+- Library: local prompt/note entries stored in GUI state, insertable into the
+  composer. It is GUI-local by design; Core owns session data only.
+- Localization: all GUI copy is bilingual (zh-Hans / English) through
+  `Resources/i18n/catalog.json`; XAML uses `{DynamicResource S.xxxx}` and C#
+  uses `Loc.T`/`Loc.F`. The language follows the system UI by default and
+  switches live from Appearance. Core payloads, user data, paths, protocol
+  values and model prompts are not translated.
+- Plugins: shared `~/.kl/plugins` catalog and explicit import/open-directory
+  actions.
+- Automation: tasks run through temporary Core sessions; results stay bounded.
 
-G1-G5 are the minimum usable GUI. G6-G8 complete the MVP.
+## 10. Current work status
 
-## 7. Required tests
+| Work | Status |
+|---|---|
+| G1 Shell/window layout | Done |
+| G2 Session/project sidebar | Done |
+| G3 Chat streaming and history | Done through Core |
+| G4 Tool activity rows and Shell panel | Done |
+| G5 Approval/cancel/error | Done |
+| G6 Settings/status | Done for current Core-backed scope |
+| G7 Ruler, Markdown code, drag/drop and previews | Done |
+| G8 Tests/local build | Done: 267 GUI tests pass (including Avalonia headless layout, click and language-switch flows), `bin/gui` build available |
+| G9 Release archive and automatic reconnect UX | Done: auto reconnect with backoff, observer takeover, `--gui` release packaging on win-x64, win-arm64 and osx-arm64 |
+| G10 Parallel tools, model/key settings, library and motion | Done: per-`CallId` tool routing, Core-backed model/API-key form, local library page, activity chevron rotation, panel/menu/dialog fades, page fades, pulsing run state, sidebar section height animation |
+| G11 Composer `/` and `@` menus | Done: slash commands with Core actions, workspace file mentions with prefix ranking, keyboard and click selection |
+| G12 Palette file/text search | Done: live chat filtering, file-name matches, content matches grouped by file with line numbers, shared cached file index |
+| G13 Composer permission/model menus | Done: quick approval menu and the model/effort chip with an in-place model list |
+| G14 Search and drop polish | Done: live plugin search, settings card filter, palette hit highlighting, dropping files on the composer adds attachments |
+| G15 Codex-style settings | Done: grouped nav with 23 panes, sectioned hairline cards, inline row controls, section-filtered settings search, settings apply on change |
+| G16 Usage and MCP integration | Done: per-session token/cost persistence with totals page, one-shot `mcp.list` probe on the integration page |
+| G17 Memory editor | Done: workspace/user memory list, read, write, delete and new-entry flow through Core |
+| G18 Config, data management and skills | Done: redacted `config.get` rows with config-file open, state JSON export via save picker, skills tab backed by one-shot `skill.list`, with `skill.get` bodies rendered on demand, Codex-style toggle for restoring the last session |
+| G19 Codex settings parity | Done: 23 panes across 个人 / 集成 / 编码, including a Core-backed audit page. Some surfaces remain UI-only; Core-backed controls (providers, models, memory, skills, MCP, plugins, review, audit, Git settings) stay wired |
+| G20 Settings interactions and motion | Done: segmented groups select, usage/plugins/connections/code-review tabs switch content, chevron rows are clickable with hover feedback, appearance mode cards select, pane switches fade and slide with scroll reset, toggle thumbs animate, nav tightened to 32px rows |
+| G21 Settings usability | Done: the settings pane is remembered across launches and the active nav row scrolls into view; Ctrl+F focuses settings search, Esc clears the filter before closing; profile stats and popular plugins use real workspace/session/plugin counts |
+| G22 Localization | Done: complete zh-Hans / English catalog, live switching from Appearance, system-language default, migrated state values (approval mode, automation status, timestamps) and an i18n checker |
+| G23 Composer reasoning effort | Done: per-turn `reasoning_effort` through `turn.start`, tiers generated from the model's `reasoning_efforts` (with fallback), per-model saved choice in GUI state, raw-id labels, strength-coloured text, a fixed effort slot in a centred chip and a self-sizing model list |
 
-- View-model state transitions without a live provider.
-- Recorded replay/live event sequence with duplicate suppression.
-- Approval allow, deny and allow-session.
-- Tool activity and diff rendering.
-- Core missing, core exit and reconnect states.
-- Windows x64 build and package smoke.
+## 11. Verification
 
-## 8. Definition of done
+```powershell
+dotnet test D:\kl\kl\kl.sln -c Release --nologo
+python D:\kl\kl\scripts\build.py
+D:\kl\bin\gui\kl.exe
+```
 
-- GUI only connects through `Kl.Client`.
-- Session, chat, tool, approval and reconnect flows work.
-- No Core logic is copied into `gui/`.
-- GUI is packaged in the same release as TUI if GUI release is enabled.
+Required checks before release:
+
+- no failed GUI tests;
+- no double-active or flash on rail/page changes;
+- full-row menu hit zones and independent pin actions;
+- ruler scroll/hover/jump behavior;
+- Shell row expand without layout jump;
+- Core disconnect/retry and observer state;
+- Windows x64 package smoke;
+- scripted-provider end-to-end smoke (send, tool row, expanded Shell panel).

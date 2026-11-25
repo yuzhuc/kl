@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Channels;
 
 namespace Kl.Client;
@@ -13,6 +14,12 @@ public sealed record TurnOutcome(string Status, string Text);
 public sealed class KlSessionClient : IAsyncDisposable
 {
     private const int SessionBusyCode = -32008;
+    private const int ToolOutputLimit = 8 * 1024;
+
+    /// <summary>Matches credential-shaped text so diagnostics can be shown safely.</summary>
+    private static readonly Regex SecretPattern = new(
+        @"(?i)(?<label>sk-[A-Za-z0-9_\-]{6,}|bearer\s+|api[_-]?key\s*[:=]\s*|token\s*[:=]\s*|secret\s*[:=]\s*|password\s*[:=]\s*)[^\s""',;}\]]+",
+        RegexOptions.Compiled);
 
     private readonly KlClientOptions _clientOptions;
     private readonly KlSessionOptions _sessionOptions;
@@ -33,6 +40,7 @@ public sealed class KlSessionClient : IAsyncDisposable
     private Task? _pumpTask;
     private string? _currentTurnId;
     private bool _cancelRequested;
+    private volatile bool _isWriter;
     private readonly bool _serverMode;
 
     private KlSessionClient(
@@ -52,21 +60,19 @@ public sealed class KlSessionClient : IAsyncDisposable
         Workspace = session.GetProperty("workspace").GetString() ?? string.Empty;
         Provider = session.GetProperty("provider").GetString() ?? string.Empty;
         Model = session.GetProperty("model").GetString() ?? string.Empty;
-        ReasoningEffort = session.TryGetProperty("reasoning_effort", out var effort)
-            ? effort.GetString() ?? string.Empty
-            : string.Empty;
         MessageCount = session.TryGetProperty("message_count", out var count)
             ? count.GetInt32()
             : 0;
+        _isWriter = !serverMode;
         _eventLoop = Task.Run(() => ConsumeEventsAsync(_shutdown.Token));
     }
 
     public string SessionId { get; }
     public string Workspace { get; }
-    public string Provider { get; }
-    public string Model { get; }
-    public string ReasoningEffort { get; }
+    public string Provider { get; private set; }
+    public string Model { get; private set; }
     public int MessageCount { get; }
+    public bool IsWriter => _isWriter;
 
     /// <summary>Highest event sequence consumed for this session.</summary>
     public long LastSeq
@@ -80,8 +86,6 @@ public sealed class KlSessionClient : IAsyncDisposable
         }
     }
 
-    public void SetAgent(string? agent) => _sessionOptions.Agent = agent;
-
     public static async Task<KlSessionClient> StartAsync(
         KlClientOptions clientOptions,
         KlSessionOptions sessionOptions,
@@ -89,21 +93,13 @@ public sealed class KlSessionClient : IAsyncDisposable
         CancellationToken cancellationToken = default,
         Action<string>? progress = null)
     {
-        var endpoint = KlCoreClient.ResolveEndpoint(clientOptions);
-        var serverMode = endpoint is not null;
-        KlCoreClient client;
-        if (serverMode)
-        {
-            progress?.Invoke("connecting");
-            client = await KlCoreClient.ConnectAsync(clientOptions, cancellationToken)
+        // Reuse the catalog path so a stale discovered local pipe can fall back
+        // to stdio, while explicit or discovered TCP/TLS endpoints fail visibly.
+        progress?.Invoke("connecting");
+        var (client, connected) =
+            await KlCoreClient.ConnectOrStartWithModeAsync(clientOptions, cancellationToken)
                 .ConfigureAwait(false);
-        }
-        else
-        {
-            client = KlCoreClient.Start(clientOptions);
-            progress?.Invoke("handshaking");
-            await client.HandshakeAsync(cancellationToken).ConfigureAwait(false);
-        }
+        var serverMode = connected;
 
         KlSessionClient? session = null;
         try
@@ -136,15 +132,16 @@ public sealed class KlSessionClient : IAsyncDisposable
 
             if (serverMode)
             {
-                // The server only forwards events for attached sessions and only
-                // accepts turn traffic from the lease holder.
-                var attach = await client.AttachSessionAsync(
-                    session.SessionId,
-                    null,
-                    cancellationToken).ConfigureAwait(false);
-                await client.LeaseSessionAsync(session.SessionId, null, cancellationToken)
+                var attach = await session.AttachAndLeaseAsync(client, null, cancellationToken)
                     .ConfigureAwait(false);
-                session.EnqueueReplay(attach);
+                if (sessionOptions.SkipInitialReplay)
+                {
+                    session.SetLastSeq(attach);
+                }
+                else
+                {
+                    session.EnqueueReplay(attach);
+                }
             }
 
             session.StartPump(client);
@@ -180,6 +177,7 @@ public sealed class KlSessionClient : IAsyncDisposable
         await _reconnectGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            _isWriter = false;
             KlCoreClient? previous;
             lock (_clientLock)
             {
@@ -211,11 +209,15 @@ public sealed class KlSessionClient : IAsyncDisposable
 
             try
             {
-                var attach = await next.AttachSessionAsync(
-                    SessionId,
-                    LastSeq,
-                    cancellationToken).ConfigureAwait(false);
-                await LeaseAsync(next, cancellationToken).ConfigureAwait(false);
+                // The core keeps live sessions in memory only. After a core
+                // restart the session has to be loaded from disk again or the
+                // next turn.start fails with SESSION_NOT_FOUND (BUG-2).
+                // resume is idempotent and emits no events, so replay
+                // de-duplication by LastSeq is unaffected.
+                await next.ResumeSessionAsync(SessionId, cancellationToken)
+                    .ConfigureAwait(false);
+                var attach = await AttachAndLeaseAsync(next, LastSeq, cancellationToken)
+                    .ConfigureAwait(false);
                 lock (_clientLock)
                 {
                     _client = next;
@@ -237,10 +239,40 @@ public sealed class KlSessionClient : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Applies the agent preset and quality mode used by the next turn.
+    /// Empty or null values fall back to the Core defaults.
+    /// </summary>
+    public void SetTurnPreferences(string? agent, string? quality)
+    {
+        _sessionOptions.Agent = string.IsNullOrWhiteSpace(agent) ? null : agent;
+        _sessionOptions.Quality = string.IsNullOrWhiteSpace(quality) ? null : quality;
+    }
+
+    /// <summary>
+    /// Switches the provider/model used by the next turn. Core applies the
+    /// override when the turn starts and stores it on the session.
+    /// </summary>
+    public void SetTurnModel(string? provider, string? model)
+    {
+        _sessionOptions.Provider = string.IsNullOrWhiteSpace(provider) ? null : provider;
+        _sessionOptions.Model = string.IsNullOrWhiteSpace(model) ? null : model;
+    }
+
+    /// <summary>Overrides the model's reasoning effort for the next turn.</summary>
+    public void SetTurnReasoningEffort(string? effort) =>
+        _sessionOptions.ReasoningEffort = string.IsNullOrWhiteSpace(effort) ? null : effort;
+
     public Task<JsonElement> HistoryAsync(
         int limit = 20,
         CancellationToken cancellationToken = default) =>
         Client.SessionHistoryAsync(SessionId, limit, cancellationToken);
+
+    public Task<JsonElement> RequestAsync(
+        string method,
+        object? parameters,
+        CancellationToken cancellationToken = default) =>
+        Client.RequestAsync(method, parameters, cancellationToken);
 
     public Task<JsonElement> ListSessionsAsync(CancellationToken cancellationToken = default) =>
         Client.ListSessionsAsync(cancellationToken);
@@ -255,17 +287,6 @@ public sealed class KlSessionClient : IAsyncDisposable
             ? id.GetString() ?? string.Empty
             : throw new JsonRpcException(-32603, "session.fork returned no session_id");
     }
-
-    public Task<JsonElement> RenameSessionAsync(
-        string sessionId,
-        string name,
-        CancellationToken cancellationToken = default) =>
-        Client.RenameSessionAsync(sessionId, name, cancellationToken);
-
-    public Task<JsonElement> DeleteSessionAsync(
-        string sessionId,
-        CancellationToken cancellationToken = default) =>
-        Client.DeleteSessionAsync(sessionId, cancellationToken);
 
     public Task<JsonElement> ListMemoryAsync(
         string? scope = null,
@@ -293,9 +314,10 @@ public sealed class KlSessionClient : IAsyncDisposable
 
     public async Task<TurnOutcome> RunTurnAsync(
         string prompt,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        long? rewindFromSeq = null)
     {
-        var client = Client;
+        var client = await EnsureWriterAsync(cancellationToken).ConfigureAwait(false);
         var completion = new TaskCompletionSource<TurnOutcome>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var turnCancellation = new CancellationTokenSource();
@@ -306,11 +328,6 @@ public sealed class KlSessionClient : IAsyncDisposable
         _turnCompletion = completion;
         try
         {
-            if (_serverMode)
-            {
-                await client.LeaseSessionAsync(SessionId, null, cancellationToken)
-                    .ConfigureAwait(false);
-            }
             var start = await client.StartTurnAsync(
                 SessionId,
                 prompt,
@@ -318,8 +335,21 @@ public sealed class KlSessionClient : IAsyncDisposable
                 _sessionOptions.Model,
                 _sessionOptions.Quality,
                 _sessionOptions.Agent,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                rewindFromSeq,
+                _sessionOptions.ReasoningEffort).ConfigureAwait(false);
             _currentTurnId = start.GetProperty("turn_id").GetString();
+            if (start.TryGetProperty("provider", out var providerValue)
+                && providerValue.GetString() is { Length: > 0 } resolvedProvider)
+            {
+                Provider = resolvedProvider;
+            }
+
+            if (start.TryGetProperty("model", out var modelValue)
+                && modelValue.GetString() is { Length: > 0 } resolvedModel)
+            {
+                Model = resolvedModel;
+            }
             if (_cancelRequested)
             {
                 _cancelRequested = false;
@@ -344,6 +374,7 @@ public sealed class KlSessionClient : IAsyncDisposable
 
     public async Task CancelAsync(CancellationToken cancellationToken = default)
     {
+        var client = await EnsureWriterAsync(cancellationToken).ConfigureAwait(false);
         CancellationTokenSource? turnCancellation;
         lock (_turnCancellationLock)
         {
@@ -360,12 +391,6 @@ public sealed class KlSessionClient : IAsyncDisposable
 
         try
         {
-            var client = Client;
-            if (_serverMode)
-            {
-                await client.LeaseSessionAsync(SessionId, null, cancellationToken)
-                    .ConfigureAwait(false);
-            }
             await client.CancelTurnAsync(SessionId, turnId, cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -377,6 +402,22 @@ public sealed class KlSessionClient : IAsyncDisposable
                     SessionEventKind.Error,
                     Text: $"cancel failed: {error.Message}"),
                 CancellationToken.None).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Tries to take the write lease again, so a read-only observer can become
+    /// the writer once the previous lease holder lets go.
+    /// </summary>
+    public async Task<bool> TryTakeWriteLeaseAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await TryAcquireLeaseAsync(Client, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            return false;
         }
     }
 
@@ -394,26 +435,58 @@ public sealed class KlSessionClient : IAsyncDisposable
     }
 
     /// <summary>
-    /// Takes the write lease, retrying while the dropped connection still owns
-    /// it. Windows named pipes release the lease only after the pipe drains.
+    /// Takes the write lease for turn traffic, or reports a read-only observer
+    /// without sending an RPC that the server will reject.
     /// </summary>
-    private async Task LeaseAsync(
+    /// <summary>
+    /// Attaches to the session, then takes the write lease. The server only
+    /// forwards events for attached sessions and only accepts turn traffic
+    /// from the lease holder.
+    /// </summary>
+    private async Task<JsonElement> AttachAndLeaseAsync(
+        KlCoreClient client,
+        long? afterSeq,
+        CancellationToken cancellationToken)
+    {
+        var attach = await client.AttachSessionAsync(SessionId, afterSeq, cancellationToken)
+            .ConfigureAwait(false);
+        await TryAcquireLeaseAsync(client, cancellationToken).ConfigureAwait(false);
+        return attach;
+    }
+
+    private async Task<KlCoreClient> EnsureWriterAsync(
+        CancellationToken cancellationToken)
+    {
+        var client = Client;
+        if (!await TryAcquireLeaseAsync(client, cancellationToken).ConfigureAwait(false))
+        {
+            throw new InvalidOperationException(
+                $"session {SessionId} is read-only: another client holds the write lease");
+        }
+        return client;
+    }
+
+    private async Task<bool> TryAcquireLeaseAsync(
         KlCoreClient client,
         CancellationToken cancellationToken)
     {
-        for (var attempt = 0; ; attempt++)
+        if (!_serverMode)
         {
-            try
-            {
-                await client.LeaseSessionAsync(SessionId, null, cancellationToken)
-                    .ConfigureAwait(false);
-                return;
-            }
-            catch (JsonRpcException error)
-                when (error.Code == SessionBusyCode && attempt < 40)
-            {
-                await Task.Delay(50, cancellationToken).ConfigureAwait(false);
-            }
+            _isWriter = true;
+            return true;
+        }
+
+        try
+        {
+            await client.LeaseSessionAsync(SessionId, null, cancellationToken)
+                .ConfigureAwait(false);
+            _isWriter = true;
+            return true;
+        }
+        catch (JsonRpcException error) when (error.Code == SessionBusyCode)
+        {
+            _isWriter = false;
+            return false;
         }
     }
 
@@ -440,17 +513,20 @@ public sealed class KlSessionClient : IAsyncDisposable
         {
             await task.ConfigureAwait(false);
         }
-        catch (Exception error) when (error is OperationCanceledException or ChannelClosedException)
+        catch (Exception)
         {
-            // The connection is going away.
+            // A dropped connection faults the pump. Teardown must clean up
+            // instead of surfacing that failure to Dispose/Reconnect callers
+            // (BUG-1).
         }
         cancellation.Dispose();
     }
 
     private async Task PumpAsync(KlCoreClient client, CancellationToken cancellationToken)
     {
+        Exception? closedError = null;
         try
- {
+        {
             await foreach (var message in client.Notifications.ReadAllAsync(cancellationToken))
             {
                 if (message.TryGetProperty("params", out var parameters))
@@ -463,9 +539,12 @@ public sealed class KlSessionClient : IAsyncDisposable
         {
             // Replaced by a newer connection.
         }
-        catch (ChannelClosedException)
+        catch (Exception error) when (error is IOException or JsonRpcException or ChannelClosedException)
         {
-            // Core exited.
+            // The transport reports a dropped connection by faulting the
+            // notification channel. That is an expected disconnect, not a
+            // reason to fault the pump task.
+            closedError = error;
         }
         finally
         {
@@ -482,9 +561,51 @@ public sealed class KlSessionClient : IAsyncDisposable
                 }
                 _turnCompletion?.TrySetResult(
                     new TurnOutcome("failed", "core connection closed"));
+                await NotifyConnectionClosedAsync(closedError).ConfigureAwait(false);
             }
         }
     }
+
+    /// <summary>
+    /// Tells the presenter that the core connection is gone. The detail comes
+    /// from the transport's last stderr summary and is redacted so credentials
+    /// never reach the UI.
+    /// </summary>
+    private async Task NotifyConnectionClosedAsync(Exception? error)
+    {
+        var text = "core connection closed";
+        var detail = error?.Message;
+        if (!string.IsNullOrWhiteSpace(detail))
+        {
+            detail = RedactSecrets(detail);
+            const int limit = 500;
+            if (detail.Length > limit)
+            {
+                detail = detail[..limit] + "...";
+            }
+            text += $": {detail}";
+        }
+
+        try
+        {
+            await _presenter.OnEventAsync(
+                new SessionEvent(SessionEventKind.Error, Text: text, ConnectionLost: true),
+                CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // A presenter failure must not fault the connection pump.
+        }
+    }
+
+    private static string RedactSecrets(string text) =>
+        SecretPattern.Replace(
+            text,
+            match => match.Groups["label"].Value.StartsWith(
+                "sk-",
+                StringComparison.OrdinalIgnoreCase)
+                ? "sk-***"
+                : match.Groups["label"].Value + "***");
 
     private async Task ConsumeEventsAsync(CancellationToken cancellationToken)
     {
@@ -547,25 +668,47 @@ public sealed class KlSessionClient : IAsyncDisposable
         var data = envelope.TryGetProperty("data", out var payload) ? payload : default;
         switch (typeElement.GetString())
         {
+            case "user.message":
+                await _presenter.OnEventAsync(
+                    new SessionEvent(
+                        SessionEventKind.UserMessage,
+                        Text: Sanitize(GetString(data, "text")),
+                        TurnId: GetNullableString(data, "turn_id"),
+                        Seq: seq),
+                    cancellationToken).ConfigureAwait(false);
+                break;
+            case "conversation.rewound":
+                await _presenter.OnEventAsync(
+                    new SessionEvent(
+                        SessionEventKind.ConversationRewound,
+                        Seq: seq,
+                        RewindFromSeq: GetLong(data, "from_seq")),
+                    cancellationToken).ConfigureAwait(false);
+                break;
             case "turn.started":
                 await _presenter.OnEventAsync(
                     new SessionEvent(
                         SessionEventKind.TurnStarted,
-                        TurnId: GetString(data, "turn_id")),
+                        TurnId: GetString(data, "turn_id"),
+                        Seq: seq),
                     cancellationToken).ConfigureAwait(false);
                 break;
             case "turn.delta":
                 await _presenter.OnEventAsync(
                     new SessionEvent(
                         SessionEventKind.AssistantDelta,
-                        Text: Sanitize(GetString(data, "text"))),
+                        Text: Sanitize(GetString(data, "text")),
+                        TurnId: GetNullableString(data, "turn_id"),
+                        Seq: seq),
                     cancellationToken).ConfigureAwait(false);
                 break;
             case "turn.reasoning":
                 await _presenter.OnEventAsync(
                     new SessionEvent(
                         SessionEventKind.ReasoningDelta,
-                        Text: Sanitize(GetString(data, "text"))),
+                        Text: Sanitize(GetString(data, "text")),
+                        TurnId: GetNullableString(data, "turn_id"),
+                        Seq: seq),
                     cancellationToken).ConfigureAwait(false);
                 break;
             case "tool.started":
@@ -573,14 +716,20 @@ public sealed class KlSessionClient : IAsyncDisposable
                     new SessionEvent(
                         SessionEventKind.ToolStarted,
                         Name: GetString(data, "name"),
-                        Args: Sanitize(GetRaw(data, "args"))),
+                        Args: Sanitize(GetRaw(data, "args")),
+                        TurnId: GetNullableString(data, "turn_id"),
+                        Seq: seq,
+                        CallId: GetNullableString(data, "call_id")),
                     cancellationToken).ConfigureAwait(false);
                 break;
             case "tool.output":
                 await _presenter.OnEventAsync(
                     new SessionEvent(
                         SessionEventKind.ToolOutput,
-                        Text: Sanitize(GetString(data, "chunk"))),
+                        Text: Sanitize(GetString(data, "chunk")),
+                        TurnId: GetNullableString(data, "turn_id"),
+                        Seq: seq,
+                        CallId: GetNullableString(data, "call_id")),
                     cancellationToken).ConfigureAwait(false);
                 break;
             case "tool.approval.requested":
@@ -590,10 +739,15 @@ public sealed class KlSessionClient : IAsyncDisposable
                 await _presenter.OnEventAsync(
                     new SessionEvent(
                         SessionEventKind.ApprovalResolved,
-                        Decision: GetString(data, "decision")),
+                        ApprovalId: GetNullableString(data, "approval_id"),
+                        Decision: GetString(data, "decision"),
+                        TurnId: GetNullableString(data, "turn_id"),
+                        Seq: seq,
+                        CallId: GetNullableString(data, "call_id")),
                     cancellationToken).ConfigureAwait(false);
                 break;
             case "tool.completed":
+                var toolOutput = GetNullableString(data, "output");
                 await _presenter.OnEventAsync(
                     new SessionEvent(
                         SessionEventKind.ToolCompleted,
@@ -604,14 +758,32 @@ public sealed class KlSessionClient : IAsyncDisposable
                             ? Sanitize(diff.GetString() ?? string.Empty)
                             : null,
                         Ok: !data.TryGetProperty("ok", out var okElement)
-                            || okElement.GetBoolean()),
+                            || okElement.GetBoolean(),
+                        TurnId: GetNullableString(data, "turn_id"),
+                        Seq: seq,
+                        CallId: GetNullableString(data, "call_id"),
+                        Output: toolOutput is null ? null : SanitizeToolOutput(toolOutput)),
+                    cancellationToken).ConfigureAwait(false);
+                break;
+            case "sandbox.violation":
+                await _presenter.OnEventAsync(
+                    new SessionEvent(
+                        SessionEventKind.SandboxViolation,
+                        Text: Sanitize(GetString(data, "message")),
+                        Action: GetString(data, "kind"),
+                        Resource: GetString(data, "resource"),
+                        TurnId: GetNullableString(data, "turn_id"),
+                        Seq: seq,
+                        CallId: GetNullableString(data, "call_id")),
                     cancellationToken).ConfigureAwait(false);
                 break;
             case "audit.recorded" when _sessionOptions.Verbose:
                 await _presenter.OnEventAsync(
                     new SessionEvent(
                         SessionEventKind.AuditRecorded,
-                        Text: GetString(data, "record_id")),
+                        Text: GetString(data, "record_id"),
+                        TurnId: GetNullableString(data, "turn_id"),
+                        Seq: seq),
                     cancellationToken).ConfigureAwait(false);
                 break;
             case "context.compacted":
@@ -619,7 +791,8 @@ public sealed class KlSessionClient : IAsyncDisposable
                     new SessionEvent(
                         SessionEventKind.ContextCompacted,
                         Text: GetString(data, "trigger"),
-                        Summary: GetString(data, "summary")),
+                        Summary: GetString(data, "summary"),
+                        Seq: seq),
                     cancellationToken).ConfigureAwait(false);
                 break;
             case "turn.completed":
@@ -637,9 +810,11 @@ public sealed class KlSessionClient : IAsyncDisposable
                         SessionEventKind.TurnCompleted,
                         Text: text,
                         Status: status,
+                        TurnId: GetNullableString(data, "turn_id"),
                         InputTokens: inputTokens,
                         OutputTokens: outputTokens,
-                        CostUsd: costUsd),
+                        CostUsd: costUsd,
+                        Seq: seq),
                     cancellationToken).ConfigureAwait(false);
                 _turnCompletion?.TrySetResult(new TurnOutcome(status, text));
                 break;
@@ -648,7 +823,9 @@ public sealed class KlSessionClient : IAsyncDisposable
                 await _presenter.OnEventAsync(
                     new SessionEvent(
                         SessionEventKind.TurnFailed,
-                        Text: failureText),
+                        Text: failureText,
+                        TurnId: GetNullableString(data, "turn_id"),
+                        Seq: seq),
                     cancellationToken).ConfigureAwait(false);
                 _turnCompletion?.TrySetResult(new TurnOutcome("failed", failureText));
                 break;
@@ -695,12 +872,7 @@ public sealed class KlSessionClient : IAsyncDisposable
 
         try
         {
-            var client = Client;
-            if (_serverMode)
-            {
-                await client.LeaseSessionAsync(SessionId, null, cancellationToken)
-                    .ConfigureAwait(false);
-            }
+            var client = await EnsureWriterAsync(cancellationToken).ConfigureAwait(false);
             await client.RespondApprovalAsync(
                 SessionId,
                 approvalId,
@@ -741,6 +913,15 @@ public sealed class KlSessionClient : IAsyncDisposable
         }
     }
 
+    private void SetLastSeq(JsonElement attach)
+    {
+        var seq = GetLong(attach, "last_seq");
+        lock (_sequenceLock)
+        {
+            _sequenceBySession[SessionId] = seq;
+        }
+    }
+
     /// <summary>
     /// Queues the events the server replayed for this session. They travel
     /// through the same channel as live events so ordering and de-duplication
@@ -775,6 +956,21 @@ public sealed class KlSessionClient : IAsyncDisposable
             ? parsed
             : 0;
 
+    private static string? GetNullableString(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    /// <summary>
+    /// Tool output already arrives capped at 8 KiB from the core; keep that cap
+    /// visible to the presenter contract even if a future core sends more.
+    /// </summary>
+    private static string SanitizeToolOutput(string output) =>
+        Sanitize(
+            output.Length > ToolOutputLimit
+                ? output[..ToolOutputLimit] + "..."
+                : output);
+
     private static string Sanitize(string text)
     {
         if (text.IndexOfAny(['\u001b', '\u0000', '\u0007']) < 0)
@@ -801,26 +997,40 @@ public sealed class KlSessionClient : IAsyncDisposable
             _turnCancellation?.Cancel();
         }
         _shutdown.Cancel();
-        await StopPumpAsync().ConfigureAwait(false);
         try
         {
-            await _eventLoop.ConfigureAwait(false);
+            await StopPumpAsync().ConfigureAwait(false);
+            try
+            {
+                await _eventLoop.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // Normal shutdown.
+            }
         }
-        catch (OperationCanceledException)
+        finally
         {
-            // Normal shutdown.
-        }
-        _events.Writer.TryComplete();
-        _shutdown.Dispose();
-        KlCoreClient? client;
-        lock (_clientLock)
-        {
-            client = _client;
-            _client = null;
-        }
-        if (client is not null)
-        {
-            await client.DisposeAsync().ConfigureAwait(false);
+            // Disposal must always release the transport and the shutdown
+            // token, even when the connection died mid-teardown (BUG-1).
+            _events.Writer.TryComplete();
+            KlCoreClient? client;
+            lock (_clientLock)
+            {
+                client = _client;
+                _client = null;
+            }
+            try
+            {
+                if (client is not null)
+                {
+                    await client.DisposeAsync().ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                _shutdown.Dispose();
+            }
         }
     }
 }

@@ -1,0 +1,480 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Kl.Gui.ViewModels"
+             xmlns:controls="using:Kl.Gui.Controls"
+             x:Class="Kl.Gui.Views.SettingsModelsView"
+             x:DataType="vm:MainWindowViewModel">
+    <StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsModels}" Spacing="50" Classes="settings-pane">
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="{DynamicResource S.c98e118e}" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="{DynamicResource S.1e2933c6}" />
+                            <TextBlock Classes="settings-desc" Text="{DynamicResource S.579ba29b}" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <ComboBox Width="250" Classes="settings-select" ItemsSource="{Binding SettingsModelChoices}"
+                                      SelectedItem="{Binding SettingsSelectedModel, Mode=TwoWay}" />
+                            <Button Classes="secondary settings-button" Content="{DynamicResource S.a3030bf8}" Click="OnSaveModelClicked" />
+                            </StackPanel>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="{DynamicResource S.c8c14507}" />
+                            <TextBlock Classes="settings-desc" Text="{DynamicResource S.e56904ef}" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" Classes="settings-select" VerticalAlignment="Center"
+                                      SelectedIndex="{Binding ReasoningEffortIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="default" />
+                            <ComboBoxItem Content="low" />
+                            <ComboBoxItem Content="medium" />
+                            <ComboBoxItem Content="high" />
+                            </ComboBox>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="{DynamicResource S.466dd71e}" />
+                            <TextBlock Classes="settings-desc" Text="{DynamicResource S.89a47be8}" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" Classes="settings-select" VerticalAlignment="Center"
+                                      SelectedIndex="{Binding QualityModeIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="{DynamicResource S.8e4b39f7}" />
+                            <ComboBoxItem Content="fast" />
+                            <ComboBoxItem Content="balanced" />
+                            <ComboBoxItem Content="deep" />
+                            </ComboBox>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="{DynamicResource S.07b172df}" />
+                            <TextBlock Classes="settings-desc" Text="{DynamicResource S.3fd1de8c}" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" Classes="settings-select" Width="220" VerticalAlignment="Center"
+                                      ItemsSource="{Binding AgentPresetOptions}"
+                                      SelectedIndex="{Binding AgentPresetIndex, Mode=TwoWay}" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="API Key" />
+                            <TextBlock Text="{Binding CoreKeyStatusText}" Classes="settings-desc" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <TextBox Width="220" Classes="settings-input" PasswordChar="•"
+                                     Text="{Binding SettingsApiKeyDraft, Mode=TwoWay}"
+                                     PlaceholderText="{DynamicResource S.23a63460}" />
+                            <Button Classes="secondary settings-button" Content="{DynamicResource S.c5abb65d}" Click="OnSaveApiKeyClicked" />
+                            </StackPanel>
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="{DynamicResource S.b8f945ea}" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="KL Core" />
+                            <TextBlock Classes="settings-desc" Text="{Binding CoreStatusText}" HorizontalAlignment="Left" MaxWidth="650" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding SettingsStatus}" IsVisible="{Binding HasSettingsStatus}"
+                                       FontSize="11.5" TextWrapping="Wrap" Foreground="{DynamicResource TextCaption}" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="secondary settings-button" VerticalAlignment="Center"
+                                    Content="{Binding TestConnectionButtonText}" IsEnabled="{Binding CanTestConnection}"
+                                    Click="OnTestConnectionClicked" />
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="{DynamicResource S.5f76b2bf}" />
+                            <TextBlock Classes="settings-desc" Text="{Binding CoreVersionText}" HorizontalAlignment="Left" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="secondary settings-button" Content="{DynamicResource S.40ff6300}" Click="OnRunDoctorClicked" />
+                            </Grid>
+                            <StackPanel IsVisible="{Binding HasDoctorSummary}" Margin="16,2,16,12" Spacing="4">
+                            <TextBlock Text="{Binding DoctorSummary}" FontSize="12.5"
+                                       Foreground="{DynamicResource TextPrimary}" TextWrapping="Wrap" />
+                            <ItemsControl ItemsSource="{Binding DoctorChecks}" IsVisible="{Binding HasDoctorChecks}">
+                            <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                            <TextBlock Text="{Binding}" FontSize="11.5"
+                                       Foreground="{DynamicResource TextCaption}" TextWrapping="Wrap" />
+                            </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            </StackPanel>
+                            <Border Classes="settings-divider" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="{DynamicResource S.1d27f02e}" />
+                            <TextBlock Classes="settings-desc" Text="{Binding ConfigFilePath}" HorizontalAlignment="Left" TextTrimming="CharacterEllipsis" MaxWidth="520" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="secondary settings-button" Content="{DynamicResource S.8f0ad142}" Click="OnOpenCoreConfigClicked" />
+                            </Grid>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            </StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsProviders}" Spacing="50" Classes="settings-pane">
+                            <StackPanel Spacing="0">
+                            <StackPanel Spacing="0" IsVisible="{Binding IsProviderListOpen}">
+                            <TextBlock Classes="settings-heading" Text="{DynamicResource S.4aa1f325}" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="{DynamicResource S.5ddfe3ab}" />
+                            <TextBlock Text="{Binding ProviderSummaryText}" Classes="settings-desc" HorizontalAlignment="Left" MaxWidth="620" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Button Classes="secondary settings-button" Content="{DynamicResource S.a9606415}" Click="OnAddProviderClicked" />
+                            </StackPanel>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <Border IsVisible="{Binding IsProviderFormOpen}" Background="#1B1B1E" BorderBrush="#34343A" BorderThickness="1" CornerRadius="10" Margin="16,12,16,6" Padding="14">
+<StackPanel Spacing="11">
+<Grid ColumnDefinitions="*,Auto">
+<StackPanel Spacing="2">
+<TextBlock Text="{DynamicResource S.1ff1b67d}" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource TextPrimary}" />
+<TextBlock Text="{DynamicResource S.3504c990}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" TextWrapping="Wrap" MaxWidth="560" HorizontalAlignment="Left" />
+</StackPanel>
+<Button Grid.Column="1" Classes="subtle" Content="{DynamicResource S.2cd0f3be}" Click="OnCancelProviderClicked" VerticalAlignment="Top" />
+</Grid>
+<Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+<StackPanel Spacing="4">
+<TextBlock Text="{DynamicResource S.d44e9b3d}" Classes="settings-desc" />
+<TextBox Classes="settings-input" Text="{Binding ProviderDraftName, Mode=TwoWay}" PlaceholderText="DeepSeek" />
+</StackPanel>
+<StackPanel Grid.Column="1" Spacing="4">
+<TextBlock Text="{DynamicResource S.b405227c}" Classes="settings-desc" />
+<TextBox Classes="settings-input" Text="{Binding ProviderDraftNote, Mode=TwoWay}" PlaceholderText="{DynamicResource S.52776470}" />
+</StackPanel>
+</Grid>
+<StackPanel Spacing="4">
+<TextBlock Text="{DynamicResource S.dfc2cde5}" Classes="settings-desc" />
+<TextBox Classes="settings-input" Text="{Binding ProviderDraftWebsite, Mode=TwoWay}" PlaceholderText="https://www.deepseek.com" />
+</StackPanel>
+<StackPanel Spacing="6">
+<TextBlock Text="{DynamicResource S.65a1f546}" Classes="settings-desc" />
+<Grid ColumnDefinitions="*,140" ColumnSpacing="8">
+<TextBox Classes="settings-input" Text="{Binding ProviderDraftChatUrl, Mode=TwoWay}" PlaceholderText="https://api.deepseek.com" />
+<ComboBox Grid.Column="1" Classes="settings-select" Height="32" Padding="8,2" HorizontalAlignment="Stretch" SelectedIndex="{Binding ProviderChatSuffixIndex, Mode=TwoWay}">
+<ComboBoxItem Content="null" />
+<ComboBoxItem Content="/xxx" />
+<ComboBoxItem Content="/v1/xxx" />
+</ComboBox>
+</Grid>
+<TextBlock Text="{DynamicResource S.116bfd45}" FontSize="11" Foreground="{DynamicResource TextCaption}" />
+</StackPanel>
+<Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+<StackPanel Spacing="4">
+<TextBlock Text="{DynamicResource S.d42d6cb4}" Classes="settings-desc" />
+<TextBox Classes="settings-input" PasswordChar="•" Text="{Binding ProviderDraftApiKey, Mode=TwoWay}" PlaceholderText="{DynamicResource S.1b782122}" />
+</StackPanel>
+<Button Grid.Column="1" Classes="primary" Content="{DynamicResource S.41551b76}" Click="OnSaveProviderClicked" VerticalAlignment="Bottom" />
+</Grid>
+<TextBlock Text="{Binding ProviderFormStatus}" IsVisible="{Binding HasProviderFormStatus}" FontSize="11.5" Foreground="#E36B6B" TextWrapping="Wrap" />
+</StackPanel>
+</Border>
+<TextBlock Text="{Binding ProviderStatusText}" IsVisible="{Binding HasProviderStatus}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" Margin="16,0,16,10" TextWrapping="Wrap" />
+                            <ItemsControl ItemsSource="{Binding ProviderCards}" IsVisible="{Binding HasProviderCards}">
+                            <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ProviderCardRow">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="18" Margin="16,11,16,11">
+                            <StackPanel Spacing="4" VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="Medium" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding Note}" IsVisible="{Binding HasNote}" FontSize="13.5" Foreground="#A3A5AB" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320" />
+                            </StackPanel>
+                            <Button Classes="link" IsVisible="{Binding HasWebsite}" Tag="{Binding Website}" Click="OnOpenProviderWebsiteClicked" HorizontalAlignment="Left" Padding="0">
+                            <TextBlock Text="{Binding Website}" FontSize="11.5" Foreground="#79A6DB" TextDecorations="Underline" TextTrimming="CharacterEllipsis" MaxWidth="520" />
+                            </Button>
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="secondary settings-button" Content="{DynamicResource S.05183656}" Click="OnEditProviderClicked" VerticalAlignment="Center" />
+                            <ToggleSwitch Grid.Column="2" Classes="setting" IsChecked="{Binding Enabled, Mode=TwoWay}" Click="OnProviderEnabledChanged" VerticalAlignment="Center" ToolTip.Tip="{DynamicResource S.778503b4}" />
+                            </Grid>
+                            <Border Classes="settings-divider" Margin="16,0,16,0" />
+                            </StackPanel>
+                            </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <StackPanel IsVisible="{Binding ShowNoProviderCards}" Margin="16,6,16,14" Spacing="7">
+                            <TextBlock Text="{DynamicResource S.d55a2896}" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource TextPrimary}" />
+                            <TextBlock Text="{DynamicResource S.70f62d0d}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" TextWrapping="Wrap" MaxWidth="620" HorizontalAlignment="Left" />
+                            </StackPanel>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+
+                            <StackPanel Spacing="0" IsVisible="{Binding IsProviderDetailOpen}">
+                            <Button Classes="link" Content="{DynamicResource S.05227849}" Click="OnCloseProviderDetailClicked" HorizontalAlignment="Left" Margin="0,0,0,14" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,20">
+                            <StackPanel Spacing="4">
+                            <TextBlock Text="{Binding ProviderDetailName}" FontSize="24" FontWeight="Medium" LetterSpacing="-0.3" Foreground="{DynamicResource TextPrimary}" />
+                            <TextBlock Text="{Binding ProviderDetailId}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" />
+                            <Button Classes="link" IsVisible="{Binding HasProviderDetailWebsite}" Tag="{Binding ProviderDetailWebsite}" Click="OnOpenProviderWebsiteClicked" HorizontalAlignment="Left" Padding="0">
+                            <TextBlock Text="{Binding ProviderDetailWebsite}" FontSize="11.5" Foreground="#7EA7E8" TextDecorations="Underline" />
+                            </Button>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Top">
+                            <Button Classes="danger" Content="{DynamicResource S.ae0e1574}" Click="OnDeleteProviderClicked" IsVisible="{Binding !IsProviderDeleteConfirmOpen}" />
+                            <Button Classes="secondary settings-button" Content="{DynamicResource S.e9d5ca6c}" Click="OnCloseProviderDetailClicked" />
+                            </StackPanel>
+                            </Grid>
+
+                            <Border IsVisible="{Binding IsProviderDeleteConfirmOpen}" Background="#2A1C1F" BorderBrush="#4A2A2E" BorderThickness="1" CornerRadius="12" Padding="14,12" Margin="0,0,0,18">
+                            <StackPanel Spacing="10">
+                            <TextBlock Text="{DynamicResource S.13b50ede}" FontSize="12.5" Foreground="#E5837C" TextWrapping="Wrap" />
+                            <TextBlock Text="{DynamicResource S.358956dd}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding ProviderDetailStatus}" IsVisible="{Binding HasProviderDetailStatus}" FontSize="11.5" Foreground="#E36B6B" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                            <Button Classes="subtle" Content="{DynamicResource S.2cd0f3be}" Click="OnCancelDeleteProviderClicked" />
+                            <Button Classes="danger" Content="{DynamicResource S.a3ea3c17}" Click="OnConfirmDeleteProviderClicked" />
+                            </StackPanel>
+                            </StackPanel>
+                            </Border>
+
+                            <TextBlock Classes="settings-heading" Text="{DynamicResource S.3312c0ce}" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel Margin="16,12,16,12" Spacing="10">
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                            <StackPanel Spacing="4">
+                            <TextBlock Text="{DynamicResource S.cbb2ff38}" Classes="settings-desc" />
+                            <TextBox Classes="settings-input" Text="{Binding ProviderEditName, Mode=TwoWay}" PlaceholderText="DeepSeek" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="4">
+                            <TextBlock Text="{DynamicResource S.daede988}" Classes="settings-desc" />
+                            <TextBox Classes="settings-input" Text="{Binding ProviderEditNote, Mode=TwoWay}" PlaceholderText="{DynamicResource S.52776470}" />
+                            </StackPanel>
+                            </Grid>
+                            <StackPanel Spacing="4">
+                            <TextBlock Text="{DynamicResource S.9ef4785b}" Classes="settings-desc" />
+                            <TextBox Classes="settings-input" Text="{Binding ProviderEditWebsite, Mode=TwoWay}" PlaceholderText="https://www.deepseek.com" />
+                            </StackPanel>
+                            <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="{DynamicResource S.125e5b58}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" VerticalAlignment="Center" />
+                            <Button Grid.Column="1" Classes="primary" Content="{DynamicResource S.769c4f86}" Click="OnSaveProviderProfileClicked" />
+                            </Grid>
+                            <TextBlock Text="{Binding ProviderEditStatus}" IsVisible="{Binding HasProviderEditStatus}" FontSize="11.5" Foreground="#E36B6B" TextWrapping="Wrap" />
+                            </StackPanel>
+                            </Border>
+
+                            <TextBlock Classes="settings-heading" Text="{DynamicResource S.e38ab486}" Margin="0,30,0,0" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel Margin="16,12,16,12" Spacing="11">
+                            <TextBlock Text="{DynamicResource S.31c6cea9}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" TextWrapping="Wrap" />
+                            <StackPanel Spacing="6">
+                            <Grid ColumnDefinitions="110,*,Auto" ColumnSpacing="8">
+                            <TextBlock Text="OpenAI Chat" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="1" Classes="settings-input" Text="{Binding ProviderDraftChatUrl, Mode=TwoWay}" PlaceholderText="https://api.deepseek.com/chat/completions" />
+                            <ToggleSwitch Grid.Column="2" Classes="setting" IsChecked="{Binding ProviderChatProtocolEnabled, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            <Grid ColumnDefinitions="110,*,Auto" ColumnSpacing="8">
+                            <TextBlock Text="Anthropic" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="1" Classes="settings-input" Text="{Binding ProviderDraftAnthropicUrl, Mode=TwoWay}" PlaceholderText="https://api.deepseek.com/messages" />
+                            <ToggleSwitch Grid.Column="2" Classes="setting" IsChecked="{Binding ProviderAnthropicProtocolEnabled, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            <Grid ColumnDefinitions="110,*,Auto" ColumnSpacing="8">
+                            <TextBlock Text="OpenAI Responses" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="1" Classes="settings-input" Text="{Binding ProviderDraftResponsesUrl, Mode=TwoWay}" PlaceholderText="https://api.deepseek.com/responses" />
+                            <ToggleSwitch Grid.Column="2" Classes="setting" IsChecked="{Binding ProviderResponsesProtocolEnabled, Mode=TwoWay}" VerticalAlignment="Center" />
+                            </Grid>
+                            </StackPanel>
+                            <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="{DynamicResource S.fc548ee4}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" VerticalAlignment="Center" />
+                            <Button Grid.Column="1" Classes="primary" Content="{DynamicResource S.f5dede74}" Click="OnSaveProviderConnectionClicked" />
+                            </Grid>
+                            <TextBlock Text="{Binding ProviderConnectionStatus}" IsVisible="{Binding HasProviderConnectionStatus}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            </Border>
+
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,30,0,17">
+                            <TextBlock Classes="settings-heading" Text="{DynamicResource S.c98e118e}" VerticalAlignment="Center" />
+                            <Button Grid.Column="1" Classes="secondary settings-button" Content="{DynamicResource S.168e845a}" Click="OnAddProviderModelClicked" />
+                            </Grid>
+                            <Border Classes="settings-card">
+                            <StackPanel>
+                            <ItemsControl ItemsSource="{Binding ProviderModels}" IsVisible="{Binding HasProviderModels}">
+                            <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ProviderModelRow">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="12" Margin="16,10,16,10">
+                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Id}" FontSize="13.5" FontWeight="Medium" Foreground="{DynamicResource TextPrimary}" />
+                            <TextBlock Text="{Binding Summary}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" Classes="setting" IsChecked="{Binding Enabled, Mode=TwoWay}"
+                                          Click="OnProviderModelEnabledChanged" VerticalAlignment="Center"
+                                          ToolTip.Tip="{DynamicResource S.f55690e9}" />
+                            <Button Grid.Column="2" Classes="secondary settings-button" Content="{DynamicResource S.05183656}" Click="OnEditProviderModelClicked" VerticalAlignment="Center" />
+                            <Button Grid.Column="3" Classes="danger" Content="{DynamicResource S.2f9daa82}" Click="OnDeleteProviderModelClicked" VerticalAlignment="Center" />
+                            </Grid>
+                            <Border Classes="settings-divider" Margin="16,0,16,0" />
+                            </StackPanel>
+                            </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <StackPanel IsVisible="{Binding ShowNoProviderModels}" Margin="16,6,16,14" Spacing="4">
+                            <TextBlock Text="{DynamicResource S.cd23723e}" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource TextPrimary}" />
+                            <TextBlock Text="{DynamicResource S.b1113ba9}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" />
+                            </StackPanel>
+                            <Border IsVisible="{Binding IsProviderModelFormOpen}" Background="#1B1B1E" BorderBrush="#34343A" BorderThickness="1" CornerRadius="10" Margin="16,12,16,14" Padding="14">
+                            <StackPanel Spacing="11">
+                            <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Spacing="2">
+                            <TextBlock Text="{Binding ProviderModelFormTitle}" FontSize="13" FontWeight="Medium" Foreground="{DynamicResource TextPrimary}" />
+                            <TextBlock Text="{DynamicResource S.b5ac5877}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" TextWrapping="Wrap" MaxWidth="560" HorizontalAlignment="Left" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="subtle" Content="{DynamicResource S.2cd0f3be}" Click="OnCancelProviderModelClicked" VerticalAlignment="Top" />
+                            </Grid>
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                            <StackPanel Spacing="4">
+                            <TextBlock Text="{DynamicResource S.8b84338d}" Classes="settings-desc" />
+                            <TextBox Classes="settings-input" Text="{Binding ProviderModelDraftId, Mode=TwoWay}" PlaceholderText="deepseek-chat" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="4">
+                            <TextBlock Text="{DynamicResource S.6b7b0111}" Classes="settings-desc" />
+                            <ComboBox Classes="settings-select" HorizontalAlignment="Stretch" SelectedIndex="{Binding ProviderModelProtocolIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="OpenAI Chat" />
+                            <ComboBoxItem Content="Anthropic" />
+                            <ComboBoxItem Content="OpenAI Responses" />
+                            </ComboBox>
+                            </StackPanel>
+                            </Grid>
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                            <TextBlock Text="{DynamicResource S.b10fc937}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" VerticalAlignment="Center" TextWrapping="Wrap" />
+                            <Button Grid.Column="1" Classes="secondary settings-button" Content="{DynamicResource S.1effcf2c}" Click="OnFetchProviderModelsClicked" IsEnabled="{Binding CanFetchProviderModels}" />
+                            </Grid>
+                            <StackPanel Spacing="4" IsVisible="{Binding HasProviderFetchedModels}">
+                            <TextBlock Text="{DynamicResource S.1f20ce32}" Classes="settings-desc" />
+                            <ComboBox Classes="settings-select" HorizontalAlignment="Stretch" ItemsSource="{Binding ProviderFetchedModels}" SelectedItem="{Binding SelectedProviderFetchedModel, Mode=TwoWay}" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding ProviderModelFetchStatus}" IsVisible="{Binding HasProviderModelFetchStatus}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" TextWrapping="Wrap" />
+                            <StackPanel Spacing="4">
+                            <TextBlock Text="{DynamicResource S.36bf6c68}" Classes="settings-desc" />
+                            <TextBox Classes="settings-input" Text="{Binding ProviderModelDraftUrl, Mode=TwoWay}" PlaceholderText="https://api.deepseek.com/chat/completions" />
+                            </StackPanel>
+                            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="10">
+                            <StackPanel Spacing="4">
+                            <TextBlock Text="{DynamicResource S.bb074b86}" Classes="settings-desc" />
+                            <TextBox Classes="settings-input" Text="{Binding ProviderModelDraftContextWindow, Mode=TwoWay}" PlaceholderText="128000" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="4">
+                            <TextBlock Text="{DynamicResource S.b5652753}" Classes="settings-desc" />
+                            <TextBox Classes="settings-input" Text="{Binding ProviderModelDraftCompactThreshold, Mode=TwoWay}" PlaceholderText="0.8" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Spacing="4">
+                            <TextBlock Text="{DynamicResource S.550b094e}" Classes="settings-desc" />
+                            <TextBox Classes="settings-input" Text="{Binding ProviderModelDraftMaxOutput, Mode=TwoWay}" PlaceholderText="8192" />
+                            </StackPanel>
+                            </Grid>
+                            <StackPanel Spacing="6">
+                            <StackPanel Spacing="2">
+                            <TextBlock Text="{DynamicResource S.6cda64b3}" Classes="settings-desc" />
+                            <TextBlock Text="{DynamicResource S.67b8f642}" FontSize="11" Foreground="{DynamicResource TextCaption}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <ItemsControl ItemsSource="{Binding ProviderModelReasoningLevels}">
+                            <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                            <WrapPanel />
+                            </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ReasoningLevelChoice">
+                            <CheckBox Content="{Binding Label}" IsChecked="{Binding IsEnabled, Mode=TwoWay}"
+                            FontSize="12" Margin="0,0,14,4" Foreground="{DynamicResource TextSecondary}" />
+                            </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="{DynamicResource S.c8c14507}" Classes="settings-desc" VerticalAlignment="Center" />
+                            <ComboBox Grid.Column="1" Classes="settings-select" MinWidth="140" HorizontalAlignment="Right"
+                            ItemsSource="{Binding ProviderModelDefaultReasoningChoices}"
+                            SelectedItem="{Binding SelectedProviderModelDefaultReasoning, Mode=TwoWay}" />
+                            </Grid>
+                            </StackPanel>
+                            <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="{DynamicResource S.a8f39630}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" VerticalAlignment="Center" />
+                            <Button Grid.Column="1" Classes="primary" Content="{DynamicResource S.f5c2506e}" Click="OnSaveProviderModelClicked" />
+                            </Grid>
+                            <TextBlock Text="{Binding ProviderModelFormStatus}" IsVisible="{Binding HasProviderModelFormStatus}" FontSize="11.5" Foreground="#E36B6B" TextWrapping="Wrap" />
+                            </StackPanel>
+                            </Border>
+                            <TextBlock Text="{Binding ProviderDetailStatus}" IsVisible="{Binding HasProviderDetailStatus}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" Margin="16,0,16,12" TextWrapping="Wrap" />
+                            </StackPanel>
+                            </Border>
+
+                            <TextBlock Classes="settings-heading" Text="API Key" Margin="0,30,0,0" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel Margin="16,12,16,12" Spacing="9">
+                            <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Spacing="2">
+                            <TextBlock Text="{DynamicResource S.b71d0d10}" FontSize="13.5" FontWeight="Medium" Foreground="{DynamicResource TextPrimary}" />
+                            <TextBlock Text="{Binding ProviderDetailKeyStatus}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" />
+                            </StackPanel>
+                            </Grid>
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                            <TextBox Classes="settings-input" PasswordChar="•"
+                                     Text="{Binding ProviderDetailApiKey, Mode=TwoWay}" PlaceholderText="{DynamicResource S.23a63460}" />
+                            <Button Grid.Column="1" Classes="secondary settings-button" Content="{DynamicResource S.c5abb65d}" Click="OnSaveProviderApiKeyClicked" />
+                            </Grid>
+                            <TextBlock Text="{DynamicResource S.80849e86}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            </StackPanel>
+                            </StackPanel>
+                            <StackPanel IsVisible="{Binding IsSettingsUsage}" Spacing="50" Classes="settings-pane">
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="{DynamicResource S.6a81178c}" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel Spacing="14" Margin="16,12,16,11">
+                            <TextBlock Classes="settings-desc" Text="{DynamicResource S.5d7cb25d}" />
+                            <ItemsControl ItemsSource="{Binding UsageBars}" IsVisible="{Binding HasUsageBars}"
+                                          Height="120" VerticalAlignment="Bottom">
+                            <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                            <UniformGrid Columns="12" />
+                            </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:UsageBarRow">
+                            <Border Width="26" Height="{Binding Height}" CornerRadius="4" Background="#2F6BFF"
+                                    HorizontalAlignment="Center" VerticalAlignment="Bottom" />
+                            </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="{DynamicResource S.0580b66d}" IsVisible="{Binding !HasUsageBars}"
+                                       FontSize="12.5" Foreground="{DynamicResource TextCaption}" />
+                            <TextBlock Text="{DynamicResource S.4f4a1093}" FontSize="11.5" Foreground="{DynamicResource TextCaption}" />
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+
+                            <StackPanel Spacing="0">
+                            <TextBlock Classes="settings-heading" Text="{DynamicResource S.cf04abaa}" />
+                            <Border Classes="settings-card" Margin="0,17,0,0">
+                            <StackPanel>
+                            <Grid ColumnDefinitions="*,Auto" Margin="16,12,16,11">
+                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="settings-title" Text="{DynamicResource S.9e63c63d}" />
+                            <TextBlock Classes="settings-desc" Text="{DynamicResource S.4c977ef4}" HorizontalAlignment="Left" MaxWidth="650" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="28" VerticalAlignment="Center"><StackPanel Spacing="2"><TextBlock Classes="settings-value" Text="{Binding UsageTokensText}" /><TextBlock Classes="settings-desc" Text="{DynamicResource S.34195de4}" /></StackPanel><StackPanel Spacing="2"><TextBlock Classes="settings-value" Text="{Binding UsageCostText}" /><TextBlock Classes="settings-desc" Text="{DynamicResource S.d0448138}" /></StackPanel></StackPanel>
+                            </Grid>
+                            <Border Classes="settings-divider" />
+                            <StackPanel Margin="8,6"><ItemsControl ItemsSource="{Binding UsageRows}"><ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:UsageSessionRow"><Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="20" Margin="12,9"><TextBlock Text="{Binding Title}" FontSize="13" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" /><TextBlock Grid.Column="1" Classes="settings-key" Text="{Binding Tokens}" VerticalAlignment="Center" /><TextBlock Grid.Column="2" MinWidth="72" TextAlignment="Right" Classes="settings-key" Text="{Binding Cost}" VerticalAlignment="Center" /></Grid></DataTemplate></ItemsControl.ItemTemplate></ItemsControl><TextBlock Text="{DynamicResource S.9f68ea28}" IsVisible="{Binding !ShowUsageRows}" FontSize="12.5" Foreground="{DynamicResource TextCaption}" Margin="12,10" /></StackPanel>
+                            </StackPanel>
+                            </Border>
+                            </StackPanel>
+                            </StackPanel>
+    </StackPanel>
+</UserControl>

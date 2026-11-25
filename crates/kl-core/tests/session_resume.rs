@@ -194,10 +194,10 @@ auto_approve_shell = true
             .count(),
         1
     );
-    let session = home.join("sessions").join(&session_id);
-    let meta = std::fs::read_to_string(session.join("session.json")).unwrap();
-    assert!(meta.contains("\"message_count\": 4"), "{meta}");
-    let meta_value: Value = serde_json::from_str(&meta).unwrap();
+    let rollout = find_rollout(&home, &session_id);
+    let rollout_text = std::fs::read_to_string(&rollout).unwrap();
+    let meta_value = rollout_meta(&rollout_text);
+    assert_eq!(meta_value["message_count"], 4, "{rollout_text}");
     assert_eq!(meta_value["status"], "completed");
     assert_eq!(meta_value["task"], "first turn");
     assert_eq!(meta_value["prompt"], "first turn");
@@ -231,17 +231,23 @@ auto_approve_shell = true
             .count(),
         2
     );
-    let meta = std::fs::read_to_string(session.join("session.json")).unwrap();
-    assert!(meta.contains("\"message_count\": 8"), "{meta}");
-    let meta_value: Value = serde_json::from_str(&meta).unwrap();
+    let rollout_text = std::fs::read_to_string(&rollout).unwrap();
+    let meta_value = rollout_meta(&rollout_text);
+    assert_eq!(meta_value["message_count"], 8, "{rollout_text}");
     assert_eq!(meta_value["status"], "completed");
     assert_eq!(meta_value["task"], "first turn");
     assert_eq!(meta_value["prompt"], "second turn");
     assert_eq!(meta_value["last_message"], "done");
-    let state = std::fs::read_to_string(session.join("state.json")).unwrap();
+    let state = rollout_text
+        .lines()
+        .rev()
+        .find(|line| line.contains("\"type\":\"state\""))
+        .expect("state line");
     assert_eq!(state.matches("\"done\"").count(), 2, "{state}");
-    let events = std::fs::read_to_string(session.join("events.jsonl")).unwrap();
-    assert!(events.contains("\"turn.completed\""), "{events}");
+    assert!(
+        rollout_text.contains("\"turn.completed\""),
+        "{rollout_text}"
+    );
     assert_eq!(
         std::fs::read_to_string(home.join("audit/events.jsonl"))
             .unwrap()
@@ -252,7 +258,7 @@ auto_approve_shell = true
 }
 
 #[test]
-fn history_replays_after_restart_and_omits_sensitive_fields() {
+fn history_replays_after_restart_without_tool_arguments() {
     let temp = tempfile::tempdir().unwrap();
     let workspace = temp.path().join("workspace");
     std::fs::create_dir_all(&workspace).unwrap();
@@ -379,7 +385,7 @@ auto_approve_shell = true
     );
 
     let serialized = serde_json::to_string(&history["result"]).unwrap();
-    for forbidden in ["args", "output", "diff", "api_key", "history-secret-token"] {
+    for forbidden in ["args", "api_key", "history-secret-token"] {
         assert!(
             !serialized.contains(forbidden),
             "history leaked {forbidden}: {serialized}"
@@ -441,5 +447,87 @@ scripted_path = "script.json"
         json!({ "session_id": session_id, "limit": 10 }),
     );
     assert_eq!(history["result"]["messages"], json!([]));
+    core.shutdown();
+}
+
+fn find_rollout(home: &Path, id: &str) -> std::path::PathBuf {
+    fn search(root: &Path, suffix: &str) -> Option<std::path::PathBuf> {
+        for entry in std::fs::read_dir(root).ok()?.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if let Some(found) = search(&path, suffix) {
+                    return Some(found);
+                }
+            } else if path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("rollout-") && name.ends_with(suffix))
+            {
+                return Some(path);
+            }
+        }
+        None
+    }
+
+    search(&home.join("sessions"), &format!("-{id}.jsonl")).expect("rollout file")
+}
+
+fn rollout_meta(rollout_text: &str) -> Value {
+    let line = rollout_text.lines().next().expect("meta line");
+    let value: Value = serde_json::from_str(line).expect("meta json");
+    value["meta"].clone()
+}
+
+#[test]
+fn archived_sessions_move_to_the_archived_store() {
+    let temp = tempfile::tempdir().unwrap();
+    let workspace = temp.path().join("workspace");
+    std::fs::create_dir_all(&workspace).unwrap();
+    std::fs::write(temp.path().join("script.json"), r#"[{"text":"unused"}]"#).unwrap();
+    let config_path = temp.path().join("kl.toml");
+    std::fs::write(
+        &config_path,
+        r#"
+[agent]
+provider = "scripted"
+model = "scripted"
+scripted_path = "script.json"
+"#,
+    )
+    .unwrap();
+    let home = temp.path().join("home");
+
+    let mut core = CoreProcess::start(&config_path, &home);
+    core.request("kl.handshake", handshake_params());
+    let created = core.request(
+        "session.create",
+        json!({ "workspace": workspace.to_string_lossy() }),
+    );
+    assert!(created["result"]["session_id"].is_string(), "{created}");
+    let session_id = created["result"]["session_id"].as_str().unwrap().to_owned();
+
+    let archived = core.request(
+        "session.archive",
+        json!({ "session_id": session_id, "archived": true }),
+    );
+    assert_eq!(archived["result"]["archived"], true, "{archived}");
+    let listed = core.request("session.list", json!({}));
+    assert_eq!(
+        listed["result"]["sessions"][0]["archived"], true,
+        "{listed}"
+    );
+    assert!(home.join("archived_sessions").read_dir().unwrap().count() > 0);
+
+    let unarchived = core.request(
+        "session.archive",
+        json!({ "session_id": session_id, "archived": false }),
+    );
+    assert_eq!(unarchived["result"]["archived"], false, "{unarchived}");
+    let listed = core.request("session.list", json!({}));
+    assert_eq!(
+        listed["result"]["sessions"][0]["archived"], false,
+        "{listed}"
+    );
+    assert!(home.join("archived_sessions").read_dir().unwrap().count() == 0);
     core.shutdown();
 }

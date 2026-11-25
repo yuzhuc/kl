@@ -32,6 +32,7 @@ pub mod methods {
     pub const SESSION_LIST: &str = "session.list";
     pub const SESSION_RENAME: &str = "session.rename";
     pub const SESSION_DELETE: &str = "session.delete";
+    pub const SESSION_ARCHIVE: &str = "session.archive";
     pub const SESSION_STATUS: &str = "session.status";
     pub const SESSION_COMPACT: &str = "session.compact";
     pub const SESSION_FORK: &str = "session.fork";
@@ -47,6 +48,8 @@ pub mod methods {
     pub const PROVIDER_UPSERT: &str = "provider.upsert";
     pub const PROVIDER_SET_API_KEY: &str = "provider.set_api_key";
     pub const PROVIDER_SET_ENABLED: &str = "provider.set_enabled";
+    pub const PROVIDER_MODELS: &str = "provider.models";
+    pub const PROVIDER_DELETE: &str = "provider.delete";
     pub const CONFIG_SET_DEFAULT_MODEL: &str = "config.set_default_model";
     pub const AUDIT_TAIL: &str = "audit.tail";
     pub const REVIEW_RUN: &str = "review.run";
@@ -89,6 +92,7 @@ pub mod error_codes {
     pub const PLUGIN_ERROR: i64 = -32010;
     pub const PLUGIN_NOT_FOUND: i64 = -32011;
     pub const PLUGIN_PERMISSION: i64 = -32012;
+    pub const UNAUTHORIZED: i64 = -32013;
 }
 
 /// JSON-RPC request identifier. Both integer and string ids are legal.
@@ -231,6 +235,9 @@ pub struct HandshakeParams {
     pub protocol_versions: Vec<u32>,
     #[serde(default)]
     pub features: Vec<String>,
+    /// Shared secret required by a TCP server started with `--token`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -275,12 +282,18 @@ pub struct DoctorResult {
 pub struct ProviderModelSummary {
     pub provider: String,
     pub model: String,
+    #[serde(default)]
+    pub name: String,
     pub protocol: String,
     pub url: String,
     pub context_window: u32,
     pub compact_threshold: f32,
     pub max_output_tokens: u32,
     pub enabled: bool,
+    #[serde(default = "default_reasoning_effort")]
+    pub reasoning_effort: String,
+    #[serde(default)]
+    pub reasoning_efforts: Vec<ReasoningEffort>,
     pub key_configured: bool,
     pub available: bool,
     pub detail: String,
@@ -291,6 +304,38 @@ pub struct ProviderListResult {
     pub active_provider: String,
     pub active_model: String,
     pub models: Vec<ProviderModelSummary>,
+    #[serde(default)]
+    pub providers: Vec<ProviderProtocolSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProviderProtocolSummary {
+    pub provider: String,
+    pub protocols: ProviderProtocolUrls,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProviderDeleteParams {
+    pub id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProviderDeleteResult {
+    pub provider: String,
+    pub deleted: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProviderModelsParams {
+    pub id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProviderModelsResult {
+    pub provider: String,
+    pub protocol: String,
+    pub url: String,
+    pub models: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -314,12 +359,20 @@ pub struct ProviderProtocolUrls {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ProviderModelInput {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     pub protocol: String,
     pub context_window: u32,
     pub compact_threshold: f32,
     pub max_output_tokens: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub reasoning_effort: ReasoningEffort,
+    #[serde(default)]
+    pub reasoning_efforts: Vec<ReasoningEffort>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -405,23 +458,174 @@ impl ApprovalMode {
     }
 }
 
+fn default_true() -> bool {
+    true
+}
+
+fn default_reasoning_effort() -> String {
+    "default".to_owned()
+}
+
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum ReasoningEffort {
     #[default]
     Default,
+    None,
+    Minimal,
     Low,
     Medium,
     High,
+    XHigh,
+    Max,
+    Ultra,
 }
 
 impl ReasoningEffort {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Default => "default",
+            Self::None => "none",
+            Self::Minimal => "minimal",
             Self::Low => "low",
             Self::Medium => "medium",
             Self::High => "high",
+            Self::XHigh => "xhigh",
+            Self::Max => "max",
+            Self::Ultra => "ultra",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum OutputVerbosity {
+    #[default]
+    Default,
+    Concise,
+    Detailed,
+}
+
+impl OutputVerbosity {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Concise => "concise",
+            Self::Detailed => "detailed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ReasoningSummary {
+    #[default]
+    Auto,
+    Off,
+    Detailed,
+}
+
+impl ReasoningSummary {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Off => "off",
+            Self::Detailed => "detailed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum PersonalStyle {
+    #[default]
+    Default,
+    Friendly,
+    Professional,
+}
+
+impl PersonalStyle {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Friendly => "friendly",
+            Self::Professional => "professional",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ToneLevel {
+    #[default]
+    Default,
+    Low,
+    High,
+}
+
+impl ToneLevel {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Low => "low",
+            Self::High => "high",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum EmojiUsage {
+    #[default]
+    Default,
+    Less,
+    More,
+}
+
+impl EmojiUsage {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Less => "less",
+            Self::More => "more",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum VisualAnswers {
+    #[default]
+    Default,
+    Off,
+    On,
+}
+
+impl VisualAnswers {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Off => "off",
+            Self::On => "on",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum HeadingStyle {
+    #[default]
+    Default,
+    Concise,
+    Detailed,
+}
+
+impl HeadingStyle {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Concise => "concise",
+            Self::Detailed => "detailed",
         }
     }
 }
@@ -506,11 +710,68 @@ pub struct WorkspaceInitResult {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AgentConfigResult {
     pub reasoning_effort: ReasoningEffort,
+    #[serde(default)]
+    pub web_search: bool,
+    #[serde(default)]
+    pub network_access: bool,
+    #[serde(default)]
+    pub output_verbosity: OutputVerbosity,
+    #[serde(default)]
+    pub reasoning_summary: ReasoningSummary,
+    #[serde(default)]
+    pub memory_enabled: bool,
+    #[serde(default)]
+    pub plugins_enabled: bool,
+    #[serde(default)]
+    pub custom_instructions: String,
+    #[serde(default)]
+    pub personal_style: PersonalStyle,
+    #[serde(default)]
+    pub warmth: ToneLevel,
+    #[serde(default)]
+    pub enthusiasm: ToneLevel,
+    #[serde(default)]
+    pub emoji_usage: EmojiUsage,
+    #[serde(default)]
+    pub visual_answers: VisualAnswers,
+    #[serde(default)]
+    pub heading_style: HeadingStyle,
+    #[serde(default)]
+    pub quick_answers: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct AgentConfigSetParams {
-    pub reasoning_effort: ReasoningEffort,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<ReasoningEffort>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub web_search: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_access: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_verbosity: Option<OutputVerbosity>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_summary: Option<ReasoningSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugins_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_instructions: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub personal_style: Option<PersonalStyle>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub warmth: Option<ToneLevel>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enthusiasm: Option<ToneLevel>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emoji_usage: Option<EmojiUsage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visual_answers: Option<VisualAnswers>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub heading_style: Option<HeadingStyle>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quick_answers: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -543,6 +804,8 @@ pub struct SessionInfo {
     pub last_message: Option<String>,
     #[serde(default)]
     pub reasoning_effort: String,
+    #[serde(default)]
+    pub archived: bool,
 }
 
 fn default_session_turn_state() -> String {
@@ -552,6 +815,17 @@ fn default_session_turn_state() -> String {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SessionResumeParams {
     pub session_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SessionArchiveParams {
+    pub session_id: String,
+    pub archived: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SessionArchiveResult {
+    pub archived: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -576,6 +850,10 @@ pub struct SessionHistoryToolSummary {
     pub name: String,
     pub ok: bool,
     pub summary: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diff: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -588,6 +866,8 @@ pub struct SessionHistoryEntry {
     pub seq: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool: Option<SessionHistoryToolSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -683,6 +963,12 @@ pub struct TurnStartParams {
     pub quality: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent: Option<String>,
+    /// Rewinds the conversation to this live `user.message` seq before the turn.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rewind_from_seq: Option<u64>,
+    /// Overrides the model's reasoning effort for this turn.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -762,6 +1048,10 @@ pub struct ReviewRunParams {
     pub mode: Option<String>,
     #[serde(default)]
     pub strict: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
+    #[serde(default)]
+    pub full_files: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -794,6 +1084,9 @@ pub enum CoreEvent {
     SessionCreated { session_id: String },
     #[serde(rename = "user.message")]
     UserMessage { turn_id: String, text: String },
+    /// Marks a rewind: events in `[from_seq, this seq)` are no longer live.
+    #[serde(rename = "conversation.rewound")]
+    ConversationRewound { from_seq: u64 },
     #[serde(rename = "turn.started")]
     TurnStarted { turn_id: String },
     #[serde(rename = "turn.delta")]
@@ -1034,215 +1327,4 @@ pub struct MemoryDeleteResult {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn negotiation_prefers_highest_common_version() {
-        assert_eq!(negotiate(&[1]), Some(1));
-        assert_eq!(negotiate(&[0, 1, 99]), Some(1));
-        assert_eq!(negotiate(&[]), None);
-        assert_eq!(negotiate(&[99]), None);
-    }
-
-    #[test]
-    fn user_message_event_round_trips() {
-        let event = CoreEvent::UserMessage {
-            turn_id: "turn-1".to_owned(),
-            text: "fix it".to_owned(),
-        };
-        let encoded = serde_json::to_value(&event).unwrap();
-        assert_eq!(encoded["type"], "user.message");
-        let decoded: CoreEvent = serde_json::from_value(encoded).unwrap();
-        assert_eq!(decoded, event);
-    }
-
-    #[test]
-    fn turn_start_agent_is_optional_and_round_trips() {
-        let legacy: TurnStartParams = serde_json::from_value(serde_json::json!({
-            "session_id": "session-1",
-            "prompt": "fix it"
-        }))
-        .unwrap();
-        assert_eq!(legacy.agent, None);
-
-        let params = TurnStartParams {
-            session_id: "session-1".to_owned(),
-            prompt: "fix it".to_owned(),
-            provider: None,
-            model: None,
-            quality: None,
-            agent: Some("plan".to_owned()),
-        };
-        let encoded = serde_json::to_value(&params).unwrap();
-        assert_eq!(encoded["agent"], "plan");
-        let decoded: TurnStartParams = serde_json::from_value(encoded).unwrap();
-        assert_eq!(decoded, params);
-    }
-
-    #[test]
-    fn event_round_trips() {
-        let event = CoreEvent::ToolCompleted {
-            turn_id: "turn-1".to_owned(),
-            call_id: "call-1".to_owned(),
-            name: "read_file".to_owned(),
-            ok: true,
-            summary: "read 3 lines".to_owned(),
-            output: None,
-            diff: None,
-        };
-        let encoded = serde_json::to_value(&event).unwrap();
-        assert_eq!(encoded["type"], "tool.completed");
-        let decoded: CoreEvent = serde_json::from_value(encoded).unwrap();
-        assert_eq!(decoded, event);
-    }
-
-    fn fixture(name: &str) -> serde_json::Value {
-        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/fixtures/protocol")
-            .join(name);
-        let text = std::fs::read_to_string(&path)
-            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
-        serde_json::from_str(&text).expect("fixture must be valid JSON")
-    }
-
-    #[test]
-    fn r3_methods_and_error_codes_are_stable() {
-        assert_eq!(methods::SERVER_INFO, "server.info");
-        assert_eq!(methods::SESSION_ATTACH, "session.attach");
-        assert_eq!(methods::SESSION_DETACH, "session.detach");
-        assert_eq!(methods::SESSION_LEASE, "session.lease");
-        assert_eq!(error_codes::SESSION_BUSY, -32008);
-        assert_eq!(error_codes::LEASE_REQUIRED, -32009);
-    }
-
-    #[test]
-    fn session_attach_params_allow_a_missing_after_seq() {
-        let params: SessionAttachParams =
-            serde_json::from_value(json!({ "session_id": "session-1" })).unwrap();
-        assert_eq!(params.session_id, "session-1");
-        assert_eq!(params.after_seq, None);
-
-        let params: SessionAttachParams =
-            serde_json::from_value(json!({ "session_id": "session-1", "after_seq": 4 })).unwrap();
-        assert_eq!(params.after_seq, Some(4));
-    }
-
-    #[test]
-    fn session_attach_result_replays_event_records() {
-        let result: SessionAttachResult = serde_json::from_value(json!({
-            "session_id": "session-1",
-            "replay": [
-                {
-                    "session_id": "session-1",
-                    "seq": 3,
-                    "event": { "type": "turn.started", "data": { "turn_id": "turn-1" } }
-                }
-            ],
-            "last_seq": 3,
-            "lease_held": true
-        }))
-        .unwrap();
-        assert_eq!(result.replay.len(), 1);
-        assert_eq!(result.replay[0].seq, 3);
-        assert_eq!(
-            result.replay[0].event,
-            CoreEvent::TurnStarted {
-                turn_id: "turn-1".to_owned()
-            }
-        );
-        assert_eq!(result.last_seq, 3);
-        assert!(result.lease_held);
-    }
-
-    #[test]
-    fn shared_fixtures_match_the_r3_contracts() {
-        let server_info: ServerInfoResult =
-            serde_json::from_value(fixture("server_info_result.json")["result"].clone()).unwrap();
-        assert_eq!(server_info.server_name, "kl-core");
-        assert_eq!(server_info.protocol_version, PROTOCOL_VERSION);
-        assert_eq!(server_info.transport, "stdio");
-
-        let attach: SessionAttachResult =
-            serde_json::from_value(fixture("session_attach_result.json")["result"].clone())
-                .unwrap();
-        assert_eq!(attach.session_id, "session-1");
-        assert_eq!(attach.replay.len(), 1);
-        assert_eq!(attach.last_seq, 3);
-        assert!(attach.lease_held);
-
-        let detach: SessionDetachResult =
-            serde_json::from_value(fixture("session_detach_result.json")["result"].clone())
-                .unwrap();
-        assert!(detach.detached);
-
-        let lease: SessionLeaseResult =
-            serde_json::from_value(fixture("session_lease_result.json")["result"].clone()).unwrap();
-        assert_eq!(lease.session_id, "session-1");
-        assert_eq!(lease.expires_at_unix_ms, 1760000060000);
-    }
-
-    #[test]
-    fn memory_methods_are_stable() {
-        assert_eq!(methods::MEMORY_LIST, "memory.list");
-        assert_eq!(methods::MEMORY_READ, "memory.read");
-        assert_eq!(methods::MEMORY_WRITE, "memory.write");
-        assert_eq!(methods::MEMORY_DELETE, "memory.delete");
-    }
-
-    #[test]
-    fn memory_params_use_snake_case_and_optional_scope() {
-        let params: MemoryListParams =
-            serde_json::from_value(json!({ "session_id": "session-1" })).unwrap();
-        assert_eq!(params.session_id, "session-1");
-        assert_eq!(params.scope, None);
-
-        let params: MemoryReadParams = serde_json::from_value(json!({
-            "session_id": "session-1",
-            "name": "notes.md",
-            "scope": "user"
-        }))
-        .unwrap();
-        assert_eq!(params.session_id, "session-1");
-        assert_eq!(params.name, "notes.md");
-        assert_eq!(params.scope.as_deref(), Some("user"));
-
-        let params: MemoryWriteParams = serde_json::from_value(json!({
-            "session_id": "session-1",
-            "name": "notes.md",
-            "content": "# hello"
-        }))
-        .unwrap();
-        assert_eq!(params.session_id, "session-1");
-        assert_eq!(params.content, "# hello");
-        assert_eq!(params.scope, None);
-    }
-
-    #[test]
-    fn shared_fixtures_match_the_memory_contracts() {
-        let list: MemoryListResult =
-            serde_json::from_value(fixture("memory_list_result.json")["result"].clone()).unwrap();
-        assert_eq!(list.entries.len(), 1);
-        assert_eq!(list.entries[0].name, "notes.md");
-        assert_eq!(list.entries[0].scope, "workspace");
-        assert_eq!(list.entries[0].size_bytes, 7);
-
-        let read: MemoryReadResult =
-            serde_json::from_value(fixture("memory_read_result.json")["result"].clone()).unwrap();
-        assert_eq!(read.name, "notes.md");
-        assert_eq!(read.scope, "workspace");
-        assert_eq!(read.content, "# hello\n");
-
-        let write: MemoryWriteResult =
-            serde_json::from_value(fixture("memory_write_result.json")["result"].clone()).unwrap();
-        assert_eq!(write.name, "notes.md");
-        assert_eq!(write.scope, "workspace");
-        assert_eq!(write.size_bytes, 7);
-
-        let delete: MemoryDeleteResult =
-            serde_json::from_value(fixture("memory_delete_result.json")["result"].clone()).unwrap();
-        assert_eq!(delete.name, "notes.md");
-        assert_eq!(delete.scope, "workspace");
-        assert!(delete.deleted);
-    }
-}
+mod tests;

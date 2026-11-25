@@ -10,7 +10,8 @@
         "client_name": { "type": "string" },
         "client_version": { "type": "string" },
         "protocol_versions": { "type": "array", "items": { "type": "integer" } },
-        "features": { "type": "array", "items": { "type": "string" } }
+        "features": { "type": "array", "items": { "type": "string" } },
+        "token": { "type": "string" }
       },
       "additionalProperties": false
     },
@@ -79,6 +80,7 @@
         "compact_threshold",
         "max_output_tokens",
         "enabled",
+        "reasoning_effort",
         "key_configured",
         "available",
         "detail"
@@ -86,6 +88,7 @@
       "properties": {
         "provider": { "type": "string" },
         "model": { "type": "string" },
+        "name": { "type": "string" },
         "protocol": {
           "enum": [
             "openai-chat",
@@ -104,9 +107,75 @@
         },
         "max_output_tokens": { "type": "integer", "minimum": 1 },
         "enabled": { "type": "boolean" },
+        "reasoning_effort": {
+          "enum": [
+            "default",
+            "none",
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "ultra"
+          ]
+        },
+        "reasoning_efforts": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "none",
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max",
+              "ultra"
+            ]
+          }
+        },
         "key_configured": { "type": "boolean" },
         "available": { "type": "boolean" },
         "detail": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "providerModelsParams": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "providerModelsResult": {
+      "type": "object",
+      "required": ["provider", "protocol", "url", "models"],
+      "properties": {
+        "provider": { "type": "string" },
+        "protocol": {
+          "enum": ["openai-chat", "anthropic", "openai-responses"]
+        },
+        "url": { "type": "string", "format": "uri" },
+        "models": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "providerDeleteParams": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "providerDeleteResult": {
+      "type": "object",
+      "required": ["provider", "deleted"],
+      "properties": {
+        "provider": { "type": "string" },
+        "deleted": { "type": "boolean" }
       },
       "additionalProperties": false
     },
@@ -143,6 +212,7 @@
       ],
       "properties": {
         "id": { "type": "string" },
+        "name": { "type": "string" },
         "protocol": {
           "enum": ["openai-chat", "anthropic", "openai-responses"]
         },
@@ -153,7 +223,36 @@
           "maximum": 1
         },
         "max_output_tokens": { "type": "integer", "minimum": 1 },
-        "url": { "type": "string", "format": "uri" }
+        "url": { "type": "string", "format": "uri" },
+        "enabled": { "type": "boolean" },
+        "reasoning_effort": {
+          "enum": [
+            "default",
+            "none",
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "ultra"
+          ]
+        },
+        "reasoning_efforts": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "none",
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max",
+              "ultra"
+            ]
+          }
+        }
       },
       "additionalProperties": false
     },
@@ -178,7 +277,7 @@
       "properties": {
         "provider": { "type": "string" },
         "path": { "type": "string" },
-        "models": { "type": "integer", "minimum": 1 },
+        "models": { "type": "integer", "minimum": 0 },
         "enabled": { "type": "boolean" }
       },
       "additionalProperties": false
@@ -271,7 +370,9 @@
       "properties": {
         "name": { "type": "string" },
         "ok": { "type": "boolean" },
-        "summary": { "type": "string" }
+        "summary": { "type": "string" },
+        "output": { "type": "string" },
+        "diff": { "type": "string" }
       },
       "additionalProperties": false
     },
@@ -283,7 +384,8 @@
         "text": { "type": "string" },
         "timestamp": { "type": "string" },
         "seq": { "type": "integer", "minimum": 0 },
-        "tool": { "$ref": "#/$defs/sessionHistoryToolSummary" }
+        "tool": { "$ref": "#/$defs/sessionHistoryToolSummary" },
+        "reasoning": { "type": "string" }
       },
       "additionalProperties": false
     },
@@ -315,6 +417,23 @@
       },
       "additionalProperties": false
     },
+    "sessionArchiveParams": {
+      "type": "object",
+      "required": ["session_id", "archived"],
+      "properties": {
+        "session_id": { "type": "string" },
+        "archived": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "sessionArchiveResult": {
+      "type": "object",
+      "required": ["archived"],
+      "properties": {
+        "archived": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
     "sessionInfo": {
       "type": "object",
       "required": [
@@ -339,7 +458,8 @@
         "status": { "type": "string" },
         "task": { "type": "string" },
         "prompt": { "type": "string" },
-        "last_message": { "type": "string" }
+        "last_message": { "type": "string" },
+        "archived": { "type": "boolean" }
       },
       "additionalProperties": false
     },
@@ -352,7 +472,8 @@
         "provider": { "type": "string" },
         "model": { "type": "string" },
         "quality": { "enum": ["fast", "balanced", "deep"] },
-        "agent": { "type": "string", "minLength": 1 }
+        "agent": { "type": "string", "minLength": 1 },
+        "rewind_from_seq": { "type": "integer", "minimum": 1 }
       },
       "additionalProperties": false
     },
@@ -363,7 +484,9 @@
         "workspace": { "type": "string" },
         "base": { "type": "string" },
         "mode": { "enum": ["quick", "standard", "strict"] },
-        "strict": { "type": "boolean" }
+        "strict": { "type": "boolean" },
+        "instructions": { "type": "string" },
+        "full_files": { "type": "boolean" }
       },
       "additionalProperties": false
     },
@@ -413,7 +536,38 @@
       "enum": ["ask", "plan", "acceptEdits", "dontAsk", "auto", "read-only"]
     },
     "reasoningEffort": {
-      "enum": ["default", "low", "medium", "high"]
+      "enum": [
+        "default",
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ]
+    },
+    "outputVerbosity": {
+      "enum": ["default", "concise", "detailed"]
+    },
+    "reasoningSummary": {
+      "enum": ["auto", "off", "detailed"]
+    },
+    "personalStyle": {
+      "enum": ["default", "friendly", "professional"]
+    },
+    "toneLevel": {
+      "enum": ["default", "low", "high"]
+    },
+    "emojiUsage": {
+      "enum": ["default", "less", "more"]
+    },
+    "visualAnswers": {
+      "enum": ["default", "off", "on"]
+    },
+    "headingStyle": {
+      "enum": ["default", "concise", "detailed"]
     },
     "sandboxCapabilitiesSummary": {
       "type": "object",
@@ -558,17 +712,60 @@
     },
     "agentConfigResult": {
       "type": "object",
-      "required": ["reasoning_effort"],
+      "required": [
+        "reasoning_effort",
+        "web_search",
+        "network_access",
+        "output_verbosity",
+        "reasoning_summary",
+        "memory_enabled",
+        "plugins_enabled",
+        "custom_instructions",
+        "personal_style",
+        "warmth",
+        "enthusiasm",
+        "emoji_usage",
+        "visual_answers",
+        "heading_style",
+        "quick_answers"
+      ],
       "properties": {
-        "reasoning_effort": { "$ref": "#/$defs/reasoningEffort" }
+        "reasoning_effort": { "$ref": "#/$defs/reasoningEffort" },
+        "web_search": { "type": "boolean" },
+        "network_access": { "type": "boolean" },
+        "output_verbosity": { "$ref": "#/$defs/outputVerbosity" },
+        "reasoning_summary": { "$ref": "#/$defs/reasoningSummary" },
+        "memory_enabled": { "type": "boolean" },
+        "plugins_enabled": { "type": "boolean" },
+        "custom_instructions": { "type": "string" },
+        "personal_style": { "$ref": "#/$defs/personalStyle" },
+        "warmth": { "$ref": "#/$defs/toneLevel" },
+        "enthusiasm": { "$ref": "#/$defs/toneLevel" },
+        "emoji_usage": { "$ref": "#/$defs/emojiUsage" },
+        "visual_answers": { "$ref": "#/$defs/visualAnswers" },
+        "heading_style": { "$ref": "#/$defs/headingStyle" },
+        "quick_answers": { "type": "boolean" }
       },
       "additionalProperties": false
     },
     "agentConfigSetParams": {
       "type": "object",
-      "required": ["reasoning_effort"],
       "properties": {
-        "reasoning_effort": { "$ref": "#/$defs/reasoningEffort" }
+        "reasoning_effort": { "$ref": "#/$defs/reasoningEffort" },
+        "web_search": { "type": "boolean" },
+        "network_access": { "type": "boolean" },
+        "output_verbosity": { "$ref": "#/$defs/outputVerbosity" },
+        "reasoning_summary": { "$ref": "#/$defs/reasoningSummary" },
+        "memory_enabled": { "type": "boolean" },
+        "plugins_enabled": { "type": "boolean" },
+        "custom_instructions": { "type": "string" },
+        "personal_style": { "$ref": "#/$defs/personalStyle" },
+        "warmth": { "$ref": "#/$defs/toneLevel" },
+        "enthusiasm": { "$ref": "#/$defs/toneLevel" },
+        "emoji_usage": { "$ref": "#/$defs/emojiUsage" },
+        "visual_answers": { "$ref": "#/$defs/visualAnswers" },
+        "heading_style": { "$ref": "#/$defs/headingStyle" },
+        "quick_answers": { "type": "boolean" }
       },
       "additionalProperties": false
     },
@@ -817,6 +1014,7 @@
           "enum": [
             "session.created",
             "user.message",
+            "conversation.rewound",
             "turn.started",
             "turn.delta",
             "turn.reasoning",

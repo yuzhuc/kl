@@ -207,6 +207,9 @@ pub fn openai_body(request: &ChatRequest) -> Value {
         "temperature": request.temperature,
     });
 
+    if let Some(effort) = &request.reasoning_effort {
+        body["reasoning_effort"] = json!(effort);
+    }
     if !request.tools.is_empty() {
         body["tools"] = Value::Array(request.tools.iter().map(openai_tool).collect());
     }

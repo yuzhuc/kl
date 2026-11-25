@@ -144,12 +144,17 @@ public sealed class ProtocolContractTests
         Assert.Equal("shell", tool.GetProperty("name").GetString());
         Assert.True(tool.GetProperty("ok").GetBoolean());
         Assert.Equal("exit 0 in 5 ms", tool.GetProperty("summary").GetString());
+        Assert.Equal("line1\nline2\n", tool.GetProperty("output").GetString());
+        Assert.Equal("+new", tool.GetProperty("diff").GetString());
         Assert.Equal("assistant", messages[2].GetProperty("role").GetString());
         Assert.Equal("done", messages[2].GetProperty("text").GetString());
+        Assert.Equal(
+            "Check the files.",
+            messages[2].GetProperty("reasoning").GetString());
 
         var raw = File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "fixtures", "session_history_result.json"));
-        foreach (var forbidden in new[] { "\"args\"", "\"output\"", "\"diff\"", "\"api_key\"" })
+        foreach (var forbidden in new[] { "\"args\"", "\"api_key\"" })
         {
             Assert.DoesNotContain(forbidden, raw);
         }

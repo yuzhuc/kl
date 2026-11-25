@@ -3,6 +3,8 @@ namespace Kl.Client;
 /// <summary>Wire constants shared with the Rust core and the JSON fixtures.</summary>
 public static class Protocol
 {
+    public const long ProviderUnavailable = -32005;
+
     public const int Version = 1;
     public const int MinVersion = 1;
     public const string CoreName = "kl-core";
@@ -20,6 +22,7 @@ public static class Protocol
     public const string SessionStatus = "session.status";
     public const string SessionRename = "session.rename";
     public const string SessionDelete = "session.delete";
+    public const string SessionArchive = "session.archive";
     public const string SessionCompact = "session.compact";
     public const string SessionFork = "session.fork";
     public const string SessionAttach = "session.attach";
@@ -34,6 +37,8 @@ public static class Protocol
     public const string ProviderUpsert = "provider.upsert";
     public const string ProviderSetApiKey = "provider.set_api_key";
     public const string ProviderSetEnabled = "provider.set_enabled";
+    public const string ProviderModels = "provider.models";
+    public const string ProviderDelete = "provider.delete";
     public const string ConfigSetDefaultModel = "config.set_default_model";
     public const string AuditTail = "audit.tail";
     public const string ReviewRun = "review.run";

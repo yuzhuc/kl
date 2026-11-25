@@ -11,18 +11,32 @@ namespace Kl.Tui.Tests;
 /// </summary>
 internal sealed class FakeCoreServer : IAsyncDisposable
 {
+    private readonly TaskCompletionSource _ready =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Task _acceptLoop;
     private readonly List<StreamWriter> _writers = new();
     private readonly List<JsonElement> _attachRequests = new();
+    private readonly List<string> _requestMethods = new();
     private readonly Queue<JsonElement[]> _attachReplays = new();
     private readonly object _sync = new();
     private readonly string _endpoint;
+    private int _disposeState;
+    private StreamWriter? _leaseOwner;
 
-    public FakeCoreServer(string sessionId = "session-1")
+    /// <param name="sessionId">Session id this fake core answers.</param>
+    /// <param name="endpoint">
+    /// Optional fixed endpoint, used to restart a fake core on the same pipe or
+    /// socket so a client can reconnect after its transport died.
+    /// </param>
+    public FakeCoreServer(string sessionId = "session-1", string? endpoint = null)
     {
         SessionId = sessionId;
-        if (OperatingSystem.IsWindows())
+        if (!string.IsNullOrWhiteSpace(endpoint))
+        {
+            _endpoint = endpoint;
+        }
+        else if (OperatingSystem.IsWindows())
         {
             _endpoint = "kl-fake-" + Guid.NewGuid().ToString("N");
         }
@@ -32,13 +46,32 @@ internal sealed class FakeCoreServer : IAsyncDisposable
                 Path.GetTempPath(),
                 "kl-fake-" + Guid.NewGuid().ToString("N") + ".sock");
         }
-        _acceptLoop = Task.Run(AcceptLoopAsync);
+        _acceptLoop = Task.Factory.StartNew(
+            AcceptLoop,
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
     }
 
     public string SessionId { get; }
 
     /// <summary>Endpoint the client must be pointed at.</summary>
     public string Endpoint => _endpoint;
+
+    /// <summary>Completes once the transport is accepting connections.</summary>
+    public Task Ready => _ready.Task;
+
+    /// <summary>Methods received by this fake server, in request order.</summary>
+    public IReadOnlyList<string> RequestMethods
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _requestMethods.ToList();
+            }
+        }
+    }
 
     /// <summary>After-sequence values requested by <c>session.attach</c>.</summary>
     public IReadOnlyList<long?> AttachAfterSeqs
@@ -103,7 +136,7 @@ internal sealed class FakeCoreServer : IAsyncDisposable
         });
     }
 
-    private async Task AcceptLoopAsync()
+    private void AcceptLoop()
     {
         if (OperatingSystem.IsWindows())
         {
@@ -115,13 +148,14 @@ internal sealed class FakeCoreServer : IAsyncDisposable
                     System.IO.Pipes.NamedPipeServerStream.MaxAllowedServerInstances,
                     System.IO.Pipes.PipeTransmissionMode.Byte,
                     System.IO.Pipes.PipeOptions.Asynchronous);
+                _ready.TrySetResult();
                 try
                 {
-                    await server.WaitForConnectionAsync(_shutdown.Token).ConfigureAwait(false);
+                    server.WaitForConnectionAsync(_shutdown.Token).GetAwaiter().GetResult();
                 }
                 catch (OperationCanceledException)
                 {
-                    await server.DisposeAsync().ConfigureAwait(false);
+                    server.Dispose();
                     return;
                 }
                 _ = Task.Run(() => ServeAsync(server));
@@ -132,11 +166,12 @@ internal sealed class FakeCoreServer : IAsyncDisposable
         var listener = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         listener.Bind(new UnixDomainSocketEndPoint(_endpoint));
         listener.Listen(8);
+        _ready.TrySetResult();
         try
         {
             while (!_shutdown.IsCancellationRequested)
             {
-                var socket = await listener.AcceptAsync(_shutdown.Token).ConfigureAwait(false);
+                var socket = listener.AcceptAsync(_shutdown.Token).GetAwaiter().GetResult();
                 _ = Task.Run(() => ServeAsync(new NetworkStream(socket, ownsSocket: true)));
             }
         }
@@ -170,12 +205,16 @@ internal sealed class FakeCoreServer : IAsyncDisposable
                 {
                     continue;
                 }
-                var response = Handle(line);
+                var response = Handle(line, writer);
                 if (response is null)
                 {
                     continue;
                 }
-                await writer.WriteLineAsync(response).ConfigureAwait(false);
+                lock (_sync)
+                {
+                    writer.WriteLine(response);
+                    writer.Flush();
+                }
             }
         }
         catch (Exception error) when (error is IOException or ObjectDisposedException)
@@ -187,17 +226,48 @@ internal sealed class FakeCoreServer : IAsyncDisposable
             lock (_sync)
             {
                 _writers.Remove(writer);
+                if (ReferenceEquals(_leaseOwner, writer))
+                {
+                    _leaseOwner = null;
+                }
             }
         }
     }
 
-    private string? Handle(string line)
+    private string? Handle(string line, StreamWriter writer)
     {
         using var document = JsonDocument.Parse(line);
         var request = document.RootElement;
         var id = request.GetProperty("id");
         var method = request.GetProperty("method").GetString() ?? string.Empty;
         request.TryGetProperty("params", out var parameters);
+        lock (_sync)
+        {
+            _requestMethods.Add(method);
+        }
+
+        if (method == "session.lease")
+        {
+            var acquired = false;
+            lock (_sync)
+            {
+                if (_leaseOwner is null || ReferenceEquals(_leaseOwner, writer))
+                {
+                    _leaseOwner = writer;
+                    acquired = true;
+                }
+            }
+            if (!acquired)
+            {
+                return JsonSerializer.Serialize(new
+                {
+                    jsonrpc = "2.0",
+                    kl_protocol = 1,
+                    id,
+                    error = new { code = -32008, message = $"session.busy: {SessionId}" }
+                });
+            }
+        }
 
         object? result = method switch
         {
@@ -218,13 +288,13 @@ internal sealed class FakeCoreServer : IAsyncDisposable
                 reasoning_effort = "medium",
                 message_count = 0
             },
-            "session.attach" => Attach(parameters),
+            "session.attach" => Attach(parameters, writer),
             "session.lease" => new
             {
                 session_id = SessionId,
                 expires_at_unix_ms = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + 300_000
             },
-            "session.detach" => new { session_id = SessionId },
+            "session.detach" => Detach(writer),
             _ => new { }
         };
 
@@ -237,15 +307,17 @@ internal sealed class FakeCoreServer : IAsyncDisposable
         });
     }
 
-    private object Attach(JsonElement parameters)
+    private object Attach(JsonElement parameters, StreamWriter writer)
     {
         JsonElement[] replay;
+        bool leaseHeld;
         lock (_sync)
         {
             _attachRequests.Add(parameters.Clone());
             replay = _attachReplays.Count > 0
                 ? _attachReplays.Dequeue()
                 : Array.Empty<JsonElement>();
+            leaseHeld = _leaseOwner is not null && !ReferenceEquals(_leaseOwner, writer);
         }
         var lastSeq = replay.Length == 0 ? 0 : replay[^1].GetProperty("seq").GetInt64();
         return new
@@ -253,12 +325,28 @@ internal sealed class FakeCoreServer : IAsyncDisposable
             session_id = SessionId,
             replay,
             last_seq = lastSeq,
-            lease_held = false
+            lease_held = leaseHeld
         };
+    }
+
+    private object Detach(StreamWriter writer)
+    {
+        lock (_sync)
+        {
+            if (ReferenceEquals(_leaseOwner, writer))
+            {
+                _leaseOwner = null;
+            }
+        }
+        return new { session_id = SessionId };
     }
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposeState, 1) != 0)
+        {
+            return;
+        }
         _shutdown.Cancel();
         StreamWriter[] writers;
         lock (_sync)
