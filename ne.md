@@ -107,7 +107,7 @@ python scripts/check_protocol.py
 
 - 输出：`D:\kl\kl\bin\gui`、`D:\kl\kl\bin\tui`；`kl-core.exe` 与 `kl-sandbox-runner.exe` 分别放在各自的 `core\` 子目录。
 - 本地构建默认 self-contained，包含 .NET 10 Runtime；加 `--framework-dependent` 可生成精简版（目标机需安装 .NET 10 Runtime）；加 `--single-file` 会把运行时和依赖打进 `kl.exe`，目录只剩 `kl.exe`、`kl-core.exe`、`kl-sandbox-runner.exe`。
-- Windows 的 Rust 二进制静态链接 CRT，`core\` 目录不依赖 VC++ Redistributable。
+- Windows 下构建/打包脚本会静态链接 CRT，`core\` 目录不依赖 VC++ Redistributable；直接用 `cargo build` 仍是动态 CRT。
 - GUI 启动：`D:\kl\kl\bin\run-gui.bat`（或直接 `D:\kl\kl\bin\gui\kl.exe`）。
 - 组件运行时可用 `KL_CORE_PATH` 指向自编译的 `kl-core`。
 
