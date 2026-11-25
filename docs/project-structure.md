@@ -72,7 +72,8 @@ execution inside Core.
 - TUI: `dotnet build tui/Kl.Tui/Kl.Tui.csproj`.
 - GUI: `dotnet build gui/Kl.Gui/Kl.Gui.csproj`.
 - Build: `python scripts/build.py` publishes final GUI/TUI files to the `bin`
-  directory under the repository root and stages `kl-core.exe` next to both clients.
+  directory under the repository root and stages `kl-core.exe` and
+  `kl-sandbox-runner.exe` in a `core/` subdirectory next to each client.
 - Packaging: `python scripts/package.py` builds a self-contained release archive
   (`--gui` adds the Avalonia client under `gui/` on Windows and macOS RIDs).
 - Release: manual `workflow_dispatch` only, tag `v<version>-rcN`, archives only.

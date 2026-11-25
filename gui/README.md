@@ -17,14 +17,15 @@ configured in `~/.kl/config.toml`, `~/.kl/providers/` and `~/.kl/credentials/`.
 
 GUI state (workspaces, layout, automations, per-model reasoning effort) lives
 under `~/.kl/gui`; KL sessions and events are owned by Core under
-`~/.kl/sessions`. The GUI binary looks for `kl-core` next to itself, in
-`target/{debug,release}`, or at `KL_CORE_PATH`; `python scripts/build.py`
-stages `kl-core.exe` into `bin/gui` automatically.
+`~/.kl/sessions`. The GUI binary looks for `kl-core` next to itself, in a `core/`
+subdirectory of its own directory, in `target/{debug,release}`, or at
+`KL_CORE_PATH`; `python scripts/build.py` stages `kl-core.exe` into
+`bin/gui/core` automatically.
 
 ```powershell
 dotnet build gui/Kl.Gui/Kl.Gui.csproj
 dotnet test gui/Kl.Gui.Tests/Kl.Gui.Tests.csproj
-python scripts/build.py     # publishes bin/gui and bin/tui with kl-core.exe
+python scripts/build.py     # publishes bin/gui and bin/tui with core/ subdirectories
 ```
 
 See `Kl.Gui/README.md` for the architecture and Chinese feature notes.

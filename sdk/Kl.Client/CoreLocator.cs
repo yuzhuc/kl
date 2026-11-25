@@ -21,6 +21,13 @@ public static class CoreLocator
             return local;
         }
 
+        var localCore = NormalizeOrNull(
+            Path.Combine(AppContext.BaseDirectory, "core", ExecutableName));
+        if (localCore is not null)
+        {
+            return localCore;
+        }
+
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         for (var depth = 0; depth < 8 && directory is not null; depth++, directory = directory.Parent)
         {

@@ -106,9 +106,11 @@ def publish_apps(
         raise SystemExit(f"core binary not found: {core}")
     if not runner.is_file():
         raise SystemExit(f"sandbox runner binary not found: {runner}")
-    for app_output in (tui_output, gui_output):
-        shutil.copy2(core, app_output / core_name)
-        shutil.copy2(runner, app_output / runner_name)
+    for app_output in (gui_output, tui_output):
+        core_output = app_output / "core"
+        clean_directory(core_output)
+        shutil.copy2(core, core_output / core_name)
+        shutil.copy2(runner, core_output / runner_name)
 
     schema_target = tui_output / "schemas"
     if schema_target.exists():
@@ -198,6 +200,7 @@ def main() -> int:
     print(f"Final outputs: {output}")
     print(f"GUI: {output / 'gui'}")
     print(f"TUI: {output / 'tui'}")
+    print(f"Core: {output / 'gui' / 'core'}, {output / 'tui' / 'core'}")
     print(f"Core source: {core}")
     if args.single_file:
         deployment = "self-contained single-file"
