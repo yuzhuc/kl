@@ -40,9 +40,6 @@ def run(command: list[str], env: dict[str, str] | None = None) -> None:
 def build_env() -> dict[str, str]:
     env = os.environ.copy()
     env["CARGO_TARGET_DIR"] = str(ROOT / "target")
-    if sys.platform.startswith("win"):
-        flags = env.get("RUSTFLAGS", "").strip()
-        env["RUSTFLAGS"] = f"{flags} -C target-feature=+crt-static".strip()
     return env
 
 

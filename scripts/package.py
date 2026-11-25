@@ -14,10 +14,10 @@ from package_format import assert_binary_format, is_diagnostic_file, layout_for
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def run(command: list[str], cwd: Path = ROOT, env: dict[str, str] | None = None) -> None:
+def run(command: list[str], cwd: Path = ROOT) -> None:
     print(f"\n== {' '.join(command)} ==")
     try:
-        result = subprocess.run(command, cwd=cwd, env=env or os.environ.copy())
+        result = subprocess.run(command, cwd=cwd, env=os.environ.copy())
     except OSError as error:
         raise SystemExit(f"{command[0]} could not start: {error}") from error
     if result.returncode != 0:
@@ -35,14 +35,6 @@ def cargo_target_directory() -> Path:
     if result.returncode != 0:
         raise SystemExit(result.stderr.strip() or "cargo metadata failed")
     return Path(json.loads(result.stdout)["target_directory"])
-
-
-def cargo_env(rid: str) -> dict[str, str]:
-    env = os.environ.copy()
-    if rid.startswith("win"):
-        flags = env.get("RUSTFLAGS", "").strip()
-        env["RUSTFLAGS"] = f"{flags} -C target-feature=+crt-static".strip()
-    return env
 
 
 def parse_args() -> argparse.Namespace:
@@ -69,8 +61,7 @@ def main() -> int:
     archive.parent.mkdir(parents=True, exist_ok=True)
 
     cargo_command = "zigbuild" if args.zig else "build"
-    cargo_flags = cargo_env(args.rid)
-    run(["cargo", cargo_command, "--release", "--target", args.rust_target, "-p", "kl-core"], env=cargo_flags)
+    run(["cargo", cargo_command, "--release", "--target", args.rust_target, "-p", "kl-core"])
     run(
         [
             "cargo",
@@ -82,8 +73,7 @@ def main() -> int:
             "kl-sandbox",
             "--bin",
             "kl-sandbox-runner",
-        ],
-        env=cargo_flags,
+        ]
     )
     run(
         [
