@@ -149,7 +149,7 @@ GUI 状态路径可被 `KL_GUI_STATE` 覆盖；`KL_HOME` 可覆盖整个 home。
 
 ## 当前状态（2026-11-25）
 
-- 分支：`dev`；最近提交：`65edccc feat: add composer reasoning picker and localize the GUI`。
+- 分支：`dev`；最近提交：见 `git log`（历史已于 2026-11-25 压缩）。
 - **工作区有未提交改动**（约 25 个已修改文件，另有本文件未跟踪）；新对话开始前先
   `git status` / `git diff` 确认，不要覆盖。
 - 测试：`dotnet test kl.sln` = 260 GUI + 7 headless + 55 TUI 全绿；

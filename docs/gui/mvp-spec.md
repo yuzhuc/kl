@@ -2,7 +2,7 @@
 
 > Status: implemented Core client and Codex-style desktop shell
 >
-> Baseline: `dev` `65edccc`
+> Baseline: `dev` (history squashed 2026-11-25)
 >
 > Stack: Avalonia 12.1.4, .NET 10
 >
