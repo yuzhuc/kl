@@ -99,11 +99,11 @@ jobs:
         run: python scripts/verify_package.py --gui --rid ${{ matrix.rid }}
       - if: matrix.rid == 'win-x64'
         name: Smoke test
-        run: dist\${{ matrix.rid }}\kl.exe --version
+        run: bin\${{ matrix.rid }}\kl.exe --version
       - uses: actions/upload-artifact@v4
         with:
           name: kl-${{ matrix.rid }}
-          path: dist/kl-${{ matrix.rid }}.*
+          path: bin/kl-${{ matrix.rid }}.*
           if-no-files-found: error
 
   linux:
@@ -149,11 +149,11 @@ jobs:
         run: python scripts/verify_package.py --rid ${{ matrix.rid }}
       - if: matrix.rid == 'linux-x64'
         name: Smoke test
-        run: dist/${{ matrix.rid }}/kl --version
+        run: bin/${{ matrix.rid }}/kl --version
       - uses: actions/upload-artifact@v4
         with:
           name: kl-${{ matrix.rid }}
-          path: dist/kl-${{ matrix.rid }}.*
+          path: bin/kl-${{ matrix.rid }}.*
           if-no-files-found: error
 
   macos:
@@ -188,11 +188,11 @@ jobs:
         run: python scripts/verify_package.py --gui --rid ${{ matrix.rid }}
       - if: matrix.rid == 'osx-arm64'
         name: Smoke test
-        run: dist/${{ matrix.rid }}/kl --version
+        run: bin/${{ matrix.rid }}/kl --version
       - uses: actions/upload-artifact@v4
         with:
           name: kl-${{ matrix.rid }}
-          path: dist/kl-${{ matrix.rid }}.*
+          path: bin/kl-${{ matrix.rid }}.*
           if-no-files-found: error
 
   publish:

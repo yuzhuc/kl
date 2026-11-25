@@ -125,22 +125,22 @@ def check_release_policy(read: ReadFile) -> list[str]:
     problems = [
         value
         for value in [
-            must(read, "README.md", re.compile(r"Releases are built only from pushes to `main`"), "the main-only release policy"),
+            must(read, "README.md", re.compile(r"Releases run only when the `release` workflow is started manually"), "the manual release policy"),
             must(read, "README.md", re.compile(r"`v<version>-rc1`"), "the v<version>-rcN tag scheme"),
             must(read, "README.md", re.compile(r"current `v<major>\.<minor>\.` series"), "the current-series retention rule"),
             must_not(read, "README.md", re.compile(r"retention list has\s+not been chosen"), "an undecided retention list"),
-            must(read, ".github/workflows/release.yml", re.compile(r"branches: \[main\]"), "a main-only push trigger"),
+            must(read, ".github/workflows/release.yml", re.compile(r"workflow_dispatch:"), "a manual dispatch trigger"),
             must(read, ".github/workflows/release.yml", re.compile(r"-rc\$\{rc\}"), "the -rcN tag suffix"),
             must_not(read, ".github/workflows/release.yml", re.compile(r"pull_request"), "pull request triggers"),
-            must_not(read, ".github/workflows/release.yml", re.compile(r"workflow_dispatch"), "manual dispatch triggers"),
+            must_not(read, ".github/workflows/release.yml", re.compile(r"branches: \[main\]"), "main push triggers"),
         ]
         if value is not None
     ]
     workflow = read(".github/workflows/release.yml")
     if workflow is not None:
         count = len(re.findall(r"branches:", workflow))
-        if count != 1:
-            problems.append(f".github/workflows/release.yml: expected 1 branch trigger, found {count}")
+        if count != 0:
+            problems.append(f".github/workflows/release.yml: expected no branch trigger, found {count}")
     return problems
 
 
@@ -207,7 +207,7 @@ CHECKS = [
     {"id": "allow-session", "description": "Approvals support a session-scoped allow rule", "failures": check_allow_session},
     {"id": "tool-metadata-internal", "description": "Tool scheduling metadata stays internal and is not provider-visible", "failures": check_tool_metadata},
     {"id": "benchmark-tasks", "description": "The benchmark harness keeps 23 tasks", "failures": check_benchmark_tasks},
-    {"id": "release-policy", "description": "Releases are built only from main and tagged v<version>-rcN", "failures": check_release_policy},
+    {"id": "release-policy", "description": "Releases run manually and are tagged v<version>-rcN", "failures": check_release_policy},
     {"id": "no-sha-files", "description": "Releases ship archives only, without .sha256 files", "failures": check_no_sha_files},
     {"id": "release-matrix", "description": "The release RID matrix is identical in the workflow, README and packer", "failures": check_release_matrix},
 ]

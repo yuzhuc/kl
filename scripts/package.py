@@ -51,7 +51,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     layout = layout_for(args.rid)
-    output = Path(args.output).resolve() if args.output else (ROOT / "dist" / args.rid).resolve()
+    output = Path(args.output).resolve() if args.output else (ROOT / "bin" / args.rid).resolve()
     archive = output.parent / f"kl-{args.rid}{layout['ext']}"
     cargo_target = cargo_target_directory()
 
