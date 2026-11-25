@@ -135,11 +135,6 @@ def main() -> int:
         shutil.copy2(core, gui_output / str(layout["core"]))
         shutil.copy2(runner, gui_output / runner_name)
 
-    schema_target = output / "schemas"
-    if schema_target.exists():
-        shutil.rmtree(schema_target)
-    shutil.copytree(ROOT / "schemas", schema_target)
-
     if not args.rid.startswith("win"):
         for name in ("kl", "kl-core"):
             file = output / name

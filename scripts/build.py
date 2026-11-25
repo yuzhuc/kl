@@ -110,11 +110,6 @@ def publish_apps(
         shutil.copy2(core, app_output / core_name)
         shutil.copy2(runner, app_output / runner_name)
 
-    schema_target = tui_output / "schemas"
-    if schema_target.exists():
-        shutil.rmtree(schema_target)
-    shutil.copytree(ROOT / "schemas", schema_target)
-
     remove_diagnostics(gui_output)
     remove_diagnostics(tui_output)
 
