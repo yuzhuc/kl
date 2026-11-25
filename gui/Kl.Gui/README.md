@@ -96,8 +96,8 @@ dotnet test ..\Kl.Gui.Tests\Kl.Gui.Tests.csproj
 ```
 
 在仓库根目录运行 `python scripts/build.py` 后，GUI 发布到 `D:\kl\kl\bin\gui`，
-`kl-core.exe` 与 `kl-sandbox-runner.exe` 会分别复制到 `bin\gui\core` 与
-`bin\tui\core`，启动脚本为
+`kl-core.exe` 与 `kl-sandbox-runner.exe` 会分别复制到 `bin\gui` 与
+`bin\tui`，启动脚本为
 `D:\kl\kl\bin\run-gui.bat`。若从组件构建直接运行，可设置 `KL_CORE_PATH` 指向
 `target\release\kl-core.exe` 等位置。
 

@@ -85,19 +85,17 @@ the final GUI/TUI files to the `bin` directory under the repository root:
 ```text
 Caches:        D:\kl\kl\target, project bin/obj directories
 Final outputs: D:\kl\kl\bin\gui, D:\kl\kl\bin\tui
-Core:          D:\kl\kl\bin\gui\core, D:\kl\kl\bin\tui\core
 ```
 
 Local builds are self-contained by default and include the .NET 10 runtime, so
 the output runs without a separate runtime install. Pass `--framework-dependent`
 for a smaller lean build that requires the .NET 10 Runtime on the target machine
 (on Windows, the .NET 10 Desktop Runtime includes it). Pass `--single-file` to
-embed the runtime and dependencies into `kl.exe`, leaving only `kl.exe` in
-each app directory; `kl-core.exe` and `kl-sandbox-runner.exe` live in its `core/`
-subdirectory. The script detects the current OS/architecture automatically and
-creates `.bat` launchers on Windows or `.sh` launchers on Linux/macOS. On
-Windows, Rust binaries link the C runtime statically, so `core/` does not need
-the Visual C++ Redistributable.
+embed the runtime and dependencies into `kl.exe`, leaving only `kl.exe`,
+`kl-core.exe` and `kl-sandbox-runner.exe` in each app directory. The script
+detects the current OS/architecture automatically and creates `.bat` launchers
+on Windows or `.sh` launchers on Linux/macOS. On Windows, the Rust binaries link
+the C runtime statically, so they do not need the Visual C++ Redistributable.
 
 For component-level development:
 
@@ -124,10 +122,10 @@ After `python scripts/build.py`, the desktop GUI can be started with:
 D:\kl\kl\bin\run-gui.bat
 ```
 
-The build stages `kl-core.exe` and `kl-sandbox-runner.exe` in a `core/`
-subdirectory of each app, and the clients find Core automatically. When running
-from a component build, point `KL_CORE_PATH` at a built `kl-core` binary or keep
-the `target/` directory next to the executable.
+The build stages `kl-core.exe` and `kl-sandbox-runner.exe` next to each app, and
+the clients find Core automatically. When running from a component build, point
+`KL_CORE_PATH` at a built `kl-core` binary or keep the `target/` directory next
+to the executable.
 
 ## Main capabilities
 
