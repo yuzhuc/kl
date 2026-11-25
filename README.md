@@ -87,13 +87,12 @@ Caches:        D:\kl\kl\target, project bin/obj directories
 Final outputs: D:\kl\kl\bin\gui, D:\kl\kl\bin\tui
 ```
 
-Local builds are intentionally framework-dependent and require the .NET 10
-Runtime on the target machine (on Windows, the .NET 10 Desktop Runtime includes
-it). This removes the bundled `System.*` runtime DLLs and keeps only application
-dependencies. The script detects the current OS/architecture automatically and
-creates `.bat` launchers on Windows or `.sh` launchers on Linux/macOS.
-Self-contained bundles remain the responsibility of the release packaging
-workflow, not local development builds.
+Local builds are self-contained by default and include the .NET 10 runtime, so
+the output runs without a separate runtime install. Pass `--framework-dependent`
+for a smaller lean build that requires the .NET 10 Runtime on the target machine
+(on Windows, the .NET 10 Desktop Runtime includes it). The script detects the
+current OS/architecture automatically and creates `.bat` launchers on Windows or
+`.sh` launchers on Linux/macOS.
 
 For component-level development:
 

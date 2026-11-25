@@ -106,7 +106,7 @@ python scripts/check_protocol.py
 ```
 
 - 输出：`D:\kl\kl\bin\gui`、`D:\kl\kl\bin\tui`，`kl-core.exe` 会放在两个客户端旁边。
-- 本地构建是 framework-dependent，目标机需要 .NET 10 Runtime（Windows 为 Desktop Runtime）。
+- 本地构建默认 self-contained，包含 .NET 10 Runtime；加 `--framework-dependent` 可生成精简版（目标机需安装 .NET 10 Runtime）。
 - GUI 启动：`D:\kl\kl\bin\run-gui.bat`（或直接 `D:\kl\kl\bin\gui\kl.exe`）。
 - 组件运行时可用 `KL_CORE_PATH` 指向自编译的 `kl-core`。
 

@@ -70,6 +70,7 @@ def publish_apps(
     runtime: str,
     output: Path,
     env: dict[str, str],
+    self_contained: bool,
 ) -> Path:
     cargo_profile = "release" if configuration.lower() == "release" else "debug"
     core_name = "kl-core.exe" if runtime.startswith("win") else "kl-core"
@@ -88,7 +89,7 @@ def publish_apps(
         "-r",
         runtime,
         "--self-contained",
-        "false",
+        "true" if self_contained else "false",
         "-p:DebugType=None",
         "-p:DebugSymbols=false",
     ]
@@ -146,6 +147,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--runtime", default=host_runtime(), help="dotnet publish runtime identifier")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--skip-checks", action="store_true")
+    deployment = parser.add_mutually_exclusive_group()
+    deployment.add_argument(
+        "--self-contained", dest="self_contained", action="store_true", default=True,
+        help="include the .NET runtime in bin/gui and bin/tui (default)",
+    )
+    deployment.add_argument(
+        "--framework-dependent", dest="self_contained", action="store_false",
+        help="omit the .NET runtime for a smaller output",
+    )
     return parser.parse_args()
 
 
@@ -171,13 +181,14 @@ def main() -> int:
     run(["cargo", "build", "-p", "kl-core", *profile], env)
     run(["cargo", "build", "-p", "kl-sandbox", "--bin", "kl-sandbox-runner", *profile], env)
 
-    core = publish_apps(args.configuration, args.runtime, output, env)
+    core = publish_apps(args.configuration, args.runtime, output, env, args.self_contained)
     print(f"\nCaches: {ROOT / 'target'}")
     print(f"Final outputs: {output}")
     print(f"GUI: {output / 'gui'}")
     print(f"TUI: {output / 'tui'}")
     print(f"Core source: {core}")
-    print("Deployment: framework-dependent (lean local build)")
+    deployment = "self-contained" if args.self_contained else "framework-dependent (lean local build)"
+    print(f"Deployment: {deployment}")
     return 0
 
 
